@@ -1,0 +1,4 @@
+#!/bin/sh
+
+env -u VIRTUAL_ENV -u PYENV_VERSION -u PYTHONHOME -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH -u LD_LIBRARY_PATH \
+PYTHONPATH="$PWD/src" QPY_RSYNC_DEBUG=1 python3 -m qpy_rsync.app 2>&1 | tee qpy-rsync-system-debug.log
