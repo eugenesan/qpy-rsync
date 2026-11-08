@@ -32,67 +32,12 @@ for file do
     fi
 done
 
-included=$(mktemp)
-remaining=$(mktemp)
 section=$(mktemp)
+included=$(mktemp)
 cleanup() {
-    rm -f -- "$included" "$remaining" "$section" "$OUTPUT"
+    rm -f -- "$section" "$included" "$OUTPUT"
 }
 trap cleanup EXIT HUP INT TERM
-
-: > "$OUTPUT"
-: > "$included"
-: > "$remaining"
-current_bytes=0
-limit_reached=0
-
-for file do
-    if [ "$limit_reached" -ne 0 ]; then
-        printf '%s\n' "$file" >> "$remaining"
-        continue
-    fi
-
-    {
-        printf '===== FILE: %s =====\n' "$file"
-        cat -- "$file"
-        printf '\n'
-    } > "$section"
-
-    section_bytes=$(wc -c < "$section")
-    next_bytes=$((current_bytes + section_bytes))
-    if [ "$next_bytes" -gt "$MAX_BYTES" ]; then
-        limit_reached=1
-        printf '%s\n' "$file" >> "$remaining"
-        continue
-    fi
-
-    cat -- "$section" >> "$OUTPUT"
-    printf '%s\n' "$file" >> "$included"
-    current_bytes=$next_bytes
-done
-
-included_count=$(wc -l < "$included")
-remaining_count=$(wc -l < "$remaining")
-
-printf 'Dump size: %s bytes (limit: %s bytes)\n' "$current_bytes" "$MAX_BYTES"
-printf 'Included files (%s):\n' "$included_count"
-if [ "$included_count" -eq 0 ]; then
-    printf '  (none)\n'
-else
-    sed 's/^/  /' "$included"
-fi
-
-printf 'Remaining files (%s):\n' "$remaining_count"
-if [ "$remaining_count" -eq 0 ]; then
-    printf '  (none)\n'
-else
-    sed 's/^/  /' "$remaining"
-fi
-
-if [ "$included_count" -eq 0 ]; then
-    printf 'dump-content: the first file section exceeds the %s-byte limit\n' "$MAX_BYTES" >&2
-    exit 1
-fi
 
 copy_to_clipboard() {
     if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null 2>&1; then
@@ -119,9 +64,62 @@ copy_to_clipboard() {
     exit 1
 }
 
-copy_to_clipboard
-printf 'Removed temporary dump: %s\n' "$OUTPUT"
+batch=1
+while [ "$#" -gt 0 ]; do
+    : > "$OUTPUT"
+    : > "$included"
+    current_bytes=0
+    batch_count=0
 
-if [ "$remaining_count" -gt 0 ]; then
-    printf 'Run again with the remaining files listed above.\n'
-fi
+    while [ "$#" -gt 0 ]; do
+        file=$1
+        {
+            printf '===== FILE: %s =====\n' "$file"
+            cat -- "$file"
+            printf '\n'
+        } > "$section"
+        section_bytes=$(wc -c < "$section")
+
+        if [ "$section_bytes" -gt "$MAX_BYTES" ]; then
+            printf 'dump-content: complete section for %s is %s bytes and exceeds the %s-byte limit\n' \
+                "$file" "$section_bytes" "$MAX_BYTES" >&2
+            exit 1
+        fi
+
+        next_bytes=$((current_bytes + section_bytes))
+        if [ "$batch_count" -gt 0 ] && [ "$next_bytes" -gt "$MAX_BYTES" ]; then
+            break
+        fi
+
+        cat -- "$section" >> "$OUTPUT"
+        printf '%s\n' "$file" >> "$included"
+        current_bytes=$next_bytes
+        batch_count=$((batch_count + 1))
+        shift
+    done
+
+    printf '\nBatch %s: %s bytes (limit: %s bytes)\n' "$batch" "$current_bytes" "$MAX_BYTES"
+    printf 'Included files (%s):\n' "$batch_count"
+    sed 's/^/  /' "$included"
+    printf 'Remaining files (%s):\n' "$#"
+    if [ "$#" -eq 0 ]; then
+        printf '  (none)\n'
+    else
+        for file do
+            printf '  %s\n' "$file"
+        done
+    fi
+
+    copy_to_clipboard
+    rm -f -- "$OUTPUT"
+    printf 'Removed temporary dump: %s\n' "$OUTPUT"
+
+    if [ "$#" -eq 0 ]; then
+        printf 'All requested files were copied in %s batch(es).\n' "$batch"
+        break
+    fi
+
+    printf 'Paste batch %s now. Press Enter to copy the next batch, or Ctrl+C to abort: ' "$batch"
+    IFS= read -r _approval
+    batch=$((batch + 1))
+ done
