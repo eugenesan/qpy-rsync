@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TYPE_CHECKING, Callable
+
+from .rsync_command import ProcessSpec
+
+if TYPE_CHECKING:
+    from PySide6.QtCore import QObject
+
+
+class ProcessState(StrEnum):
+    IDLE = "idle"
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED_TO_START = "failed_to_start"
+
+
+@dataclass(slots=True, frozen=True)
+class ProcessResult:
+    exit_code: int
+    stdout: str
+    stderr: str
+    crashed: bool = False
+
+
+class QtProcessRunner:
+    """Asynchronous QProcess adapter with incremental UTF-8 decoding."""
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        try:
+            from PySide6.QtCore import QProcess
+        except ImportError as exc:
+            raise RuntimeError("PySide6 is required for QtProcessRunner") from exc
+        self._process = QProcess(parent)
+        self._state = ProcessState.IDLE
+        self._stdout = bytearray()
+        self._stderr = bytearray()
+        self.on_stdout: Callable[[str], None] = lambda _text: None
+        self.on_stderr: Callable[[str], None] = lambda _text: None
+        self.on_finished: Callable[[ProcessResult], None] = lambda _result: None
+        self.on_error: Callable[[str], None] = lambda _message: None
+        self._process.readyReadStandardOutput.connect(self._read_stdout)
+        self._process.readyReadStandardError.connect(self._read_stderr)
+        self._process.finished.connect(self._finished)
+        self._process.errorOccurred.connect(self._error)
+
+    @property
+    def state(self) -> ProcessState:
+        return self._state
+
+    def start(self, spec: ProcessSpec) -> None:
+        if self._state is ProcessState.RUNNING:
+            raise RuntimeError("A process is already running")
+        from PySide6.QtCore import QProcessEnvironment
+
+        self._stdout.clear()
+        self._stderr.clear()
+        environment = QProcessEnvironment.systemEnvironment()
+        for key, value in spec.environment.items():
+            environment.insert(key, value)
+        self._process.setProcessEnvironment(environment)
+        self._state = ProcessState.RUNNING
+        self._process.start(spec.program, list(spec.arguments))
+
+    def cancel(self, force_after_ms: int = 3000) -> None:
+        if self._state is not ProcessState.RUNNING:
+            return
+        self._process.terminate()
+        if force_after_ms >= 0:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(force_after_ms, self._kill_if_running)
+
+    def _kill_if_running(self) -> None:
+        if self._state is ProcessState.RUNNING:
+            self._process.kill()
+
+    def _read_stdout(self) -> None:
+        data = bytes(self._process.readAllStandardOutput())
+        self._stdout.extend(data)
+        self.on_stdout(data.decode("utf-8", errors="replace"))
+
+    def _read_stderr(self) -> None:
+        data = bytes(self._process.readAllStandardError())
+        self._stderr.extend(data)
+        self.on_stderr(data.decode("utf-8", errors="replace"))
+
+    def _finished(self, exit_code: int, exit_status: object) -> None:
+        self._read_stdout()
+        self._read_stderr()
+        self._state = ProcessState.FINISHED
+        crashed = int(exit_status) != 0
+        result = ProcessResult(exit_code, self._stdout.decode("utf-8", "replace"), self._stderr.decode("utf-8", "replace"), crashed)
+        self.on_finished(result)
+
+    def _error(self, error: object) -> None:
+        if not self._process.program():
+            self._state = ProcessState.FAILED_TO_START
+        self.on_error(str(error))

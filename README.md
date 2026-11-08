@@ -37,3 +37,7 @@ qpy-rsync
 ## Safety status
 
 This is pre-alpha software. Destructive synchronization and per-object execution are not implemented yet.
+
+## milestone 1 local comparison
+
+The GUI now performs asynchronous local `rsync --dry-run` comparisons and displays normalized changes in a sortable, path-filterable table. It remains read-only: no synchronization action is exposed. See `docs/milestone-1-smoke-test.md`.
