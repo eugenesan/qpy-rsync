@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSettings, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSettings, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -157,13 +157,13 @@ class ComparisonView(QWidget):
         self.model.set_changes(changes)  # type: ignore[arg-type]
         # Expansion before the view processes the model reset can leave deep
         # synthetic parent nodes collapsed. Queue it for the next event turn.
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self.expand_all)
 
     def set_path_filter(self, text: str) -> None:
         self.proxy.set_path_filter(text)
-        if text.strip():
-            self.expand_all()
+        # A proxy reset collapses every view. Expand after Qt finishes the
+        # reset, for both a populated filter and a cleared filter.
+        QTimer.singleShot(0, self.expand_all)
 
     def expand_all(self) -> None:
         for tree in (self.source, self.action, self.destination):

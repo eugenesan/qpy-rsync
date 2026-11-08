@@ -113,3 +113,15 @@
 - Persist main-window geometry, comparison-pane ratios, and header state with `QSettings`.
 - Remember the last successfully used source and destination pair and start comparison when Enter is pressed in the destination field.
 - Add regression tests for glob matching, punctuation filters, clearing filters, numeric names, and directory-subtree display.
+
+## milestone 1.14
+
+- Add explicit include, exclude, and inherited decisions for changed objects.
+- Add checkboxes to the center action column while keeping comparison non-destructive.
+- Make real and synthetic directory checkboxes control their complete subtrees through inherited decisions.
+- Allow child decisions to override an excluded parent and allow excluded files and directories to be checked again.
+- Preserve decisions across recompare when path, action, and object kind remain stable.
+- Discard stale decisions when an object's identity changes or a synthetic directory subtree disappears.
+- Track included, excluded, and included-destructive counts for the future execution plan.
+- Stabilize filtering after proxy resets so clearing punctuation and glob filters restores and expands the complete tree.
+- Add tests for inheritance, child overrides, stale decisions, summaries, non-selectable records, tree checkboxes, and directory subtrees.

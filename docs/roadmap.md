@@ -49,14 +49,19 @@ Milestones 1 through 1.10 established:
 File-type icons and additional accessible action styling remain candidates for
 a later usability refinement.
 
-## Milestone 1.14: per-object decisions
+## Milestone 1.14: per-object decisions (completed)
 
-- include/exclude state per changed object
-- inherited directory selection
-- action controls in the center gutter
-- conflict-policy visualization
-- validation of impossible or stale selections
-- invalidate selections safely after recompare
+- explicit include, exclude, and inherited decision states
+- checkboxes in the center action pane
+- inherited decisions from real and synthetic directories
+- explicit child overrides
+- stable decision preservation across unchanged recomparisons
+- stale-decision invalidation when path identity changes
+- included, excluded, and destructive summary counts
+- non-selectable message and no-change records
+
+Conflict-policy visualization remains a candidate for refinement alongside the
+Milestone 1.15 execution-plan confirmation UI.
 
 ## Milestone 1.15: synchronization execution
 

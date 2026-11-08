@@ -119,3 +119,17 @@ qpy-rsync remembers the main-window geometry, comparison-pane ratios, column
 layout, and the last successfully used source and destination pair. Press
 **Enter** in the destination field to start comparison when both endpoints are
 present.
+
+## Per-object decisions
+
+The center **Action** pane contains a checkbox for every selectable changed
+object. Checked objects are included in the future synchronization plan;
+unchecked objects are excluded. These controls do not execute `rsync`.
+
+Directories, including synthetic parent directories created for the tree,
+control their complete subtrees. A child can override an excluded parent by
+being checked explicitly, and checking the directory again includes the
+subtree. Message and no-change records are not selectable.
+
+Decisions survive a recompare only while the same path retains the same action
+and object kind. Stale decisions are discarded when that identity changes.

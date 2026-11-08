@@ -7,7 +7,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
-from qpy_rsync.core.changes import Change, ChangeAction
+from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
 
 
 @dataclass(slots=True)
@@ -39,9 +39,14 @@ class ChangeTreeModel(QAbstractItemModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.root = TreeNode("", "")
+        self.decisions = ChangeDecisions()
+        self.changes: list[Change] = []
+        self.discarded_decisions = 0
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
+        self.changes = list(changes)
+        self.discarded_decisions = self.decisions.reconcile(self.changes)
         self.root = TreeNode("", "")
         nodes: dict[str, TreeNode] = {"": self.root}
         for change in sorted(changes, key=lambda item: (item.path.count("/"), item.path)):
@@ -126,9 +131,73 @@ class ChangeTreeModel(QAbstractItemModel):
                 return QColor("#208020")
             if change.action is ChangeAction.DESTINATION_ONLY:
                 return QColor("#a05020")
+        if (
+            role == Qt.ItemDataRole.CheckStateRole
+            and index.column() == self.ACTION
+            and self._node_selectable(node)
+        ):
+            return (
+                Qt.CheckState.Checked
+                if self._effective_node(node) is ChangeDecision.INCLUDE
+                else Qt.CheckState.Unchecked
+            )
         if role == Qt.ItemDataRole.UserRole:
             return change
+        if role == Qt.ItemDataRole.UserRole + 1:
+            return self.decisions.explicit(node.path)
         return None
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        flags = super().flags(index)
+        if index.isValid() and index.column() == self.ACTION:
+            node: TreeNode = index.internalPointer()
+            if self._node_selectable(node):
+                flags |= Qt.ItemFlag.ItemIsUserCheckable
+        return flags
+
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
+        if role != Qt.ItemDataRole.CheckStateRole or not index.isValid() or index.column() != self.ACTION:
+            return False
+        node: TreeNode = index.internalPointer()
+        if not self._node_selectable(node):
+            return False
+        state = Qt.CheckState(value)
+        decision = (
+            ChangeDecision.INCLUDE
+            if state is Qt.CheckState.Checked
+            else ChangeDecision.EXCLUDE
+        )
+        self.decisions.set(node.path, decision)
+        self.dataChanged.emit(
+            index,
+            index,
+            [Qt.ItemDataRole.CheckStateRole, Qt.ItemDataRole.UserRole + 1],
+        )
+        self._emit_descendant_check_states(index.siblingAtColumn(0))
+        return True
+
+    def _node_selectable(self, node: TreeNode) -> bool:
+        if node.change is None:
+            return bool(node.children)
+        return self.decisions.selectable(node.change)
+
+    def _effective_node(self, node: TreeNode) -> ChangeDecision:
+        if node.change is not None and not self.decisions.selectable(node.change):
+            return ChangeDecision.EXCLUDE
+        return self.decisions.effective_path(node.path)
+
+    def _emit_descendant_check_states(self, parent: QModelIndex) -> None:
+        rows = self.rowCount(parent)
+        if rows == 0:
+            return
+        first = self.index(0, self.ACTION, parent)
+        last = self.index(rows - 1, self.ACTION, parent)
+        self.dataChanged.emit(first, last, [Qt.ItemDataRole.CheckStateRole])
+        for row in range(rows):
+            self._emit_descendant_check_states(self.index(row, 0, parent))
+
+    def decision_summary(self):
+        return self.decisions.summary(self.changes)
 
     @staticmethod
     def _action_text(action: ChangeAction) -> str:
