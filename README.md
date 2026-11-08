@@ -98,3 +98,24 @@ For local-to-local comparisons, right-click or double-click a changed regular
 file to open it in an external diff tool. qpy-rsync honors Git's
 `diff.guitool`, `diff.tool`, and `difftool.<tool>.path` settings, then looks for
 Meld, KDiff3, Kompare, or Vimdiff. Remote-file staging is not implemented yet.
+
+## Comparison-tree filtering and saved state
+
+The comparison view supports case-insensitive filename filtering and shell-style
+globs:
+
+- `guide` matches names containing `guide`.
+- `*.py` matches Python filenames.
+- `file?.txt` uses `?` for one character.
+- `[0-9]*` matches names beginning with a digit.
+- `*` shows all changed objects.
+- `.` matches names containing a literal period.
+- `docs/` matches the `docs` directory and retains its complete subtree.
+
+Matching files remain visible with their ancestor directories. Use **Expand
+All** and **Collapse All** to control all three synchronized panes.
+
+qpy-rsync remembers the main-window geometry, comparison-pane ratios, column
+layout, and the last successfully used source and destination pair. Press
+**Enter** in the destination field to start comparison when both endpoints are
+present.

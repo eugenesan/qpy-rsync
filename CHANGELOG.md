@@ -102,3 +102,14 @@
 - Launch local-to-local changed regular files in a detached external diff tool without shell evaluation.
 - Reject one-sided objects, non-regular files, and SSH endpoints with actionable messages; remote staging remains planned.
 - Add unit tests for tool resolution and diff-request validation.
+
+## milestone 1.13
+
+- Restore hierarchical, case-insensitive filename filtering while retaining ancestor directories.
+- Add shell-style glob filters, including `*`, `?`, and bracket expressions such as `[0-9]*`.
+- Add trailing-slash directory filtering, such as `docs/`, that retains the matched directory's complete subtree.
+- Add synchronized **Expand All** and **Collapse All** controls and ensure deep branches expand after model resets.
+- Correct destination-pane tree rendering and improve source/destination column resizing.
+- Persist main-window geometry, comparison-pane ratios, and header state with `QSettings`.
+- Remember the last successfully used source and destination pair and start comparison when Enter is pressed in the destination field.
+- Add regression tests for glob matching, punctuation filters, clearing filters, numeric names, and directory-subtree display.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, QSettings, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -40,6 +40,8 @@ class MainWindow(QMainWindow):
         self._service.on_log = self._append_log
         self._active_profile: SyncProfile | None = None
         self._build_ui()
+        self._restore_window_state()
+        self._restore_endpoints()
 
     def _build_ui(self) -> None:
         root = QWidget(self)
@@ -96,6 +98,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.compare_button.clicked.connect(self._compare)
         self.cancel_button.clicked.connect(self._service.cancel)
+        self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.filter_edit.setEnabled(False)
         self.filter_edit.setToolTip("Path filtering will return with the hierarchical proxy model.")
 
@@ -121,6 +124,10 @@ class MainWindow(QMainWindow):
             destination=parse_endpoint(self.destination_edit.text()),
         )
 
+    def _compare_if_ready(self) -> None:
+        if self.source_edit.text().strip() and self.destination_edit.text().strip():
+            self._compare()
+
     def _compare(self) -> None:
         try:
             profile = self._profile()
@@ -130,6 +137,7 @@ class MainWindow(QMainWindow):
             return
         self.log.clear()
         self._active_profile = profile
+        self._save_endpoints()
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
 
@@ -173,3 +181,31 @@ class MainWindow(QMainWindow):
     def _append_log(self, text: str) -> None:
         if text:
             self.log.appendPlainText(text.rstrip())
+
+    def _save_endpoints(self) -> None:
+        settings = QSettings()
+        settings.setValue("comparison/source", self.source_edit.text().strip())
+        settings.setValue("comparison/destination", self.destination_edit.text().strip())
+        settings.sync()
+
+    def _restore_endpoints(self) -> None:
+        settings = QSettings()
+        self.source_edit.setText(str(settings.value("comparison/source", "")))
+        self.destination_edit.setText(str(settings.value("comparison/destination", "")))
+
+    def _restore_window_state(self) -> None:
+        settings = QSettings()
+        geometry = settings.value("main-window/geometry")
+        state = settings.value("main-window/state")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        if state is not None:
+            self.restoreState(state)
+
+    def closeEvent(self, event: object) -> None:  # noqa: N802
+        settings = QSettings()
+        settings.setValue("main-window/geometry", self.saveGeometry())
+        settings.setValue("main-window/state", self.saveState())
+        settings.sync()
+        self.comparison.save_view_state()
+        super().closeEvent(event)  # type: ignore[arg-type]

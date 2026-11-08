@@ -37,14 +37,17 @@ Milestones 1 through 1.10 established:
 - disable unsupported object types with an actionable explanation
 - defer arbitrary `difftool.<tool>.cmd` shell expressions
 
-## Milestone 1.13: comparison-tree usability
+## Milestone 1.13: comparison-tree usability (completed)
 
-- hierarchical changed-only filtering while retaining ancestor directories
-- restore path filtering for the tree model
-- file-type icons and accessible action styling
-- expand/collapse controls
-- persist splitter sizes, column widths, and view options
-- harden synchronized selection and scrolling
+- ancestor-preserving filename filtering
+- shell-style glob matching and directory-subtree mode
+- synchronized expand/collapse controls
+- corrected destination-tree rendering and responsive columns
+- persisted window, splitter, and header geometry
+- persisted endpoint pair and Enter-to-compare workflow
+
+File-type icons and additional accessible action styling remain candidates for
+a later usability refinement.
 
 ## Milestone 1.14: per-object decisions
 
