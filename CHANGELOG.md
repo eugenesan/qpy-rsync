@@ -79,3 +79,10 @@
 - Preserve desktop session, locale, SSH agent, and X11/Wayland variables required by graphical askpass helpers.
 - Stop forcing QT_QPA_PLATFORM, allowing system helpers such as ksshaskpass to select their own system Qt platform plugin.
 - Add tests covering child-process environment sanitization and update SSH askpass tests for the new platform-selection behavior.
+
+## milestone 1.10
+
+- Run remote rsync operations through `setsid --wait`.
+- Configure rsync's remote shell as `env DISPLAY=<display> ssh` so graphical OpenSSH askpass can reach the active X11 display.
+- Keep local rsync operations direct and preserve external OpenSSH credential handling.
+- Add tests for remote compare and sync process construction and display propagation.

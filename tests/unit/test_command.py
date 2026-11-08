@@ -54,3 +54,33 @@ def test_remote_compare_forces_configured_askpass(monkeypatch, tmp_path) -> None
     spec = build_compare_spec(item)
     assert spec.environment["SSH_ASKPASS"] == str(helper)
     assert spec.environment["SSH_ASKPASS_REQUIRE"] == "force"
+
+
+def test_remote_compare_restores_display_and_uses_setsid(monkeypatch, tmp_path) -> None:
+    helper = tmp_path / "askpass"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o700)
+    monkeypatch.setenv("SSH_ASKPASS", str(helper))
+    monkeypatch.setenv("DISPLAY", ":0")
+    item = profile()
+    item.destination = Endpoint(EndpointKind.SSH, "/backup/", host="localhost")
+    spec = build_compare_spec(item)
+    assert spec.program == "setsid"
+    assert spec.arguments[:2] == ("--wait", "rsync")
+    index = spec.arguments.index("-e")
+    assert spec.arguments[index + 1] == "env DISPLAY=:0 ssh"
+
+
+def test_remote_sync_uses_same_remote_shell(monkeypatch, tmp_path) -> None:
+    helper = tmp_path / "askpass"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o700)
+    monkeypatch.setenv("SSH_ASKPASS", str(helper))
+    monkeypatch.setenv("DISPLAY", ":0")
+    item = profile()
+    item.destination = Endpoint(EndpointKind.SSH, "/backup/", host="localhost")
+    spec = build_sync_spec(item)
+    assert spec.program == "setsid"
+    assert spec.arguments[:2] == ("--wait", "rsync")
+    index = spec.arguments.index("-e")
+    assert spec.arguments[index + 1] == "env DISPLAY=:0 ssh"

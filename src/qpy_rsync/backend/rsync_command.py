@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import shlex
 
 from qpy_rsync.core.enums import BackupMode, DeleteTiming, EndpointKind
 from qpy_rsync.core.models import SyncProfile
@@ -89,8 +91,31 @@ def _process_environment(profile: SyncProfile) -> dict[str, str]:
         environment.update(askpass_environment())
     return environment
 
+
+def _has_remote_endpoint(profile: SyncProfile) -> bool:
+    return EndpointKind.SSH in {profile.source.kind, profile.destination.kind}
+
+
+def _remote_shell_argument(profile: SyncProfile) -> str | None:
+    if not _has_remote_endpoint(profile):
+        return None
+    display = os.environ.get("DISPLAY", "").strip()
+    if not display:
+        return "ssh"
+    return f"env DISPLAY={shlex.quote(display)} ssh"
+
+
+def _process_spec(profile: SyncProfile, arguments: list[str]) -> ProcessSpec:
+    environment = _process_environment(profile)
+    if _has_remote_endpoint(profile):
+        return ProcessSpec("setsid", ("--wait", "rsync", *arguments), environment)
+    return ProcessSpec("rsync", tuple(arguments), environment)
+
 def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
     args = ["--dry-run", "--itemize-changes", f"--out-format={DEFAULT_OUT_FORMAT}"]
+    remote_shell = _remote_shell_argument(profile)
+    if remote_shell is not None:
+        args.extend(("-e", remote_shell))
     args.extend(_common_arguments(profile))
     # A one-way preview must inventory destination-only objects even when the
     # execution profile is configured to keep them. Dry-run makes this safe.
@@ -100,13 +125,16 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
     if filter_file is not None:
         args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
-    return ProcessSpec("rsync", tuple(args), _process_environment(profile))
+    return _process_spec(profile, args)
 
 
 def build_sync_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
     args = ["--itemize-changes", "--info=progress2", "--stats", f"--out-format={DEFAULT_OUT_FORMAT}"]
+    remote_shell = _remote_shell_argument(profile)
+    if remote_shell is not None:
+        args.extend(("-e", remote_shell))
     args.extend(_common_arguments(profile))
     if filter_file is not None:
         args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
-    return ProcessSpec("rsync", tuple(args), _process_environment(profile))
+    return _process_spec(profile, args)
