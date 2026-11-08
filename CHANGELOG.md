@@ -93,3 +93,4 @@
 - Make `.venv` explicitly optional and document `qpy-rsync.sh` and direct `PYTHONPATH` launch workflows.
 - Document SSH prerequisites, validation commands, and optional Ruff usage.
 - Add the external diff-tool integration design and the revised milestone roadmap.
+- Add source runner with a system-Python launcher and add qpy-rsync-test.sh for system-Python tests and validation.

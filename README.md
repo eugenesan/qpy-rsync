@@ -24,19 +24,51 @@ Synchronization execution and per-object decisions are not implemented yet.
 
 ## Run from a source checkout
 
-A virtual environment is optional. With Ubuntu's system Python and PySide6:
+A virtual environment is optional. The repository provides system-Python
+runners that resolve the checkout location automatically and can be invoked
+from any working directory.
+
+Run the application with Ubuntu's system Python and PySide6:
 
 ```bash
 ./qpy-rsync.sh
 ```
 
-The equivalent direct command is:
+Enable console diagnostics explicitly when needed:
+
+```bash
+QPY_RSYNC_DEBUG=1 ./qpy-rsync.sh 2>&1 | tee qpy-rsync-debug.log
+```
+
+Run the complete test and source-validation workflow without `.venv`:
+
+```bash
+./qpy-rsync-test.sh -q
+```
+
+Arguments are forwarded to pytest, so focused test runs work as expected:
+
+```bash
+./qpy-rsync-test.sh tests/unit/test_command.py -vv
+```
+
+After pytest succeeds, `qpy-rsync-test.sh` also runs Python bytecode
+compilation and `git diff --check`.
+
+Both runners use `/usr/bin/python3` by default. Override it when testing another
+system interpreter:
+
+```bash
+QPY_RSYNC_SYSTEM_PYTHON=/usr/bin/python3.13 ./qpy-rsync-test.sh -q
+```
+
+The equivalent direct application command is:
 
 ```bash
 PYTHONPATH="$PWD/src" /usr/bin/python3 -m qpy_rsync.app
 ```
 
-For an isolated development environment:
+For an isolated development environment instead:
 
 ```bash
 python3 -m venv .venv
