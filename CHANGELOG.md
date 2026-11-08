@@ -65,3 +65,9 @@
 - Detect Wayland sessions and force Qt askpass helpers to use the `wayland` platform instead of attempting `xcb` without `DISPLAY`.
 - Preserve an explicitly configured `QT_QPA_PLATFORM`.
 - Reject headless password-authentication attempts before launching rsync with an actionable error.
+
+## milestone 1.8
+
+- Explicitly forward `DISPLAY`, `XAUTHORITY`, D-Bus, and desktop session variables to rsync/SSH for graphical askpass.
+- Include the selected display endpoint in debug diagnostics.
+- Select `xcb` only when an explicit X11 `DISPLAY` is forwarded, and select Wayland only for a Wayland-only session.

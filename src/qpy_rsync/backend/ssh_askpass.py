@@ -34,6 +34,12 @@ def discover_askpass(environment: dict[str, str] | None = None) -> AskpassConfig
 
 
 def askpass_environment(environment: dict[str, str] | None = None) -> dict[str, str]:
+    """Return explicit environment entries required by graphical SSH askpass.
+
+    We copy the display/session variables deliberately instead of relying only
+    on QProcessEnvironment inheritance. This also makes diagnostics show the
+    exact display endpoint supplied to the askpass process launched by ssh.
+    """
     env = os.environ if environment is None else environment
     config = discover_askpass(env)
     if config is None:
@@ -47,16 +53,26 @@ def askpass_environment(environment: dict[str, str] | None = None) -> dict[str, 
         "SSH_ASKPASS_REQUIRE": "force",
     }
 
-    # A Wayland Plasma session may have no DISPLAY. Some Qt askpass helpers
-    # otherwise default to xcb and abort before showing the password dialog.
+    for name in (
+        "DISPLAY",
+        "XAUTHORITY",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "DESKTOP_STARTUP_ID",
+    ):
+        value = env.get(name, "").strip()
+        if value:
+            result[name] = value
+
     platform = env.get("QT_QPA_PLATFORM", "").strip()
-    wayland_display = env.get("WAYLAND_DISPLAY", "").strip()
-    x11_display = env.get("DISPLAY", "").strip()
     if platform:
         result["QT_QPA_PLATFORM"] = platform
-    elif wayland_display:
+    elif result.get("WAYLAND_DISPLAY") and not result.get("DISPLAY"):
         result["QT_QPA_PLATFORM"] = "wayland"
-    elif not x11_display:
+    elif result.get("DISPLAY"):
+        result["QT_QPA_PLATFORM"] = "xcb"
+    else:
         raise ValueError(
             "SSH askpass is installed, but no graphical session endpoint was found "
             "(neither WAYLAND_DISPLAY nor DISPLAY is set). Launch qpy-rsync from "
