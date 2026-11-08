@@ -45,3 +45,9 @@
 - Suppress rsync's synthetic zero size and Unix epoch timestamp on deletion inventory records.
 - Infer file/directory type for destination-only records from rsync's trailing slash convention.
 - Expand `~` in local endpoint paths without invoking a shell.
+
+## milestone 1.5
+
+- Normalize UI directory endpoints to trailing-slash content semantics, preventing rsync from nesting the source directory basename under the destination.
+- Parse local and rsync-over-SSH endpoint syntax in both location fields.
+- Add inline SSH syntax instructions, examples, validation, and `~/.ssh/config` alias guidance.

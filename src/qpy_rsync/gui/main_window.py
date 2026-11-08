@@ -20,8 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.rsync_command import build_compare_spec
-from qpy_rsync.core.enums import EndpointKind
-from qpy_rsync.core.models import Endpoint, SyncProfile
+from qpy_rsync.core.endpoints import parse_endpoint
+from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 
 from .comparison_view import ComparisonView
@@ -45,9 +45,26 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         self.source_edit = QLineEdit()
         self.destination_edit = QLineEdit()
+        endpoint_placeholder = "Local: /path or ~/path    SSH: [user@]host:/absolute/path"
+        self.source_edit.setPlaceholderText(endpoint_placeholder)
+        self.destination_edit.setPlaceholderText(endpoint_placeholder)
+        endpoint_help = (
+            "Local examples: /home/alice/data or ~/data\n"
+            "SSH examples: server:/srv/data or alice@server:/srv/data\n"
+            "SSH host aliases from ~/.ssh/config are supported. "
+            "At most one endpoint may be remote."
+        )
+        self.source_edit.setToolTip(endpoint_help)
+        self.destination_edit.setToolTip(endpoint_help)
         form.addRow("Source", self._path_row(self.source_edit))
         form.addRow("Destination", self._path_row(self.destination_edit))
         layout.addLayout(form)
+        help_label = QLabel(
+            "Locations: local /path or ~/path; SSH [user@]host:/absolute/path. "
+            "Directory contents are compared, equivalent to a trailing slash."
+        )
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
 
         controls = QHBoxLayout()
         self.compare_button = QPushButton("Compare")
@@ -96,17 +113,18 @@ class MainWindow(QMainWindow):
 
     def _profile(self) -> SyncProfile:
         return SyncProfile(
-            name="ad-hoc local comparison",
-            source=Endpoint(EndpointKind.LOCAL, self.source_edit.text().strip()),
-            destination=Endpoint(EndpointKind.LOCAL, self.destination_edit.text().strip()),
+            name="ad-hoc comparison",
+            source=parse_endpoint(self.source_edit.text()),
+            destination=parse_endpoint(self.destination_edit.text()),
         )
 
     def _compare(self) -> None:
-        profile = self._profile()
-        if not profile.source.path or not profile.destination.path:
-            QMessageBox.warning(self, "Missing paths", "Choose source and destination directories.")
+        try:
+            profile = self._profile()
+            spec = build_compare_spec(profile)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid location", str(exc))
             return
-        spec = build_compare_spec(profile)
         self.log.clear()
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
