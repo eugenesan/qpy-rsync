@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from qpy_rsync.core.enums import BackupMode, ConflictPolicy, DeleteTiming, EndpointKind
+from qpy_rsync.core.enums import BackupMode, ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
 from qpy_rsync.core.models import BackupOptions, Endpoint, FilterRule, PreservationOptions, SyncProfile, TransferOptions
 
 
