@@ -59,6 +59,8 @@ def parse_record(line: str) -> Change | None:
     if len(parts) != 4:
         raise RsyncParseError(f"Expected four output fields, got {len(parts)}")
     code, size_text, modified_time, name_and_link = parts
+    if ITEM_SEPARATOR in name_and_link:
+        raise RsyncParseError("Field separator appears in filename; record is ambiguous")
     if "\x00" in name_and_link:
         raise RsyncParseError("NUL in rsync output is unsupported")
     size: int | None

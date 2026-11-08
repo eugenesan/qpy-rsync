@@ -27,4 +27,9 @@ def test_non_record_line_becomes_diagnostic() -> None:
 
 def test_bad_size_is_rejected() -> None:
     with pytest.raises(RsyncParseError):
-        parse_record(">f+++++++++\x1fnot-a-size\x1ftime\x1ffile")
+        parse_record(">f+++++++++|qpy-rsync|not-a-size|qpy-rsync|time|qpy-rsync|file")
+
+
+def test_separator_like_text_in_filename_is_rejected() -> None:
+    with pytest.raises(RsyncParseError):
+        parse_record(">f+++++++++|qpy-rsync|1|qpy-rsync|time|qpy-rsync|bad|qpy-rsync|name")

@@ -7,7 +7,7 @@ from qpy_rsync.core.enums import BackupMode, DeleteTiming
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
 
-ITEM_SEPARATOR = "\x1f"
+ITEM_SEPARATOR = "|qpy-rsync|"
 DEFAULT_OUT_FORMAT = f"%i{ITEM_SEPARATOR}%l{ITEM_SEPARATOR}%M{ITEM_SEPARATOR}%n%L"
 
 

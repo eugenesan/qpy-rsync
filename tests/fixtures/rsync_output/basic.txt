@@ -1,5 +1,5 @@
->f+++++++++122026/11/08-01:00:00new.txt
->f.st......1282026/11/08-01:01:00changed.bin
-.f...p.....642026/11/08-01:02:00mode.sh
-cL+++++++++62026/11/08-01:03:00link -> target
-*deleting  old.txt
+>f+++++++++|qpy-rsync|12|qpy-rsync|2026/11/08-01:00:00|qpy-rsync|new.txt
+>f.st......|qpy-rsync|128|qpy-rsync|2026/11/08-01:01:00|qpy-rsync|changed.bin
+.f...p.....|qpy-rsync|64|qpy-rsync|2026/11/08-01:02:00|qpy-rsync|mode.sh
+cL+++++++++|qpy-rsync|6|qpy-rsync|2026/11/08-01:03:00|qpy-rsync|link -> target
+*deleting  |qpy-rsync||qpy-rsync||qpy-rsync|old.txt

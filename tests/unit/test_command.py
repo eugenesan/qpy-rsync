@@ -24,3 +24,10 @@ def test_fuzzy_delete_forces_delete_after() -> None:
     assert "--fuzzy" in spec.arguments
     assert "--delete-after" in spec.arguments
     assert "--delete-before" not in spec.arguments
+
+
+def test_output_format_uses_visible_application_separator() -> None:
+    spec = build_compare_spec(profile())
+    output_option = next(item for item in spec.arguments if item.startswith("--out-format="))
+    assert "|qpy-rsync|" in output_option
+    assert all(ord(char) >= 32 for char in output_option)

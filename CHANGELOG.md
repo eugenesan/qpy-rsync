@@ -24,3 +24,9 @@
 - Fix completion handling across PySide6 versions by comparing `QProcess.ExitStatus` directly instead of converting it with `int()`.
 - Forward stderr and process errors through dynamically assigned service callbacks.
 - Distinguish process startup from running state and improve failed-start diagnostics.
+
+## milestone 1.2
+
+- Replace the invisible U+001F field separator with the visible `|qpy-rsync|` token.
+- Reject ambiguous records when the token occurs in a filename.
+- Add environment-controlled console diagnostics for process arguments, raw stdout/stderr samples, completion state, and parser counts.

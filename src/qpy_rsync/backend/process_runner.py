@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Callable
 
+from .diagnostics import debug
 from .rsync_command import ProcessSpec
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ class QtProcessRunner:
             environment.insert(key, value)
         self._process.setProcessEnvironment(environment)
         self._state = ProcessState.STARTING
+        debug("process.start", program=spec.program, arguments=spec.arguments, environment=spec.environment)
         self._process.start(spec.program, list(spec.arguments))
 
     def cancel(self, force_after_ms: int = 3000) -> None:
@@ -78,6 +80,7 @@ class QtProcessRunner:
 
     def _started(self) -> None:
         self._state = ProcessState.RUNNING
+        debug("process.started", pid=int(self._process.processId()))
         self.on_started()
 
     def _kill_if_running(self) -> None:
@@ -89,6 +92,7 @@ class QtProcessRunner:
         if not data:
             return
         self._stdout.extend(data)
+        debug("process.stdout", bytes=len(data), sample=repr(data[:500]))
         self.on_stdout(data.decode("utf-8", errors="replace"))
 
     def _read_stderr(self) -> None:
@@ -96,6 +100,7 @@ class QtProcessRunner:
         if not data:
             return
         self._stderr.extend(data)
+        debug("process.stderr", bytes=len(data), sample=repr(data[:500]))
         self.on_stderr(data.decode("utf-8", errors="replace"))
 
     def _finished(self, exit_code: int, exit_status: object) -> None:
@@ -106,6 +111,7 @@ class QtProcessRunner:
         self._read_stdout()
         self._read_stderr()
         self._state = ProcessState.FINISHED
+        debug("process.finished", exit_code=exit_code, exit_status=repr(exit_status), stdout_bytes=len(self._stdout), stderr_bytes=len(self._stderr))
         crashed = exit_status == QProcess.ExitStatus.CrashExit
         self.on_finished(
             ProcessResult(
@@ -124,4 +130,5 @@ class QtProcessRunner:
             message = f"Failed to start {self._process.program()!r}. Is rsync installed and in PATH?"
         else:
             message = f"Process error: {getattr(error, 'name', str(error))}"
+        debug("process.error", error=repr(error), message=message)
         self.on_error(message)

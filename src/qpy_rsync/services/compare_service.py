@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from qpy_rsync.backend.diagnostics import debug
 from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.rsync_parser import ParseResult, parse_output
@@ -37,6 +38,7 @@ class CompareService:
         self._runner.cancel()
 
     def _finish(self, process: ProcessResult) -> None:
+        debug("compare.finish", exit_code=process.exit_code, stdout=repr(process.stdout[:2000]), stderr=repr(process.stderr[:2000]))
         if process.exit_code != 0:
             self.on_error(f"rsync exited with status {process.exit_code}: {process.stderr.strip()}")
             return
@@ -45,4 +47,5 @@ class CompareService:
         except ValueError as exc:
             self.on_error(f"Could not parse rsync output: {exc}")
             return
+        debug("compare.parsed", changes=len(parsed.changes), diagnostics=len(parsed.diagnostics))
         self.on_finished(CompareResult(parsed, process.stderr, process.exit_code))
