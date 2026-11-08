@@ -31,3 +31,12 @@ def test_output_format_uses_visible_application_separator() -> None:
     output_option = next(item for item in spec.arguments if item.startswith("--out-format="))
     assert "|qpy-rsync|" in output_option
     assert all(ord(char) >= 32 for char in output_option)
+
+
+def test_compare_inventories_destination_only_objects_without_enabling_sync_delete() -> None:
+    item = profile()
+    item.transfer.delete = False
+    compare = build_compare_spec(item)
+    sync = build_sync_spec(item)
+    assert "--delete-during" in compare.arguments
+    assert not any(argument.startswith("--delete-") for argument in sync.arguments)

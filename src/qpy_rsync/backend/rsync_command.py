@@ -81,6 +81,11 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
 def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
     args = ["--dry-run", "--itemize-changes", f"--out-format={DEFAULT_OUT_FORMAT}"]
     args.extend(_common_arguments(profile))
+    # A one-way preview must inventory destination-only objects even when the
+    # execution profile is configured to keep them. Dry-run makes this safe.
+    # The parser labels them DESTINATION_ONLY unless deletion is enabled.
+    if not profile.transfer.delete:
+        args.append("--delete-during")
     if filter_file is not None:
         args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))

@@ -30,3 +30,10 @@
 - Replace the invisible U+001F field separator with the visible `|qpy-rsync|` token.
 - Reject ambiguous records when the token occurs in a filename.
 - Add environment-controlled console diagnostics for process arguments, raw stdout/stderr samples, completion state, and parser counts.
+
+## milestone 1.3
+
+- Make compare inventory destination-only objects with a dry-run-only `--delete-during` flag.
+- Label those records as `destination_only` when profile deletion is disabled.
+- Keep actual sync command generation unchanged and non-deleting by default.
+- Confirm the final comparison UI direction: a two-pane hierarchical tree inspired by Meld and FreeFileSync; the milestone 1 flat table remains temporary scaffolding.

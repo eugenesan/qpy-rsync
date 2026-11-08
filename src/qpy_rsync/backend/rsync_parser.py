@@ -26,9 +26,9 @@ class ParseResult:
     diagnostics: list[str]
 
 
-def _action(code: str) -> ChangeAction:
+def _action(code: str, *, delete_enabled: bool) -> ChangeAction:
     if code.startswith("*deleting"):
-        return ChangeAction.DELETE
+        return ChangeAction.DELETE if delete_enabled else ChangeAction.DESTINATION_ONLY
     if len(code) < 11:
         raise RsyncParseError(f"Invalid itemized code: {code!r}")
     attrs = code[2:]
@@ -47,7 +47,7 @@ def _kind(code: str) -> ObjectKind:
     return _TYPE_MAP.get(code[1] if len(code) > 1 else "", ObjectKind.UNKNOWN)
 
 
-def parse_record(line: str) -> Change | None:
+def parse_record(line: str, *, delete_enabled: bool = True) -> Change | None:
     line = line.rstrip("\r\n")
     if not line:
         return None
@@ -79,17 +79,17 @@ def parse_record(line: str) -> Change | None:
     if not path:
         raise RsyncParseError("Empty change path")
 
-    action = _action(code)
+    action = _action(code, delete_enabled=delete_enabled)
     reason = describe_itemized(code)
     return Change(path, action, _kind(code), code, size, modified_time or None, link_target, reason)
 
 
-def parse_output(text: str, *, strict: bool = True) -> ParseResult:
+def parse_output(text: str, *, strict: bool = True, delete_enabled: bool = True) -> ParseResult:
     changes: list[Change] = []
     diagnostics: list[str] = []
     for line_number, line in enumerate(text.splitlines(), 1):
         try:
-            change = parse_record(line)
+            change = parse_record(line, delete_enabled=delete_enabled)
         except RsyncParseError as exc:
             if strict:
                 raise RsyncParseError(f"line {line_number}: {exc}") from exc

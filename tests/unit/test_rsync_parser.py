@@ -33,3 +33,12 @@ def test_bad_size_is_rejected() -> None:
 def test_separator_like_text_in_filename_is_rejected() -> None:
     with pytest.raises(RsyncParseError):
         parse_record(">f+++++++++|qpy-rsync|1|qpy-rsync|time|qpy-rsync|bad|qpy-rsync|name")
+
+
+def test_preview_labels_deletion_record_destination_only_when_delete_is_disabled() -> None:
+    result = parse_output(
+        "*deleting  |qpy-rsync||qpy-rsync||qpy-rsync|kept.txt\n",
+        delete_enabled=False,
+    )
+    assert result.changes[0].action is ChangeAction.DESTINATION_ONLY
+    assert not result.changes[0].is_deletion

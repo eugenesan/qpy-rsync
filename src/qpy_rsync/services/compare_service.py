@@ -19,6 +19,7 @@ class CompareResult:
 
 class CompareService:
     def __init__(self, parent: object | None = None) -> None:
+        self._delete_enabled = False
         self._runner = QtProcessRunner(parent)  # type: ignore[arg-type]
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[CompareResult], None] = lambda _result: None
@@ -31,6 +32,7 @@ class CompareService:
         self._runner.on_error = lambda message: self.on_error(message)
 
     def compare(self, profile: SyncProfile) -> None:
+        self._delete_enabled = profile.transfer.delete
         self.on_started()
         self._runner.start(build_compare_spec(profile))
 
@@ -43,7 +45,7 @@ class CompareService:
             self.on_error(f"rsync exited with status {process.exit_code}: {process.stderr.strip()}")
             return
         try:
-            parsed = parse_output(process.stdout)
+            parsed = parse_output(process.stdout, delete_enabled=self._delete_enabled)
         except ValueError as exc:
             self.on_error(f"Could not parse rsync output: {exc}")
             return

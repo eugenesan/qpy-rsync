@@ -9,6 +9,7 @@ class ChangeAction(StrEnum):
     UPDATE_CONTENT = "update_content"
     UPDATE_METADATA = "update_metadata"
     DELETE = "delete"
+    DESTINATION_ONLY = "destination_only"
     REPLACE = "replace"
     NO_CHANGE = "no_change"
     MESSAGE = "message"
@@ -37,3 +38,7 @@ class Change:
     @property
     def is_deletion(self) -> bool:
         return self.action is ChangeAction.DELETE
+
+    @property
+    def is_destination_only(self) -> bool:
+        return self.action is ChangeAction.DESTINATION_ONLY
