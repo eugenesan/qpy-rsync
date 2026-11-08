@@ -86,3 +86,10 @@
 - Configure rsync's remote shell as `env DISPLAY=<display> ssh` so graphical OpenSSH askpass can reach the active X11 display.
 - Keep local rsync operations direct and preserve external OpenSSH credential handling.
 - Add tests for remote compare and sync process construction and display propagation.
+
+## milestone 1.11
+
+- Document Ubuntu runtime and development packages for system-Python operation.
+- Make `.venv` explicitly optional and document `qpy-rsync.sh` and direct `PYTHONPATH` launch workflows.
+- Document SSH prerequisites, validation commands, and optional Ruff usage.
+- Add the external diff-tool integration design and the revised milestone roadmap.
