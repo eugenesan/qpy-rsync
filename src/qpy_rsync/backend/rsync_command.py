@@ -9,6 +9,7 @@ from qpy_rsync.core.enums import BackupMode, DeleteTiming, EndpointKind
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
 
+from .filter_arguments import filter_arguments
 from .ssh_askpass import askpass_environment
 
 ITEM_SEPARATOR = "|qpy-rsync|"
@@ -75,9 +76,7 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
     if profile.backup.mode is not BackupMode.NONE:
         args.extend(("--backup", f"--backup-dir={profile.backup.directory}"))
 
-    for filter_rule in profile.filters:
-        if filter_rule.enabled:
-            args.extend(("--filter", filter_rule.rule))
+    args.extend(filter_arguments(profile.filters))
 
     return args
 

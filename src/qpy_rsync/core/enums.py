@@ -28,6 +28,12 @@ class BackupMode(StrEnum):
     BOTH = "both"
 
 
+class FilterRuleType(StrEnum):
+    INCLUDE = "include"
+    EXCLUDE = "exclude"
+    ADVANCED = "advanced"
+
+
 class Severity(StrEnum):
     ERROR = "error"
     WARNING = "warning"

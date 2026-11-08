@@ -53,5 +53,9 @@ def load_profile(path: Path) -> SyncProfile:
     if "mode" in backup_raw:
         backup_raw["mode"] = BackupMode(backup_raw["mode"])
     backup = BackupOptions(**backup_raw)
-    filters = [FilterRule(**item) for item in raw.get("filters", [])]
+    filters = []
+    for item in raw.get("filters", []):
+        value = item.copy()
+        value["rule_type"] = FilterRuleType(value.get("rule_type", "advanced"))
+        filters.append(FilterRule(**value))
     return SyncProfile(name=raw["name"], description=raw.get("description", ""), source=source, destination=destination, profile_id=raw.get("profile_id", ""), schema_version=raw.get("schema_version", 1), conflict_policy=ConflictPolicy(raw.get("conflict_policy", "override")), preservation=preservation, transfer=transfer, backup=backup, filters=filters)
