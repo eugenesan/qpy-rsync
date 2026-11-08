@@ -1,0 +1,13 @@
+{
+  "backup": {"directory": null, "mode": "none"},
+  "conflict_policy": "override",
+  "description": "Example local profile",
+  "destination": {"host": null, "kind": "local", "path": "/tmp/qpy-rsync-destination/", "user": null},
+  "filters": [{"enabled": true, "rule": "- *.tmp"}],
+  "name": "example-local",
+  "preservation": {"acls": false, "archive": true, "hard_links": false, "numeric_ids": false, "xattrs": false},
+  "profile_id": "00000000-0000-0000-0000-000000000001",
+  "schema_version": 1,
+  "source": {"host": null, "kind": "local", "path": "/tmp/qpy-rsync-source/", "user": null},
+  "transfer": {"compress": false, "copy_links": false, "delete": false, "delete_timing": "during", "fuzzy": false, "ignore_times": false, "inplace": false, "one_file_system": false, "relative": false, "sparse": false, "whole_file": false}
+}
