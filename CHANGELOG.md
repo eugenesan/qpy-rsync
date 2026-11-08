@@ -71,3 +71,11 @@
 - Explicitly forward `DISPLAY`, `XAUTHORITY`, D-Bus, and desktop session variables to rsync/SSH for graphical askpass.
 - Include the selected display endpoint in debug diagnostics.
 - Select `xcb` only when an explicit X11 `DISPLAY` is forwarded, and select Wayland only for a Wayland-only session.
+
+## milestone 1.9
+
+- Sanitize the environment inherited by external rsync, ssh, and SSH askpass processes.
+- Remove Python and bundled Qt runtime paths that can interfere with system applications: QT_PLUGIN_PATH, QT_QPA_PLATFORM_PLUGIN_PATH, QML2_IMPORT_PATH, QML_IMPORT_PATH, LD_LIBRARY_PATH, PYTHONHOME, and PYTHONPATH.
+- Preserve desktop session, locale, SSH agent, and X11/Wayland variables required by graphical askpass helpers.
+- Stop forcing QT_QPA_PLATFORM, allowing system helpers such as ksshaskpass to select their own system Qt platform plugin.
+- Add tests covering child-process environment sanitization and update SSH askpass tests for the new platform-selection behavior.

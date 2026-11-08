@@ -11,6 +11,24 @@ if TYPE_CHECKING:
     from PySide6.QtCore import QObject
 
 
+_SANITIZED_ENVIRONMENT_VARIABLES = (
+    "QT_PLUGIN_PATH",
+    "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "QML2_IMPORT_PATH",
+    "QML_IMPORT_PATH",
+    "LD_LIBRARY_PATH",
+    "PYTHONHOME",
+    "PYTHONPATH",
+)
+
+
+def sanitize_process_environment(environment: object) -> object:
+    """Remove Python and Qt runtime paths before launching system programs."""
+    for name in _SANITIZED_ENVIRONMENT_VARIABLES:
+        environment.remove(name)
+    return environment
+
+
 class ProcessState(StrEnum):
     IDLE = "idle"
     STARTING = "starting"
@@ -62,6 +80,7 @@ class QtProcessRunner:
         self._stdout.clear()
         self._stderr.clear()
         environment = QProcessEnvironment.systemEnvironment()
+        sanitize_process_environment(environment)
         for key, value in spec.environment.items():
             environment.insert(key, value)
         self._process.setProcessEnvironment(environment)
@@ -69,7 +88,13 @@ class QtProcessRunner:
         # OpenSSH is forced through SSH_ASKPASS for remote profiles.
         self._process.closeWriteChannel()
         self._state = ProcessState.STARTING
-        debug("process.start", program=spec.program, arguments=spec.arguments, environment=spec.environment)
+        debug(
+            "process.start",
+            program=spec.program,
+            arguments=spec.arguments,
+            environment=spec.environment,
+            sanitized=_SANITIZED_ENVIRONMENT_VARIABLES,
+        )
         self._process.start(spec.program, list(spec.arguments))
 
     def cancel(self, force_after_ms: int = 3000) -> None:
@@ -114,7 +139,13 @@ class QtProcessRunner:
         self._read_stdout()
         self._read_stderr()
         self._state = ProcessState.FINISHED
-        debug("process.finished", exit_code=exit_code, exit_status=repr(exit_status), stdout_bytes=len(self._stdout), stderr_bytes=len(self._stderr))
+        debug(
+            "process.finished",
+            exit_code=exit_code,
+            exit_status=repr(exit_status),
+            stdout_bytes=len(self._stdout),
+            stderr_bytes=len(self._stderr),
+        )
         crashed = exit_status == QProcess.ExitStatus.CrashExit
         self.on_finished(
             ProcessResult(
