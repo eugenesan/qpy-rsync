@@ -91,3 +91,10 @@ This is pre-alpha software. Destructive synchronization and per-object execution
 ## milestone 1 local comparison
 
 The GUI now performs asynchronous local `rsync --dry-run` comparisons and displays normalized changes in a sortable, path-filterable table. It remains read-only: no synchronization action is exposed. See `docs/milestone-1-smoke-test.md`.
+
+## External diff tool
+
+For local-to-local comparisons, right-click or double-click a changed regular
+file to open it in an external diff tool. qpy-rsync honors Git's
+`diff.guitool`, `diff.tool`, and `difftool.<tool>.path` settings, then looks for
+Meld, KDiff3, Kompare, or Vimdiff. Remote-file staging is not implemented yet.

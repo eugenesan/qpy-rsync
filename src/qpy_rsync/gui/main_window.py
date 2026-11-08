@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -23,6 +23,7 @@ from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.services.compare_service import CompareResult, CompareService
+from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
 
 from .comparison_view import ComparisonView
 
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         self._service.on_finished = self._comparison_finished
         self._service.on_error = self._comparison_error
         self._service.on_log = self._append_log
+        self._active_profile: SyncProfile | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -80,6 +82,7 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.comparison = ComparisonView()
+        self.comparison.diff_requested.connect(self._open_diff_tool)
         splitter.addWidget(self.comparison)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -126,8 +129,25 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid location", str(exc))
             return
         self.log.clear()
+        self._active_profile = profile
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
+
+    def _open_diff_tool(self, change: object) -> None:
+        if self._active_profile is None:
+            return
+        try:
+            request = build_diff_request(self._active_profile, change)  # type: ignore[arg-type]
+        except DiffToolError as exc:
+            QMessageBox.information(self, "Diff tool unavailable", str(exc))
+            return
+        arguments = [str(request.source), str(request.destination)]
+        started, _pid = QProcess.startDetached(request.tool.executable, arguments)
+        if not started:
+            QMessageBox.warning(self, "Could not start diff tool", request.tool.executable)
+            return
+        self._append_log("$ " + shlex.join([request.tool.executable, *arguments]))
+        self.status_label.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
 
     def _comparison_started(self) -> None:
         self.compare_button.setEnabled(False)

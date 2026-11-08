@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, Qt
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QSplitter, QTreeView, QWidget
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, Qt, Signal
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QMenu, QSplitter, QTreeView, QWidget
 
 from .change_tree_model import ChangeTreeModel
 
 
 class ComparisonView(QWidget):
     """Synchronized source/action/destination tree panes."""
+
+    diff_requested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -35,7 +37,31 @@ class ComparisonView(QWidget):
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSortingEnabled(False)
         tree.header().setStretchLastSection(True)
+        tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tree.customContextMenuRequested.connect(lambda point, t=tree: self._show_context_menu(t, point))
+        tree.doubleClicked.connect(self._request_diff)
         return tree
+
+    def _show_context_menu(self, tree: QTreeView, point: object) -> None:
+        index = tree.indexAt(point)
+        if not index.isValid():
+            return
+        menu = QMenu(tree)
+        action = menu.addAction("Open in Diff Tool")
+        action.setEnabled(self._change_for_index(index) is not None)
+        selected = menu.exec(tree.viewport().mapToGlobal(point))
+        if selected is action:
+            self._request_diff(index)
+
+    def _request_diff(self, index: QModelIndex) -> None:
+        change = self._change_for_index(index)
+        if change is not None:
+            self.diff_requested.emit(change)
+
+    def _change_for_index(self, index: QModelIndex) -> object | None:
+        if not index.isValid():
+            return None
+        return self.model.data(index, Qt.ItemDataRole.UserRole)
 
     def _configure_columns(self) -> None:
         source_columns = {0, 1, 2}

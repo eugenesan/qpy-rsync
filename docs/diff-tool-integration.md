@@ -78,3 +78,14 @@ responsive and the tool survives independently.
 - Do not follow special-file endpoints into devices or sockets.
 - Do not execute arbitrary `difftool.<tool>.cmd` in the initial milestone.
 - Treat endpoint paths as data, including names that begin with `-`.
+
+## Milestone 1.12 implementation
+
+Milestone 1.12 implements Git-compatible tool resolution and local-to-local
+regular-file comparison. The comparison tree exposes **Open in Diff Tool** from
+the context menu and double-click. Tools are launched detached with argument
+vectors and no shell evaluation.
+
+The initial implementation intentionally rejects SSH endpoints, one-sided
+objects, directories, symlinks, and special objects. Remote staging and custom
+`difftool.<tool>.cmd` expressions remain deferred.

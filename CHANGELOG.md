@@ -94,3 +94,11 @@
 - Document SSH prerequisites, validation commands, and optional Ruff usage.
 - Add the external diff-tool integration design and the revised milestone roadmap.
 - Add source runner with a system-Python launcher and add qpy-rsync-test.sh for system-Python tests and validation.
+
+## milestone 1.12
+
+- Add **Open in Diff Tool** to the comparison-tree context menu and double-click handling.
+- Resolve Meld, KDiff3, Kompare, or Vimdiff using Git-compatible `diff.guitool`, `diff.tool`, and `difftool.<tool>.path` precedence.
+- Launch local-to-local changed regular files in a detached external diff tool without shell evaluation.
+- Reject one-sided objects, non-regular files, and SSH endpoints with actionable messages; remote staging remains planned.
+- Add unit tests for tool resolution and diff-request validation.
