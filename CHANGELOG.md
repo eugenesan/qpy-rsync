@@ -51,3 +51,10 @@
 - Normalize UI directory endpoints to trailing-slash content semantics, preventing rsync from nesting the source directory basename under the destination.
 - Parse local and rsync-over-SSH endpoint syntax in both location fields.
 - Add inline SSH syntax instructions, examples, validation, and `~/.ssh/config` alias guidance.
+
+## milestone 1.6
+
+- Force OpenSSH authentication through `SSH_ASKPASS_REQUIRE=force` for remote profiles.
+- Discover `ksshaskpass` and common GNOME/X11 askpass helpers, honoring an explicit `SSH_ASKPASS` first.
+- Close the rsync process write channel so SSH cannot hang waiting on unreadable standard input.
+- Fail before launching rsync with an actionable message if no graphical askpass helper is available.

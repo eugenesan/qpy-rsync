@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from qpy_rsync.core.enums import BackupMode, DeleteTiming
+from qpy_rsync.core.enums import BackupMode, DeleteTiming, EndpointKind
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
+
+from .ssh_askpass import askpass_environment
 
 ITEM_SEPARATOR = "|qpy-rsync|"
 DEFAULT_OUT_FORMAT = f"%i{ITEM_SEPARATOR}%l{ITEM_SEPARATOR}%M{ITEM_SEPARATOR}%n%L"
@@ -78,6 +80,13 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
     return args
 
 
+
+def _process_environment(profile: SyncProfile) -> dict[str, str]:
+    environment = {"LC_ALL": "C"}
+    if EndpointKind.SSH in {profile.source.kind, profile.destination.kind}:
+        environment.update(askpass_environment())
+    return environment
+
 def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
     args = ["--dry-run", "--itemize-changes", f"--out-format={DEFAULT_OUT_FORMAT}"]
     args.extend(_common_arguments(profile))
@@ -89,7 +98,7 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
     if filter_file is not None:
         args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
-    return ProcessSpec("rsync", tuple(args), {"LC_ALL": "C"})
+    return ProcessSpec("rsync", tuple(args), _process_environment(profile))
 
 
 def build_sync_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
@@ -98,4 +107,4 @@ def build_sync_spec(profile: SyncProfile, *, filter_file: Path | None = None) ->
     if filter_file is not None:
         args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
-    return ProcessSpec("rsync", tuple(args), {"LC_ALL": "C"})
+    return ProcessSpec("rsync", tuple(args), _process_environment(profile))

@@ -40,3 +40,15 @@ def test_compare_inventories_destination_only_objects_without_enabling_sync_dele
     sync = build_sync_spec(item)
     assert "--delete-during" in compare.arguments
     assert not any(argument.startswith("--delete-") for argument in sync.arguments)
+
+
+def test_remote_compare_forces_configured_askpass(monkeypatch, tmp_path) -> None:
+    helper = tmp_path / "askpass"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o700)
+    monkeypatch.setenv("SSH_ASKPASS", str(helper))
+    item = profile()
+    item.destination = Endpoint(EndpointKind.SSH, "/backup/", host="nas", user="alice")
+    spec = build_compare_spec(item)
+    assert spec.environment["SSH_ASKPASS"] == str(helper)
+    assert spec.environment["SSH_ASKPASS_REQUIRE"] == "force"

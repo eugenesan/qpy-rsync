@@ -65,6 +65,9 @@ class QtProcessRunner:
         for key, value in spec.environment.items():
             environment.insert(key, value)
         self._process.setProcessEnvironment(environment)
+        # Rsync/ssh must not wait forever on an unreadable QProcess stdin.
+        # OpenSSH is forced through SSH_ASKPASS for remote profiles.
+        self._process.closeWriteChannel()
         self._state = ProcessState.STARTING
         debug("process.start", program=spec.program, arguments=spec.arguments, environment=spec.environment)
         self._process.start(spec.program, list(spec.arguments))
