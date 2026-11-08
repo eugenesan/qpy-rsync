@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import PurePosixPath
+from os.path import expanduser
 from typing import Any
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ class Endpoint:
 
     def rsync_operand(self) -> str:
         if self.kind is EndpointKind.LOCAL:
-            return self.path
+            return expanduser(self.path)
         if not self.host:
             raise ValueError("SSH endpoint requires a host")
         authority = f"{self.user}@{self.host}" if self.user else self.host

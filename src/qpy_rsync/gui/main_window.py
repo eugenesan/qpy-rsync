@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from PySide6.QtCore import QSortFilterProxyModel, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
-    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -25,7 +24,7 @@ from qpy_rsync.core.enums import EndpointKind
 from qpy_rsync.core.models import Endpoint, SyncProfile
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 
-from .change_model import ChangeTableModel
+from .comparison_view import ComparisonView
 
 
 class MainWindow(QMainWindow):
@@ -38,11 +37,6 @@ class MainWindow(QMainWindow):
         self._service.on_finished = self._comparison_finished
         self._service.on_error = self._comparison_error
         self._service.on_log = self._append_log
-        self._model = ChangeTableModel(parent=self)
-        self._proxy = QSortFilterProxyModel(self)
-        self._proxy.setSourceModel(self._model)
-        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self._proxy.setFilterKeyColumn(1)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -68,12 +62,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(controls)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
-        self.table = QTableView()
-        self.table.setModel(self._proxy)
-        self.table.setSortingEnabled(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        splitter.addWidget(self.table)
+        self.comparison = ComparisonView()
+        splitter.addWidget(self.comparison)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
@@ -86,7 +76,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.compare_button.clicked.connect(self._compare)
         self.cancel_button.clicked.connect(self._service.cancel)
-        self.filter_edit.textChanged.connect(self._proxy.setFilterFixedString)
+        self.filter_edit.setEnabled(False)
+        self.filter_edit.setToolTip("Path filtering will return with the hierarchical proxy model.")
 
     def _path_row(self, edit: QLineEdit) -> QWidget:
         container = QWidget()
@@ -128,14 +119,11 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
-        self._model.set_changes(result.parsed.changes)
+        self.comparison.set_changes(result.parsed.changes)
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)
         self.status_label.setText(f"Comparison complete: {count} changed object(s).")
-        self.table.resizeColumnToContents(0)
-        self.table.resizeColumnToContents(2)
-        self.table.resizeColumnToContents(3)
 
     def _comparison_error(self, message: str) -> None:
         self.compare_button.setEnabled(True)

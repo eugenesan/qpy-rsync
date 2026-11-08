@@ -37,3 +37,11 @@
 - Label those records as `destination_only` when profile deletion is disabled.
 - Keep actual sync command generation unchanged and non-deleting by default.
 - Confirm the final comparison UI direction: a two-pane hierarchical tree inspired by Meld and FreeFileSync; the milestone 1 flat table remains temporary scaffolding.
+
+## milestone 1.4
+
+- Replace the flat comparison table with synchronized source, action, and destination tree panes.
+- Build an expandable hierarchy from relative paths and align one-sided objects with empty peers.
+- Suppress rsync's synthetic zero size and Unix epoch timestamp on deletion inventory records.
+- Infer file/directory type for destination-only records from rsync's trailing slash convention.
+- Expand `~` in local endpoint paths without invoking a shell.

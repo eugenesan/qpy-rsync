@@ -63,11 +63,15 @@ def parse_record(line: str, *, delete_enabled: bool = True) -> Change | None:
         raise RsyncParseError("Field separator appears in filename; record is ambiguous")
     if "\x00" in name_and_link:
         raise RsyncParseError("NUL in rsync output is unsupported")
+    deleting_record = code.startswith("*deleting")
     size: int | None
-    if size_text.strip().isdigit():
-        size = int(size_text.strip())
-    elif code.startswith("*deleting") and not size_text.strip():
+    if deleting_record:
+        # Rsync fabricates zero/epoch placeholders for deletion records; they
+        # are not destination metadata and must not be displayed as such.
         size = None
+        modified_time = ""
+    elif size_text.strip().isdigit():
+        size = int(size_text.strip())
     else:
         raise RsyncParseError(f"Invalid size field: {size_text!r}")
 
@@ -80,8 +84,11 @@ def parse_record(line: str, *, delete_enabled: bool = True) -> Change | None:
         raise RsyncParseError("Empty change path")
 
     action = _action(code, delete_enabled=delete_enabled)
+    kind = _kind(code)
+    if deleting_record:
+        kind = ObjectKind.DIRECTORY if path.endswith("/") else ObjectKind.FILE
     reason = describe_itemized(code)
-    return Change(path, action, _kind(code), code, size, modified_time or None, link_target, reason)
+    return Change(path, action, kind, code, size, modified_time or None, link_target, reason)
 
 
 def parse_output(text: str, *, strict: bool = True, delete_enabled: bool = True) -> ParseResult:

@@ -42,3 +42,15 @@ def test_preview_labels_deletion_record_destination_only_when_delete_is_disabled
     )
     assert result.changes[0].action is ChangeAction.DESTINATION_ONLY
     assert not result.changes[0].is_deletion
+
+
+def test_deletion_placeholder_metadata_is_suppressed_and_kind_is_inferred() -> None:
+    records = (
+        "*deleting  |qpy-rsync|0|qpy-rsync|1969/12/31-17:00:00|qpy-rsync|old.txt\n"
+        "*deleting  |qpy-rsync|0|qpy-rsync|1969/12/31-17:00:00|qpy-rsync|old-dir/\n"
+    )
+    result = parse_output(records, delete_enabled=False)
+    old_file, old_directory = result.changes
+    assert old_file.size is None and old_file.modified_time is None
+    assert old_file.kind is ObjectKind.FILE
+    assert old_directory.kind is ObjectKind.DIRECTORY
