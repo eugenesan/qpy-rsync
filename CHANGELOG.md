@@ -18,3 +18,9 @@
 - Add local comparison service.
 - Add a sortable, filterable `QAbstractTableModel` comparison UI.
 - Add local path selectors, command/log display, status handling, and parser fixtures.
+
+## milestone 1.1
+
+- Fix completion handling across PySide6 versions by comparing `QProcess.ExitStatus` directly instead of converting it with `int()`.
+- Forward stderr and process errors through dynamically assigned service callbacks.
+- Distinguish process startup from running state and improve failed-start diagnostics.

@@ -23,10 +23,11 @@ class CompareService:
         self.on_finished: Callable[[CompareResult], None] = lambda _result: None
         self.on_error: Callable[[str], None] = lambda _message: None
         self.on_log: Callable[[str], None] = lambda _message: None
+        # Indirection is intentional: GUI callbacks are assigned after this service is constructed.
         self._runner.on_stdout = lambda _chunk: None
-        self._runner.on_stderr = self.on_log
+        self._runner.on_stderr = lambda text: self.on_log(text)
         self._runner.on_finished = self._finish
-        self._runner.on_error = self.on_error
+        self._runner.on_error = lambda message: self.on_error(message)
 
     def compare(self, profile: SyncProfile) -> None:
         self.on_started()
