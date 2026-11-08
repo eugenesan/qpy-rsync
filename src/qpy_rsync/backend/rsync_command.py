@@ -82,7 +82,9 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
 
 
 def _process_environment(profile: SyncProfile) -> dict[str, str]:
-    environment = {"LC_ALL": "C"}
+    # Do not force the ASCII C locale: Qt-based askpass helpers require UTF-8.
+    # The controlled rsync record format is locale-independent.
+    environment: dict[str, str] = {}
     if EndpointKind.SSH in {profile.source.kind, profile.destination.kind}:
         environment.update(askpass_environment())
     return environment

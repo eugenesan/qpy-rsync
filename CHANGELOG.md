@@ -58,3 +58,10 @@
 - Discover `ksshaskpass` and common GNOME/X11 askpass helpers, honoring an explicit `SSH_ASKPASS` first.
 - Close the rsync process write channel so SSH cannot hang waiting on unreadable standard input.
 - Fail before launching rsync with an actionable message if no graphical askpass helper is available.
+
+## milestone 1.7
+
+- Stop forcing the ASCII `C` locale into rsync/SSH, which broke Qt-based askpass helpers expecting UTF-8.
+- Detect Wayland sessions and force Qt askpass helpers to use the `wayland` platform instead of attempting `xcb` without `DISPLAY`.
+- Preserve an explicitly configured `QT_QPA_PLATFORM`.
+- Reject headless password-authentication attempts before launching rsync with an actionable error.

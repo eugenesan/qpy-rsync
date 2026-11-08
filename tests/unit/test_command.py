@@ -12,7 +12,7 @@ def test_compare_is_dry_run_and_uses_argument_vector() -> None:
     assert spec.program == "rsync"
     assert "--dry-run" in spec.arguments
     assert spec.arguments[-3:] == ("--", "/src/", "/dst/")
-    assert spec.environment == {"LC_ALL": "C"}
+    assert spec.environment == {}
 
 
 def test_fuzzy_delete_forces_delete_after() -> None:
@@ -47,6 +47,8 @@ def test_remote_compare_forces_configured_askpass(monkeypatch, tmp_path) -> None
     helper.write_text("#!/bin/sh\nexit 0\n")
     helper.chmod(0o700)
     monkeypatch.setenv("SSH_ASKPASS", str(helper))
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     item = profile()
     item.destination = Endpoint(EndpointKind.SSH, "/backup/", host="nas", user="alice")
     spec = build_compare_spec(item)
