@@ -135,3 +135,15 @@
 - Persist ad hoc filters, rule types, enabled states, comments, and ordering across restarts.
 - Retain the previous comparison after filter changes, mark it stale, and lock per-object decisions until comparison succeeds again.
 - Add tests for command-vector ordering, profile serialization, rule validation, editor models, and settings serialization.
+
+## milestone 1.15b
+
+- Replace selective backup modes with one optional user-managed backup directory.
+- Enable backups only when the directory field is non-empty and always pair `--backup` with `--backup-dir`.
+- Migrate legacy backup-mode profiles to the unified altered-object backup policy.
+- Reject filesystem root, endpoint syntax, control characters, and source/destination equality.
+- Warn for home-directory, relative, nested, containing, unprotected, and in-place configurations.
+- Detect nested backup trees and inject explicit protect and exclude rules before user filters.
+- Inspect local backup directories as missing, empty, non-empty, or unknown; leave remote status unchecked.
+- Add persistent backup controls, nested-protection override, status reporting, stale-state locking, and live command preview.
+- Add tests for migration, path resolution, validation, command ordering, inspection, settings persistence, and local home expansion.

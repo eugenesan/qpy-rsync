@@ -170,3 +170,35 @@ Per-object decision checkboxes are locked until a new comparison succeeds;
 browsing, expansion, visual path filtering, and diff-tool inspection remain
 available. A checkbox decision cannot re-include an item excluded by persistent
 filters because rsync did not return that item in the comparison.
+
+## Backup directory and recovery tree
+
+A non-empty **Backup directory** enables rsync backups for destination objects
+that rsync alters or removes. qpy-rsync always uses `--backup` together with
+`--backup-dir`; clearing the field disables backups. Backup naming, rotation,
+retention, and cleanup remain user-managed.
+
+The backup path is interpreted on the destination side. For an SSH destination,
+enter a path on that remote host without `host:` syntax. Local backup paths may
+use `~`, which qpy-rsync expands before command generation.
+
+qpy-rsync reports whether a local backup directory is missing, empty, non-empty,
+or unavailable for inspection. A missing directory may be created by rsync. A
+non-empty directory is allowed, but newer backups may replace older files that
+have the same relative path. Remote directory contents are not probed yet.
+
+When the backup directory is inside the source or destination tree, automatic
+protection is enabled by default. qpy-rsync injects both rules before user
+filters:
+
+```text
+P /relative-backup-path/***
+- /relative-backup-path/***
+```
+
+The protect rule prevents destination-side deletion; the exclude rule prevents
+normal traversal and transfer. Protection can be disabled explicitly, which
+produces a warning. Backup-setting changes keep the old comparison visible but
+mark it stale and lock per-object decisions until a new comparison succeeds.
+The log pane previews the dry-run command whenever endpoint, backup-directory,
+or protection settings change.

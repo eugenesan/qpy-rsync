@@ -207,32 +207,41 @@ The v1 UI shows the two native actions. It may add a clearly non-authoritative â
 
 ## 7. Backups and versioning
 
-Modes:
+Backups use one optional user-managed destination-side directory. An empty field
+disables backups. A non-empty field backs up destination objects that rsync
+alters or removes, without distinguishing overwrite, replacement, or deletion
+reasons.
 
-- None
-- Back up overwritten objects
-- Back up deleted objects
-- Back up both
-
-Implementation uses:
+Implementation always pairs:
 
 ```text
 --backup
 --backup-dir=PATH
 ```
 
-Layouts:
+Plain `--backup` without `--backup-dir` is not exposed. Users control directory
+naming, reuse, rotation, retention, and cleanup. Reusing a non-empty directory
+is allowed with a warning that newer backups may replace older files with the
+same relative path.
 
-1. Single recovery tree
-2. Timestamped run: `BACKUP_ROOT/YYYY-MM-DD_HH-mm-ss/<relative-path>`
+The path is interpreted on the destination side. SSH destinations therefore use
+a remote filesystem path without `[user@]host:` syntax. Local paths expand `~`.
+Filesystem root is rejected; the whole home directory, relative paths, nesting,
+containment, and `--inplace` produce warnings as appropriate.
 
-Safety rules:
+When the backup directory is nested inside source or destination, qpy-rsync
+automatically injects an explicit protect/exclude pair before user filters:
 
-- backup cannot equal source or destination
-- warn when nested inside source or destination
-- exclude/protect the backup tree from recursive synchronization
-- show backup implications in the preview summary
+```text
+P /relative-backup-path/***
+- /relative-backup-path/***
+```
 
+Protection can be disabled explicitly with a prominent warning. Local directory
+inspection reports missing, empty, non-empty, and unavailable states. Remote
+contents remain unchecked until a controlled SSH probe is implemented. Backup
+setting changes invalidate the active comparison while retaining the old tree
+for inspection.
 ## 8. Endpoints and transport
 
 ### 8.1 Endpoint types

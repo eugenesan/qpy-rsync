@@ -72,7 +72,7 @@ Milestone 1.15 execution-plan confirmation UI.
 - persistent ad hoc filter settings
 - stale-comparison retention and decision locking
 
-## Milestone 1.15b: backup and versioning
+## Milestone 1.15b: backup and versioning (completed)
 
 - none, overwritten, deleted, and both backup modes
 - `--backup` and validated `--backup-dir`
