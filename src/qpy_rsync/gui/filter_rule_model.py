@@ -13,11 +13,14 @@ class FilterRuleModel(QAbstractTableModel):
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int: return 0 if parent.isValid() else len(self.rules)
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int: return len(self.HEADERS)
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole) -> Any:
-        return self.HEADERS[section] if orientation is Qt.Orientation.Horizontal and role is Qt.ItemDataRole.DisplayRole else None
+        return self.HEADERS[section] if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole else None
     def data(self, index, role=Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid() or not 0 <= index.row() < len(self.rules): return None
         rule = self.rules[index.row()]
-        if role is Qt.ItemDataRole.CheckStateRole and index.column() == self.ENABLED: return Qt.CheckState.Checked if rule.enabled else Qt.CheckState.Unchecked
+        if role == Qt.ItemDataRole.CheckStateRole and index.column() == self.ENABLED:
+            return Qt.CheckState.Checked if rule.enabled else Qt.CheckState.Unchecked
+        if role == Qt.ItemDataRole.TextAlignmentRole and index.column() == self.ENABLED:
+            return int(Qt.AlignmentFlag.AlignCenter)
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return {self.TYPE: rule.rule_type.value, self.RULE: rule.rule, self.COMMENT: rule.comment, self.STATUS: validate_rule(rule) or "OK"}.get(index.column())
         return None
@@ -29,10 +32,10 @@ class FilterRuleModel(QAbstractTableModel):
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole) -> bool:
         if not index.isValid(): return False
         rule = self.rules[index.row()]
-        if role is Qt.ItemDataRole.CheckStateRole and index.column() == self.ENABLED: rule.enabled = Qt.CheckState(value) is Qt.CheckState.Checked
-        elif role is Qt.ItemDataRole.EditRole and index.column() == self.TYPE: rule.rule_type = FilterRuleType(str(value))
-        elif role is Qt.ItemDataRole.EditRole and index.column() == self.RULE: rule.rule = str(value).strip()
-        elif role is Qt.ItemDataRole.EditRole and index.column() == self.COMMENT: rule.comment = str(value)
+        if role == Qt.ItemDataRole.CheckStateRole and index.column() == self.ENABLED: rule.enabled = Qt.CheckState(value) == Qt.CheckState.Checked
+        elif role == Qt.ItemDataRole.EditRole and index.column() == self.TYPE: rule.rule_type = FilterRuleType(str(value))
+        elif role == Qt.ItemDataRole.EditRole and index.column() == self.RULE: rule.rule = str(value).strip()
+        elif role == Qt.ItemDataRole.EditRole and index.column() == self.COMMENT: rule.comment = str(value)
         else: return False
         self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), self.STATUS)); return True
     def add_rule(self, rule):

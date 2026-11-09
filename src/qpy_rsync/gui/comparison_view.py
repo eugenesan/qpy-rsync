@@ -159,6 +159,15 @@ class ComparisonView(QWidget):
         # synthetic parent nodes collapsed. Queue it for the next event turn.
         QTimer.singleShot(0, self.expand_all)
 
+    def set_stale(self, stale: bool) -> None:
+        self.model.decisions_enabled = not stale
+        self.action.viewport().update()
+        self.action.setToolTip(
+            "Comparison is stale; compare again before changing decisions."
+            if stale
+            else ""
+        )
+
     def set_path_filter(self, text: str) -> None:
         self.proxy.set_path_filter(text)
         # A proxy reset collapses every view. Expand after Qt finishes the

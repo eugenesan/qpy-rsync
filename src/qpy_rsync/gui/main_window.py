@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
 
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.core.endpoints import parse_endpoint
-from qpy_rsync.core.models import SyncProfile
+from qpy_rsync.core.models import FilterRule, SyncProfile
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
 
 from .comparison_view import ComparisonView
+from .filter_editor import FilterEditorDialog
+from .filter_settings import decode_filters, encode_filters
 
 
 class MainWindow(QMainWindow):
@@ -39,9 +41,11 @@ class MainWindow(QMainWindow):
         self._service.on_error = self._comparison_error
         self._service.on_log = self._append_log
         self._active_profile: SyncProfile | None = None
+        self._filters: list[FilterRule] = []
         self._build_ui()
         self._restore_window_state()
         self._restore_endpoints()
+        self._restore_filters()
 
     def _build_ui(self) -> None:
         root = QWidget(self)
@@ -74,10 +78,14 @@ class MainWindow(QMainWindow):
         self.compare_button = QPushButton("Compare")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
+        self.filters_button = QPushButton("Filters...")
+        self.filters_label = QLabel("Filters: 0 enabled / 0 total")
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText("Filter paths")
         controls.addWidget(self.compare_button)
         controls.addWidget(self.cancel_button)
+        controls.addWidget(self.filters_button)
+        controls.addWidget(self.filters_label)
         controls.addWidget(QLabel("Find"))
         controls.addWidget(self.filter_edit, 1)
         layout.addLayout(controls)
@@ -98,6 +106,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.compare_button.clicked.connect(self._compare)
         self.cancel_button.clicked.connect(self._service.cancel)
+        self.filters_button.clicked.connect(self._edit_filters)
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.filter_edit.setEnabled(False)
         self.filter_edit.setToolTip("Path filtering will return with the hierarchical proxy model.")
@@ -122,6 +131,29 @@ class MainWindow(QMainWindow):
             name="ad-hoc comparison",
             source=parse_endpoint(self.source_edit.text()),
             destination=parse_endpoint(self.destination_edit.text()),
+            filters=list(self._filters),
+        )
+
+    def _edit_filters(self) -> None:
+        dialog = FilterEditorDialog(self._filters, self)
+        if not dialog.exec():
+            return
+        updated = dialog.rules()
+        if updated == self._filters:
+            return
+        self._filters = updated
+        self._save_filters()
+        self._update_filter_summary(stale=True)
+        self.comparison.set_stale(True)
+        self.status_label.setText(
+            "Stale comparison: filter rules changed. Compare again to refresh results."
+        )
+
+    def _update_filter_summary(self, *, stale: bool = False) -> None:
+        enabled = sum(1 for item in self._filters if item.enabled)
+        suffix = " | STALE" if stale else ""
+        self.filters_label.setText(
+            f"Filters: {enabled} enabled / {len(self._filters)} total{suffix}"
         )
 
     def _compare_if_ready(self) -> None:
@@ -165,6 +197,7 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        self.comparison.set_stale(False)
         self.comparison.set_changes(result.parsed.changes)
         for message in result.parsed.diagnostics:
             self._append_log(message)
@@ -192,6 +225,21 @@ class MainWindow(QMainWindow):
         settings = QSettings()
         self.source_edit.setText(str(settings.value("comparison/source", "")))
         self.destination_edit.setText(str(settings.value("comparison/destination", "")))
+
+    def _save_filters(self) -> None:
+        settings = QSettings()
+        settings.setValue("comparison/filters", encode_filters(self._filters))
+        settings.sync()
+
+    def _restore_filters(self) -> None:
+        settings = QSettings()
+        payload = str(settings.value("comparison/filters", ""))
+        try:
+            self._filters = decode_filters(payload)
+        except (TypeError, ValueError):
+            self._filters = []
+            self._append_log("Stored filters were invalid and have been ignored.")
+        self._update_filter_summary()
 
     def _restore_window_state(self) -> None:
         settings = QSettings()

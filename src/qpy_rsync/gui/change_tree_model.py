@@ -42,6 +42,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self.decisions = ChangeDecisions()
         self.changes: list[Change] = []
         self.discarded_decisions = 0
+        self.decisions_enabled = True
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
@@ -151,11 +152,13 @@ class ChangeTreeModel(QAbstractItemModel):
         flags = super().flags(index)
         if index.isValid() and index.column() == self.ACTION:
             node: TreeNode = index.internalPointer()
-            if self._node_selectable(node):
+            if self.decisions_enabled and self._node_selectable(node):
                 flags |= Qt.ItemFlag.ItemIsUserCheckable
         return flags
 
     def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
+        if not self.decisions_enabled:
+            return False
         if role != Qt.ItemDataRole.CheckStateRole or not index.isValid() or index.column() != self.ACTION:
             return False
         node: TreeNode = index.internalPointer()
