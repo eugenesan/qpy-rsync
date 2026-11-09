@@ -30,3 +30,19 @@ def test_external_backup_has_no_protection_pattern() -> None:
     resolved = resolve_backup(profile("/recovery"))
     assert resolved is not None
     assert resolved.protection_pattern is None
+
+from qpy_rsync.core.backup_paths import backup_summary
+
+
+def test_backup_summary_reports_nested_protection() -> None:
+    summary = backup_summary(profile("/dst/.backup"))
+    assert summary.enabled
+    assert summary.directory == "/dst/.backup"
+    assert summary.nested_in_destination
+    assert summary.protects_nested_tree
+
+
+def test_disabled_backup_summary() -> None:
+    summary = backup_summary(profile(""))
+    assert not summary.enabled
+    assert summary.directory is None

@@ -78,3 +78,26 @@ def backup_protection_arguments(profile: SyncProfile) -> list[str]:
         "--filter",
         f"- {resolved.protection_pattern}",
     ]
+
+@dataclass(slots=True, frozen=True)
+class BackupSummary:
+    enabled: bool
+    directory: str | None
+    protects_nested_tree: bool
+    nested_in_source: bool
+    nested_in_destination: bool
+
+
+def backup_summary(profile: SyncProfile) -> BackupSummary:
+    resolved = resolve_backup(profile)
+    if resolved is None:
+        return BackupSummary(False, None, False, False, False)
+    return BackupSummary(
+        enabled=True,
+        directory=resolved.directory,
+        protects_nested_tree=bool(
+            profile.backup.protect_nested and resolved.protection_pattern
+        ),
+        nested_in_source=resolved.nested_in_source,
+        nested_in_destination=resolved.nested_in_destination,
+    )
