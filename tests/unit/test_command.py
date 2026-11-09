@@ -84,3 +84,32 @@ def test_remote_sync_uses_same_remote_shell(monkeypatch, tmp_path) -> None:
     assert spec.arguments[:2] == ("--wait", "rsync")
     index = spec.arguments.index("-e")
     assert spec.arguments[index + 1] == "env DISPLAY=:0 ssh"
+
+from qpy_rsync.core.enums import FilterRuleType
+from qpy_rsync.core.models import BackupOptions, FilterRule
+
+
+def test_backup_options_and_protection_precede_user_filters() -> None:
+    item = profile()
+    item.backup = BackupOptions(directory="/dst/.backup")
+    item.filters = [FilterRule("*.tmp", rule_type=FilterRuleType.EXCLUDE)]
+    compare = list(build_compare_spec(item).arguments)
+    sync = list(build_sync_spec(item).arguments)
+    expected = [
+        "--backup",
+        "--backup-dir=/dst/.backup",
+        "--filter",
+        "P /.backup/***",
+        "--filter",
+        "- /.backup/***",
+        "--exclude=*.tmp",
+    ]
+    for arguments in (compare, sync):
+        start = arguments.index("--backup")
+        assert arguments[start : start + len(expected)] == expected
+
+
+def test_empty_backup_emits_no_backup_arguments() -> None:
+    arguments = build_compare_spec(profile()).arguments
+    assert "--backup" not in arguments
+    assert not any(item.startswith("--backup-dir=") for item in arguments)
