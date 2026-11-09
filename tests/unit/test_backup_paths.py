@@ -46,3 +46,26 @@ def test_disabled_backup_summary() -> None:
     summary = backup_summary(profile(""))
     assert not summary.enabled
     assert summary.directory is None
+
+def test_local_home_paths_are_expanded_for_nesting(monkeypatch) -> None:
+    monkeypatch.setenv("HOME", "/home/tester")
+    item = SyncProfile(
+        name="home",
+        source=Endpoint(EndpointKind.LOCAL, "~/source/"),
+        destination=Endpoint(EndpointKind.LOCAL, "~/destination/"),
+        backup=BackupOptions(directory="~/destination/.backup"),
+    )
+    resolved = resolve_backup(item)
+    assert resolved is not None
+    assert resolved.directory == "/home/tester/destination/.backup"
+    assert resolved.nested_in_destination
+    assert resolved.protection_pattern == "/.backup/***"
+
+
+def test_relative_backup_is_resolved_inside_destination() -> None:
+    item = profile(".backup")
+    resolved = resolve_backup(item)
+    assert resolved is not None
+    assert resolved.directory == "/dst/.backup"
+    assert resolved.nested_in_destination
+    assert resolved.protection_pattern == "/.backup/***"

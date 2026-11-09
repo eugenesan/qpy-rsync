@@ -1,6 +1,6 @@
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.core.enums import DeleteTiming, EndpointKind
-from qpy_rsync.core.models import Endpoint, SyncProfile
+from qpy_rsync.core.models import BackupOptions, Endpoint, SyncProfile
 
 
 def profile() -> SyncProfile:
@@ -113,3 +113,12 @@ def test_empty_backup_emits_no_backup_arguments() -> None:
     arguments = build_compare_spec(profile()).arguments
     assert "--backup" not in arguments
     assert not any(item.startswith("--backup-dir=") for item in arguments)
+
+def test_local_backup_directory_expands_home(monkeypatch) -> None:
+    monkeypatch.setenv("HOME", "/home/tester")
+    item = profile()
+    item.destination = Endpoint(EndpointKind.LOCAL, "~/dst/")
+    item.backup = BackupOptions(directory="~/dst/.backup")
+    arguments = build_compare_spec(item).arguments
+    assert "--backup-dir=/home/tester/dst/.backup" in arguments
+    assert "P /.backup/***" in arguments
