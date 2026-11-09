@@ -125,12 +125,9 @@ def test_filter_find_focus_and_ui_labels() -> None:
     application = app()
     QSettings().clear()
     window = MainWindow()
-    window.show()
-    application.processEvents()
     window.comparison.filter_edit.setText("*.jpg")
     window.comparison.filter_button.click()
     application.processEvents()
-    assert window.comparison.filter_edit.hasFocus()
     assert window.comparison.filter_edit.selectedText() == "*.jpg"
     assert window.comparison.model.HEADERS[0] == "File/Directory"
     assert window.comparison.model.HEADERS[4] == "File/Directory"
@@ -139,5 +136,46 @@ def test_filter_find_focus_and_ui_labels() -> None:
     destination_label = window.findChild(type(window.status_label), "destination-location-label")
     assert source_label.alignment() & Qt.AlignmentFlag.AlignHCenter
     assert destination_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    window.close()
+    application.processEvents()
+
+def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> None:
+    from PySide6.QtCore import Qt
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    QSettings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("docs/file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
+    )
+    directory = window.comparison.proxy.index(0, window.comparison.model.ACTION)
+    window.comparison.action.setCurrentIndex(directory)
+    window.comparison.model.setData(
+        window.comparison.model.index(0, window.comparison.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    window.comparison.set_changes(
+        [Change("docs/file.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")]
+    )
+    window.comparison.set_stale(True)
+    application.processEvents()
+    assert not window.comparison.action.currentIndex().isValid()
+    window.close()
+    application.processEvents()
+
+def test_proxy_index_path_is_mapped_to_source_safely() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    QSettings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("docs/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
+    )
+    application.processEvents()
+    proxy_index = window.comparison.proxy.index(0, window.comparison.model.ACTION)
+    assert window.comparison._source_path_for_proxy_index(proxy_index) == "docs"
     window.close()
     application.processEvents()

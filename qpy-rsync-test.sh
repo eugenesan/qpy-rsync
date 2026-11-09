@@ -1,6 +1,12 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Run qpy-rsync tests and validation with system Python, without .venv.
 set -eu
+
+export PYTHONFAULTHANDLER=1
+export QT_FATAL_WARNINGS=1
+export QT_QPA_PLATFORM=offscreen
+
+exec > >(tee "/tmp/qpy-rsync.log") 2>&1
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PYTHON=${QPY_RSYNC_SYSTEM_PYTHON:-/usr/bin/python3}
 if [ ! -x "$PYTHON" ]; then
@@ -22,7 +28,6 @@ unset VIRTUAL_ENV PYENV_VERSION PYTHONHOME PYTHONPATH
 unset QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
 unset QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
 export PYTHONPATH="$SCRIPT_DIR/src"
-export QT_QPA_PLATFORM=offscreen
 cd "$SCRIPT_DIR"
 "$PYTHON" -m pytest "$@"
 "$PYTHON" -m compileall -q src

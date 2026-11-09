@@ -6,7 +6,7 @@ from pathlib import Path
 import shlex
 
 from qpy_rsync.core.backup_paths import backup_protection_arguments, destination_backup_directory
-from qpy_rsync.core.enums import DeleteTiming, EndpointKind
+from qpy_rsync.core.enums import DeleteTiming, EndpointKind, SyncMode
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
 
@@ -70,9 +70,11 @@ def _common_arguments(profile: SyncProfile, *, filter_file: Path | None = None) 
     if transfer.fuzzy:
         args.append("--fuzzy")
 
-    if transfer.delete:
+    if transfer.mirror_enabled:
         timing = DeleteTiming.AFTER if transfer.fuzzy else transfer.delete_timing
         args.append(f"--delete-{timing.value}")
+    elif transfer.new_only_enabled:
+        args.append("--ignore-existing")
 
     if profile.backup.enabled:
         args.extend(("--backup", f"--backup-dir={destination_backup_directory(profile)}"))
@@ -123,7 +125,9 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
     # A one-way preview must inventory destination-only objects even when the
     # execution profile is configured to keep them. Dry-run makes this safe.
     # The parser labels them DESTINATION_ONLY unless deletion is enabled.
-    if not profile.transfer.delete:
+    if not profile.transfer.mirror_enabled:
+        # Inventory destination-only objects for the comparison while the parser
+        # keeps them as retained, non-executable rows.
         args.append("--delete-during")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
     return _process_spec(profile, args)

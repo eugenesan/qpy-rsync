@@ -56,3 +56,13 @@ def test_summary_counts_included_excluded_and_destructive() -> None:
     assert decisions.summary(changes).included == 2
     assert decisions.summary(changes).excluded == 1
     assert decisions.summary(changes).destructive == 1
+
+def test_destination_only_defaults_excluded_but_can_be_selected() -> None:
+    decisions = ChangeDecisions()
+    change = Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
+    assert decisions.selectable(change)
+    assert decisions.effective(change) is ChangeDecision.EXCLUDE
+    decisions.set(change.path, ChangeDecision.INCLUDE)
+    assert decisions.effective(change) is ChangeDecision.INCLUDE
+    decisions.reset(change.path)
+    assert decisions.effective(change) is ChangeDecision.EXCLUDE

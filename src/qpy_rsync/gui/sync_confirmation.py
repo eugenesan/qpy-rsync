@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLabel,
+    QPlainTextEdit,
+    QVBoxLayout,
+)
+
+from qpy_rsync.core.backup_paths import backup_summary
+from qpy_rsync.core.execution_plan import ExecutionPlan
+from qpy_rsync.core.models import SyncProfile
+
+
+@dataclass(slots=True, frozen=True)
+class ConfirmationSummary:
+    source: str
+    destination: str
+    included: int
+    excluded: int
+    retained_destination_only: int
+    destructive: int
+    creates: int
+    updates: int
+    metadata: int
+    replacements: int
+    deletions: int
+    backup: str
+    nested_protection: str
+    fingerprint: str
+
+
+def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> ConfirmationSummary:
+    backup = backup_summary(profile)
+    backup_text = backup.directory if backup.enabled and backup.directory else "Disabled"
+    if not backup.enabled:
+        protection = "Not required"
+    elif backup.protects_nested_tree:
+        protection = "Enabled"
+    elif backup.nested_in_source or backup.nested_in_destination:
+        protection = "DISABLED for nested backup directory"
+    else:
+        protection = "Not required"
+    summary = plan.summary
+    return ConfirmationSummary(
+        source=plan.source_operand,
+        destination=plan.destination_operand,
+        included=summary.included,
+        excluded=summary.excluded,
+        retained_destination_only=summary.retained_destination_only,
+        destructive=summary.destructive,
+        creates=summary.creates,
+        updates=summary.updates,
+        metadata=summary.metadata,
+        replacements=summary.replacements,
+        deletions=summary.deletions,
+        backup=backup_text,
+        nested_protection=protection,
+        fingerprint=plan.profile_fingerprint[:12],
+    )
+
+
+class SyncConfirmationDialog(QDialog):
+    """Final review only. Accepting does not launch rsync in this milestone."""
+
+    def __init__(self, profile: SyncProfile, plan: ExecutionPlan, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Confirm synchronization")
+        self.resize(620, 520)
+        summary = confirmation_summary(profile, plan)
+
+        layout = QVBoxLayout(self)
+        heading = QLabel("Review verified synchronization")
+        heading.setStyleSheet("font-weight: bold; font-size: 115%;")
+        layout.addWidget(heading)
+
+        form = QFormLayout()
+        form.addRow("Source", QLabel(summary.source))
+        form.addRow("Destination", QLabel(summary.destination))
+        form.addRow("Included", QLabel(str(summary.included)))
+        form.addRow("Unchecked", QLabel(str(summary.excluded)))
+        form.addRow("Retained in Destination", QLabel(str(summary.retained_destination_only)))
+        form.addRow("Destructive", QLabel(str(summary.destructive)))
+        form.addRow("Create", QLabel(str(summary.creates)))
+        form.addRow("Update", QLabel(str(summary.updates)))
+        form.addRow("Metadata", QLabel(str(summary.metadata)))
+        form.addRow("Replace", QLabel(str(summary.replacements)))
+        form.addRow("Delete", QLabel(str(summary.deletions)))
+        form.addRow("Backup", QLabel(summary.backup))
+        form.addRow("Nested protection", QLabel(summary.nested_protection))
+        form.addRow("Verification fingerprint", QLabel(summary.fingerprint))
+        layout.addLayout(form)
+
+        self.warning = QLabel()
+        self.warning.setWordWrap(True)
+        if summary.destructive:
+            self.warning.setText(
+                f"Warning: {summary.destructive} destructive operation(s) will replace or delete destination objects."
+            )
+            self.warning.setStyleSheet("color: #B91C1C; font-weight: bold;")
+        else:
+            self.warning.setText("No destructive operations are selected.")
+            self.warning.setStyleSheet("color: #15803D;")
+        layout.addWidget(self.warning)
+
+        details = QPlainTextEdit()
+        details.setReadOnly(True)
+        details.setPlainText(
+            "This confirmation is based on a verified second dry run.\n"
+            "No synchronization is launched by this milestone.\n"
+            "Future execution will recreate the private decision filter and recheck freshness."
+        )
+        details.setMaximumHeight(90)
+        layout.addWidget(details)
+
+        self.acknowledge = QCheckBox("I reviewed Source, Destination, selected actions, and backup settings")
+        layout.addWidget(self.acknowledge)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.confirm_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.confirm_button.setText("Confirm Reviewed Actions")
+        self.confirm_button.setEnabled(False)
+        self.acknowledge.toggled.connect(self.confirm_button.setEnabled)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)

@@ -62,3 +62,37 @@ def test_stale_action_text_is_neutral_and_arrowless() -> None:
     model.stale = True
     assert model.data(index, Qt.ItemDataRole.DisplayRole) == "update"
     assert model.data(index, Qt.ItemDataRole.ForegroundRole) is None
+
+def test_reset_decision_subtree_and_all() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+            Change("docs/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+            Change("other.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+        ]
+    )
+    model.decisions.set("docs", ChangeDecision.EXCLUDE)
+    model.decisions.set("docs/a.txt", ChangeDecision.INCLUDE)
+    model.decisions.set("other.txt", ChangeDecision.EXCLUDE)
+    model.reset_decision("docs/a.txt")
+    assert model.decisions.explicit("docs/a.txt") is ChangeDecision.INHERIT
+    model.reset_subtree_decisions("docs")
+    assert model.decisions.explicit("docs") is ChangeDecision.INHERIT
+    assert model.decisions.explicit("other.txt") is ChangeDecision.EXCLUDE
+    model.reset_all_decisions()
+    assert not model.decisions.has_explicit()
+
+def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")]
+    )
+    index = model.index(0, model.ACTION)
+    assert model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable
+    assert model.data(index, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Unchecked
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"
+    assert model.setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "× delete"
+    assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"

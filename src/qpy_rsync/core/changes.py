@@ -74,23 +74,53 @@ class ChangeDecisions:
         else:
             self._decisions[normalized] = decision
 
+    def reset(self, path: str) -> None:
+        self._decisions.pop(path.rstrip("/"), None)
+
+    def reset_subtree(self, path: str) -> None:
+        root = path.rstrip("/")
+        stale = [
+            item
+            for item in self._decisions
+            if item == root or item.startswith(root + "/")
+        ]
+        for item in stale:
+            self._decisions.pop(item, None)
+
+    def clear(self) -> None:
+        self._decisions.clear()
+
+    def has_explicit(self) -> bool:
+        return bool(self._decisions)
+
     def effective(self, change: Change) -> ChangeDecision:
         if not self.selectable(change):
             return ChangeDecision.EXCLUDE
-        return self.effective_path(change.path)
+        inherited = self.inherited(change.path)
+        if inherited is not None:
+            return inherited
+        if change.action is ChangeAction.DESTINATION_ONLY:
+            return ChangeDecision.EXCLUDE
+        return ChangeDecision.INCLUDE
 
-    def effective_path(self, path: str) -> ChangeDecision:
+    def inherited(self, path: str) -> ChangeDecision | None:
         current = path.rstrip("/")
         while current:
             decision = self._decisions.get(current)
             if decision is not None:
                 return decision
             current = current.rpartition("/")[0]
-        return ChangeDecision.INCLUDE
+        return None
+
+    def effective_path(self, path: str) -> ChangeDecision:
+        return self.inherited(path) or ChangeDecision.INCLUDE
 
     @staticmethod
     def selectable(change: Change) -> bool:
-        return change.action not in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}
+        return change.action not in {
+            ChangeAction.NO_CHANGE,
+            ChangeAction.MESSAGE,
+        }
 
     def reconcile(self, changes: list[Change]) -> int:
         current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -97,16 +98,49 @@ class ComparisonView(QWidget):
         tree.doubleClicked.connect(self._request_diff)
         return tree
 
+    def _source_path_for_proxy_index(self, index: QModelIndex) -> str | None:
+        if not index.isValid():
+            return None
+        source_index = self.proxy.mapToSource(index.siblingAtColumn(0))
+        if not source_index.isValid():
+            return None
+        node = source_index.internalPointer()
+        return None if node is None else node.path
+
     def _show_context_menu(self, tree: QTreeView, point: object) -> None:
         index = tree.indexAt(point)
         if not index.isValid():
             return
+        # QTreeView indexes belong to the proxy. Never dereference a proxy
+        # index's internalPointer as a TreeNode; doing so can crash PySide/Qt.
+        path = self._source_path_for_proxy_index(index)
         menu = QMenu(tree)
         action = menu.addAction("Open in Diff Tool")
         action.setEnabled(self._change_for_index(index) is not None)
+        reset_one = reset_subtree = reset_all = None
+        if tree is self.action and path is not None:
+            menu.addSeparator()
+            reset_one = menu.addAction("Reset This Decision")
+            reset_subtree = menu.addAction("Reset Subtree Decisions")
+            reset_all = menu.addAction("Reset All Decisions")
+            reset_all.setEnabled(self.model.decisions.has_explicit())
         selected = menu.exec(tree.viewport().mapToGlobal(point))
         if selected is action:
             self._request_diff(index)
+        elif selected is reset_one and path is not None:
+            self.model.reset_decision(path)
+        elif selected is reset_subtree and path is not None:
+            self.model.reset_subtree_decisions(path)
+        elif selected is reset_all:
+            answer = QMessageBox.question(
+                self,
+                "Reset all decisions",
+                "Reset every manual checkbox decision to its inherited default?",
+                QMessageBox.StandardButton.Reset | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer == QMessageBox.StandardButton.Reset:
+                self.model.reset_all_decisions()
 
     def _request_diff(self, index: QModelIndex) -> None:
         change = self._change_for_index(index)
@@ -178,12 +212,27 @@ class ComparisonView(QWidget):
         )
 
     def set_changes(self, changes: list[object]) -> None:
+        trees = (self.source, self.action, self.destination)
+        for tree in trees:
+            tree.setUpdatesEnabled(False)
+            tree.setCurrentIndex(QModelIndex())
+            tree.selectionModel().clear()
         self.model.set_changes(changes)  # type: ignore[arg-type]
-        # Expansion before the view processes the model reset can leave deep
-        # synthetic parent nodes collapsed. Queue it for the next event turn.
-        QTimer.singleShot(0, self.expand_all)
+
+        def restore_views() -> None:
+            for tree in trees:
+                tree.setUpdatesEnabled(True)
+                tree.viewport().update()
+            self.expand_all()
+
+        # Do not repaint proxy indexes until Qt has completed the source reset.
+        QTimer.singleShot(0, restore_views)
 
     def set_stale(self, stale: bool) -> None:
+        if stale:
+            for tree in (self.source, self.action, self.destination):
+                tree.setCurrentIndex(QModelIndex())
+                tree.selectionModel().clear()
         self.model.decisions_enabled = not stale
         self.model.stale = stale
         self.source.setEnabled(not stale)

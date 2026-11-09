@@ -74,27 +74,40 @@ Milestone 1.15 execution-plan confirmation UI.
 
 ## Milestone 1.15b: backup and versioning (completed)
 
-- none, overwritten, deleted, and both backup modes
-- `--backup` and validated `--backup-dir`
-- single recovery tree and timestamped-run layouts
-- endpoint equality and nesting safety checks
-- automatic backup-tree protection
-- backup implications in comparison and confirmation summaries
+- one optional, user-managed destination-side backup directory
+- mandatory pairing of `--backup` with validated `--backup-dir`
+- local missing, empty, non-empty, and unavailable inspection states
+- endpoint equality, root, control-character, relative-path, and nesting checks
+- automatic nested backup-tree protect and exclude rules
+- persistent backup settings and live command preview
 
-## Milestone 1.15c: immutable execution plan
+## Milestone 1.15c: immutable execution plan (completed)
 
-- generate an execution plan from validated selections
-- combine persistent filters, per-object decisions, and backup policy
-- run a second validation dry-run and block mismatches
+- immutable effective-action snapshot and semantic profile fingerprint
+- private decision-filter generation and cleanup
+- second validation dry run with exact path/action/kind comparison
+- mismatch blocking and verification invalidation
+- wide-screen workflow UI and mandatory offscreen Qt regression tests
 
 ## Milestone 1.15d: confirmation and synchronization execution
 
-- show a final confirmation summary
-- perform real rsync execution
+Completed planning and confirmation work:
+
+- Update, Mirror, and New Only mode defaults
+- manually selected Destination-only deletion outside Mirror
+- row, subtree, and global decision reset
+- explicit execution-gate state machine
+- final confirmation summary and destructive warning
+- reproducible disposable sync fixtures and result collection
+
+Remaining execution work:
+
+- launch write-capable rsync only after fresh verification and confirmation
 - parse progress and statistics
 - support cancellation and exit-code mapping
-- recompare after completion
-- add explicit destructive-action guardrails
+- clean up temporary filters on every result path
+- recompare after successful completion
+- keep failed and cancelled runs visibly incomplete
 
 ## Milestone 1.16: profiles and Ubuntu packaging
 

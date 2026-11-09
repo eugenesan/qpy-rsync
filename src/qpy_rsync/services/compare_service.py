@@ -32,7 +32,7 @@ class CompareService:
         self._runner.on_error = lambda message: self.on_error(message)
 
     def compare(self, profile: SyncProfile) -> None:
-        self._delete_enabled = profile.transfer.delete
+        self._delete_enabled = profile.transfer.mirror_enabled
         self.on_started()
         self._runner.start(build_compare_spec(profile))
 

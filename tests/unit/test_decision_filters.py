@@ -42,3 +42,12 @@ def test_included_child_overrides_excluded_directory() -> None:
     lines = decision_filter_lines(build_execution_plan(profile, changes, decisions))
     assert lines[:2] == ["+ /docs/", "+ /docs/keep.txt"]
     assert "- /docs/***" in lines
+
+def test_retained_destination_only_is_protected_but_selected_delete_is_open() -> None:
+    profile = SyncProfile("plan", Endpoint(EndpointKind.LOCAL, "/src/"), Endpoint(EndpointKind.LOCAL, "/dst/"))
+    change = Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
+    retained = build_execution_plan(profile, [change], ChangeDecisions())
+    assert decision_filter_lines(retained) == ["P /extra.txt", "- /extra.txt"]
+    decisions = ChangeDecisions(); decisions.set("extra.txt", ChangeDecision.INCLUDE)
+    selected = build_execution_plan(profile, [change], decisions)
+    assert decision_filter_lines(selected) == []

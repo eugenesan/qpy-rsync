@@ -147,3 +147,25 @@
 - Inspect local backup directories as missing, empty, non-empty, or unknown; leave remote status unchecked.
 - Add persistent backup controls, nested-protection override, status reporting, stale-state locking, and live command preview.
 - Add tests for migration, path resolution, validation, command ordering, inspection, settings persistence, and local home expansion.
+
+## milestone 1.15c
+
+- Add immutable execution plans containing profile fingerprints, comparison identities, effective actions, and confirmation-ready counts.
+- Generate private mode-`0600` decision-filter files and remove them after verification.
+- Run a second dry-run validation and report missing or unexpected actions before confirmation.
+- Separate unchecked actions from Destination-only objects retained by mode defaults.
+- Add a wide-screen Source/Action/Destination workflow, compact Filter/Find controls, endpoint swapping, stale-tree presentation, severity-colored messages, and command diagnostics.
+- Add mandatory offscreen Qt tests and native-crash diagnostics to `qpy-rsync-test.sh`.
+- Harden proxy selection resets and context-menu proxy-to-source mapping after reproducing and fixing two native Qt crashes.
+
+## milestone 1.15d planning and confirmation
+
+- Add Update, Mirror, and New Only one-way synchronization modes.
+- Generate Mirror deletion timing and New Only `--ignore-existing` command behavior.
+- Migrate legacy delete profiles to Mirror semantics.
+- Allow Destination-only rows to default to Keep in Update/New Only and to be checked explicitly for deletion.
+- Add decision reset operations for one row, a subtree, and the full tree.
+- Add an execution-gate state machine covering comparison, verification, confirmation, execution, completion, failure, and cancellation states.
+- Add a final confirmation dialog with operation counts, destructive warnings, backup state, nested protection, verification fingerprint, and explicit acknowledgment.
+- Keep real synchronization disabled pending the write-capable synchronization service.
+- Add deterministic setup and result-collection scripts for disposable synchronization smoke tests.

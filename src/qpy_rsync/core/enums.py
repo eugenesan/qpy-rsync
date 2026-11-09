@@ -14,6 +14,12 @@ class ConflictPolicy(StrEnum):
     UNSELECT = "unselect"
 
 
+class SyncMode(StrEnum):
+    UPDATE = "update"
+    MIRROR = "mirror"
+    NEW_ONLY = "new_only"
+
+
 class DeleteTiming(StrEnum):
     BEFORE = "before"
     DURING = "during"

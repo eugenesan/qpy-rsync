@@ -4,7 +4,7 @@
 
 ## Current state
 
-Milestones 1 through 1.15a provide a read-only comparison and planning workflow with:
+Milestones 1 through 1.15d provide a read-only comparison, selection, verification, and confirmation workflow with:
 
 - local and rsync-over-SSH endpoints
 - asynchronous rsync dry-run execution and controlled output parsing
@@ -13,7 +13,7 @@ Milestones 1 through 1.15a provide a read-only comparison and planning workflow 
 - graphical OpenSSH askpass integration
 - optional system-Python or `.venv` development workflows
 
-Per-object decisions and persistent ordered filters are implemented. Synchronization execution is not implemented yet.
+Per-object decisions, persistent ordered filters, backup policy, synchronization modes, immutable execution plans, a second verification dry run, and final confirmation are implemented. Real synchronization execution is not implemented yet.
 
 ## Requirements
 
@@ -86,7 +86,7 @@ external diff-tool design.
 
 ## Safety status
 
-This is pre-alpha software. Destructive synchronization and per-object execution are not implemented yet.
+This is pre-alpha software. The GUI can compare, select, verify, and confirm actions, but the final confirmation does not yet launch write-capable rsync.
 
 ## milestone 1 local comparison
 
@@ -198,7 +198,38 @@ P /relative-backup-path/***
 
 The protect rule prevents destination-side deletion; the exclude rule prevents
 normal traversal and transfer. Protection can be disabled explicitly, which
-produces a warning. Backup-setting changes keep the old comparison visible but
-mark it stale and lock per-object decisions until a new comparison succeeds.
-The log pane previews the dry-run command whenever endpoint, backup-directory,
-or protection settings change.
+produces a warning. Backup-setting changes retain the comparison and checkbox decisions, but revoke prior verification because the final rsync command changed. The log pane previews the dry-run command whenever endpoint, mode, backup-directory, or protection settings change.
+
+## Synchronization modes
+
+The mode selector defines the default one-way behavior from Source to Destination:
+
+- **Update** copies new and changed Source objects while retaining objects that exist only in Destination.
+- **Mirror** makes Destination match Source and uses `--delete-during` for Destination-only objects.
+- **New Only** uses `--ignore-existing` to copy objects missing from Destination without updating or deleting existing Destination objects.
+
+Changing mode keeps the old tree as a disabled, visibly stale reference and requires another comparison. In Update and New Only, Destination-only rows default to **keep** with an unchecked checkbox. Checking such a row turns the effective action into **delete**. In Mirror, deletion rows default checked; unchecking protects and retains them. Directory decisions apply to descendants. The Action-pane context menu can reset one decision, a subtree, or all manual decisions.
+
+## Selected-action verification and confirmation
+
+After a successful comparison, qpy-rsync builds an immutable snapshot of the effective checked and unchecked actions. The summary separates executable actions, unchecked actions, retained Destination-only objects, destructive operations, and backup state.
+
+**Verify Selected Actions** creates a private mode-`0600` rsync filter file and performs a second dry run. Execution remains blocked if path, action, object kind, endpoint, mode, filters, backup configuration, or decisions no longer match the visible selection. Temporary filter files are removed on every completion path.
+
+After successful verification, **Synchronize...** opens a final confirmation dialog showing Source, Destination, operation counts, destructive operations, backup configuration, nested protection, and a verification fingerprint. Explicit acknowledgment is required. In the current milestone, confirming only records that the review completed; it does not launch real synchronization.
+
+## Testing and reproducible smoke fixtures
+
+`qpy-rsync-test.sh` runs Python with `PYTHONFAULTHANDLER=1`, treats Qt warnings as fatal, forces Qt's offscreen platform, mirrors output to `/tmp/qpy-rsync.log`, runs pytest, compiles all sources, and runs `git diff --check`.
+
+Create disposable Source, Destination, and Backup trees with:
+
+```bash
+./tools/setup-sync-smoke-test.sh
+```
+
+Collect an exact post-test inventory, hashes, and key file contents with:
+
+```bash
+./tools/collect-sync-smoke-results.sh
+```

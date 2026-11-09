@@ -6,7 +6,7 @@ from os.path import expanduser
 from typing import Any
 from uuid import uuid4
 
-from .enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
+from .enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType, SyncMode
 
 
 @dataclass(slots=True, frozen=True)
@@ -39,7 +39,8 @@ class PreservationOptions:
 
 @dataclass(slots=True)
 class TransferOptions:
-    delete: bool = False
+    sync_mode: SyncMode = SyncMode.UPDATE
+    delete: bool = False  # legacy profile compatibility; migrated to sync_mode on load
     delete_timing: DeleteTiming = DeleteTiming.DURING
     fuzzy: bool = False
     copy_links: bool = False
@@ -50,6 +51,14 @@ class TransferOptions:
     one_file_system: bool = False
     sparse: bool = False
     ignore_times: bool = False
+
+    @property
+    def mirror_enabled(self) -> bool:
+        return SyncMode(self.sync_mode) == SyncMode.MIRROR or self.delete
+
+    @property
+    def new_only_enabled(self) -> bool:
+        return SyncMode(self.sync_mode) == SyncMode.NEW_ONLY
 
 
 @dataclass(slots=True)

@@ -30,3 +30,14 @@ def test_validation_reports_missing_and_unexpected() -> None:
     assert not mismatch.valid
     assert mismatch.missing[0][0] == "a"
     assert mismatch.unexpected[0][0] == "other"
+
+def test_selected_destination_only_delete_matches_delete_result() -> None:
+    profile = SyncProfile("plan", Endpoint(EndpointKind.LOCAL, "/src/"), Endpoint(EndpointKind.LOCAL, "/dst/"))
+    change = Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
+    decisions = ChangeDecisions(); decisions.set("extra.txt", ChangeDecision.INCLUDE)
+    plan = build_execution_plan(profile, [change], decisions)
+    mismatch = compare_plan_to_changes(
+        plan,
+        [Change("extra.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")],
+    )
+    assert mismatch.valid

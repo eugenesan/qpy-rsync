@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
+from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType, SyncMode
 from qpy_rsync.core.models import BackupOptions, Endpoint, FilterRule, PreservationOptions, SyncProfile, TransferOptions
 
 
@@ -48,6 +48,14 @@ def load_profile(path: Path) -> SyncProfile:
     transfer_raw = raw.get("transfer", {}).copy()
     if "delete_timing" in transfer_raw:
         transfer_raw["delete_timing"] = DeleteTiming(transfer_raw["delete_timing"])
+    if "sync_mode" in transfer_raw:
+        transfer_raw["sync_mode"] = SyncMode(transfer_raw["sync_mode"])
+    else:
+        transfer_raw["sync_mode"] = (
+            SyncMode.MIRROR if transfer_raw.get("delete", False) else SyncMode.UPDATE
+        )
+    # The stored legacy Boolean is consumed by migration and must not override mode.
+    transfer_raw["delete"] = False
     transfer = TransferOptions(**transfer_raw)
     backup_raw = raw.get("backup", {}).copy()
     backup_directory = str(backup_raw.get("directory") or "")

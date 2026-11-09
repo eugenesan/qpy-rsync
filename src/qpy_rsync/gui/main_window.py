@@ -7,6 +7,7 @@ from PySide6.QtCore import QProcess, QSettings, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -21,10 +22,11 @@ from PySide6.QtWidgets import (
 
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.core.endpoints import parse_endpoint
-from qpy_rsync.core.enums import EndpointKind, Severity
+from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
+from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
 from qpy_rsync.core.execution_plan import ExecutionPlan, build_execution_plan, check_plan_freshness
-from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile
+from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile, TransferOptions
 from qpy_rsync.core.validation import validate_profile
 from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
@@ -35,6 +37,7 @@ from .comparison_view import ComparisonView
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
+from .sync_confirmation import SyncConfirmationDialog
 
 
 class MainWindow(QMainWindow):
@@ -51,6 +54,7 @@ class MainWindow(QMainWindow):
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
         self._validated_plan: ExecutionPlan | None = None
+        self._execution_gate = ExecutionGate()
         self._plan_validation = PlanValidationService(self)
         self._plan_validation.on_started = self._plan_validation_started
         self._plan_validation.on_finished = self._plan_validation_finished
@@ -88,10 +92,23 @@ class MainWindow(QMainWindow):
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
+        controls.addWidget(QLabel("Mode"))
+        self.sync_mode = QComboBox()
+        self.sync_mode.addItem("Update", SyncMode.UPDATE)
+        self.sync_mode.addItem("Mirror", SyncMode.MIRROR)
+        self.sync_mode.addItem("New Only", SyncMode.NEW_ONLY)
+        self.sync_mode.setToolTip(
+            "Update: copy new and changed objects; keep destination-only objects.\n"
+            "Mirror: make Destination match Source, including deletions.\n"
+            "New Only: copy missing objects; do not update or delete existing objects."
+        )
+        controls.addWidget(self.sync_mode)
         self.compare_button = QPushButton("Compare")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.validate_plan_button = QPushButton("Verify Selected Actions")
+        self.synchronize_button = QPushButton("Synchronize...")
+        self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setMinimumWidth(
             self.validate_plan_button.fontMetrics().horizontalAdvance("Verify Selected Actions") + 28
         )
@@ -103,6 +120,7 @@ class MainWindow(QMainWindow):
             self.compare_button,
             self.cancel_button,
             self.validate_plan_button,
+            self.synchronize_button,
             self.filters_button,
             self.filters_label,
         ):
@@ -164,8 +182,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.compare_button.clicked.connect(self._compare)
+        self.sync_mode.currentIndexChanged.connect(self._sync_mode_changed)
         self.cancel_button.clicked.connect(self._service.cancel)
         self.validate_plan_button.clicked.connect(self._validate_selected_plan)
+        self.synchronize_button.clicked.connect(self._show_sync_confirmation)
         self.swap_button.clicked.connect(self._swap_endpoints)
         self.filters_button.clicked.connect(self._edit_filters)
         self.backup_browse.clicked.connect(self._browse_backup)
@@ -310,7 +330,24 @@ class MainWindow(QMainWindow):
             destination=parse_endpoint(self.destination_edit.text()),
             filters=list(self._filters),
             backup=self._backup,
+            transfer=TransferOptions(sync_mode=SyncMode(self.sync_mode.currentData())),
         )
+
+    def _sync_mode_changed(self) -> None:
+        mode = self.sync_mode.currentData()
+        if self.comparison.model.changes:
+            self.comparison.set_stale(True)
+            self._invalidate_plan_context()
+            self._set_status(
+                "Synchronization mode changed. The visible comparison is out of date; click Compare to refresh.",
+                "error" if mode is SyncMode.MIRROR else "warning",
+            )
+        elif mode is SyncMode.MIRROR:
+            self._set_status(
+                "Mirror can delete objects that exist only in Destination. Click Compare and review deletions.",
+                "error",
+            )
+        self._update_command_preview()
 
     def _edit_filters(self) -> None:
         dialog = FilterEditorDialog(self._filters, self)
@@ -395,6 +432,8 @@ class MainWindow(QMainWindow):
             self._set_backup_message(status.message, "success" if status.nonempty is False else "info")
 
     def _invalidate_plan_context(self) -> None:
+        self._execution_gate.invalidate()
+        self.synchronize_button.setEnabled(False)
         self._current_plan = None
         self._validated_plan = None
         self.validate_plan_button.setEnabled(False)
@@ -403,6 +442,7 @@ class MainWindow(QMainWindow):
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
+        self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setText("Verify Selected Actions")
         if self._active_profile is not None and self.comparison.model.changes:
             self._refresh_plan_summary()
@@ -421,7 +461,8 @@ class MainWindow(QMainWindow):
         summary = self._current_plan.summary
         self.plan_summary_label.setText(
             "Selected actions: "
-            f"{summary.included} included, {summary.excluded} excluded, "
+            f"{summary.included} included, {summary.excluded} unchecked, "
+            f"{summary.retained_destination_only} retained in Destination, "
             f"{summary.destructive} destructive; "
             f"create {summary.creates}, update {summary.updates}, "
             f"metadata {summary.metadata}, replace {summary.replacements}, "
@@ -430,6 +471,8 @@ class MainWindow(QMainWindow):
         )
         self.plan_summary_label.show()
         self.validate_plan_button.setEnabled(summary.included > 0)
+        self.synchronize_button.setEnabled(False)
+        self._execution_gate.selection_changed(included=summary.included)
 
     def _validate_selected_plan(self) -> None:
         if self._current_plan is None or self._active_profile is None:
@@ -450,6 +493,8 @@ class MainWindow(QMainWindow):
         self._plan_validation.validate(self._active_profile, self._current_plan)
 
     def _plan_validation_started(self) -> None:
+        self._execution_gate.verification_started()
+        self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verifying...")
         self.status_label.setText("Verifying selected actions with a second dry run...")
@@ -459,10 +504,14 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setText("Verify Selected Actions")
         if result.valid:
             self._validated_plan = self._current_plan
+            self._execution_gate.verification_succeeded()
+            self.synchronize_button.setEnabled(True)
             self.validate_plan_button.setText("Actions Verified")
             self.status_label.setText("Selected actions verified. No files were changed.")
             return
         self._validated_plan = None
+        self._execution_gate.verification_failed()
+        self.synchronize_button.setEnabled(False)
         missing = "\n".join(
             f"Missing: {path} ({action.value}, {kind})"
             for path, action, kind in result.mismatch.missing
@@ -477,11 +526,52 @@ class MainWindow(QMainWindow):
 
     def _plan_validation_error(self, message: str) -> None:
         self._validated_plan = None
+        if self._execution_gate.state is ExecutionGateState.VERIFYING:
+            self._execution_gate.verification_failed()
+        self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self.validate_plan_button.setText("Verify Selected Actions")
         self.status_label.setText("Plan validation failed.")
         self._append_log(message)
         QMessageBox.critical(self, "Plan validation failed", message)
+
+    def _show_sync_confirmation(self) -> None:
+        if (
+            self._validated_plan is None
+            or self._active_profile is None
+            or self._execution_gate.state is not ExecutionGateState.VERIFIED
+        ):
+            QMessageBox.warning(
+                self,
+                "Verification required",
+                "Verify the current selected actions before synchronization.",
+            )
+            return
+        freshness = check_plan_freshness(
+            self._validated_plan,
+            self._profile(),
+            self.comparison.model.changes,
+        )
+        if not freshness.fresh:
+            self._invalidate_validated_plan()
+            QMessageBox.warning(
+                self,
+                "Selected actions are out of date",
+                "Compare and verify again: " + "; ".join(freshness.reasons),
+            )
+            return
+        self._execution_gate.confirmation_opened()
+        dialog = SyncConfirmationDialog(self._active_profile, self._validated_plan, self)
+        accepted = bool(dialog.exec())
+        # Execution is deliberately unavailable in 1.15d-01. Confirmation
+        # returns to VERIFIED whether reviewed or cancelled.
+        self._execution_gate.confirmation_cancelled()
+        if accepted:
+            self._set_status(
+                "Confirmation reviewed. Real synchronization is not enabled yet.",
+                "success",
+            )
+        self.synchronize_button.setEnabled(True)
 
     def _compare_if_ready(self) -> None:
         if self.source_edit.text().strip() and self.destination_edit.text().strip():

@@ -116,7 +116,15 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.DESTINATION_NAME:
                 return node.name if destination_present else ""
             if index.column() == self.ACTION:
-                return "" if change is None else self._action_text(change.action, stale=self.stale)
+                if change is None:
+                    return ""
+                action = change.action
+                if (
+                    action is ChangeAction.DESTINATION_ONLY
+                    and self._effective_node(node) is ChangeDecision.INCLUDE
+                ):
+                    action = ChangeAction.DELETE
+                return self._action_text(action, stale=self.stale)
             if change is None:
                 return ""
             if index.column() == self.SOURCE_SIZE:
@@ -192,9 +200,24 @@ class ChangeTreeModel(QAbstractItemModel):
         return self.decisions.selectable(node.change)
 
     def _effective_node(self, node: TreeNode) -> ChangeDecision:
-        if node.change is not None and not self.decisions.selectable(node.change):
+        inherited = self.decisions.inherited(node.path)
+        if inherited is not None:
+            return inherited
+        if node.change is not None:
+            return self.decisions.effective(node.change)
+        descendant_changes = list(self._descendant_changes(node))
+        if descendant_changes and all(
+            change.action is ChangeAction.DESTINATION_ONLY
+            for change in descendant_changes
+        ):
             return ChangeDecision.EXCLUDE
-        return self.decisions.effective_path(node.path)
+        return ChangeDecision.INCLUDE
+
+    def _descendant_changes(self, node: TreeNode):
+        for child in node.children:
+            if child.change is not None:
+                yield child.change
+            yield from self._descendant_changes(child)
 
     def _emit_descendant_check_states(self, parent: QModelIndex) -> None:
         rows = self.rowCount(parent)
@@ -205,6 +228,32 @@ class ChangeTreeModel(QAbstractItemModel):
         self.dataChanged.emit(first, last, [Qt.ItemDataRole.CheckStateRole])
         for row in range(rows):
             self._emit_descendant_check_states(self.index(row, 0, parent))
+
+    def reset_decision(self, path: str) -> None:
+        self.decisions.reset(path)
+        self._emit_all_check_states()
+        self.decision_changed.emit()
+
+    def reset_subtree_decisions(self, path: str) -> None:
+        self.decisions.reset_subtree(path)
+        self._emit_all_check_states()
+        self.decision_changed.emit()
+
+    def reset_all_decisions(self) -> None:
+        self.decisions.clear()
+        self._emit_all_check_states()
+        self.decision_changed.emit()
+
+    def _emit_all_check_states(self) -> None:
+        rows = self.rowCount()
+        if rows:
+            self.dataChanged.emit(
+                self.index(0, self.ACTION),
+                self.index(rows - 1, self.ACTION),
+                [Qt.ItemDataRole.CheckStateRole, Qt.ItemDataRole.UserRole + 1],
+            )
+        for row in range(rows):
+            self._emit_descendant_check_states(self.index(row, 0))
 
     def decision_summary(self):
         return self.decisions.summary(self.changes)

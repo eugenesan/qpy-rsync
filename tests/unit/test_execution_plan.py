@@ -33,8 +33,8 @@ def test_destination_only_inventory_is_not_executable() -> None:
     change = Change("kept", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
     plan = build_execution_plan(profile(), [change], ChangeDecisions())
     assert plan.summary.included == 0
-    assert plan.summary.excluded == 1
-
+    assert plan.summary.excluded == 0
+    assert plan.summary.retained_destination_only == 1
 def test_plan_freshness_detects_profile_and_comparison_changes() -> None:
     item = profile()
     changes = [Change("a", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")]
@@ -63,3 +63,15 @@ def test_semantic_profile_change_changes_fingerprint() -> None:
     second = profile()
     second.transfer.delete = True
     assert profile_fingerprint(first) != profile_fingerprint(second)
+
+def test_selected_destination_only_becomes_destructive_delete() -> None:
+    change = Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
+    decisions = ChangeDecisions()
+    decisions.set(change.path, ChangeDecision.INCLUDE)
+    plan = build_execution_plan(profile(), [change], decisions)
+    assert plan.summary.included == 1
+    assert plan.summary.retained_destination_only == 0
+    assert plan.summary.deletions == 1
+    assert plan.summary.destructive == 1
+    assert plan.items[0].action is ChangeAction.DELETE
+    assert plan.items[0].comparison_action is ChangeAction.DESTINATION_ONLY
