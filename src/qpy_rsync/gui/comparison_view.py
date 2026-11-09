@@ -5,9 +5,11 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTreeView,
     QVBoxLayout,
@@ -22,10 +24,12 @@ class ComparisonView(QWidget):
     """Synchronized source/action/destination tree panes."""
 
     diff_requested = Signal(object)
+    decision_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.model = ChangeTreeModel(self)
+        self.model.decision_changed.connect(self.decision_changed)
         self.proxy = ChangeTreeFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
         self.source = self._tree("Source")
@@ -36,21 +40,41 @@ class ComparisonView(QWidget):
         self.splitter.addWidget(self.source)
         self.splitter.addWidget(self.action)
         self.splitter.addWidget(self.destination)
-        controls = QHBoxLayout()
         self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filter changed paths")
-        expand = QPushButton("Expand All")
-        collapse = QPushButton("Collapse All")
+        self.filter_edit.setPlaceholderText("Pictures/, Documents, School-Report-202*, *.jpg")
+        self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.setMinimumWidth(180)
+        self.filter_edit.setSizePolicy(
+            self.filter_edit.sizePolicy().horizontalPolicy(),
+            self.filter_edit.sizePolicy().verticalPolicy(),
+        )
+        self.filter_edit.setToolTip(
+            "Temporarily filter paths shown in the current comparison. "
+            "This does not change rsync include or exclude rules."
+        )
+        self.expand_button = QPushButton("[v]")
+        self.expand_button.setToolTip("Expand all comparison paths")
+        self.expand_button.setAccessibleName("Expand all comparison paths")
+        self.collapse_button = QPushButton("[^]")
+        self.collapse_button.setToolTip("Collapse all comparison paths")
+        self.collapse_button.setAccessibleName("Collapse all comparison paths")
+        self.controls = QWidget(self)
+        self.controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        controls = QHBoxLayout(self.controls)
+        controls.setContentsMargins(0, 0, 0, 0)
+        self.filter_button = QPushButton("Filter/Find")
+        self.filter_button.setToolTip("Focus the comparison path filter")
+        self.filter_button.clicked.connect(self.focus_path_filter)
+        controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
-        controls.addWidget(expand)
-        controls.addWidget(collapse)
+        controls.addWidget(self.expand_button)
+        controls.addWidget(self.collapse_button)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(controls)
         layout.addWidget(self.splitter)
         self.filter_edit.textChanged.connect(self.set_path_filter)
-        expand.clicked.connect(self.expand_all)
-        collapse.clicked.connect(self.collapse_all)
+        self.expand_button.clicked.connect(self.expand_all)
+        self.collapse_button.clicked.connect(self.collapse_all)
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.header().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.header().sectionResized.connect(
@@ -161,12 +185,20 @@ class ComparisonView(QWidget):
 
     def set_stale(self, stale: bool) -> None:
         self.model.decisions_enabled = not stale
-        self.action.viewport().update()
+        self.model.stale = stale
+        self.source.setEnabled(not stale)
+        self.action.setEnabled(not stale)
+        self.destination.setEnabled(not stale)
+        self.model.layoutChanged.emit()
         self.action.setToolTip(
             "Comparison is stale; compare again before changing decisions."
             if stale
             else ""
         )
+
+    def focus_path_filter(self) -> None:
+        self.filter_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.filter_edit.selectAll()
 
     def set_path_filter(self, text: str) -> None:
         self.proxy.set_path_filter(text)

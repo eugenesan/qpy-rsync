@@ -49,7 +49,13 @@ class ExecutionPlan:
 
 
 def profile_fingerprint(profile: SyncProfile) -> str:
-    payload = json.dumps(profile.to_dict(), sort_keys=True, separators=(",", ":"))
+    # Fingerprint synchronization semantics, not profile identity or labels.
+    # Ad-hoc profiles are reconstructed by the GUI and therefore receive a new
+    # UUID each time; including profile_id would make every plan immediately stale.
+    value = profile.to_dict()
+    for field in ("profile_id", "name", "description", "schema_version"):
+        value.pop(field, None)
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -111,3 +117,31 @@ def build_execution_plan(
         items=tuple(items),
         summary=summary,
     )
+
+@dataclass(slots=True, frozen=True)
+class PlanFreshness:
+    fresh: bool
+    reasons: tuple[str, ...]
+
+
+def check_plan_freshness(
+    plan: ExecutionPlan,
+    profile: SyncProfile,
+    changes: Iterable[Change],
+) -> PlanFreshness:
+    reasons: list[str] = []
+    if plan.profile_fingerprint != profile_fingerprint(profile):
+        reasons.append("profile options changed")
+    if plan.source_operand != profile.source.rsync_operand():
+        reasons.append("source endpoint changed")
+    if plan.destination_operand != profile.destination.rsync_operand():
+        reasons.append("destination endpoint changed")
+    current = {
+        (change.path.rstrip("/"), change.action, change.kind)
+        for change in changes
+        if ChangeDecisions.selectable(change)
+    }
+    planned = {item.identity for item in plan.items}
+    if current != planned:
+        reasons.append("comparison actions changed")
+    return PlanFreshness(not reasons, tuple(reasons))

@@ -29,3 +29,16 @@ def test_temporary_filter_is_private_and_removed() -> None:
         assert path.exists()
         assert path.stat().st_mode & 0o777 == 0o600
     assert not path.exists()
+
+def test_included_child_overrides_excluded_directory() -> None:
+    profile = SyncProfile("plan", Endpoint(EndpointKind.LOCAL, "/src/"), Endpoint(EndpointKind.LOCAL, "/dst/"))
+    changes = [
+        Change("docs", ChangeAction.UPDATE_METADATA, ObjectKind.DIRECTORY, ".d...p....."),
+        Change("docs/keep.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+    ]
+    decisions = ChangeDecisions(); decisions.reconcile(changes)
+    decisions.set("docs", ChangeDecision.EXCLUDE)
+    decisions.set("docs/keep.txt", ChangeDecision.INCLUDE)
+    lines = decision_filter_lines(build_execution_plan(profile, changes, decisions))
+    assert lines[:2] == ["+ /docs/", "+ /docs/keep.txt"]
+    assert "- /docs/***" in lines

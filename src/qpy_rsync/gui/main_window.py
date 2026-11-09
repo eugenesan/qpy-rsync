@@ -7,7 +7,6 @@ from PySide6.QtCore import QProcess, QSettings, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
-    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,11 +22,14 @@ from PySide6.QtWidgets import (
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.core.enums import EndpointKind, Severity
+from qpy_rsync.core.backup_paths import resolve_backup
+from qpy_rsync.core.execution_plan import ExecutionPlan, build_execution_plan, check_plan_freshness
 from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile
 from qpy_rsync.core.validation import validate_profile
 from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
+from qpy_rsync.services.plan_validation_service import PlanValidationResult, PlanValidationService
 
 from .comparison_view import ComparisonView
 from .filter_editor import FilterEditorDialog
@@ -46,6 +48,14 @@ class MainWindow(QMainWindow):
         self._service.on_error = self._comparison_error
         self._service.on_log = self._append_log
         self._active_profile: SyncProfile | None = None
+        self._comparison_profile: SyncProfile | None = None
+        self._current_plan: ExecutionPlan | None = None
+        self._validated_plan: ExecutionPlan | None = None
+        self._plan_validation = PlanValidationService(self)
+        self._plan_validation.on_started = self._plan_validation_started
+        self._plan_validation.on_finished = self._plan_validation_finished
+        self._plan_validation.on_error = self._plan_validation_error
+        self._plan_validation.on_log = self._append_log
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._build_ui()
@@ -53,11 +63,12 @@ class MainWindow(QMainWindow):
         self._restore_endpoints()
         self._restore_filters()
         self._restore_backup()
+        self._update_startup_status()
 
     def _build_ui(self) -> None:
         root = QWidget(self)
         layout = QVBoxLayout(root)
-        form = QFormLayout()
+
         self.source_edit = QLineEdit()
         self.destination_edit = QLineEdit()
         endpoint_placeholder = "Local: /path or ~/path    SSH: [user@]host:/absolute/path"
@@ -66,78 +77,121 @@ class MainWindow(QMainWindow):
         endpoint_help = (
             "Local examples: /home/alice/data or ~/data\n"
             "SSH examples: server:/srv/data or alice@server:/srv/data\n"
-            "SSH host aliases from ~/.ssh/config are supported. "
-            "At most one endpoint may be remote."
+            "SSH host aliases from ~/.ssh/config are supported. At most one endpoint may be remote."
         )
         self.source_edit.setToolTip(endpoint_help)
         self.destination_edit.setToolTip(endpoint_help)
-        form.addRow("Source", self._path_row(self.source_edit))
-        form.addRow("Destination", self._path_row(self.destination_edit))
-        self.backup_edit = QLineEdit()
-        self.backup_edit.setPlaceholderText("Empty disables backups")
-        self.backup_browse = QPushButton("Browse...")
-        self.backup_browse.clicked.connect(self._browse_backup)
-        backup_row = QWidget()
-        backup_layout = QHBoxLayout(backup_row)
-        backup_layout.setContentsMargins(0, 0, 0, 0)
-        backup_layout.addWidget(self.backup_edit, 1)
-        backup_layout.addWidget(self.backup_browse)
-        form.addRow("Backup directory", backup_row)
-        self.protect_backup = QCheckBox("Protect nested backup tree")
-        self.protect_backup.setChecked(True)
-        form.addRow("", self.protect_backup)
-        self.backup_status = QLabel("Backups are disabled.")
-        self.backup_status.setWordWrap(True)
-        form.addRow("Backup status", self.backup_status)
-        layout.addLayout(form)
-        help_label = QLabel(
-            "Locations: local /path or ~/path; SSH [user@]host:/absolute/path. "
-            "Directory contents are compared, equivalent to a trailing slash."
-        )
-        help_label.setWordWrap(True)
-        layout.addWidget(help_label)
+
+        self.comparison = ComparisonView()
+        self.comparison.diff_requested.connect(self._open_diff_tool)
+        self.comparison.decision_changed.connect(self._invalidate_validated_plan)
+        self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
         self.compare_button = QPushButton("Compare")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
+        self.validate_plan_button = QPushButton("Verify Selected Actions")
+        self.validate_plan_button.setMinimumWidth(
+            self.validate_plan_button.fontMetrics().horizontalAdvance("Verify Selected Actions") + 28
+        )
+        self.validate_plan_button.setEnabled(False)
+        self.swap_button = QPushButton("Swap")
         self.filters_button = QPushButton("Filters...")
         self.filters_label = QLabel("Filters: 0 enabled / 0 total")
-        self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Filter paths")
-        controls.addWidget(self.compare_button)
-        controls.addWidget(self.cancel_button)
-        controls.addWidget(self.filters_button)
-        controls.addWidget(self.filters_label)
-        controls.addWidget(QLabel("Find"))
-        controls.addWidget(self.filter_edit, 1)
+        for widget in (
+            self.compare_button,
+            self.cancel_button,
+            self.validate_plan_button,
+            self.filters_button,
+            self.filters_label,
+        ):
+            controls.addWidget(widget)
+        controls.addWidget(self.comparison.controls, 1)
         layout.addLayout(controls)
 
+        locations = QHBoxLayout()
+        source_panel = self._location_panel("Source", self.source_edit)
+        self.swap_button.setText("⇄")
+        self.swap_button.setToolTip("Swap Source and Destination")
+        self.swap_button.setAccessibleName("Swap Source and Destination")
+        self.swap_button.setMinimumWidth(56)
+        destination_panel = self._location_panel("Destination", self.destination_edit)
+        locations.addWidget(source_panel, 45)
+        locations.addWidget(self.swap_button, 10, Qt.AlignmentFlag.AlignCenter)
+        locations.addWidget(destination_panel, 45)
+        layout.addLayout(locations)
+
         splitter = QSplitter(Qt.Orientation.Vertical)
-        self.comparison = ComparisonView()
-        self.comparison.diff_requested.connect(self._open_diff_tool)
         splitter.addWidget(self.comparison)
+        log_panel = QWidget(self)
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        self.log_header = QLabel("Command preview and diagnostics")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
-        splitter.addWidget(self.log)
-        splitter.setSizes([520, 130])
+        log_layout.addWidget(self.log_header)
+        log_layout.addWidget(self.log)
+        splitter.addWidget(log_panel)
+        splitter.setSizes([520, 110])
         layout.addWidget(splitter, 1)
 
-        self.status_label = QLabel("Ready. Select two local directories.")
+        backup_panel = QWidget(self)
+        backup_layout = QVBoxLayout(backup_panel)
+        backup_layout.setContentsMargins(0, 2, 0, 2)
+        backup_row = QHBoxLayout()
+        self.backup_edit = QLineEdit()
+        self.backup_edit.setPlaceholderText("Empty disables backups")
+        self.backup_browse = QPushButton("Browse...")
+        self.protect_backup = QCheckBox("Protect nested")
+        self.protect_backup.setChecked(True)
+        backup_row.addWidget(QLabel("Backup"))
+        backup_row.addWidget(self.backup_edit, 1)
+        backup_row.addWidget(self.backup_browse)
+        backup_row.addWidget(self.protect_backup)
+        self.backup_status = QLabel("Backups are disabled.")
+        self.backup_status.setWordWrap(True)
+        backup_layout.addLayout(backup_row)
+        backup_layout.addWidget(self.backup_status)
+        layout.addWidget(backup_panel)
+
+        self.plan_summary_label = QLabel()
+        self.plan_summary_label.hide()
+        layout.addWidget(self.plan_summary_label)
+        self.status_label = QLabel()
         layout.addWidget(self.status_label)
         self.setCentralWidget(root)
+
         self.compare_button.clicked.connect(self._compare)
         self.cancel_button.clicked.connect(self._service.cancel)
+        self.validate_plan_button.clicked.connect(self._validate_selected_plan)
+        self.swap_button.clicked.connect(self._swap_endpoints)
         self.filters_button.clicked.connect(self._edit_filters)
+        self.backup_browse.clicked.connect(self._browse_backup)
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
         self.destination_edit.editingFinished.connect(self._update_command_preview)
+        self.source_edit.textChanged.connect(self._endpoint_text_changed)
+        self.destination_edit.textChanged.connect(self._endpoint_text_changed)
         self.backup_edit.editingFinished.connect(self._backup_changed)
         self.protect_backup.toggled.connect(self._backup_changed)
-        self.destination_edit.textChanged.connect(self._update_backup_browse_state)
-        self.filter_edit.setEnabled(False)
-        self.filter_edit.setToolTip("Path filtering will return with the hierarchical proxy model.")
+
+    def _location_panel(self, title: str, edit: QLineEdit) -> QWidget:
+        panel = QWidget(self)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(title)
+        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        label.setObjectName(f"{title.lower()}-location-label")
+        layout.addWidget(label)
+        row = QHBoxLayout()
+        browse = QPushButton("Browse...")
+        browse.clicked.connect(lambda: self._browse(edit))
+        row.addWidget(edit, 1)
+        row.addWidget(browse)
+        layout.addLayout(row)
+        return panel
 
     def _path_row(self, edit: QLineEdit) -> QWidget:
         container = QWidget()
@@ -149,8 +203,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(button)
         return container
 
+    @staticmethod
+    def _browse_start_directory(value: str) -> str:
+        text = value.strip()
+        try:
+            endpoint = parse_endpoint(text)
+        except ValueError:
+            endpoint = None
+        if endpoint is not None and endpoint.kind is EndpointKind.SSH:
+            return str(Path.home())
+        candidate = Path(text or Path.home()).expanduser()
+        while not candidate.exists() and candidate != candidate.parent:
+            candidate = candidate.parent
+        if candidate.exists() and candidate.is_file():
+            candidate = candidate.parent
+        return str(candidate if candidate.exists() else Path.home())
+
     def _browse(self, edit: QLineEdit) -> None:
-        selected = QFileDialog.getExistingDirectory(self, "Select directory", edit.text() or str(Path.home()))
+        selected = QFileDialog.getExistingDirectory(self, "Select directory", self._browse_start_directory(edit.text()))
         if selected:
             edit.setText(selected + "/")
 
@@ -158,7 +228,7 @@ class MainWindow(QMainWindow):
         selected = QFileDialog.getExistingDirectory(
             self,
             "Select backup directory",
-            self.backup_edit.text() or str(Path.home()),
+            self._browse_start_directory(self.backup_edit.text()),
         )
         if selected:
             self.backup_edit.setText(selected)
@@ -170,6 +240,68 @@ class MainWindow(QMainWindow):
             self.backup_browse.setEnabled(destination.kind is EndpointKind.LOCAL)
         except ValueError:
             self.backup_browse.setEnabled(False)
+
+    def _endpoint_text_changed(self) -> None:
+        self._update_backup_browse_state()
+        if self.comparison.model.changes:
+            self.comparison.set_stale(True)
+            self._invalidate_plan_context()
+            self._set_status(
+                "Comparison is out of date because a location changed. Click Compare to refresh.",
+                "warning",
+            )
+
+    def _swap_endpoints(self) -> None:
+        source = self.source_edit.text()
+        self.source_edit.blockSignals(True)
+        self.destination_edit.blockSignals(True)
+        self.source_edit.setText(self.destination_edit.text())
+        self.destination_edit.setText(source)
+        self.source_edit.blockSignals(False)
+        self.destination_edit.blockSignals(False)
+        self._save_endpoints()
+        self._update_backup_browse_state()
+        self._update_backup_status()
+        if self.comparison.model.changes:
+            self.comparison.set_stale(True)
+            self._set_locations_stale(True)
+            self._invalidate_plan_context()
+            self._set_status(
+                "Source and Destination were swapped. The disabled comparison uses the old direction; click Compare to refresh.",
+                "warning",
+            )
+        else:
+            self._update_startup_status()
+        self._update_command_preview()
+
+    def _set_locations_stale(self, stale: bool) -> None:
+        style = "color: #0891B2;" if stale else ""
+        self.source_edit.setStyleSheet(style)
+        self.destination_edit.setStyleSheet(style)
+
+    def _set_status(self, text: str, severity: str = "info") -> None:
+        colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
+        self.status_label.setText(text)
+        self.status_label.setStyleSheet(f"color: {colors.get(severity, '')};")
+
+    def _set_backup_message(self, text: str, severity: str = "info") -> None:
+        colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
+        self.backup_status.setText(text)
+        self.backup_status.setStyleSheet(f"color: {colors.get(severity, '')};")
+
+    def _update_nested_protection_ui(self, profile: SyncProfile) -> None:
+        resolved = resolve_backup(profile)
+        nested = bool(resolved and (resolved.nested_in_source or resolved.nested_in_destination))
+        self.protect_backup.blockSignals(True)
+        if not nested:
+            self.protect_backup.setChecked(True)
+        self.protect_backup.setEnabled(nested)
+        self.protect_backup.blockSignals(False)
+        self.protect_backup.setToolTip(
+            "Exclude the nested backup directory from synchronization and protect it from deletion."
+            if nested
+            else "Protection is only needed when the backup directory is inside Source or Destination."
+        )
 
     def _profile(self) -> SyncProfile:
         return SyncProfile(
@@ -191,6 +323,7 @@ class MainWindow(QMainWindow):
         self._save_filters()
         self._update_filter_summary(stale=True)
         self.comparison.set_stale(True)
+        self._invalidate_plan_context()
         self.status_label.setText(
             "Stale comparison: filter rules changed. Compare again to refresh results."
         )
@@ -213,10 +346,18 @@ class MainWindow(QMainWindow):
         self._backup = updated
         self._save_backup()
         self._update_backup_status()
-        self.comparison.set_stale(True)
-        self.status_label.setText(
-            "Stale comparison: backup settings changed. Compare again to refresh results."
-        )
+        self._validated_plan = None
+        self.validate_plan_button.setText("Verify Selected Actions")
+        if self._active_profile is not None and self.comparison.model.changes:
+            self._active_profile.backup = BackupOptions(
+                directory=updated.directory,
+                protect_nested=updated.protect_nested,
+            )
+            self._refresh_plan_summary()
+            self._set_status(
+                "Backup settings changed. Verify selected actions again before synchronization.",
+                "warning",
+            )
         self._update_command_preview()
 
     def _update_command_preview(self) -> None:
@@ -242,14 +383,105 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             self.backup_status.setText(str(exc))
             return
-        prefix = ""
+        self._update_nested_protection_ui(profile)
         errors = [item.message for item in messages if item.severity is Severity.ERROR]
         warnings = [item.message for item in messages if item.severity is Severity.WARNING]
         if errors:
-            prefix = "Error: " + " ".join(errors) + " "
+            self._set_backup_message("Error: " + " ".join(errors) + " " + status.message, "error")
         elif warnings:
-            prefix = "Warning: " + " ".join(warnings) + " "
-        self.backup_status.setText(prefix + status.message)
+            severity = "error" if any(item.code == "backup.directory.unprotected" for item in messages) else "warning"
+            self._set_backup_message("Warning: " + " ".join(warnings) + " " + status.message, severity)
+        else:
+            self._set_backup_message(status.message, "success" if status.nonempty is False else "info")
+
+    def _invalidate_plan_context(self) -> None:
+        self._current_plan = None
+        self._validated_plan = None
+        self.validate_plan_button.setEnabled(False)
+        self.validate_plan_button.setText("Verify Selected Actions")
+        self.plan_summary_label.hide()
+
+    def _invalidate_validated_plan(self) -> None:
+        self._validated_plan = None
+        self.validate_plan_button.setText("Verify Selected Actions")
+        if self._active_profile is not None and self.comparison.model.changes:
+            self._refresh_plan_summary()
+
+    def _refresh_plan_summary(self) -> None:
+        if self._active_profile is None:
+            self._current_plan = None
+            self.plan_summary_label.setText("")
+            self.validate_plan_button.setEnabled(False)
+            return
+        self._current_plan = build_execution_plan(
+            self._active_profile,
+            self.comparison.model.changes,
+            self.comparison.model.decisions,
+        )
+        summary = self._current_plan.summary
+        self.plan_summary_label.setText(
+            "Selected actions: "
+            f"{summary.included} included, {summary.excluded} excluded, "
+            f"{summary.destructive} destructive; "
+            f"create {summary.creates}, update {summary.updates}, "
+            f"metadata {summary.metadata}, replace {summary.replacements}, "
+            f"delete {summary.deletions}; "
+            f"backup {'on' if summary.backup_enabled else 'off'}"
+        )
+        self.plan_summary_label.show()
+        self.validate_plan_button.setEnabled(summary.included > 0)
+
+    def _validate_selected_plan(self) -> None:
+        if self._current_plan is None or self._active_profile is None:
+            return
+        freshness = check_plan_freshness(
+            self._current_plan,
+            self._profile(),
+            self.comparison.model.changes,
+        )
+        if not freshness.fresh:
+            self._validated_plan = None
+            QMessageBox.warning(
+                self,
+                "Execution plan is stale",
+                "Plan validation is blocked: " + "; ".join(freshness.reasons),
+            )
+            return
+        self._plan_validation.validate(self._active_profile, self._current_plan)
+
+    def _plan_validation_started(self) -> None:
+        self.validate_plan_button.setEnabled(False)
+        self.validate_plan_button.setText("Verifying...")
+        self.status_label.setText("Verifying selected actions with a second dry run...")
+
+    def _plan_validation_finished(self, result: PlanValidationResult) -> None:
+        self.validate_plan_button.setEnabled(True)
+        self.validate_plan_button.setText("Verify Selected Actions")
+        if result.valid:
+            self._validated_plan = self._current_plan
+            self.validate_plan_button.setText("Actions Verified")
+            self.status_label.setText("Selected actions verified. No files were changed.")
+            return
+        self._validated_plan = None
+        missing = "\n".join(
+            f"Missing: {path} ({action.value}, {kind})"
+            for path, action, kind in result.mismatch.missing
+        )
+        unexpected = "\n".join(
+            f"Unexpected: {path} ({action.value}, {kind})"
+            for path, action, kind in result.mismatch.unexpected
+        )
+        detail = "\n".join(part for part in (missing, unexpected) if part)
+        QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
+        self.status_label.setText("Plan validation failed; synchronization remains blocked.")
+
+    def _plan_validation_error(self, message: str) -> None:
+        self._validated_plan = None
+        self.validate_plan_button.setEnabled(self._current_plan is not None)
+        self.validate_plan_button.setText("Verify Selected Actions")
+        self.status_label.setText("Plan validation failed.")
+        self._append_log(message)
+        QMessageBox.critical(self, "Plan validation failed", message)
 
     def _compare_if_ready(self) -> None:
         if self.source_edit.text().strip() and self.destination_edit.text().strip():
@@ -264,6 +496,7 @@ class MainWindow(QMainWindow):
             return
         self.log.clear()
         self._active_profile = profile
+        self._comparison_profile = profile
         self._save_endpoints()
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
@@ -294,6 +527,9 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.comparison.set_changes(result.parsed.changes)
         self.comparison.set_stale(False)
+        self._set_locations_stale(False)
+        self._validated_plan = None
+        self._refresh_plan_summary()
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)
@@ -354,6 +590,12 @@ class MainWindow(QMainWindow):
         self._update_backup_browse_state()
         self._update_backup_status()
         self._update_command_preview()
+
+    def _update_startup_status(self) -> None:
+        if self.source_edit.text().strip() and self.destination_edit.text().strip():
+            self._set_status("Ready. Click Compare to refresh the remembered Source and Destination.")
+        else:
+            self._set_status("Choose Source and Destination above the comparison panes.")
 
     def _restore_window_state(self) -> None:
         settings = QSettings()

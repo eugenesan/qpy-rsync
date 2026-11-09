@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
@@ -26,6 +26,7 @@ class TreeNode:
 
 
 class ChangeTreeModel(QAbstractItemModel):
+    decision_changed = Signal()
     SOURCE_NAME = 0
     SOURCE_SIZE = 1
     SOURCE_TIME = 2
@@ -34,7 +35,7 @@ class ChangeTreeModel(QAbstractItemModel):
     DESTINATION_SIZE = 5
     DESTINATION_TIME = 6
     COLUMN_COUNT = 7
-    HEADERS = ("Source", "Size", "Modified", "Action", "Destination", "Size", "Modified")
+    HEADERS = ("File/Directory", "Size", "Modified", "Action", "File/Directory", "Size", "Modified")
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +44,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self.changes: list[Change] = []
         self.discarded_decisions = 0
         self.decisions_enabled = True
+        self.stale = False
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
@@ -114,7 +116,7 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.DESTINATION_NAME:
                 return node.name if destination_present else ""
             if index.column() == self.ACTION:
-                return "" if change is None else self._action_text(change.action)
+                return "" if change is None else self._action_text(change.action, stale=self.stale)
             if change is None:
                 return ""
             if index.column() == self.SOURCE_SIZE:
@@ -127,7 +129,11 @@ class ChangeTreeModel(QAbstractItemModel):
                 return ""  # rsync itemized output does not provide destination mtime.
         if role == Qt.ItemDataRole.ToolTipRole and change is not None:
             return f"{change.itemized_code}: {change.reason}"
-        if role == Qt.ItemDataRole.ForegroundRole and change is not None:
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and change is not None
+            and index.column() != self.ACTION
+        ):
             if change.action is ChangeAction.CREATE:
                 return QColor("#208020")
             if change.action is ChangeAction.DESTINATION_ONLY:
@@ -177,6 +183,7 @@ class ChangeTreeModel(QAbstractItemModel):
             [Qt.ItemDataRole.CheckStateRole, Qt.ItemDataRole.UserRole + 1],
         )
         self._emit_descendant_check_states(index.siblingAtColumn(0))
+        self.decision_changed.emit()
         return True
 
     def _node_selectable(self, node: TreeNode) -> bool:
@@ -203,8 +210,8 @@ class ChangeTreeModel(QAbstractItemModel):
         return self.decisions.summary(self.changes)
 
     @staticmethod
-    def _action_text(action: ChangeAction) -> str:
-        return {
+    def _action_text(action: ChangeAction, *, stale: bool = False) -> str:
+        fresh = {
             ChangeAction.CREATE: "→ create",
             ChangeAction.UPDATE_CONTENT: "→ update",
             ChangeAction.UPDATE_METADATA: "→ metadata",
@@ -213,7 +220,18 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.REPLACE: "→ replace",
             ChangeAction.NO_CHANGE: "=",
             ChangeAction.MESSAGE: "!",
-        }[action]
+        }
+        stale_text = {
+            ChangeAction.CREATE: "create",
+            ChangeAction.UPDATE_CONTENT: "update",
+            ChangeAction.UPDATE_METADATA: "metadata",
+            ChangeAction.DELETE: "delete",
+            ChangeAction.DESTINATION_ONLY: "keep",
+            ChangeAction.REPLACE: "replace",
+            ChangeAction.NO_CHANGE: "unchanged",
+            ChangeAction.MESSAGE: "message",
+        }
+        return (stale_text if stale else fresh)[action]
 
     @staticmethod
     def _size(size: int | None) -> str:

@@ -51,3 +51,14 @@ def test_recompare_reports_discarded_decision() -> None:
         [Change("file.txt", ChangeAction.REPLACE, ObjectKind.FILE, "cL+++++++++")]
     )
     assert model.discarded_decisions == 1
+
+def test_stale_action_text_is_neutral_and_arrowless() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
+    )
+    index = model.index(0, model.ACTION)
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "→ update"
+    model.stale = True
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "update"
+    assert model.data(index, Qt.ItemDataRole.ForegroundRole) is None

@@ -18,6 +18,27 @@ def _pattern(item: PlanItem) -> str:
 
 def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
     lines: list[str] = []
+    excluded_directories = {
+        item.path.strip("/")
+        for item in plan.items
+        if not item.included and item.kind is ObjectKind.DIRECTORY
+    }
+    included_overrides = [
+        item
+        for item in plan.items
+        if item.included
+        and any(
+            item.path.strip("/").startswith(directory + "/")
+            for directory in excluded_directories
+        )
+    ]
+    traversal: set[str] = set()
+    for item in included_overrides:
+        parts = item.path.strip("/").split("/")
+        for position in range(1, len(parts)):
+            traversal.add("/" + "/".join(parts[:position]) + "/")
+    lines.extend(f"+ {path}" for path in sorted(traversal))
+    lines.extend(f"+ {_pattern(item)}" for item in included_overrides)
     for item in plan.items:
         if item.included:
             continue
