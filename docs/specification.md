@@ -289,23 +289,40 @@ OpenSSH remains responsible for host aliases, ports, identity files, `ProxyJump`
 
 ## 10. Filters
 
-The canonical model is rsync's ordered filter language.
+The canonical model is rsync's ordered filter language. qpy-rsync presents one
+ordered list with three rule types:
 
-UI modes:
+- **Include**, emitted as `--include=PATTERN`
+- **Exclude**, emitted as `--exclude=PATTERN`
+- **Advanced**, emitted as `--filter RULE`
 
-- Simple excludes
-- Simple includes
-- Advanced ordered rules
-- Import/export filter file
+The classic options are the preferred interface for ordinary migration from raw
+rsync and other synchronizers. Advanced rules expose native rsync filter
+features. All three types participate in the same ordered first-match rule list.
 
-Example:
+Rules retain an enabled state, type, pattern or native rule, optional comment,
+and order. Disabled rules are persisted but omitted from the command vector.
+The editor supports creation, editing, duplication, removal, reordering,
+import, and export. Imported native filter-file lines become Advanced rules;
+export writes enabled rules in native filter-file syntax.
+
+Example using classic rules:
 
 ```text
-- *.tmp
-- /build/
-+ /important/***
-- *
+Include  /.git/
+Include  /.git/HEAD
+Exclude  /.git/***
 ```
+
+Parent traversal is significant. An included descendant is not discovered when
+an earlier exclusion prevents rsync from descending through its parent. The UI
+documentation therefore shows required parent-directory include rules for
+include-only patterns.
+
+Changing persistent rules invalidates the active comparison. qpy-rsync retains
+the old tree with a visible stale marker, locks per-object decisions, and
+requires a successful new dry-run before execution planning. A per-object
+checkbox cannot re-include an object removed by persistent filters.
 
 ### 10.1 Brace convenience expansion
 

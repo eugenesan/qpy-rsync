@@ -63,9 +63,32 @@ a later usability refinement.
 Conflict-policy visualization remains a candidate for refinement alongside the
 Milestone 1.15 execution-plan confirmation UI.
 
-## Milestone 1.15: synchronization execution
+## Milestone 1.15a: persistent include/exclude filters (completed)
+
+- ordered classic `--include` and `--exclude` rules
+- advanced native `--filter` rules
+- enable/disable state without rule removal
+- rule editing, reordering, duplication, import, and export
+- persistent ad hoc filter settings
+- stale-comparison retention and decision locking
+
+## Milestone 1.15b: backup and versioning
+
+- none, overwritten, deleted, and both backup modes
+- `--backup` and validated `--backup-dir`
+- single recovery tree and timestamped-run layouts
+- endpoint equality and nesting safety checks
+- automatic backup-tree protection
+- backup implications in comparison and confirmation summaries
+
+## Milestone 1.15c: immutable execution plan
 
 - generate an execution plan from validated selections
+- combine persistent filters, per-object decisions, and backup policy
+- run a second validation dry-run and block mismatches
+
+## Milestone 1.15d: confirmation and synchronization execution
+
 - show a final confirmation summary
 - perform real rsync execution
 - parse progress and statistics

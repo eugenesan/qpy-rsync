@@ -4,7 +4,7 @@
 
 ## Current state
 
-Milestones 1 through 1.11 provide a read-only comparison workflow with:
+Milestones 1 through 1.15a provide a read-only comparison and planning workflow with:
 
 - local and rsync-over-SSH endpoints
 - asynchronous rsync dry-run execution and controlled output parsing
@@ -13,7 +13,7 @@ Milestones 1 through 1.11 provide a read-only comparison workflow with:
 - graphical OpenSSH askpass integration
 - optional system-Python or `.venv` development workflows
 
-Synchronization execution and per-object decisions are not implemented yet.
+Per-object decisions and persistent ordered filters are implemented. Synchronization execution is not implemented yet.
 
 ## Requirements
 
@@ -133,3 +133,40 @@ subtree. Message and no-change records are not selectable.
 
 Decisions survive a recompare only while the same path retains the same action
 and object kind. Stale decisions are discarded when that identity changes.
+
+## Persistent rsync filters
+
+Use **Filters...** to maintain one ordered list of persistent rules. Rules are
+saved across restarts and are applied to both comparison and future execution.
+The first matching rsync rule wins.
+
+The editor supports three rule types:
+
+- **Include** generates `--include=PATTERN`.
+- **Exclude** generates `--exclude=PATTERN`.
+- **Advanced** generates `--filter RULE` for native rsync filter syntax.
+
+Include and exclude are the recommended interface for ordinary rules. Advanced
+rules support native rsync features such as protect/risk rules and merge files.
+Classic include/exclude options and advanced filter rules share the same ordered
+rsync rule list.
+
+Rsync must be allowed to traverse parent directories before it can match an
+included descendant. For example, to include only the root `.git/HEAD` entry:
+
+```text
+Include  /.git/
+Include  /.git/HEAD
+Exclude  /.git/***
+```
+
+Rules can be enabled or disabled without removal. Disabled rules retain their
+position, type, pattern, and comment but are omitted from the rsync argument
+vector. Import reads native rsync filter-file lines as Advanced rules. Export
+writes all enabled rules in native filter-file syntax.
+
+Changing rules keeps the previous comparison visible but marks it **STALE**.
+Per-object decision checkboxes are locked until a new comparison succeeds;
+browsing, expansion, visual path filtering, and diff-tool inspection remain
+available. A checkbox decision cannot re-include an item excluded by persistent
+filters because rsync did not return that item in the comparison.

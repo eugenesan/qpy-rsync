@@ -125,3 +125,13 @@
 - Track included, excluded, and included-destructive counts for the future execution plan.
 - Stabilize filtering after proxy resets so clearing punctuation and glob filters restores and expands the complete tree.
 - Add tests for inheritance, child overrides, stale decisions, summaries, non-selectable records, tree checkboxes, and directory subtrees.
+
+## milestone 1.15a
+
+- Add persistent ordered rsync include, exclude, and advanced filter rules.
+- Generate classic `--include` and `--exclude` options while retaining native `--filter` support.
+- Preserve exact mixed-rule order and omit disabled rules without deleting them.
+- Add rule creation, editing, duplication, removal, reordering, enable/disable, comments, import, and export.
+- Persist ad hoc filters, rule types, enabled states, comments, and ordering across restarts.
+- Retain the previous comparison after filter changes, mark it stale, and lock per-object decisions until comparison succeeds again.
+- Add tests for command-vector ordering, profile serialization, rule validation, editor models, and settings serialization.
