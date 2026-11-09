@@ -31,7 +31,7 @@ class InvalidProfileError(ValueError):
     pass
 
 
-def _common_arguments(profile: SyncProfile) -> list[str]:
+def _common_arguments(profile: SyncProfile, *, filter_file: Path | None = None) -> list[str]:
     messages = validate_profile(profile)
     if has_errors(messages):
         detail = "; ".join(message.message for message in messages if message.severity.value == "error")
@@ -78,6 +78,8 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
         args.extend(("--backup", f"--backup-dir={destination_backup_directory(profile)}"))
 
     args.extend(backup_protection_arguments(profile))
+    if filter_file is not None:
+        args.append(f"--filter=merge {filter_file}")
     args.extend(filter_arguments(profile.filters))
 
     return args
@@ -117,14 +119,12 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
     remote_shell = _remote_shell_argument(profile)
     if remote_shell is not None:
         args.extend(("-e", remote_shell))
-    args.extend(_common_arguments(profile))
+    args.extend(_common_arguments(profile, filter_file=filter_file))
     # A one-way preview must inventory destination-only objects even when the
     # execution profile is configured to keep them. Dry-run makes this safe.
     # The parser labels them DESTINATION_ONLY unless deletion is enabled.
     if not profile.transfer.delete:
         args.append("--delete-during")
-    if filter_file is not None:
-        args.append(f"--filter=merge {filter_file}")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
     return _process_spec(profile, args)
 
@@ -134,8 +134,6 @@ def build_sync_spec(profile: SyncProfile, *, filter_file: Path | None = None) ->
     remote_shell = _remote_shell_argument(profile)
     if remote_shell is not None:
         args.extend(("-e", remote_shell))
-    args.extend(_common_arguments(profile))
-    if filter_file is not None:
-        args.append(f"--filter=merge {filter_file}")
+    args.extend(_common_arguments(profile, filter_file=filter_file))
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
     return _process_spec(profile, args)
