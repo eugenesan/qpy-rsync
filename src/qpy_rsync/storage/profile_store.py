@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from qpy_rsync.core.enums import BackupMode, ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
+from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
 from qpy_rsync.core.models import BackupOptions, Endpoint, FilterRule, PreservationOptions, SyncProfile, TransferOptions
 
 
@@ -50,9 +50,15 @@ def load_profile(path: Path) -> SyncProfile:
         transfer_raw["delete_timing"] = DeleteTiming(transfer_raw["delete_timing"])
     transfer = TransferOptions(**transfer_raw)
     backup_raw = raw.get("backup", {}).copy()
+    backup_directory = str(backup_raw.get("directory") or "")
     if "mode" in backup_raw:
-        backup_raw["mode"] = BackupMode(backup_raw["mode"])
-    backup = BackupOptions(**backup_raw)
+        legacy_mode = str(backup_raw.pop("mode"))
+        if legacy_mode == "none":
+            backup_directory = ""
+    backup = BackupOptions(
+        directory=backup_directory,
+        protect_nested=bool(backup_raw.get("protect_nested", True)),
+    )
     filters = []
     for item in raw.get("filters", []):
         value = item.copy()

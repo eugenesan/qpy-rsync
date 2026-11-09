@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .enums import BackupMode, DeleteTiming, EndpointKind, Severity
+from .enums import DeleteTiming, EndpointKind, Severity
 from .models import SyncProfile
 
 
@@ -42,9 +42,7 @@ def validate_profile(profile: SyncProfile) -> list[ValidationMessage]:
         messages.append(ValidationMessage(Severity.INFO, "transfer.ignore_times", "Ignore-times transfers every file even when size and modification time match."))
 
     backup = profile.backup
-    if backup.mode is not BackupMode.NONE and not backup.directory:
-        messages.append(ValidationMessage(Severity.ERROR, "backup.directory.empty", "A backup directory is required when backup mode is enabled."))
-    if backup.directory and backup.directory in {profile.source.path, profile.destination.path}:
+    if backup.enabled and backup.directory.strip() in {profile.source.path, profile.destination.path}:
         messages.append(ValidationMessage(Severity.ERROR, "backup.directory.endpoint", "Backup directory cannot equal the source or destination path."))
 
     return messages

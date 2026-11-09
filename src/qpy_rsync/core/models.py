@@ -6,7 +6,7 @@ from os.path import expanduser
 from typing import Any
 from uuid import uuid4
 
-from .enums import BackupMode, ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
+from .enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType
 
 
 @dataclass(slots=True, frozen=True)
@@ -54,8 +54,12 @@ class TransferOptions:
 
 @dataclass(slots=True)
 class BackupOptions:
-    mode: BackupMode = BackupMode.NONE
-    directory: str | None = None
+    directory: str = ""
+    protect_nested: bool = True
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.directory.strip())
 
 
 @dataclass(slots=True)
@@ -73,7 +77,7 @@ class SyncProfile:
     destination: Endpoint
     profile_id: str = field(default_factory=lambda: str(uuid4()))
     description: str = ""
-    schema_version: int = 2
+    schema_version: int = 3
     conflict_policy: ConflictPolicy = ConflictPolicy.OVERRIDE
     preservation: PreservationOptions = field(default_factory=PreservationOptions)
     transfer: TransferOptions = field(default_factory=TransferOptions)

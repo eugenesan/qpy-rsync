@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import shlex
 
-from qpy_rsync.core.enums import BackupMode, DeleteTiming, EndpointKind
+from qpy_rsync.core.enums import DeleteTiming, EndpointKind
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
 
@@ -73,8 +73,8 @@ def _common_arguments(profile: SyncProfile) -> list[str]:
         timing = DeleteTiming.AFTER if transfer.fuzzy else transfer.delete_timing
         args.append(f"--delete-{timing.value}")
 
-    if profile.backup.mode is not BackupMode.NONE:
-        args.extend(("--backup", f"--backup-dir={profile.backup.directory}"))
+    if profile.backup.enabled:
+        args.extend(("--backup", f"--backup-dir={profile.backup.directory.strip()}"))
 
     args.extend(filter_arguments(profile.filters))
 

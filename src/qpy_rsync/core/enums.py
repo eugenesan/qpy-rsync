@@ -21,13 +21,6 @@ class DeleteTiming(StrEnum):
     AFTER = "after"
 
 
-class BackupMode(StrEnum):
-    NONE = "none"
-    OVERWRITTEN = "overwritten"
-    DELETED = "deleted"
-    BOTH = "both"
-
-
 class FilterRuleType(StrEnum):
     INCLUDE = "include"
     EXCLUDE = "exclude"
