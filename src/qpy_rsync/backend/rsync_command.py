@@ -117,7 +117,12 @@ def _process_spec(profile: SyncProfile, arguments: list[str]) -> ProcessSpec:
     return ProcessSpec("rsync", tuple(arguments), environment)
 
 def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
-    args = ["--dry-run", "--itemize-changes", f"--out-format={DEFAULT_OUT_FORMAT}"]
+    args = [
+        "--dry-run",
+        "--itemize-changes",
+        "--info=progress2",
+        f"--out-format={DEFAULT_OUT_FORMAT}",
+    ]
     remote_shell = _remote_shell_argument(profile)
     if remote_shell is not None:
         args.extend(("-e", remote_shell))

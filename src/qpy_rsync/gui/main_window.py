@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
+    QSizePolicy,
     QToolTip,
     QPushButton,
     QSplitter,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.backend.inventory import unchanged_changes
+from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import load_profile, save_profile
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
@@ -44,8 +46,8 @@ from qpy_rsync.services.plan_validation_service import PlanValidationResult, Pla
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
-from .comparison_view import ComparisonView
-from .elided_label import ElidedLabel
+from .command_preview import CommandPreview
+from .comparison_view import CONTROL_SIZE, ComparisonView
 from .icons import destination_icon, source_icon, swap_icon
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
@@ -65,7 +67,9 @@ class MainWindow(QMainWindow):
         self._service.on_started = self._comparison_started
         self._service.on_finished = self._comparison_finished
         self._service.on_error = self._comparison_error
+        self._service.on_cancelled = self._comparison_cancelled
         self._service.on_log = self._append_log
+        self._service.on_progress = self._comparison_progress
         self._active_profile: SyncProfile | None = None
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
@@ -137,6 +141,14 @@ class MainWindow(QMainWindow):
             "New Only: copy missing objects; do not update or delete existing objects."
         )
         controls.addWidget(self.sync_mode)
+        self.swap_button = QToolButton()
+        self.swap_button.setIcon(swap_icon())
+        self.swap_button.setIconSize(QSize(18, 18))
+        self.swap_button.setToolTip("Swap Source and Destination")
+        self.swap_button.setAccessibleName("Swap Source and Destination")
+        self.swap_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.swap_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        controls.addWidget(self.swap_button)
         self.compare_button = QPushButton("Compare")
         self.compare_button.setToolTip(
             "Compare Source and Destination using an rsync dry run.\n"
@@ -163,10 +175,6 @@ class MainWindow(QMainWindow):
             + 28
         )
         self.validate_plan_button.setEnabled(False)
-        self.swap_button = QToolButton()
-        self.swap_button.setIcon(swap_icon())
-        self.swap_button.setIconSize(QSize(16, 16))
-        self.swap_button.setToolTip("Swap Source and Destination")
         self.filters_button = QPushButton("Filters")
         self.save_profile_button = QPushButton("Save Profile...")
         self.load_profile_button = QPushButton("Load Profile...")
@@ -187,14 +195,10 @@ class MainWindow(QMainWindow):
 
         locations = QHBoxLayout()
         source_panel = self._location_panel("Source", self.source_edit)
-        self.swap_button.setToolTip("Swap Source and Destination")
-        self.swap_button.setAccessibleName("Swap Source and Destination")
-        self.swap_button.setFixedSize(28, 28)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
         destination_panel = self._location_panel("Destination", self.destination_edit)
         locations.addWidget(source_panel, 40)
-        locations.addWidget(self.swap_button, 0, Qt.AlignmentFlag.AlignVCenter)
         locations.addWidget(self.action_filters, 0, Qt.AlignmentFlag.AlignVCenter)
         locations.addWidget(self.comparison.view_controls, 0, Qt.AlignmentFlag.AlignVCenter)
         locations.addWidget(destination_panel, 40)
@@ -205,6 +209,7 @@ class MainWindow(QMainWindow):
         log_panel = QWidget(self)
         log_layout = QVBoxLayout(log_panel)
         log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.setSpacing(2)
         self.log_header = QLabel("Journal")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -213,11 +218,11 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.command_preview_label = ElidedLabel("")
+        self.command_preview_label = CommandPreview("")
         self.command_preview_label.setObjectName("command-preview-label")
         log_layout.addWidget(self.progress_bar)
         log_layout.addWidget(self.progress_label)
-        log_layout.addWidget(self.command_preview_label)
+        log_layout.addWidget(self.command_preview_label, 0)
         log_layout.addWidget(self.log_header)
         log_layout.addWidget(self.log)
         splitter.addWidget(log_panel)
@@ -1003,13 +1008,34 @@ class MainWindow(QMainWindow):
     def _comparison_started(self) -> None:
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Comparing...")
         self.status_label.setText("Comparing...")
         self._append_log("STATE comparing")
+
+    def _comparison_progress(self, progress: object) -> None:
+        percent = int(getattr(progress, "percent", 0))
+        completed = int(getattr(progress, "files_completed", 0))
+        remaining = int(getattr(progress, "files_remaining", 0))
+        self.progress_bar.setValue(percent)
+        self.progress_label.setText(
+            f"Comparing... {percent}% ({completed} files inspected, {remaining} remaining)"
+        )
+
+    def _comparison_cancelled(self) -> None:
+        self.compare_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Comparison cancelled")
+        self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")
+        self._append_log("STATE comparison-cancelled")
 
     def _comparison_finished(self, result: CompareResult) -> None:
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        self.progress_bar.setValue(100)
+        self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self._apply_inventory_mode()
@@ -1026,10 +1052,14 @@ class MainWindow(QMainWindow):
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         from PySide6.QtCore import QEvent
 
-        if event.type() == QEvent.Type.Enter:
-            action = watched.property("previewAction") if hasattr(watched, "property") else None
-            if action:
-                self._set_hovered_action(str(action))
+        try:
+            if event is not None and event.type() == QEvent.Type.Enter:
+                action = watched.property("previewAction") if hasattr(watched, "property") else None
+                if action:
+                    self._set_hovered_action(str(action))
+        except RuntimeError:
+            # Qt may already have destroyed the watched widget during shutdown.
+            return False
         return super().eventFilter(watched, event)
 
     def _apply_action_filters(self, actions: object) -> None:
@@ -1054,6 +1084,7 @@ class MainWindow(QMainWindow):
     def _comparison_error(self, message: str) -> None:
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        self.progress_label.setText("Comparison failed")
         self.status_label.setText("Comparison failed.")
         self._append_log(message)
         QMessageBox.critical(self, "Comparison failed", message)

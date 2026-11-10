@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
 from .rsync_command import ITEM_SEPARATOR
+from .sync_progress import parse_sync_progress
 
 
 class RsyncParseError(ValueError):
@@ -103,7 +104,7 @@ def parse_output(text: str, *, strict: bool = True, delete_enabled: bool = True)
             diagnostics.append(f"line {line_number}: {exc}")
             continue
         if change is None:
-            if line.strip():
+            if line.strip() and parse_sync_progress(line) is None:
                 diagnostics.append(line)
         else:
             changes.append(change)
