@@ -50,11 +50,10 @@ def plan(item: SyncProfile):
     )
 
 
-def test_smoke_boundary_rejects_ssh_endpoints() -> None:
+def test_smoke_boundary_allows_ssh_endpoints() -> None:
     item = profile()
     item.source = Endpoint(EndpointKind.SSH, "host:/tmp/qpy-rsync-smoke/source/")
-    with pytest.raises(ValueError, match="local-to-local"):
-        enforce_smoke_execution_boundary(item)
+    enforce_smoke_execution_boundary(item)
 
 
 def test_service_builds_real_sync_and_removes_private_filter() -> None:

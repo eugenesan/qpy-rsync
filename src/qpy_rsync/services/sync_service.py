@@ -44,14 +44,9 @@ def explain_rsync_exit(code: int) -> str:
 
 
 def enforce_smoke_execution_boundary(profile: SyncProfile) -> None:
-    # Phase 1 of the post-1.15f safety review: local-to-local synchronization is
-    # allowed outside the smoke fixture, while SSH execution remains restricted.
-    if profile.source.kind is not EndpointKind.LOCAL or profile.destination.kind is not EndpointKind.LOCAL:
-        raise ValueError(
-            "Real synchronization is currently limited to local-to-local endpoints."
-        )
-    # Backup paths are destination-side strings, not endpoints; SSH backup
-    # semantics remain deferred to a later safety review.
+    # Phase 3 of the post-1.15f safety review: SSH execution is enabled using
+    # the existing askpass/environment integration. No path restriction remains.
+    pass
 
 
 class SyncService:
