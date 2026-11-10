@@ -558,6 +558,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         save_profile(Path(path), self._profile())
+        self._save_recent_profile()
         try:
             self._baseline_profile = self._profile()
         except ValueError:
@@ -572,6 +573,8 @@ class MainWindow(QMainWindow):
             return
         profile = load_profile(Path(path))
         self._apply_profile(profile)
+        self._save_recent_profile()
+        self._baseline_profile = self._profile()
         self._append_log(f"Profile loaded: {path}")
 
     def _apply_profile(self, profile: SyncProfile) -> None:
