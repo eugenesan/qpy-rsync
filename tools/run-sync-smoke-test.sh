@@ -202,6 +202,23 @@ EOF
     ;;
 esac
 
+cat <<'EOF'
+
+Milestone 1.15e checks:
+  - Action header shows Action* (N modified) when defaults are overridden.
+  - Overridden action rows are marked with * and use the accent color.
+  - Plan summary includes modified.
+  - Progress bar resets at start and reaches 100% on completion.
+  - Diagnostics include STATE synchronization-progress and STATE synchronization-completed.
+
+Milestone 1.15f checks:
+  - Enable Show unchanged files and confirm unchanged entries appear as —.
+  - Confirm unchanged entries are read-only and have no diff/reset actions.
+  - Confirm their context menu offers only Copy Path.
+  - Disable the toggle and confirm differences-only mode returns.
+
+EOF
+
 printf '\nPress Enter to launch qpy-rsync, or q then Enter to cancel: '
 read -r ANSWER
 if [[ $ANSWER == q || $ANSWER == Q ]]; then
