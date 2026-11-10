@@ -39,11 +39,16 @@ def inventory_paths(endpoint: Endpoint) -> dict[str, ObjectKind]:
 
 def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
     changed_paths = {change.path.rstrip("/") for change in changed}
+    ancestor_paths = set()
+    for changed_path in changed_paths:
+        parts = changed_path.split("/")
+        for index in range(1, len(parts)):
+            ancestor_paths.add("/".join(parts[:index]))
     source_paths = inventory_paths(profile.source)
     destination_paths = inventory_paths(profile.destination)
     result: list[Change] = []
     for path in sorted(source_paths.keys() & destination_paths.keys()):
-        if path in changed_paths:
+        if path in changed_paths or path in ancestor_paths:
             continue
         result.append(
             Change(path, ChangeAction.NO_CHANGE, source_paths[path], "=")

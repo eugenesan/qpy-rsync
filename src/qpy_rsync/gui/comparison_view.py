@@ -31,6 +31,7 @@ class ComparisonView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.model = ChangeTreeModel(self)
+        self.source_root = ""
         self.model.decision_changed.connect(self.decision_changed)
         self.proxy = ChangeTreeFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
@@ -139,7 +140,11 @@ class ComparisonView(QWidget):
         elif selected is copy_path_action and path is not None:
             from PySide6.QtWidgets import QApplication
 
-            QApplication.clipboard().setText(path)
+            root = getattr(self, "source_root", "")
+            full_path = f"{root}/{path}" if root else path
+            if root and root.endswith("/"):
+                full_path = f"{root}{path}"
+            QApplication.clipboard().setText(full_path)
         elif selected is reset_one and path is not None:
             self.model.reset_decision(path)
         elif selected is reset_subtree and path is not None:
