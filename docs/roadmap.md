@@ -131,3 +131,27 @@ PYTHONPATH="$PWD/src" /usr/bin/python3 -m pytest -q
 
 When a milestone changes runtime behavior, its patch also requires a focused
 manual smoke test documented in the milestone notes.
+
+## 1.15e Progress and override visibility
+
+- Structured synchronization progress reporting.
+- Progress bar and execution status during real synchronization.
+- Action* (N modified) header showing active user overrides.
+- Color-highlighted manual overrides.
+- Override counts in execution-plan summaries.
+- Tests covering reset-to-default and override counting semantics.
+
+## 1.15f Inventory mode
+
+- Optional Show unchanged files mode.
+- Merge comparison results with full inventory view.
+- Unchanged objects displayed as read-only entries.
+- Copy Path action available for unchanged objects.
+- No decisions, actions, reset operations, or synchronization semantics for unchanged objects.
+- Inventory-mode tests and tree-state validation.
+
+## Post-1.15f
+
+- Review removal of /tmp/qpy-rsync-smoke execution restriction.
+- Additional synchronization hardening and real-world validation.
+
