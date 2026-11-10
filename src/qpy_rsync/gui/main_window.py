@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.backend.rsync_command import build_compare_spec
+from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.backend.inventory import unchanged_changes
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import load_profile, save_profile
