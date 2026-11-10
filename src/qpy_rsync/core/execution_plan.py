@@ -27,6 +27,7 @@ class PlanItem:
 class PlanSummary:
     included: int
     excluded: int
+    modified: int
     retained_destination_only: int
     destructive: int
     creates: int
@@ -66,10 +67,12 @@ def build_execution_plan(
     changes: Iterable[Change],
     decisions: ChangeDecisions,
 ) -> ExecutionPlan:
+    changes_list = list(changes)
     items: list[PlanItem] = []
     creates = updates = metadata = replacements = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
-    for change in changes:
+    modified = decisions.modified_count(changes_list)
+    for change in changes_list:
         if not decisions.selectable(change):
             continue
         selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
@@ -109,6 +112,7 @@ def build_execution_plan(
     summary = PlanSummary(
         included=included,
         excluded=excluded,
+        modified=modified,
         retained_destination_only=retained_destination_only,
         destructive=destructive,
         creates=creates,

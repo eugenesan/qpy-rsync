@@ -64,6 +64,15 @@ def test_semantic_profile_change_changes_fingerprint() -> None:
     second.transfer.delete = True
     assert profile_fingerprint(first) != profile_fingerprint(second)
 
+def test_plan_summary_reports_modified_override() -> None:
+    change = Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
+    decisions = ChangeDecisions()
+    decisions.reconcile([change])
+    decisions.set(change.path, ChangeDecision.EXCLUDE)
+    plan = build_execution_plan(profile(), [change], decisions)
+    assert plan.summary.modified == 1
+
+
 def test_selected_destination_only_becomes_destructive_delete() -> None:
     change = Change("extra.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
     decisions = ChangeDecisions()

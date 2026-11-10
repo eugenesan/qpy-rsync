@@ -83,6 +83,24 @@ def test_reset_decision_subtree_and_all() -> None:
     model.reset_all_decisions()
     assert not model.decisions.has_explicit()
 
+def test_override_count_tracks_active_explicit_decisions() -> None:
+    from PySide6.QtCore import Qt
+
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
+    )
+    assert model.decision_summary().modified == 0
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+    index = model.index(0, model.ACTION)
+    assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert model.decision_summary().modified == 1
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action* (1 modified)"
+    model.reset_all_decisions()
+    assert model.decision_summary().modified == 0
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+
+
 def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
     model = ChangeTreeModel()
     model.set_changes(
@@ -93,6 +111,6 @@ def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
     assert model.data(index, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Unchecked
     assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"
     assert model.setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "× delete"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "× delete*"
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
     assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"

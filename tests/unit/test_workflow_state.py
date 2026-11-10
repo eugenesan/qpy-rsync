@@ -8,9 +8,10 @@ def test_startup_messages() -> None:
 
 
 def test_selected_actions_text() -> None:
-    summary = PlanSummary(12, 2, 0, 1, 3, 7, 1, 0, 1, True)
+    summary = PlanSummary(12, 2, 0, 0, 1, 3, 7, 1, 0, 1, True)
     assert selected_actions_text(summary) == (
-        "Selected actions: 12 included, 2 excluded, 1 destructive | Backup: on"
+        "Selected actions: 12 included, 2 unchecked, 0 modified, "
+        "0 retained in Destination, 1 destructive | Backup: on"
     )
 
 

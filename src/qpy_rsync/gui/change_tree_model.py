@@ -45,6 +45,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self.discarded_decisions = 0
         self.decisions_enabled = True
         self.stale = False
+        self._action_header = "Action"
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
@@ -68,6 +69,7 @@ class ChangeTreeModel(QAbstractItemModel):
             parent.change = change
         self._sort(self.root)
         self.endResetModel()
+        self._refresh_action_header()
 
     def _sort(self, node: TreeNode) -> None:
         node.children.sort(key=lambda child: (not child.children, child.name.casefold()))
@@ -100,8 +102,19 @@ class ChangeTreeModel(QAbstractItemModel):
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:  # noqa: N802
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            if section == self.ACTION:
+                return self._action_header
             return self.HEADERS[section]
         return None
+
+    def _refresh_action_header(self) -> None:
+        modified = self.decisions.modified_count(self.changes)
+        self._action_header = (
+            f"Action* ({modified} modified)" if modified else "Action"
+        )
+        self.headerDataChanged.emit(
+            Qt.Orientation.Horizontal, self.ACTION, self.ACTION
+        )
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
@@ -124,7 +137,10 @@ class ChangeTreeModel(QAbstractItemModel):
                     and self._effective_node(node) is ChangeDecision.INCLUDE
                 ):
                     action = ChangeAction.DELETE
-                return self._action_text(action, stale=self.stale)
+                overridden = (not self.stale) and self.decisions.is_override_path(
+                    node.path, self.changes
+                )
+                return self._action_text(action, stale=self.stale, overridden=overridden)
             if change is None:
                 return ""
             if index.column() == self.SOURCE_SIZE:
@@ -137,6 +153,14 @@ class ChangeTreeModel(QAbstractItemModel):
                 return ""  # rsync itemized output does not provide destination mtime.
         if role == Qt.ItemDataRole.ToolTipRole and change is not None:
             return f"{change.itemized_code}: {change.reason}"
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and change is not None
+            and index.column() == self.ACTION
+            and not self.stale
+            and self.decisions.is_override_path(node.path, self.changes)
+        ):
+            return QColor("#0891B2")
         if (
             role == Qt.ItemDataRole.ForegroundRole
             and change is not None
@@ -192,6 +216,7 @@ class ChangeTreeModel(QAbstractItemModel):
         )
         self._emit_descendant_check_states(index.siblingAtColumn(0))
         self.decision_changed.emit()
+        self._refresh_action_header()
         return True
 
     def _node_selectable(self, node: TreeNode) -> bool:
@@ -233,16 +258,19 @@ class ChangeTreeModel(QAbstractItemModel):
         self.decisions.reset(path)
         self._emit_all_check_states()
         self.decision_changed.emit()
+        self._refresh_action_header()
 
     def reset_subtree_decisions(self, path: str) -> None:
         self.decisions.reset_subtree(path)
         self._emit_all_check_states()
         self.decision_changed.emit()
+        self._refresh_action_header()
 
     def reset_all_decisions(self) -> None:
         self.decisions.clear()
         self._emit_all_check_states()
         self.decision_changed.emit()
+        self._refresh_action_header()
 
     def _emit_all_check_states(self) -> None:
         rows = self.rowCount()
@@ -259,7 +287,9 @@ class ChangeTreeModel(QAbstractItemModel):
         return self.decisions.summary(self.changes)
 
     @staticmethod
-    def _action_text(action: ChangeAction, *, stale: bool = False) -> str:
+    def _action_text(
+        action: ChangeAction, *, stale: bool = False, overridden: bool = False
+    ) -> str:
         fresh = {
             ChangeAction.CREATE: "→ create",
             ChangeAction.UPDATE_CONTENT: "→ update",
@@ -280,7 +310,10 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.NO_CHANGE: "unchanged",
             ChangeAction.MESSAGE: "message",
         }
-        return (stale_text if stale else fresh)[action]
+        text = (stale_text if stale else fresh)[action]
+        if overridden and not stale:
+            text = f"{text}*"
+        return text
 
     @staticmethod
     def _size(size: int | None) -> str:

@@ -599,6 +599,7 @@ class MainWindow(QMainWindow):
         self.plan_summary_label.setText(
             "Selected actions: "
             f"{summary.included} included, {summary.excluded} unchecked, "
+            f"{summary.modified} modified, "
             f"{summary.retained_destination_only} retained in Destination, "
             f"{summary.destructive} destructive; "
             f"create {summary.creates}, update {summary.updates}, "

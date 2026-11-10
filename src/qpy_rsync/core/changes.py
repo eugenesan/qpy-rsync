@@ -54,6 +54,7 @@ class ChangeDecision(StrEnum):
 class DecisionSummary:
     included: int
     excluded: int
+    modified: int
     destructive: int
 
 
@@ -92,6 +93,41 @@ class ChangeDecisions:
 
     def has_explicit(self) -> bool:
         return bool(self._decisions)
+
+    @staticmethod
+    def _default_decision_for_path(path: str, changes: list[Change]) -> ChangeDecision:
+        normalized = path.rstrip("/")
+        change = next(
+            (item for item in changes if item.path.rstrip("/") == normalized), None
+        )
+        if change is not None:
+            return (
+                ChangeDecision.EXCLUDE
+                if change.action is ChangeAction.DESTINATION_ONLY
+                else ChangeDecision.INCLUDE
+            )
+        descendants = [
+            item for item in changes if item.path.rstrip("/").startswith(normalized + "/")
+        ]
+        if descendants and all(
+            item.action is ChangeAction.DESTINATION_ONLY for item in descendants
+        ):
+            return ChangeDecision.EXCLUDE
+        return ChangeDecision.INCLUDE
+
+    def is_override_path(self, path: str, changes: list[Change]) -> bool:
+        normalized = path.rstrip("/")
+        explicit = self.explicit(normalized)
+        if explicit is ChangeDecision.INHERIT:
+            return False
+        return explicit is not self._default_decision_for_path(normalized, changes)
+
+    def modified_count(self, changes: list[Change]) -> int:
+        count = 0
+        for path in self._decisions:
+            if self.is_override_path(path, changes):
+                count += 1
+        return count
 
     def effective(self, change: Change) -> ChangeDecision:
         if not self.selectable(change):
@@ -153,4 +189,6 @@ class ChangeDecisions:
                 included += 1
                 if change.action is ChangeAction.DELETE:
                     destructive += 1
-        return DecisionSummary(included, excluded, destructive)
+        return DecisionSummary(
+            included, excluded, self.modified_count(changes), destructive
+        )

@@ -21,7 +21,8 @@ def startup_message(source_present: bool, destination_present: bool) -> str:
 
 def selected_actions_text(summary: PlanSummary) -> str:
     return (
-        f"Selected actions: {summary.included} included, {summary.excluded} excluded, "
+        f"Selected actions: {summary.included} included, {summary.excluded} unchecked, "
+        f"{summary.modified} modified, {summary.retained_destination_only} retained in Destination, "
         f"{summary.destructive} destructive | Backup: "
         f"{'on' if summary.backup_enabled else 'off'}"
     )
