@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStyle,
+    QStyledItemDelegate,
     QToolButton,
     QTreeView,
     QVBoxLayout,
@@ -23,6 +24,17 @@ from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel
 from .icons import unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
+
+CONTROL_SIZE = 30
+ROW_HEIGHT = 22
+
+
+class UniformRowDelegate(QStyledItemDelegate):
+    """Keep row heights identical in all three synchronized tree panes."""
+
+    def sizeHint(self, option: object, index: QModelIndex) -> QSize:  # noqa: N802
+        size = super().sizeHint(option, index)  # type: ignore[arg-type]
+        return QSize(size.width(), ROW_HEIGHT)
 
 
 class ComparisonView(QWidget):
@@ -37,6 +49,7 @@ class ComparisonView(QWidget):
         self.model = ChangeTreeModel(self)
         self.source_root = ""
         self.model.decision_changed.connect(self.decision_changed)
+        self.model.decision_changed.connect(self._refresh_action_filter)
         self.proxy = ChangeTreeFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
         self.source = self._tree("Source")
@@ -96,7 +109,8 @@ class ComparisonView(QWidget):
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            button.setIconSize(QSize(16, 16))
+            button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+            button.setIconSize(QSize(18, 18))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)
@@ -117,6 +131,9 @@ class ComparisonView(QWidget):
         tree.setObjectName(label.lower())
         tree.setAlternatingRowColors(True)
         tree.setUniformRowHeights(True)
+        tree.setItemDelegate(UniformRowDelegate(tree))
+        tree.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSortingEnabled(False)
         tree.header().setStretchLastSection(False)
@@ -206,7 +223,7 @@ class ComparisonView(QWidget):
         self.source.setTreePosition(self.model.SOURCE_NAME)
         self.destination.setTreePosition(self.model.DESTINATION_NAME)
         self.action.setRootIsDecorated(False)
-        self.action.setItemsExpandable(False)
+        self.action.setIndentation(0)
         self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.ResizeToContents)
         self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.ResizeToContents)
@@ -266,10 +283,21 @@ class ComparisonView(QWidget):
             for tree in trees:
                 tree.setUpdatesEnabled(True)
                 tree.viewport().update()
-            self.expand_all()
+            # Expanding every row of a large tree keeps the UI busy for a long
+            # time. Show the first level and let the user expand further.
+            self.expand_initial()
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
         QTimer.singleShot(0, restore_views)
+
+    def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
+        self.proxy.set_visible_actions(actions)
+
+    def _refresh_action_filter(self) -> None:
+        # A decision can change a destination-only row into a delete row, so
+        # action filters may need re-evaluation. Path-only filtering is cheap
+        # to invalidate but does not need a full re-filter run here.
+        self.proxy.refresh_filters(force=False)
 
     def set_stale(self, stale: bool) -> None:
         if stale:
@@ -281,6 +309,7 @@ class ComparisonView(QWidget):
         self.source.setEnabled(not stale)
         self.action.setEnabled(not stale)
         self.destination.setEnabled(not stale)
+        self.model.layoutAboutToBeChanged.emit()
         self.model.layoutChanged.emit()
         self.action.setToolTip(
             "Comparison is stale; compare again before changing decisions."
@@ -294,9 +323,41 @@ class ComparisonView(QWidget):
 
     def set_path_filter(self, text: str) -> None:
         self.proxy.set_path_filter(text)
-        # A proxy reset collapses every view. Expand after Qt finishes the
-        # reset, for both a populated filter and a cleared filter.
-        QTimer.singleShot(0, self.expand_all)
+        QTimer.singleShot(0, self._expand_visible_matches)
+
+    def _expand_visible_matches(self, limit: int = 4000) -> None:
+        """Expand only the visible matches and their ancestors.
+
+        The previous implementation expanded every row after each keystroke,
+        which made large comparisons unusable.
+        """
+        expanded = 0
+        stack = [
+            self.proxy.index(row, 0)
+            for row in range(self.proxy.rowCount())
+        ]
+        stack.reverse()
+        while stack and expanded < limit:
+            index = stack.pop()
+            if self.proxy.rowCount(index):
+                for tree in (self.source, self.action, self.destination):
+                    tree.expand(index)
+                expanded += 1
+                children = [
+                    self.proxy.index(row, 0, index)
+                    for row in range(self.proxy.rowCount(index))
+                ]
+                children.reverse()
+                stack.extend(children)
+
+    def expand_initial(self, limit: int = 200) -> None:
+        """Expand the first level only; large trees stay responsive."""
+        for row in range(min(self.proxy.rowCount(), limit)):
+            index = self.proxy.index(row, 0)
+            if not index.isValid():
+                continue
+            for tree in (self.source, self.action, self.destination):
+                tree.expand(index)
 
     def expand_all(self) -> None:
         for tree in (self.source, self.action, self.destination):

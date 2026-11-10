@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Signal
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QSizePolicy, QWidget
 
 from qpy_rsync.core.changes import ChangeAction
@@ -32,6 +32,7 @@ class ActionFilterBar(QWidget):
         for action in FILTERABLE_ACTIONS:
             box = QCheckBox(self)
             box.setIcon(action_icon(action))
+            box.setIconSize(QSize(16, 16))
             box.setToolTip(self._tooltip(action))
             box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} objects")
             box.setChecked(True)

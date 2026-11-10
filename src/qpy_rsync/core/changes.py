@@ -64,9 +64,17 @@ class ChangeDecisions:
     def __init__(self) -> None:
         self._decisions: dict[str, ChangeDecision] = {}
         self._identities: dict[str, tuple[ChangeAction, ObjectKind]] = {}
+        # Pre-computed default decision for every path that can appear in the
+        # comparison tree. This keeps per-cell painting O(1) instead of scanning
+        # the complete change list for every row.
+        self._defaults: dict[str, ChangeDecision] = {}
 
     def explicit(self, path: str) -> ChangeDecision:
         return self._decisions.get(path.rstrip("/"), ChangeDecision.INHERIT)
+
+    def explicit_items(self) -> tuple[tuple[str, ChangeDecision], ...]:
+        """Return explicit decisions without exposing the mutable mapping."""
+        return tuple(self._decisions.items())
 
     def set(self, path: str, decision: ChangeDecision) -> None:
         normalized = path.rstrip("/")
@@ -120,14 +128,24 @@ class ChangeDecisions:
         explicit = self.explicit(normalized)
         if explicit is ChangeDecision.INHERIT:
             return False
-        return explicit is not self._default_decision_for_path(normalized, changes)
+        default = self._defaults.get(normalized)
+        if default is None:
+            default = self._default_decision_for_path(normalized, changes)
+        return explicit is not default
+
+    def override_paths(self, changes: list[Change]) -> set[str]:
+        """Return explicit decisions that differ from their computed default."""
+        overrides: set[str] = set()
+        for path, explicit in self._decisions.items():
+            default = self._defaults.get(path)
+            if default is None:
+                default = self._default_decision_for_path(path, changes)
+            if explicit is not default:
+                overrides.add(path)
+        return overrides
 
     def modified_count(self, changes: list[Change]) -> int:
-        count = 0
-        for path in self._decisions:
-            if self.is_override_path(path, changes):
-                count += 1
-        return count
+        return len(self.override_paths(changes))
 
     def effective(self, change: Change) -> ChangeDecision:
         if not self.selectable(change):
@@ -176,7 +194,37 @@ class ChangeDecisions:
         for path in stale:
             self._decisions.pop(path, None)
         self._identities = current
+        self._defaults = self._build_defaults(current)
         return len(stale)
+
+    @staticmethod
+    def _build_defaults(
+        current: dict[str, tuple[ChangeAction, ObjectKind]]
+    ) -> dict[str, ChangeDecision]:
+        defaults: dict[str, ChangeDecision] = {}
+        non_destination_paths: set[str] = set()
+        for path, (action, _kind) in current.items():
+            defaults[path] = (
+                ChangeDecision.EXCLUDE
+                if action is ChangeAction.DESTINATION_ONLY
+                else ChangeDecision.INCLUDE
+            )
+            if action is not ChangeAction.DESTINATION_ONLY:
+                ancestor = path
+                while ancestor:
+                    non_destination_paths.add(ancestor)
+                    ancestor = ancestor.rpartition("/")[0]
+        for path in current:
+            ancestor = path.rpartition("/")[0]
+            while ancestor:
+                defaults.setdefault(
+                    ancestor,
+                    ChangeDecision.INCLUDE
+                    if ancestor in non_destination_paths
+                    else ChangeDecision.EXCLUDE,
+                )
+                ancestor = ancestor.rpartition("/")[0]
+        return defaults
 
     def summary(self, changes: list[Change]) -> DecisionSummary:
         included = excluded = destructive = 0

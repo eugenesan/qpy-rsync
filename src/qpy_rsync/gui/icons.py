@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
@@ -148,10 +150,12 @@ _DRAWERS = {
 }
 
 
+@lru_cache(maxsize=None)
 def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
     """Return the icon that represents one comparison action.
 
-    ``accent`` recolors the icon with the override accent color.
+    ``accent`` recolors the icon with the override accent color. Icons are
+    cached because they are requested for every painted tree row.
     """
     color = ACCENT if accent else ACTION_COLORS.get(action, QColor("#64748b"))
     pixmap, painter = _pixmap()
@@ -160,11 +164,26 @@ def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
     return QIcon(pixmap)
 
 
+@lru_cache(maxsize=None)
 def unchanged_icon() -> QIcon:
     """Icon used for unchanged objects and for directories present on both sides."""
     return action_icon(ChangeAction.NO_CHANGE)
 
 
+@lru_cache(maxsize=None)
+def swap_icon() -> QIcon:
+    """Icon used for the Source/Destination swap button."""
+    pixmap, painter = _pixmap()
+    painter.setPen(_pen(QColor("#1d4ed8")))
+    painter.drawLine(QPointF(3.5, 5.5), QPointF(12.0, 5.5))
+    _arrow_head(painter, QPointF(13.0, 5.5), "right", QColor("#1d4ed8"))
+    painter.drawLine(QPointF(12.5, 10.5), QPointF(4.0, 10.5))
+    _arrow_head(painter, QPointF(3.0, 10.5), "left", QColor("#15803d"))
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
 def source_icon() -> QIcon:
     pixmap, painter = _pixmap()
     _draw_folder(painter, QColor("#1d4ed8"), "right")
@@ -172,6 +191,7 @@ def source_icon() -> QIcon:
     return QIcon(pixmap)
 
 
+@lru_cache(maxsize=None)
 def destination_icon() -> QIcon:
     pixmap, painter = _pixmap()
     _draw_folder(painter, QColor("#15803d"), "left")

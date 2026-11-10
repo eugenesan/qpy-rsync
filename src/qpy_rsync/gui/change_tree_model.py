@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
 
-from .icons import action_icon
+from .icons import ACTION_LABELS, action_icon
 
 
 @dataclass(slots=True)
@@ -19,12 +19,14 @@ class TreeNode:
     parent: "TreeNode | None" = None
     change: Change | None = None
     children: list["TreeNode"] = field(default_factory=list)
+    row_index: int = 0
+    subtree_only_destination: bool = False
 
     def child(self, row: int) -> "TreeNode":
         return self.children[row]
 
     def row(self) -> int:
-        return 0 if self.parent is None else self.parent.children.index(self)
+        return self.row_index
 
 
 class ChangeTreeModel(QAbstractItemModel):
@@ -48,6 +50,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self.decisions_enabled = True
         self.stale = False
         self._action_header = "Action"
+        self._override_paths: set[str] = set()
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
@@ -69,14 +72,37 @@ class ChangeTreeModel(QAbstractItemModel):
                     nodes[current_path] = node
                 parent = node
             parent.change = change
+        self._compute_subtree_flags(self.root)
         self._sort(self.root)
+        self._assign_rows(self.root)
+        self._override_paths = self.decisions.override_paths(self.changes)
         self.endResetModel()
         self._refresh_action_header()
+
+    def _compute_subtree_flags(self, node: TreeNode) -> bool:
+        """Return whether every change in this subtree is destination-only."""
+        has_change = node.change is not None
+        only_destination = (
+            node.change is not None
+            and node.change.action is ChangeAction.DESTINATION_ONLY
+        )
+        for child in node.children:
+            child_only = self._compute_subtree_flags(child)
+            child_has = child.change is not None or bool(child.children)
+            only_destination = only_destination and child_only
+            has_change = has_change or child_has
+        node.subtree_only_destination = has_change and only_destination
+        return node.subtree_only_destination
 
     def _sort(self, node: TreeNode) -> None:
         node.children.sort(key=lambda child: (not child.children, child.name.casefold()))
         for child in node.children:
             self._sort(child)
+
+    def _assign_rows(self, node: TreeNode) -> None:
+        for row, child in enumerate(node.children):
+            child.row_index = row
+            self._assign_rows(child)
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
         parent_node = parent.internalPointer() if parent.isValid() else self.root
@@ -110,7 +136,7 @@ class ChangeTreeModel(QAbstractItemModel):
         return None
 
     def _refresh_action_header(self) -> None:
-        modified = self.decisions.modified_count(self.changes)
+        modified = len(self._override_paths)
         self._action_header = (
             f"Action* ({modified} modified)" if modified else "Action"
         )
@@ -131,18 +157,9 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.DESTINATION_NAME:
                 return node.name if destination_present else ""
             if index.column() == self.ACTION:
-                if change is None:
-                    return "="
-                action = change.action
-                if (
-                    action is ChangeAction.DESTINATION_ONLY
-                    and self._effective_node(node) is ChangeDecision.INCLUDE
-                ):
-                    action = ChangeAction.DELETE
-                overridden = (not self.stale) and self.decisions.is_override_path(
-                    node.path, self.changes
-                )
-                return self._action_text(action, stale=self.stale, overridden=overridden)
+                # Icons carry the action. Keeping the cell text empty leaves
+                # maximum room for object names in the tree panes.
+                return ""
             if change is None:
                 return ""
             if index.column() == self.SOURCE_SIZE:
@@ -155,16 +172,8 @@ class ChangeTreeModel(QAbstractItemModel):
                 return ""  # rsync itemized output does not provide destination mtime.
         if role == Qt.ItemDataRole.DecorationRole and index.column() == self.ACTION:
             return self._decoration_for(node)
-        if role == Qt.ItemDataRole.ToolTipRole and change is not None:
-            return f"{change.itemized_code}: {change.reason}"
-        if (
-            role == Qt.ItemDataRole.ForegroundRole
-            and change is not None
-            and index.column() == self.ACTION
-            and not self.stale
-            and self.decisions.is_override_path(node.path, self.changes)
-        ):
-            return QColor("#0891B2")
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return self._tooltip_for(node, index.column())
         if (
             role == Qt.ItemDataRole.ForegroundRole
             and change is not None
@@ -190,6 +199,16 @@ class ChangeTreeModel(QAbstractItemModel):
             return self.decisions.explicit(node.path)
         return None
 
+    def _tooltip_for(self, node: TreeNode, column: int) -> str:
+        change = node.change
+        if change is None:
+            return node.path
+        if column == self.ACTION:
+            label = ACTION_LABELS.get(self.effective_action(node), "")
+            details = f"{label}\n{change.itemized_code}: {change.reason}" if label else f"{change.itemized_code}: {change.reason}"
+            return f"{change.path}\n{details}"
+        return change.path
+
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         flags = super().flags(index)
         if index.isValid() and index.column() == self.ACTION:
@@ -213,17 +232,29 @@ class ChangeTreeModel(QAbstractItemModel):
             else ChangeDecision.EXCLUDE
         )
         self.decisions.set(node.path, decision)
-        self.dataChanged.emit(
-            index,
-            index,
-            [Qt.ItemDataRole.CheckStateRole, Qt.ItemDataRole.UserRole + 1],
-        )
-        self._emit_descendant_check_states(index.siblingAtColumn(0))
+        self._override_paths = self.decisions.override_paths(self.changes)
+        if node.children:
+            # A whole subtree changed; refresh only the visible viewport rather
+            # than emitting one signal per descendant row. The signals must be
+            # paired, otherwise proxy persistent indexes (selection, current
+            # item) are left dangling and later selection changes can crash.
+            self.layoutAboutToBeChanged.emit()
+            self.layoutChanged.emit()
+        else:
+            self.dataChanged.emit(
+                index,
+                index,
+                [
+                    Qt.ItemDataRole.CheckStateRole,
+                    Qt.ItemDataRole.UserRole + 1,
+                    Qt.ItemDataRole.DecorationRole,
+                ],
+            )
         self.decision_changed.emit()
         self._refresh_action_header()
         return True
 
-    def _effective_action(self, node: TreeNode) -> ChangeAction:
+    def effective_action(self, node: TreeNode) -> ChangeAction:
         change = node.change
         if change is None:
             return ChangeAction.NO_CHANGE
@@ -237,10 +268,8 @@ class ChangeTreeModel(QAbstractItemModel):
 
     def _decoration_for(self, node: TreeNode) -> Any:
         change = node.change
-        action = self._effective_action(node)
-        overridden = (not self.stale) and self.decisions.is_override_path(
-            node.path, self.changes
-        )
+        action = self.effective_action(node)
+        overridden = (not self.stale) and node.path in self._override_paths
         if change is None:
             # A directory present on both sides carries no own action.
             return action_icon(ChangeAction.NO_CHANGE)
@@ -257,90 +286,31 @@ class ChangeTreeModel(QAbstractItemModel):
             return inherited
         if node.change is not None:
             return self.decisions.effective(node.change)
-        descendant_changes = list(self._descendant_changes(node))
-        if descendant_changes and all(
-            change.action is ChangeAction.DESTINATION_ONLY
-            for change in descendant_changes
-        ):
+        if node.children and node.subtree_only_destination:
             return ChangeDecision.EXCLUDE
         return ChangeDecision.INCLUDE
 
-    def _descendant_changes(self, node: TreeNode):
-        for child in node.children:
-            if child.change is not None:
-                yield child.change
-            yield from self._descendant_changes(child)
-
-    def _emit_descendant_check_states(self, parent: QModelIndex) -> None:
-        rows = self.rowCount(parent)
-        if rows == 0:
-            return
-        first = self.index(0, self.ACTION, parent)
-        last = self.index(rows - 1, self.ACTION, parent)
-        self.dataChanged.emit(first, last, [Qt.ItemDataRole.CheckStateRole])
-        for row in range(rows):
-            self._emit_descendant_check_states(self.index(row, 0, parent))
-
     def reset_decision(self, path: str) -> None:
         self.decisions.reset(path)
-        self._emit_all_check_states()
-        self.decision_changed.emit()
-        self._refresh_action_header()
+        self._refresh_decisions()
 
     def reset_subtree_decisions(self, path: str) -> None:
         self.decisions.reset_subtree(path)
-        self._emit_all_check_states()
-        self.decision_changed.emit()
-        self._refresh_action_header()
+        self._refresh_decisions()
 
     def reset_all_decisions(self) -> None:
         self.decisions.clear()
-        self._emit_all_check_states()
+        self._refresh_decisions()
+
+    def _refresh_decisions(self) -> None:
+        self._override_paths = self.decisions.override_paths(self.changes)
+        self.layoutAboutToBeChanged.emit()
+        self.layoutChanged.emit()
         self.decision_changed.emit()
         self._refresh_action_header()
 
-    def _emit_all_check_states(self) -> None:
-        rows = self.rowCount()
-        if rows:
-            self.dataChanged.emit(
-                self.index(0, self.ACTION),
-                self.index(rows - 1, self.ACTION),
-                [Qt.ItemDataRole.CheckStateRole, Qt.ItemDataRole.UserRole + 1],
-            )
-        for row in range(rows):
-            self._emit_descendant_check_states(self.index(row, 0))
-
     def decision_summary(self):
         return self.decisions.summary(self.changes)
-
-    @staticmethod
-    def _action_text(
-        action: ChangeAction, *, stale: bool = False, overridden: bool = False
-    ) -> str:
-        fresh = {
-            ChangeAction.CREATE: "→ create",
-            ChangeAction.UPDATE_CONTENT: "→ update",
-            ChangeAction.UPDATE_METADATA: "→ metadata",
-            ChangeAction.DELETE: "× delete",
-            ChangeAction.DESTINATION_ONLY: "← keep",
-            ChangeAction.REPLACE: "→ replace",
-            ChangeAction.NO_CHANGE: "=",
-            ChangeAction.MESSAGE: "!",
-        }
-        stale_text = {
-            ChangeAction.CREATE: "create",
-            ChangeAction.UPDATE_CONTENT: "update",
-            ChangeAction.UPDATE_METADATA: "metadata",
-            ChangeAction.DELETE: "delete",
-            ChangeAction.DESTINATION_ONLY: "← keep",
-            ChangeAction.REPLACE: "replace",
-            ChangeAction.NO_CHANGE: "=",
-            ChangeAction.MESSAGE: "message",
-        }
-        text = (stale_text if stale else fresh)[action]
-        if overridden and not stale:
-            text = f"{text}*"
-        return text
 
     @staticmethod
     def _size(size: int | None) -> str:

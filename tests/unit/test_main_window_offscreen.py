@@ -20,7 +20,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     QSettings().clear()
     window = MainWindow()
     assert window.validate_plan_button.text() == "Verify Actions"
-    assert window.swap_button.text() == "⇄"
+    assert not window.swap_button.icon().isNull()
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.filter_edit.minimumWidth() == 180
     assert window.comparison.filter_edit.maximumWidth() > 1000
@@ -137,8 +137,10 @@ def test_filter_find_focus_and_ui_labels() -> None:
     assert window.log_header.text() == "Journal"
     source_label = window.findChild(type(window.status_label), "source-location-label")
     destination_label = window.findChild(type(window.status_label), "destination-location-label")
-    assert source_label.alignment() & Qt.AlignmentFlag.AlignHCenter
-    assert destination_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert not source_label.pixmap().isNull()
+    assert not destination_label.pixmap().isNull()
+    assert source_label.toolTip() == "Source directory"
+    assert destination_label.toolTip() == "Destination directory"
     window.close()
     application.processEvents()
 

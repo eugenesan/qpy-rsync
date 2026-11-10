@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QSettings, QTimer, Qt
+from PySide6.QtCore import QProcess, QSettings, QSize, QTimer, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QToolTip,
     QPushButton,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -44,7 +45,8 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .comparison_view import ComparisonView
-from .icons import destination_icon, source_icon
+from .elided_label import ElidedLabel
+from .icons import destination_icon, source_icon, swap_icon
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
@@ -161,7 +163,9 @@ class MainWindow(QMainWindow):
             + 28
         )
         self.validate_plan_button.setEnabled(False)
-        self.swap_button = QPushButton("Swap")
+        self.swap_button = QToolButton()
+        self.swap_button.setIcon(swap_icon())
+        self.swap_button.setIconSize(QSize(16, 16))
         self.swap_button.setToolTip("Swap Source and Destination")
         self.filters_button = QPushButton("Filters")
         self.save_profile_button = QPushButton("Save Profile...")
@@ -183,10 +187,9 @@ class MainWindow(QMainWindow):
 
         locations = QHBoxLayout()
         source_panel = self._location_panel("Source", self.source_edit)
-        self.swap_button.setText("⇄")
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
-        self.swap_button.setFixedWidth(40)
+        self.swap_button.setFixedSize(28, 28)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -210,12 +213,8 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.command_preview_label = QLabel("")
+        self.command_preview_label = ElidedLabel("")
         self.command_preview_label.setObjectName("command-preview-label")
-        self.command_preview_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self.command_preview_label.setWordWrap(False)
         log_layout.addWidget(self.progress_bar)
         log_layout.addWidget(self.progress_label)
         log_layout.addWidget(self.command_preview_label)
@@ -344,23 +343,20 @@ class MainWindow(QMainWindow):
 
     def _location_panel(self, title: str, edit: QLineEdit) -> QWidget:
         panel = QWidget(self)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel()
-        icon = source_icon() if title == "Source" else destination_icon()
-        label.setPixmap(icon.pixmap(18, 18))
-        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        label.setObjectName(f"{title.lower()}-location-label")
-        label.setToolTip(f"{title} directory")
-        label.setAccessibleName(f"{title} directory")
-        layout.addWidget(label)
-        row = QHBoxLayout()
+        row = QHBoxLayout(panel)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        icon = QLabel()
+        icon.setPixmap((source_icon() if title == "Source" else destination_icon()).pixmap(18, 18))
+        icon.setObjectName(f"{title.lower()}-location-label")
+        icon.setToolTip(f"{title} directory")
+        icon.setAccessibleName(f"{title} directory")
+        row.addWidget(icon)
         browse = QPushButton("Browse...")
         browse.setToolTip(f"Select the {title} directory")
         browse.clicked.connect(lambda: self._browse(edit))
         row.addWidget(edit, 1)
         row.addWidget(browse)
-        layout.addLayout(row)
         return panel
 
     def _path_row(self, edit: QLineEdit) -> QWidget:

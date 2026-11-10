@@ -52,15 +52,17 @@ def test_recompare_reports_discarded_decision() -> None:
     )
     assert model.discarded_decisions == 1
 
-def test_stale_action_text_is_neutral_and_arrowless() -> None:
+def test_action_column_is_icon_only_with_tooltip() -> None:
     model = ChangeTreeModel()
     model.set_changes(
         [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
     index = model.index(0, model.ACTION)
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "→ update"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
+    assert not model.data(index, Qt.ItemDataRole.DecorationRole).isNull()
     model.stale = True
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "update"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
+    assert not model.data(index, Qt.ItemDataRole.DecorationRole).isNull()
     assert model.data(index, Qt.ItemDataRole.ForegroundRole) is None
 
 def test_reset_decision_subtree_and_all() -> None:
@@ -109,8 +111,11 @@ def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
     index = model.index(0, model.ACTION)
     assert model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable
     assert model.data(index, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Unchecked
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "← keep"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
+    assert not model.data(index, Qt.ItemDataRole.DecorationRole).isNull()
     assert model.setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "× delete*"
+    assert model.effective_action(index.internalPointer()) is ChangeAction.DELETE
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "← keep"
+    assert model.effective_action(index.internalPointer()) is ChangeAction.DESTINATION_ONLY
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
