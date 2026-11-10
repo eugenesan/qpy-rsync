@@ -7,6 +7,7 @@ from typing import Callable
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
+from qpy_rsync.backend.sync_progress import SyncProgress, parse_sync_progress
 from qpy_rsync.backend.rsync_command import ProcessSpec, build_sync_spec
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.enums import EndpointKind
@@ -72,11 +73,18 @@ class SyncService:
         self.on_error: Callable[[str, bool], None] = lambda _message, _cancelled=False: None
         self.on_stdout: Callable[[str], None] = lambda _text: None
         self.on_stderr: Callable[[str], None] = lambda _text: None
+        self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
         self._runner.on_started = lambda: self.on_started()
-        self._runner.on_stdout = lambda text: self.on_stdout(text)
+        self._runner.on_stdout = self._handle_stdout
         self._runner.on_stderr = lambda text: self.on_stderr(text)
         self._runner.on_finished = self._finish
         self._runner.on_error = self._error
+
+    def _handle_stdout(self, text: str) -> None:
+        progress = parse_sync_progress(text)
+        if progress is not None:
+            self.on_progress(progress)
+        self.on_stdout(text)
 
     def synchronize(self, profile: SyncProfile, plan: ExecutionPlan) -> ProcessSpec:
         enforce_smoke_execution_boundary(profile)

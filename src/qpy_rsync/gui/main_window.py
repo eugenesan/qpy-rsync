@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_error = self._sync_error
         self._sync_service.on_stdout = self._append_log
         self._sync_service.on_stderr = self._append_log
+        self._sync_service.on_progress = self._sync_progress
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._log_file_enabled = True
@@ -166,7 +168,13 @@ class MainWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
+        self.progress_label = QLabel("")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
         log_layout.addWidget(self.log_header)
+        log_layout.addWidget(self.progress_label)
+        log_layout.addWidget(self.progress_bar)
         log_layout.addWidget(self.log)
         splitter.addWidget(log_panel)
         splitter.setSizes([520, 110])
@@ -740,10 +748,27 @@ class MainWindow(QMainWindow):
         self._execution_gate.execution_started()
         self._set_busy_controls(True)
         self.comparison.set_stale(True)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Synchronizing...")
         self._set_status("Synchronization is running in the disposable smoke-test tree...", "warning")
         self._append_log("STATE synchronization-started")
 
+    def _sync_progress(self, progress: object) -> None:
+        percent = getattr(progress, "percent", 0)
+        completed = getattr(progress, "files_completed", 0)
+        remaining = getattr(progress, "files_remaining", 0)
+        self.progress_bar.setValue(int(percent))
+        self.progress_label.setText(
+            f"Synchronizing... {int(percent)}% ({completed} files completed, {remaining} remaining)"
+        )
+        self._append_log(
+            f"STATE synchronization-progress percent={int(percent)} "
+            f"files_completed={completed} files_remaining={remaining}"
+        )
+
     def _sync_finished(self, result: SyncResult) -> None:
+        self.progress_bar.setValue(100)
+        self.progress_label.setText("Synchronization completed")
         self._execution_gate.execution_completed()
         self._append_log(
             f"STATE synchronization-completed exit_code={result.exit_code}"
