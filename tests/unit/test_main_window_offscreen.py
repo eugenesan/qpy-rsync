@@ -19,7 +19,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     QCoreApplication.setApplicationName("wide-ui")
     QSettings().clear()
     window = MainWindow()
-    assert window.validate_plan_button.text() == "Verify Selected Actions"
+    assert window.validate_plan_button.text() == "Verify Actions"
     assert window.swap_button.text() == "⇄"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.filter_edit.minimumWidth() == 180

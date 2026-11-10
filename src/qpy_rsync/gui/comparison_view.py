@@ -27,6 +27,7 @@ class ComparisonView(QWidget):
 
     diff_requested = Signal(object)
     decision_changed = Signal()
+    inventory_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -55,6 +56,10 @@ class ComparisonView(QWidget):
             "Temporarily filter paths shown in the current comparison. "
             "This does not change rsync include or exclude rules."
         )
+        self.inventory_button = QPushButton("[.]")
+        self.inventory_button.setCheckable(True)
+        self.inventory_button.setToolTip("Show unchanged files")
+        self.inventory_button.setAccessibleName("Show unchanged files")
         self.expand_button = QPushButton("[v]")
         self.expand_button.setToolTip("Expand all comparison paths")
         self.expand_button.setAccessibleName("Expand all comparison paths")
@@ -70,8 +75,10 @@ class ComparisonView(QWidget):
         self.filter_button.clicked.connect(self.focus_path_filter)
         controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
+        controls.addWidget(self.inventory_button)
         controls.addWidget(self.expand_button)
         controls.addWidget(self.collapse_button)
+        self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)

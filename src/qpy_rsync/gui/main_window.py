@@ -112,12 +112,12 @@ class MainWindow(QMainWindow):
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Mode"))
         self.sync_mode = QComboBox()
         self.sync_mode.addItem("Update", SyncMode.UPDATE)
         self.sync_mode.addItem("Mirror", SyncMode.MIRROR)
         self.sync_mode.addItem("New Only", SyncMode.NEW_ONLY)
         self.sync_mode.setToolTip(
+            "Mode selection\n"
             "Update: copy new and changed objects; keep destination-only objects.\n"
             "Mirror: make Destination match Source, including deletions.\n"
             "New Only: copy missing objects; do not update or delete existing objects."
@@ -126,17 +126,21 @@ class MainWindow(QMainWindow):
         self.compare_button = QPushButton("Compare")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
-        self.validate_plan_button = QPushButton("Verify Selected Actions")
+        self.validate_plan_button = QPushButton("Verify Actions")
         self.synchronize_button = QPushButton("Synchronize...")
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setMinimumWidth(
-            self.validate_plan_button.fontMetrics().horizontalAdvance("Verify Selected Actions") + 28
+            max(
+                self.validate_plan_button.fontMetrics().horizontalAdvance("Verify Actions"),
+                self.validate_plan_button.fontMetrics().horizontalAdvance("Actions Verified"),
+            )
+            + 28
         )
         self.validate_plan_button.setEnabled(False)
         self.swap_button = QPushButton("Swap")
         self.filters_button = QPushButton("Filters...")
         self.filters_label = QLabel("Filters: 0 enabled / 0 total")
-        self.show_unchanged = QCheckBox("Show unchanged files")
+        self.show_unchanged = self.comparison.inventory_button
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         for widget in (
             self.compare_button,
@@ -145,7 +149,6 @@ class MainWindow(QMainWindow):
             self.synchronize_button,
             self.filters_button,
             self.filters_label,
-            self.show_unchanged,
         ):
             controls.addWidget(widget)
         controls.addWidget(self.comparison.controls, 1)
@@ -176,9 +179,9 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        log_layout.addWidget(self.log_header)
-        log_layout.addWidget(self.progress_label)
         log_layout.addWidget(self.progress_bar)
+        log_layout.addWidget(self.progress_label)
+        log_layout.addWidget(self.log_header)
         log_layout.addWidget(self.log)
         splitter.addWidget(log_panel)
         splitter.setSizes([520, 110])
@@ -188,30 +191,35 @@ class MainWindow(QMainWindow):
         backup_layout = QVBoxLayout(backup_panel)
         backup_layout.setContentsMargins(0, 2, 0, 2)
         backup_row = QHBoxLayout()
+        backup_group = QWidget(self)
+        backup_group_layout = QHBoxLayout(backup_group)
+        backup_group_layout.setContentsMargins(0, 0, 0, 0)
         self.backup_edit = QLineEdit()
         self.backup_edit.setPlaceholderText("Empty disables backups")
         self.backup_browse = QPushButton("Browse...")
         self.protect_backup = QCheckBox("Protect nested")
         self.protect_backup.setChecked(True)
-        backup_row.addWidget(QLabel("Backup"))
-        backup_row.addWidget(self.backup_edit, 1)
-        backup_row.addWidget(self.backup_browse)
-        backup_row.addWidget(self.protect_backup)
-        self.backup_status = QLabel("Backups are disabled.")
-        self.backup_status.setWordWrap(True)
-        backup_layout.addLayout(backup_row)
-        backup_layout.addWidget(self.backup_status)
-        layout.addWidget(backup_panel)
+        backup_group_layout.addWidget(QLabel("Backup"))
+        backup_group_layout.addWidget(self.backup_edit, 1)
+        backup_group_layout.addWidget(self.backup_browse)
+        backup_group_layout.addWidget(self.protect_backup)
 
-        logging_row = QHBoxLayout()
-        self.log_file_checkbox = QCheckBox("Save session log")
+        log_group = QWidget(self)
+        log_group_layout = QHBoxLayout(log_group)
+        log_group_layout.setContentsMargins(0, 0, 0, 0)
+        self.log_file_checkbox = QCheckBox("")
         self.log_file_checkbox.setChecked(True)
         self.log_file_edit = QLineEdit(str(self._log_file_path))
         self.log_file_browse = QPushButton("Browse...")
-        logging_row.addWidget(self.log_file_checkbox)
-        logging_row.addWidget(self.log_file_edit, 1)
-        logging_row.addWidget(self.log_file_browse)
-        layout.addLayout(logging_row)
+        log_group_layout.addWidget(QLabel("Log"))
+        log_group_layout.addWidget(self.log_file_checkbox)
+        log_group_layout.addWidget(self.log_file_edit, 1)
+        log_group_layout.addWidget(self.log_file_browse)
+
+        backup_row.addWidget(backup_group, 1)
+        backup_row.addWidget(log_group, 1)
+        backup_layout.addLayout(backup_row)
+        layout.addWidget(backup_panel)
 
         self.plan_summary_label = QLabel()
         self.plan_summary_label.hide()
@@ -456,9 +464,12 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet(f"color: {colors.get(severity, '')};")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
+        if severity == "info" and text.startswith("Backups are disabled"):
+            return
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
-        self.backup_status.setText(text)
-        self.backup_status.setStyleSheet(f"color: {colors.get(severity, '')};")
+        shortened = text.replace("Backups are disabled.", "").strip()
+        if shortened:
+            self._set_status(shortened, severity if severity != "success" else "info")
 
     def _update_nested_protection_ui(self, profile: SyncProfile) -> None:
         resolved = resolve_backup(profile)
@@ -535,7 +546,7 @@ class MainWindow(QMainWindow):
         self._save_backup()
         self._update_backup_status()
         self._validated_plan = None
-        self.validate_plan_button.setText("Verify Selected Actions")
+        self.validate_plan_button.setText("Verify Actions")
         if self._active_profile is not None and self.comparison.model.changes:
             self._active_profile.backup = BackupOptions(
                 directory=updated.directory,
@@ -567,7 +578,7 @@ class MainWindow(QMainWindow):
             ]
             status = inspect_backup_directory(profile)
         except ValueError as exc:
-            self.backup_status.setText(str(exc))
+            self._set_status(str(exc), "error")
             return
         self._update_nested_protection_ui(profile)
         errors = [item.message for item in messages if item.severity is Severity.ERROR]
@@ -586,13 +597,13 @@ class MainWindow(QMainWindow):
         self._current_plan = None
         self._validated_plan = None
         self.validate_plan_button.setEnabled(False)
-        self.validate_plan_button.setText("Verify Selected Actions")
+        self.validate_plan_button.setText("Verify Actions")
         self.plan_summary_label.hide()
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
         self.synchronize_button.setEnabled(False)
-        self.validate_plan_button.setText("Verify Selected Actions")
+        self.validate_plan_button.setText("Verify Actions")
         if self._active_profile is not None and self.comparison.model.changes:
             self._refresh_plan_summary()
 
@@ -652,7 +663,7 @@ class MainWindow(QMainWindow):
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
         self.validate_plan_button.setEnabled(True)
-        self.validate_plan_button.setText("Verify Selected Actions")
+        self.validate_plan_button.setText("Verify Actions")
         if result.valid:
             self._validated_plan = self._current_plan
             self._execution_gate.verification_succeeded()
@@ -682,7 +693,7 @@ class MainWindow(QMainWindow):
             self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
-        self.validate_plan_button.setText("Verify Selected Actions")
+        self.validate_plan_button.setText("Verify Actions")
         self.status_label.setText("Plan validation failed.")
         self._append_log(message)
         QMessageBox.critical(self, "Plan validation failed", message)
