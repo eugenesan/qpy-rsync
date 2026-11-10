@@ -59,6 +59,7 @@ class PlanValidationService:
         self.on_finished: Callable[[PlanValidationResult], None] = lambda _result: None
         self.on_error: Callable[[str], None] = lambda _message: None
         self.on_log: Callable[[str], None] = lambda _message: None
+        self.on_spec: Callable[[object], None] = lambda _spec: None
         self._runner.on_stdout = lambda _chunk: None
         self._runner.on_stderr = lambda text: self.on_log(text)
         self._runner.on_finished = self._finish
@@ -82,7 +83,9 @@ class PlanValidationService:
         self._filter_path = self._filter_context.__enter__()
         self.on_started()
         try:
-            self._runner.start(build_compare_spec(effective_profile, filter_file=self._filter_path))
+            spec = build_compare_spec(effective_profile, filter_file=self._filter_path)
+            self.on_spec(spec)
+            self._runner.start(spec)
         except BaseException:
             self._cleanup()
             raise

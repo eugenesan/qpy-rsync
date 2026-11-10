@@ -109,8 +109,8 @@ def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
     index = model.index(0, model.ACTION)
     assert model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable
     assert model.data(index, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Unchecked
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "← keep"
     assert model.setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
     assert model.data(index, Qt.ItemDataRole.DisplayRole) == "× delete*"
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
-    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "keep ←"
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == "← keep"

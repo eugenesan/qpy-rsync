@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import shlex
 import os
 from datetime import datetime, timezone
@@ -41,7 +42,9 @@ from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_reque
 from qpy_rsync.services.plan_validation_service import PlanValidationResult, PlanValidationService
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
+from .action_filters import ActionFilterBar
 from .comparison_view import ComparisonView
+from .icons import destination_icon, source_icon
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
@@ -71,6 +74,7 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_finished = self._plan_validation_finished
         self._plan_validation.on_error = self._plan_validation_error
         self._plan_validation.on_log = self._append_log
+        self._plan_validation.on_spec = self._log_spec
         self._sync_service = SyncService(self)
         self._sync_service.on_started = self._sync_started
         self._sync_service.on_finished = self._sync_finished
@@ -78,8 +82,10 @@ class MainWindow(QMainWindow):
         self._sync_service.on_stdout = self._append_log
         self._sync_service.on_stderr = self._append_log
         self._sync_service.on_progress = self._sync_progress
+        self._sync_service.on_spec = self._log_spec
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
+        self._hovered_action = "compare"
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
@@ -130,9 +136,21 @@ class MainWindow(QMainWindow):
         )
         controls.addWidget(self.sync_mode)
         self.compare_button = QPushButton("Compare")
+        self.compare_button.setToolTip(
+            "Compare Source and Destination using an rsync dry run.\n"
+            "No files are changed.\n"
+            "For SSH endpoints this connects to the remote host, so the remote "
+            "host must be reachable and credentials must be available."
+        )
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.validate_plan_button = QPushButton("Verify Actions")
+        self.validate_plan_button.setToolTip(
+            "Verify the selected actions with a second rsync dry run.\n"
+            "No files are changed.\n"
+            "For SSH endpoints this connects to the remote host again, so the "
+            "remote host must be reachable and credentials must be available."
+        )
         self.synchronize_button = QPushButton("Synchronize...")
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setMinimumWidth(
@@ -144,8 +162,8 @@ class MainWindow(QMainWindow):
         )
         self.validate_plan_button.setEnabled(False)
         self.swap_button = QPushButton("Swap")
-        self.filters_button = QPushButton("Filters...")
-        self.filters_label = QLabel("Filters: 0 enabled / 0 total")
+        self.swap_button.setToolTip("Swap Source and Destination")
+        self.filters_button = QPushButton("Filters")
         self.save_profile_button = QPushButton("Save Profile...")
         self.load_profile_button = QPushButton("Load Profile...")
         self.show_unchanged = self.comparison.inventory_button
@@ -156,7 +174,6 @@ class MainWindow(QMainWindow):
             self.synchronize_button,
             self.cancel_button,
             self.filters_button,
-            self.filters_label,
             self.save_profile_button,
             self.load_profile_button,
         ):
@@ -169,11 +186,15 @@ class MainWindow(QMainWindow):
         self.swap_button.setText("⇄")
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
-        self.swap_button.setMinimumWidth(56)
+        self.swap_button.setFixedWidth(40)
+        self.action_filters = ActionFilterBar(self)
+        self.action_filters.changed.connect(self._apply_action_filters)
         destination_panel = self._location_panel("Destination", self.destination_edit)
-        locations.addWidget(source_panel, 45)
-        locations.addWidget(self.swap_button, 10, Qt.AlignmentFlag.AlignCenter)
-        locations.addWidget(destination_panel, 45)
+        locations.addWidget(source_panel, 40)
+        locations.addWidget(self.swap_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(self.action_filters, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(self.comparison.view_controls, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(destination_panel, 40)
         layout.addLayout(locations)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -181,7 +202,7 @@ class MainWindow(QMainWindow):
         log_panel = QWidget(self)
         log_layout = QVBoxLayout(log_panel)
         log_layout.setContentsMargins(0, 0, 0, 0)
-        self.log_header = QLabel("Command preview and diagnostics")
+        self.log_header = QLabel("Journal")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
@@ -189,8 +210,15 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.command_preview_label = QLabel("")
+        self.command_preview_label.setObjectName("command-preview-label")
+        self.command_preview_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.command_preview_label.setWordWrap(False)
         log_layout.addWidget(self.progress_bar)
         log_layout.addWidget(self.progress_label)
+        log_layout.addWidget(self.command_preview_label)
         log_layout.addWidget(self.log_header)
         log_layout.addWidget(self.log)
         splitter.addWidget(log_panel)
@@ -249,6 +277,13 @@ class MainWindow(QMainWindow):
         self.save_profile_button.clicked.connect(self._save_profile)
         self.load_profile_button.clicked.connect(self._load_profile)
         self.backup_browse.clicked.connect(self._browse_backup)
+        for button, action in (
+            (self.compare_button, "compare"),
+            (self.validate_plan_button, "verify"),
+            (self.synchronize_button, "synchronize"),
+        ):
+            button.installEventFilter(self)
+            button.setProperty("previewAction", action)
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
         self.destination_edit.editingFinished.connect(self._update_command_preview)
@@ -311,12 +346,17 @@ class MainWindow(QMainWindow):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel(title)
+        label = QLabel()
+        icon = source_icon() if title == "Source" else destination_icon()
+        label.setPixmap(icon.pixmap(18, 18))
         label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         label.setObjectName(f"{title.lower()}-location-label")
+        label.setToolTip(f"{title} directory")
+        label.setAccessibleName(f"{title} directory")
         layout.addWidget(label)
         row = QHBoxLayout()
         browse = QPushButton("Browse...")
+        browse.setToolTip(f"Select the {title} directory")
         browse.clicked.connect(lambda: self._browse(edit))
         row.addWidget(edit, 1)
         row.addWidget(browse)
@@ -486,6 +526,7 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setTextFormat(Qt.TextFormat.PlainText)
             self.status_label.setText(text)
+        self._append_log(f"STATUS {text}")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
         if severity == "info" and text.startswith("Backups are disabled"):
@@ -597,10 +638,22 @@ class MainWindow(QMainWindow):
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
-        suffix = " | STALE" if stale else ""
-        self.filters_label.setText(
-            f"Filters: {enabled} enabled / {len(self._filters)} total{suffix}"
+        total = len(self._filters)
+        if total:
+            self.filters_button.setText(f"Filters [{enabled}/{total}]")
+        else:
+            self.filters_button.setText("Filters")
+        tooltip = (
+            f"{enabled} of {total} persistent filter rules are enabled.\n"
+            "The first matching rsync rule wins."
         )
+        if stale:
+            tooltip += (
+                "\n\nSTALE: the comparison is out of date because filter rules changed. "
+                "Compare again to refresh results."
+            )
+        self.filters_button.setToolTip(tooltip)
+        self.filters_button.setStyleSheet("color: #0891B2;" if stale else "")
 
     def _backup_changed(self) -> None:
         updated = BackupOptions(
@@ -628,14 +681,40 @@ class MainWindow(QMainWindow):
         self._update_command_preview()
 
     def _update_command_preview(self) -> None:
+        """Refresh the command preview shown in the progress pane.
+
+        The preview reflects the operation the pointer is over: Compare,
+        Verify Actions, or Synchronize.
+        """
         if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
+            self.command_preview_label.setText("")
             return
         try:
-            spec = build_compare_spec(self._profile())
+            spec = self._preview_spec()
         except ValueError as exc:
-            self._append_log(f"Command preview unavailable: {exc}")
+            self.command_preview_label.setText(f"Command preview unavailable: {exc}")
             return
-        self._append_log("$ " + shlex.join(spec.argv()))
+        self.command_preview_label.setText("$ " + shlex.join(spec.argv()))
+
+    def _preview_spec(self):
+        action = self._hovered_action
+        profile = self._profile()
+        if action == "verify":
+            return build_compare_spec(profile, filter_file=Path("<decision filter>"))
+        if action == "synchronize":
+            effective = deepcopy(profile)
+            effective.transfer.delete = any(
+                item.included and item.action is ChangeAction.DELETE
+                for item in (self._current_plan.items if self._current_plan else ())
+            )
+            return build_sync_spec(effective, filter_file=Path("<decision filter>"))
+        return build_compare_spec(profile)
+
+    def _set_hovered_action(self, action: str) -> None:
+        if self._hovered_action == action:
+            return
+        self._hovered_action = action
+        self._update_command_preview()
 
     def _update_backup_status(self) -> None:
         if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
@@ -948,6 +1027,19 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Comparison complete: {count} changed object(s).")
         self._append_log(f"STATE comparison-complete changes={count}")
 
+    def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
+        from PySide6.QtCore import QEvent
+
+        if event.type() == QEvent.Type.Enter:
+            action = watched.property("previewAction") if hasattr(watched, "property") else None
+            if action:
+                self._set_hovered_action(str(action))
+        return super().eventFilter(watched, event)
+
+    def _apply_action_filters(self, actions: object) -> None:
+        selected = actions if isinstance(actions, set) else None
+        self.comparison.proxy.set_visible_actions(selected)
+
     def _apply_inventory_mode(self) -> None:
         if not getattr(self, "_last_changed_changes", None):
             return
@@ -969,6 +1061,12 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Comparison failed.")
         self._append_log(message)
         QMessageBox.critical(self, "Comparison failed", message)
+
+    def _log_spec(self, spec: object) -> None:
+        argv = getattr(spec, "argv", None)
+        if argv is None:
+            return
+        self._append_log("$ " + shlex.join(list(argv)))
 
     def _append_log(self, text: str) -> None:
         if not text:

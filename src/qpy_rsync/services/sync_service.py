@@ -61,6 +61,7 @@ class SyncService:
         self.on_stdout: Callable[[str], None] = lambda _text: None
         self.on_stderr: Callable[[str], None] = lambda _text: None
         self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
+        self.on_spec: Callable[[object], None] = lambda _spec: None
         self._runner.on_started = lambda: self.on_started()
         self._runner.on_stdout = self._handle_stdout
         self._runner.on_stderr = lambda text: self.on_stderr(text)
@@ -89,6 +90,7 @@ class SyncService:
         self._filter_path = self._filter_context.__enter__()
         spec = build_sync_spec(effective_profile, filter_file=self._filter_path)
         try:
+            self.on_spec(spec)
             self._runner.start(spec)
         except BaseException:
             self._cleanup()

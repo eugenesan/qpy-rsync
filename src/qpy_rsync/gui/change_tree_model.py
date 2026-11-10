@@ -9,6 +9,8 @@ from PySide6.QtGui import QColor
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
 
+from .icons import action_icon
+
 
 @dataclass(slots=True)
 class TreeNode:
@@ -130,7 +132,7 @@ class ChangeTreeModel(QAbstractItemModel):
                 return node.name if destination_present else ""
             if index.column() == self.ACTION:
                 if change is None:
-                    return ""
+                    return "="
                 action = change.action
                 if (
                     action is ChangeAction.DESTINATION_ONLY
@@ -151,6 +153,8 @@ class ChangeTreeModel(QAbstractItemModel):
                 return change.modified_time or "" if source_present else ""
             if index.column() == self.DESTINATION_TIME:
                 return ""  # rsync itemized output does not provide destination mtime.
+        if role == Qt.ItemDataRole.DecorationRole and index.column() == self.ACTION:
+            return self._decoration_for(node)
         if role == Qt.ItemDataRole.ToolTipRole and change is not None:
             return f"{change.itemized_code}: {change.reason}"
         if (
@@ -218,6 +222,29 @@ class ChangeTreeModel(QAbstractItemModel):
         self.decision_changed.emit()
         self._refresh_action_header()
         return True
+
+    def _effective_action(self, node: TreeNode) -> ChangeAction:
+        change = node.change
+        if change is None:
+            return ChangeAction.NO_CHANGE
+        action = change.action
+        if (
+            action is ChangeAction.DESTINATION_ONLY
+            and self._effective_node(node) is ChangeDecision.INCLUDE
+        ):
+            return ChangeAction.DELETE
+        return action
+
+    def _decoration_for(self, node: TreeNode) -> Any:
+        change = node.change
+        action = self._effective_action(node)
+        overridden = (not self.stale) and self.decisions.is_override_path(
+            node.path, self.changes
+        )
+        if change is None:
+            # A directory present on both sides carries no own action.
+            return action_icon(ChangeAction.NO_CHANGE)
+        return action_icon(action, accent=overridden)
 
     def _node_selectable(self, node: TreeNode) -> bool:
         if node.change is None:
@@ -295,9 +322,9 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.UPDATE_CONTENT: "→ update",
             ChangeAction.UPDATE_METADATA: "→ metadata",
             ChangeAction.DELETE: "× delete",
-            ChangeAction.DESTINATION_ONLY: "keep ←",
+            ChangeAction.DESTINATION_ONLY: "← keep",
             ChangeAction.REPLACE: "→ replace",
-            ChangeAction.NO_CHANGE: "—",
+            ChangeAction.NO_CHANGE: "=",
             ChangeAction.MESSAGE: "!",
         }
         stale_text = {
@@ -305,9 +332,9 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.UPDATE_CONTENT: "update",
             ChangeAction.UPDATE_METADATA: "metadata",
             ChangeAction.DELETE: "delete",
-            ChangeAction.DESTINATION_ONLY: "keep",
+            ChangeAction.DESTINATION_ONLY: "← keep",
             ChangeAction.REPLACE: "replace",
-            ChangeAction.NO_CHANGE: "—",
+            ChangeAction.NO_CHANGE: "=",
             ChangeAction.MESSAGE: "message",
         }
         text = (stale_text if stale else fresh)[action]

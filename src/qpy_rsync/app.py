@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 import sys
 from typing import Sequence
 
@@ -87,6 +88,12 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
+    # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
+    # context. Remote X11 sessions often expose neither GLX nor EGL, so force
+    # the software renderer before Qt is initialized.
+    os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    os.environ.setdefault("QSG_RHI_BACKEND", "software")
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as exc:

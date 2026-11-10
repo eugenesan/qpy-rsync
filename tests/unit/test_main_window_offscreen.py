@@ -25,8 +25,11 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert window.comparison.filter_edit.minimumWidth() == 180
     assert window.comparison.filter_edit.maximumWidth() > 1000
     assert window.comparison.controls.sizePolicy().horizontalPolicy().name == "Expanding"
-    assert window.comparison.expand_button.text() == "[v]"
-    assert window.comparison.collapse_button.text() == "[^]"
+    assert not window.comparison.expand_button.text()
+    assert not window.comparison.collapse_button.text()
+    assert not window.comparison.expand_button.icon().isNull()
+    assert not window.comparison.collapse_button.icon().isNull()
+    assert not window.comparison.inventory_button.icon().isNull()
     window.source_edit.setText("/src/")
     window.destination_edit.setText("/dst/")
     window._swap_endpoints()
@@ -131,7 +134,7 @@ def test_filter_find_focus_and_ui_labels() -> None:
     assert window.comparison.filter_edit.selectedText() == "*.jpg"
     assert window.comparison.model.HEADERS[0] == "File/Directory"
     assert window.comparison.model.HEADERS[4] == "File/Directory"
-    assert window.log_header.text() == "Command preview and diagnostics"
+    assert window.log_header.text() == "Journal"
     source_label = window.findChild(type(window.status_label), "source-location-label")
     destination_label = window.findChild(type(window.status_label), "destination-location-label")
     assert source_label.alignment() & Qt.AlignmentFlag.AlignHCenter

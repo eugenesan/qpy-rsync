@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSettings, QTimer, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSettings, QSize, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QStyle,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel
+from .icons import unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 
 
@@ -56,16 +59,31 @@ class ComparisonView(QWidget):
             "Temporarily filter paths shown in the current comparison. "
             "This does not change rsync include or exclude rules."
         )
-        self.inventory_button = QPushButton("[.]")
+        self.inventory_button = QToolButton()
         self.inventory_button.setCheckable(True)
+        self.inventory_button.setIcon(unchanged_icon())
         self.inventory_button.setToolTip("Show unchanged files")
         self.inventory_button.setAccessibleName("Show unchanged files")
-        self.expand_button = QPushButton("[v]")
+        self.expand_button = QToolButton()
+        self.expand_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown)
+        )
         self.expand_button.setToolTip("Expand all comparison paths")
         self.expand_button.setAccessibleName("Expand all comparison paths")
-        self.collapse_button = QPushButton("[^]")
+        self.collapse_button = QToolButton()
+        self.collapse_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp)
+        )
         self.collapse_button.setToolTip("Collapse all comparison paths")
         self.collapse_button.setAccessibleName("Collapse all comparison paths")
+        self.view_controls = QWidget(self)
+        self.view_controls.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        view_layout = QHBoxLayout(self.view_controls)
+        view_layout.setContentsMargins(0, 0, 0, 0)
+        view_layout.setSpacing(2)
+        view_layout.addWidget(self.inventory_button)
+        view_layout.addWidget(self.expand_button)
+        view_layout.addWidget(self.collapse_button)
         self.controls = QWidget(self)
         self.controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls = QHBoxLayout(self.controls)
@@ -75,14 +93,10 @@ class ComparisonView(QWidget):
         self.filter_button.clicked.connect(self.focus_path_filter)
         controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
-        controls.addWidget(self.inventory_button)
-        controls.addWidget(self.expand_button)
-        controls.addWidget(self.collapse_button)
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
-            width = button.fontMetrics().horizontalAdvance(button.text()) + 8
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            button.setFixedWidth(max(20, int(width * 0.75)))
+            button.setIconSize(QSize(16, 16))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)
