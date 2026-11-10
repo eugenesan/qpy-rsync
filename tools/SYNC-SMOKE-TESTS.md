@@ -52,6 +52,37 @@ batches. Paste every batch in order. The report contains:
 - GUI process stdout/stderr
 - the tail of `/tmp/qpy-rsync.log`
 
+## Milestone 1.15e checks
+
+During each normal mode case, verify the new synchronization usability features:
+
+- The Action header shows `Action* (N modified)` when a default decision has been
+  overridden, and `Action` when no overrides remain.
+- Overridden action rows are marked with `*` and use the accent color.
+- The plan summary includes `modified` in addition to included, unchecked,
+  retained, and destructive counts.
+- The progress bar resets at synchronization start and reaches 100% on
+  completion.
+- The diagnostics pane contains:
+  - `STATE synchronization-progress percent=...`
+  - `STATE synchronization-progress files_completed=...`
+  - `STATE synchronization-progress files_remaining=...`
+  - `STATE synchronization-completed exit_code=...`
+- Cancellation and failure still report their terminal events and leave progress
+  visibly incomplete.
+
+## Milestone 1.15f checks
+
+After a successful comparison:
+
+- Enable **Show unchanged files** and confirm unchanged objects appear as
+  read-only entries with `—` in the Action column.
+- Confirm unchanged objects have no checkboxes, decisions, reset actions, or
+  diff actions.
+- Confirm the context menu for an unchanged object offers only **Copy Path**.
+- Disable the toggle and confirm the view returns to differences only.
+- Confirm expand/collapse and path filtering still work with unchanged entries.
+
 ## Cancellation and failure cases
 
 Run these only after the six normal mode cases pass.
