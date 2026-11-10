@@ -41,3 +41,22 @@ def test_selection_change_revokes_verification() -> None:
     gate.selection_changed(included=1)
     assert gate.state is ExecutionGateState.SELECTION_READY
     assert gate.view().can_verify
+
+def test_execution_completion_failure_and_cancel_paths() -> None:
+    gate = ExecutionGate()
+    gate.comparison_ready(included=1)
+    gate.verification_started(); gate.verification_succeeded(); gate.confirmation_opened()
+    gate.execution_started(); gate.execution_completed()
+    assert gate.state is ExecutionGateState.COMPLETED
+
+    gate = ExecutionGate()
+    gate.comparison_ready(included=1)
+    gate.verification_started(); gate.verification_succeeded(); gate.confirmation_opened()
+    gate.execution_started(); gate.execution_failed()
+    assert gate.state is ExecutionGateState.FAILED
+
+    gate = ExecutionGate()
+    gate.comparison_ready(included=1)
+    gate.verification_started(); gate.verification_succeeded(); gate.confirmation_opened()
+    gate.execution_started(); gate.execution_cancelled()
+    assert gate.state is ExecutionGateState.CANCELLED

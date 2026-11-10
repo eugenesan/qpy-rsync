@@ -71,11 +71,21 @@ class PlanValidationService:
             self.on_error("Execution plan is stale because profile options changed.")
             return
         self._plan = plan
-        self._delete_enabled = profile.transfer.delete
+        selected_deletions = any(
+            item.included and item.action is ChangeAction.DELETE
+            for item in plan.items
+        )
+        effective_profile = deepcopy(profile)
+        effective_profile.transfer.delete = selected_deletions
+        self._delete_enabled = selected_deletions
         self._filter_context = temporary_decision_filter(plan)
         self._filter_path = self._filter_context.__enter__()
         self.on_started()
-        self._runner.start(build_compare_spec(profile, filter_file=self._filter_path))
+        try:
+            self._runner.start(build_compare_spec(effective_profile, filter_file=self._filter_path))
+        except BaseException:
+            self._cleanup()
+            raise
 
     def cancel(self) -> None:
         self._runner.cancel()

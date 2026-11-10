@@ -67,7 +67,7 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
 
 
 class SyncConfirmationDialog(QDialog):
-    """Final review only. Accepting does not launch rsync in this milestone."""
+    """Final review required before write-capable synchronization."""
 
     def __init__(self, profile: SyncProfile, plan: ExecutionPlan, parent=None) -> None:
         super().__init__(parent)
@@ -113,8 +113,8 @@ class SyncConfirmationDialog(QDialog):
         details.setReadOnly(True)
         details.setPlainText(
             "This confirmation is based on a verified second dry run.\n"
-            "No synchronization is launched by this milestone.\n"
-            "Future execution will recreate the private decision filter and recheck freshness."
+            "Confirming will launch write-capable rsync for the disposable smoke-test paths.\n"
+            "The private decision filter is recreated and removed after execution."
         )
         details.setMaximumHeight(90)
         layout.addWidget(details)
@@ -126,7 +126,7 @@ class SyncConfirmationDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.confirm_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
-        self.confirm_button.setText("Confirm Reviewed Actions")
+        self.confirm_button.setText("Synchronize Now")
         self.confirm_button.setEnabled(False)
         self.acknowledge.toggled.connect(self.confirm_button.setEnabled)
         self.buttons.accepted.connect(self.accept)

@@ -73,7 +73,7 @@ def _common_arguments(profile: SyncProfile, *, filter_file: Path | None = None) 
     if transfer.mirror_enabled:
         timing = DeleteTiming.AFTER if transfer.fuzzy else transfer.delete_timing
         args.append(f"--delete-{timing.value}")
-    elif transfer.new_only_enabled:
+    if transfer.new_only_enabled:
         args.append("--ignore-existing")
 
     if profile.backup.enabled:

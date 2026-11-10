@@ -24,3 +24,12 @@ for file in "$DST/update-me.txt" "$DST/new-only.txt" "$DST/destination-only.txt"
         printf '%s: (missing)\n' "$file"
     fi
 done
+printf '\n--- terminal event summary ---\n'
+LOG=$ROOT/qpy-rsync-gui.log
+if [ -f "$LOG" ]; then
+    grep 'STATE synchronization-' "$LOG" || true
+fi
+printf '\n--- expected-mode notes ---\n'
+if [ -f "$ROOT/README-smoke.txt" ]; then
+    cat "$ROOT/README-smoke.txt"
+fi

@@ -13,7 +13,7 @@ Milestones 1 through 1.15d provide a read-only comparison, selection, verificati
 - graphical OpenSSH askpass integration
 - optional system-Python or `.venv` development workflows
 
-Per-object decisions, persistent ordered filters, backup policy, synchronization modes, immutable execution plans, a second verification dry run, and final confirmation are implemented. Real synchronization execution is not implemented yet.
+Per-object decisions, persistent ordered filters, backup policy, synchronization modes, immutable execution plans, a second verification dry run, final confirmation, and real synchronization execution are implemented. Real synchronization is currently restricted to disposable local smoke-test paths under /tmp/qpy-rsync-smoke.
 
 ## Requirements
 
@@ -86,7 +86,7 @@ external diff-tool design.
 
 ## Safety status
 
-This is pre-alpha software. The GUI can compare, select, verify, and confirm actions, but the final confirmation does not yet launch write-capable rsync.
+This is pre-alpha software. Real synchronization is implemented and validated, but execution remains intentionally restricted to local smoke-test paths under /tmp/qpy-rsync-smoke while synchronization safety, cancellation handling, and failure handling continue to mature.
 
 ## milestone 1 local comparison
 
@@ -233,3 +233,27 @@ Collect an exact post-test inventory, hashes, and key file contents with:
 ```bash
 ./tools/collect-sync-smoke-results.sh
 ```
+
+
+## Milestone 1.15d execution validation
+
+Real synchronization smoke tests completed successfully:
+
+- Update/default
+- Update/manual-delete
+- Mirror/default
+- Mirror/protect-one
+- New Only/default
+- New Only/manual-delete
+- Synchronization cancellation
+- Synchronization failure
+
+Additional features validated:
+
+- write-capable SyncService execution
+- execution gate state machine
+- selected-action verification workflow
+- secure temporary decision filters (0600)
+- GUI startup options (--dir-pair, --backup, --mode, --compare)
+- persistent session logging
+- terminal events for completed, cancelled, and failed synchronization

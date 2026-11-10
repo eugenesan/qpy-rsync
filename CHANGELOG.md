@@ -169,3 +169,15 @@
 - Add a final confirmation dialog with operation counts, destructive warnings, backup state, nested protection, verification fingerprint, and explicit acknowledgment.
 - Keep real synchronization disabled pending the write-capable synchronization service.
 - Add deterministic setup and result-collection scripts for disposable synchronization smoke tests.
+
+## milestone 1.15d execution and validation
+
+- Add write-capable SyncService execution restricted to /tmp/qpy-rsync-smoke.
+- Execute verified synchronization plans through temporary private decision filters.
+- Add synchronization terminal events for completion, cancellation, and failure.
+- Add automatic post-sync comparison after successful execution.
+- Add GUI startup options: --dir-pair, --backup, --mode, and --compare.
+- Add configurable persistent session logging.
+- Add guided synchronization smoke-test framework and reporting.
+- Validate Update, Mirror, and New Only synchronization modes with real rsync execution.
+- Validate cancellation and failure execution paths.

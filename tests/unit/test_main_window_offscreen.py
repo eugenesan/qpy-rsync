@@ -179,3 +179,106 @@ def test_proxy_index_path_is_mapped_to_source_safely() -> None:
     assert window.comparison._source_path_for_proxy_index(proxy_index) == "docs"
     window.close()
     application.processEvents()
+
+def test_command_line_options_override_restored_values_without_immediate_persistence(monkeypatch) -> None:
+    from qpy_rsync.app import StartupOptions
+    from qpy_rsync.core.enums import SyncMode
+
+    application = app()
+    QSettings().clear()
+    settings = QSettings()
+    settings.setValue("comparison/source", "/remembered-source/")
+    settings.setValue("comparison/destination", "/remembered-destination/")
+    window = MainWindow()
+    window.apply_startup_options(
+        StartupOptions(
+            "/cli-source/",
+            "/cli-destination/",
+            "/cli-backup/",
+            SyncMode.MIRROR,
+            False,
+        )
+    )
+    assert window.source_edit.text() == "/cli-source/"
+    assert window.destination_edit.text() == "/cli-destination/"
+    assert window.backup_edit.text() == "/cli-backup/"
+    assert window.sync_mode.currentData() == SyncMode.MIRROR
+    assert settings.value("comparison/source") == "/remembered-source/"
+    assert settings.value("comparison/destination") == "/remembered-destination/"
+    window.close()
+    application.processEvents()
+
+
+def test_command_line_compare_is_queued(monkeypatch) -> None:
+    from qpy_rsync.app import StartupOptions
+    from qpy_rsync.core.enums import SyncMode
+
+    application = app()
+    QSettings().clear()
+    queued = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QTimer.singleShot",
+        lambda delay, callback: queued.append((delay, callback)),
+    )
+    window = MainWindow()
+    window.apply_startup_options(
+        StartupOptions("/src/", "/dst/", None, SyncMode.UPDATE, True)
+    )
+    assert len(queued) == 1
+    assert queued[0][0] == 0
+    assert queued[0][1] == window._compare
+    window.close()
+    application.processEvents()
+
+def test_xdg_default_log_and_visible_pane_preserve_history(tmp_path, monkeypatch) -> None:
+    application = app()
+    QSettings().clear()
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    window = MainWindow()
+    window._restore_logging_settings()
+    assert window.log_file_edit.text() == str(tmp_path / "state" / "qpy-rsync.log")
+    window._append_log("rsync progress first")
+    window._append_log("rsync stats second")
+    assert "rsync progress first" in window.log.toPlainText()
+    assert "rsync stats second" in window.log.toPlainText()
+    content = (tmp_path / "state" / "qpy-rsync.log").read_text(encoding="utf-8")
+    assert "rsync progress first" in content
+    assert "rsync stats second" in content
+    window.close(); application.processEvents()
+
+def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.core.execution_gate import ExecutionGateState
+    from qpy_rsync.services.sync_service import SyncResult
+
+    application = app()
+    QSettings().clear()
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    window = MainWindow()
+    window._restore_logging_settings()
+
+    window._execution_gate._state = ExecutionGateState.EXECUTING
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QTimer.singleShot",
+        lambda _delay, _callback: None,
+    )
+    window._sync_finished(SyncResult(0, "", ""))
+    assert "STATE synchronization-completed exit_code=0" in window.log.toPlainText()
+
+    window._execution_gate._state = ExecutionGateState.EXECUTING
+    window._sync_error("cancelled", True)
+    assert "STATE synchronization-cancelled" in window.log.toPlainText()
+
+    window._execution_gate._state = ExecutionGateState.EXECUTING
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.critical",
+        lambda *_args, **_kwargs: None,
+    )
+    window._sync_error("failed", False)
+    assert "STATE synchronization-failed" in window.log.toPlainText()
+
+    content = (tmp_path / "state" / "qpy-rsync.log").read_text(encoding="utf-8")
+    assert "STATE synchronization-completed exit_code=0" in content
+    assert "STATE synchronization-cancelled" in content
+    assert "STATE synchronization-failed" in content
+    window.close()
+    application.processEvents()

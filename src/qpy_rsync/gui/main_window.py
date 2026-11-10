@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import shlex
+import os
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QSettings, Qt
+from PySide6.QtCore import QProcess, QSettings, QTimer, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -32,12 +35,16 @@ from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
 from qpy_rsync.services.plan_validation_service import PlanValidationResult, PlanValidationService
+from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .comparison_view import ComparisonView
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
 from .sync_confirmation import SyncConfirmationDialog
+
+if TYPE_CHECKING:
+    from qpy_rsync.app import StartupOptions
 
 
 class MainWindow(QMainWindow):
@@ -60,13 +67,23 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_finished = self._plan_validation_finished
         self._plan_validation.on_error = self._plan_validation_error
         self._plan_validation.on_log = self._append_log
+        self._sync_service = SyncService(self)
+        self._sync_service.on_started = self._sync_started
+        self._sync_service.on_finished = self._sync_finished
+        self._sync_service.on_error = self._sync_error
+        self._sync_service.on_stdout = self._append_log
+        self._sync_service.on_stderr = self._append_log
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
+        self._log_file_enabled = True
+        self._log_file_path = self._default_log_file_path()
+        self._log_initialized = False
         self._build_ui()
         self._restore_window_state()
         self._restore_endpoints()
         self._restore_filters()
         self._restore_backup()
+        self._restore_logging_settings()
         self._update_startup_status()
 
     def _build_ui(self) -> None:
@@ -174,6 +191,16 @@ class MainWindow(QMainWindow):
         backup_layout.addWidget(self.backup_status)
         layout.addWidget(backup_panel)
 
+        logging_row = QHBoxLayout()
+        self.log_file_checkbox = QCheckBox("Save session log")
+        self.log_file_checkbox.setChecked(True)
+        self.log_file_edit = QLineEdit(str(self._log_file_path))
+        self.log_file_browse = QPushButton("Browse...")
+        logging_row.addWidget(self.log_file_checkbox)
+        logging_row.addWidget(self.log_file_edit, 1)
+        logging_row.addWidget(self.log_file_browse)
+        layout.addLayout(logging_row)
+
         self.plan_summary_label = QLabel()
         self.plan_summary_label.hide()
         layout.addWidget(self.plan_summary_label)
@@ -183,7 +210,7 @@ class MainWindow(QMainWindow):
 
         self.compare_button.clicked.connect(self._compare)
         self.sync_mode.currentIndexChanged.connect(self._sync_mode_changed)
-        self.cancel_button.clicked.connect(self._service.cancel)
+        self.cancel_button.clicked.connect(self._cancel_active_operation)
         self.validate_plan_button.clicked.connect(self._validate_selected_plan)
         self.synchronize_button.clicked.connect(self._show_sync_confirmation)
         self.swap_button.clicked.connect(self._swap_endpoints)
@@ -196,6 +223,52 @@ class MainWindow(QMainWindow):
         self.destination_edit.textChanged.connect(self._endpoint_text_changed)
         self.backup_edit.editingFinished.connect(self._backup_changed)
         self.protect_backup.toggled.connect(self._backup_changed)
+        self.log_file_checkbox.toggled.connect(self._logging_settings_changed)
+        self.log_file_edit.editingFinished.connect(self._logging_settings_changed)
+        self.log_file_browse.clicked.connect(self._browse_log_file)
+
+    def apply_startup_options(self, options: "StartupOptions") -> None:
+        """Apply one-launch command-line overrides after stored settings load."""
+        if options.source is not None and options.destination is not None:
+            self.source_edit.blockSignals(True)
+            self.destination_edit.blockSignals(True)
+            self.source_edit.setText(options.source)
+            self.destination_edit.setText(options.destination)
+            self.source_edit.blockSignals(False)
+            self.destination_edit.blockSignals(False)
+        if options.mode is not None:
+            index = self.sync_mode.findData(options.mode)
+            if index < 0:
+                raise ValueError(f"Unsupported synchronization mode: {options.mode.value}")
+            self.sync_mode.blockSignals(True)
+            self.sync_mode.setCurrentIndex(index)
+            self.sync_mode.blockSignals(False)
+        if options.logging_enabled is not None:
+            self.log_file_checkbox.setChecked(options.logging_enabled)
+        if options.log_file is not None:
+            self.log_file_edit.setText(options.log_file)
+            self.log_file_checkbox.setChecked(True)
+        self._logging_settings_changed(save=False)
+        if options.backup is not None:
+            self.backup_edit.blockSignals(True)
+            self.protect_backup.blockSignals(True)
+            self.backup_edit.setText(options.backup)
+            self._backup = BackupOptions(
+                directory=options.backup.strip(),
+                protect_nested=self.protect_backup.isChecked(),
+            )
+            self.backup_edit.blockSignals(False)
+            self.protect_backup.blockSignals(False)
+        self._update_backup_browse_state()
+        self._update_backup_status()
+        self._update_command_preview()
+        if options.source is not None and options.destination is not None:
+            self._set_status(
+                "Command-line Source and Destination loaded."
+                + (" Comparison will start automatically." if options.compare else " Click Compare to continue.")
+            )
+        if options.compare:
+            QTimer.singleShot(0, self._compare)
 
     def _location_panel(self, title: str, edit: QLineEdit) -> QWidget:
         panel = QWidget(self)
@@ -222,6 +295,72 @@ class MainWindow(QMainWindow):
         layout.addWidget(edit, 1)
         layout.addWidget(button)
         return container
+
+    @staticmethod
+    def _default_log_file_path() -> Path:
+        state_home = os.environ.get("XDG_STATE_HOME", "").strip()
+        root = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
+        return root / "qpy-rsync.log"
+
+    def _restore_logging_settings(self) -> None:
+        settings = QSettings()
+        self._log_file_enabled = settings.value("logging/enabled", True, type=bool)
+        stored = str(settings.value("logging/path", str(self._default_log_file_path())))
+        self._log_file_path = Path(stored).expanduser()
+        self.log_file_checkbox.blockSignals(True)
+        self.log_file_edit.blockSignals(True)
+        self.log_file_checkbox.setChecked(self._log_file_enabled)
+        self.log_file_edit.setText(str(self._log_file_path))
+        self.log_file_checkbox.blockSignals(False)
+        self.log_file_edit.blockSignals(False)
+        self._update_logging_controls()
+
+    def _logging_settings_changed(self, _checked: bool | None = None, *, save: bool = True) -> None:
+        self._log_file_enabled = self.log_file_checkbox.isChecked()
+        value = self.log_file_edit.text().strip()
+        self._log_file_path = Path(value).expanduser() if value else self._default_log_file_path()
+        if not value:
+            self.log_file_edit.setText(str(self._log_file_path))
+        self._log_initialized = False
+        self._update_logging_controls()
+        if save:
+            settings = QSettings()
+            settings.setValue("logging/enabled", self._log_file_enabled)
+            settings.setValue("logging/path", str(self._log_file_path))
+            settings.sync()
+
+    def _update_logging_controls(self) -> None:
+        enabled = self.log_file_checkbox.isChecked()
+        self.log_file_edit.setEnabled(enabled)
+        self.log_file_browse.setEnabled(enabled)
+
+    def _browse_log_file(self) -> None:
+        selected, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Select session log",
+            str(self._log_file_path),
+            "Log files (*.log);;All files (*)",
+        )
+        if selected:
+            self.log_file_edit.setText(selected)
+            self._logging_settings_changed()
+
+    def _write_session_log(self, text: str) -> None:
+        if not self._log_file_enabled:
+            return
+        self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._log_initialized:
+            with self._log_file_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    f"\n===== qpy-rsync session {datetime.now(timezone.utc).isoformat()} =====\n"
+                )
+            self._log_initialized = True
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        with self._log_file_path.open("a", encoding="utf-8") as handle:
+            for line in text.splitlines() or [""]:
+                handle.write(f"{timestamp} {line}\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
     @staticmethod
     def _browse_start_directory(value: str) -> str:
@@ -403,10 +542,8 @@ class MainWindow(QMainWindow):
         try:
             spec = build_compare_spec(self._profile())
         except ValueError as exc:
-            self.log.clear()
             self._append_log(f"Command preview unavailable: {exc}")
             return
-        self.log.clear()
         self._append_log("$ " + shlex.join(spec.argv()))
 
     def _update_backup_status(self) -> None:
@@ -498,6 +635,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verifying...")
         self.status_label.setText("Verifying selected actions with a second dry run...")
+        self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
         self.validate_plan_button.setEnabled(True)
@@ -508,6 +646,7 @@ class MainWindow(QMainWindow):
             self.synchronize_button.setEnabled(True)
             self.validate_plan_button.setText("Actions Verified")
             self.status_label.setText("Selected actions verified. No files were changed.")
+            self._append_log("STATE actions-verified")
             return
         self._validated_plan = None
         self._execution_gate.verification_failed()
@@ -563,15 +702,84 @@ class MainWindow(QMainWindow):
         self._execution_gate.confirmation_opened()
         dialog = SyncConfirmationDialog(self._active_profile, self._validated_plan, self)
         accepted = bool(dialog.exec())
-        # Execution is deliberately unavailable in 1.15d-01. Confirmation
-        # returns to VERIFIED whether reviewed or cancelled.
-        self._execution_gate.confirmation_cancelled()
-        if accepted:
-            self._set_status(
-                "Confirmation reviewed. Real synchronization is not enabled yet.",
-                "success",
-            )
-        self.synchronize_button.setEnabled(True)
+        if not accepted:
+            self._execution_gate.confirmation_cancelled()
+            self.synchronize_button.setEnabled(True)
+            return
+        try:
+            self._sync_service.synchronize(self._active_profile, self._validated_plan)
+        except ValueError as exc:
+            self._execution_gate.confirmation_cancelled()
+            self.synchronize_button.setEnabled(True)
+            QMessageBox.critical(self, "Synchronization blocked", str(exc))
+
+    def _cancel_active_operation(self) -> None:
+        if self._execution_gate.state is ExecutionGateState.EXECUTING:
+            self._sync_service.cancel()
+        elif self._execution_gate.state is ExecutionGateState.VERIFYING:
+            self._plan_validation.cancel()
+        else:
+            self._service.cancel()
+
+    def _set_busy_controls(self, busy: bool) -> None:
+        self.compare_button.setEnabled(not busy)
+        self.validate_plan_button.setEnabled(False if busy else self._current_plan is not None)
+        self.synchronize_button.setEnabled(False)
+        self.swap_button.setEnabled(not busy)
+        self.filters_button.setEnabled(not busy)
+        self.sync_mode.setEnabled(not busy)
+        self.source_edit.setEnabled(not busy)
+        self.destination_edit.setEnabled(not busy)
+        self.backup_edit.setEnabled(not busy)
+        self.backup_browse.setEnabled(not busy and self.backup_browse.isEnabled())
+        self.protect_backup.setEnabled(not busy and self.protect_backup.isEnabled())
+        self.cancel_button.setEnabled(busy)
+
+    def _sync_started(self) -> None:
+        self._execution_gate.execution_started()
+        self._set_busy_controls(True)
+        self.comparison.set_stale(True)
+        self._set_status("Synchronization is running in the disposable smoke-test tree...", "warning")
+        self._append_log("STATE synchronization-started")
+
+    def _sync_finished(self, result: SyncResult) -> None:
+        self._execution_gate.execution_completed()
+        self._append_log(
+            f"STATE synchronization-completed exit_code={result.exit_code}"
+        )
+        self._set_busy_controls(False)
+        self._validated_plan = None
+        self._current_plan = None
+        self.plan_summary_label.hide()
+        self._set_status(
+            f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
+            "success",
+        )
+        QTimer.singleShot(0, self._compare)
+
+    def _sync_error(self, message: str, cancelled: bool = False) -> None:
+        if self._execution_gate.state is ExecutionGateState.EXECUTING:
+            if cancelled:
+                self._execution_gate.execution_cancelled()
+            else:
+                self._execution_gate.execution_failed()
+        self._append_log(
+            "STATE synchronization-cancelled"
+            if cancelled
+            else "STATE synchronization-failed"
+        )
+        self._set_busy_controls(False)
+        self.comparison.set_stale(True)
+        self._invalidate_plan_context()
+        self._append_log(message)
+        self._set_status(
+            "Synchronization was cancelled; compare again before retrying."
+            if cancelled
+            else "Synchronization failed; review diagnostics and compare again.",
+            "error",
+        )
+        if not cancelled:
+            QMessageBox.critical(self, "Synchronization failed", message)
 
     def _compare_if_ready(self) -> None:
         if self.source_edit.text().strip() and self.destination_edit.text().strip():
@@ -587,7 +795,6 @@ class MainWindow(QMainWindow):
         self.log.clear()
         self._active_profile = profile
         self._comparison_profile = profile
-        self._save_endpoints()
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
 
@@ -611,8 +818,10 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Comparing...")
+        self._append_log("STATE comparing")
 
     def _comparison_finished(self, result: CompareResult) -> None:
+        self._save_endpoints()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.comparison.set_changes(result.parsed.changes)
@@ -624,6 +833,7 @@ class MainWindow(QMainWindow):
             self._append_log(message)
         count = len(result.parsed.changes)
         self.status_label.setText(f"Comparison complete: {count} changed object(s).")
+        self._append_log(f"STATE comparison-complete changes={count}")
 
     def _comparison_error(self, message: str) -> None:
         self.compare_button.setEnabled(True)
@@ -633,8 +843,13 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Comparison failed", message)
 
     def _append_log(self, text: str) -> None:
-        if text:
-            self.log.appendPlainText(text.rstrip())
+        if not text:
+            return
+        normalized = text.rstrip("\r\n")
+        if not normalized:
+            return
+        self.log.appendPlainText(normalized.replace("\r", "\n"))
+        self._write_session_log(normalized.replace("\r", "\n"))
 
     def _save_endpoints(self) -> None:
         settings = QSettings()
