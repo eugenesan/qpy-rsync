@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel
+from qpy_rsync.core.changes import ChangeAction
 
 
 class ComparisonView(QWidget):
@@ -114,19 +115,31 @@ class ComparisonView(QWidget):
         # QTreeView indexes belong to the proxy. Never dereference a proxy
         # index's internalPointer as a TreeNode; doing so can crash PySide/Qt.
         path = self._source_path_for_proxy_index(index)
+        change = self._change_for_index(index)
+        is_unchanged = change is not None and getattr(change, "action", None) is ChangeAction.NO_CHANGE
         menu = QMenu(tree)
-        action = menu.addAction("Open in Diff Tool")
-        action.setEnabled(self._change_for_index(index) is not None)
+        copy_path_action = None
+        diff_action = None
         reset_one = reset_subtree = reset_all = None
-        if tree is self.action and path is not None:
-            menu.addSeparator()
-            reset_one = menu.addAction("Reset This Decision")
-            reset_subtree = menu.addAction("Reset Subtree Decisions")
-            reset_all = menu.addAction("Reset All Decisions")
-            reset_all.setEnabled(self.model.decisions.has_explicit())
+        if is_unchanged:
+            copy_path_action = menu.addAction("Copy Path")
+            copy_path_action.setEnabled(path is not None)
+        else:
+            diff_action = menu.addAction("Open in Diff Tool")
+            diff_action.setEnabled(change is not None)
+            if tree is self.action and path is not None:
+                menu.addSeparator()
+                reset_one = menu.addAction("Reset This Decision")
+                reset_subtree = menu.addAction("Reset Subtree Decisions")
+                reset_all = menu.addAction("Reset All Decisions")
+                reset_all.setEnabled(self.model.decisions.has_explicit())
         selected = menu.exec(tree.viewport().mapToGlobal(point))
-        if selected is action:
+        if selected is diff_action:
             self._request_diff(index)
+        elif selected is copy_path_action and path is not None:
+            from PySide6.QtWidgets import QApplication
+
+            QApplication.clipboard().setText(path)
         elif selected is reset_one and path is not None:
             self.model.reset_decision(path)
         elif selected is reset_subtree and path is not None:

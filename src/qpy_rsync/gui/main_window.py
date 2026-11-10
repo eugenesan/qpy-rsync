@@ -135,6 +135,7 @@ class MainWindow(QMainWindow):
         self.swap_button = QPushButton("Swap")
         self.filters_button = QPushButton("Filters...")
         self.filters_label = QLabel("Filters: 0 enabled / 0 total")
+        self.show_unchanged = QCheckBox("Show unchanged files")
         for widget in (
             self.compare_button,
             self.cancel_button,
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
             self.synchronize_button,
             self.filters_button,
             self.filters_label,
+            self.show_unchanged,
         ):
             controls.addWidget(widget)
         controls.addWidget(self.comparison.controls, 1)

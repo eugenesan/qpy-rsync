@@ -297,7 +297,7 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.DELETE: "× delete",
             ChangeAction.DESTINATION_ONLY: "keep ←",
             ChangeAction.REPLACE: "→ replace",
-            ChangeAction.NO_CHANGE: "=",
+            ChangeAction.NO_CHANGE: "—",
             ChangeAction.MESSAGE: "!",
         }
         stale_text = {
@@ -307,7 +307,7 @@ class ChangeTreeModel(QAbstractItemModel):
             ChangeAction.DELETE: "delete",
             ChangeAction.DESTINATION_ONLY: "keep",
             ChangeAction.REPLACE: "replace",
-            ChangeAction.NO_CHANGE: "unchanged",
+            ChangeAction.NO_CHANGE: "—",
             ChangeAction.MESSAGE: "message",
         }
         text = (stale_text if stale else fresh)[action]
