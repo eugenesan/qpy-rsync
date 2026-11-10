@@ -29,6 +29,17 @@ LOG=$ROOT/qpy-rsync-gui.log
 if [ -f "$LOG" ]; then
     grep 'STATE synchronization-' "$LOG" || true
 fi
+printf '\n--- progress marker summary ---\n'
+if [ -f "$LOG" ]; then
+    grep 'STATE synchronization-progress' "$LOG" | tail -n 10 || true
+    printf 'progress_marker_count='
+    grep -c 'STATE synchronization-progress' "$LOG" 2>/dev/null || printf '0'
+    printf '\n'
+fi
+printf '\n--- override marker summary ---\n'
+if [ -f "$LOG" ]; then
+    grep 'Action\*' "$LOG" || true
+fi
 printf '\n--- expected-mode notes ---\n'
 if [ -f "$ROOT/README-smoke.txt" ]; then
     cat "$ROOT/README-smoke.txt"
