@@ -98,7 +98,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     app = QApplication([sys.argv[0], *qt_arguments])
     app.setApplicationName("qpy-rsync")
     app.setOrganizationName("qpy-rsync")
+    from pathlib import Path
+
+    from PySide6.QtGui import QIcon
+
+    icon_path = Path(__file__).resolve().parents[2] / "qpy-rsync.svg"
+    if icon_path.is_file():
+        app.setWindowIcon(QIcon(str(icon_path)))
     window = MainWindow()
+    if icon_path.is_file():
+        window.setWindowIcon(QIcon(str(icon_path)))
     window.apply_startup_options(options)
     window.show()
     return app.exec()

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.inventory import unchanged_changes
 from qpy_rsync.core.endpoints import parse_endpoint
+from qpy_rsync.storage.profile_store import load_profile, save_profile
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
@@ -141,6 +142,8 @@ class MainWindow(QMainWindow):
         self.swap_button = QPushButton("Swap")
         self.filters_button = QPushButton("Filters...")
         self.filters_label = QLabel("Filters: 0 enabled / 0 total")
+        self.save_profile_button = QPushButton("Save Profile...")
+        self.load_profile_button = QPushButton("Load Profile...")
         self.show_unchanged = self.comparison.inventory_button
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         for widget in (
@@ -150,6 +153,8 @@ class MainWindow(QMainWindow):
             self.cancel_button,
             self.filters_button,
             self.filters_label,
+            self.save_profile_button,
+            self.load_profile_button,
         ):
             controls.addWidget(widget)
         controls.addWidget(self.comparison.controls, 1)
@@ -237,6 +242,8 @@ class MainWindow(QMainWindow):
         self.synchronize_button.clicked.connect(self._show_sync_confirmation)
         self.swap_button.clicked.connect(self._swap_endpoints)
         self.filters_button.clicked.connect(self._edit_filters)
+        self.save_profile_button.clicked.connect(self._save_profile)
+        self.load_profile_button.clicked.connect(self._load_profile)
         self.backup_browse.clicked.connect(self._browse_backup)
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
@@ -535,6 +542,35 @@ class MainWindow(QMainWindow):
         self.status_label.setText(
             "Stale comparison: filter rules changed. Compare again to refresh results."
         )
+
+    def _save_profile(self) -> None:
+        path, _selected = QFileDialog.getSaveFileName(
+            self, "Save Profile", str(Path.home() / "qpy-rsync-profile.json"), "JSON (*.json)"
+        )
+        if not path:
+            return
+        save_profile(Path(path), self._profile())
+        self._set_status(f"Profile saved: {path}", "success")
+
+    def _load_profile(self) -> None:
+        path, _selected = QFileDialog.getOpenFileName(
+            self, "Load Profile", str(Path.home()), "JSON (*.json)"
+        )
+        if not path:
+            return
+        profile = load_profile(Path(path))
+        self.source_edit.setText(profile.source.path)
+        self.destination_edit.setText(profile.destination.path)
+        index = self.sync_mode.findData(profile.transfer.sync_mode)
+        if index >= 0:
+            self.sync_mode.setCurrentIndex(index)
+        self.backup_edit.setText(profile.backup.directory)
+        self.protect_backup.setChecked(profile.backup.protect_nested)
+        self._filters = list(profile.filters)
+        self._save_filters()
+        self._update_filter_summary(stale=False)
+        self._update_backup_status()
+        self._set_status(f"Profile loaded: {path}", "success")
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
