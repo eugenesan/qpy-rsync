@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
+    QToolTip,
     QPushButton,
     QSplitter,
     QVBoxLayout,
