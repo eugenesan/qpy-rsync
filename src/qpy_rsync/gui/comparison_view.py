@@ -81,7 +81,7 @@ class ComparisonView(QWidget):
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
             width = button.fontMetrics().horizontalAdvance(button.text()) + 8
-            button.setFixedWidth(max(18, width // 2 + 4))
+            button.setFixedWidth(max(18, int(width * 0.65)))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)
