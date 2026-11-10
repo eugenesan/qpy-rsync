@@ -90,6 +90,10 @@ class MainWindow(QMainWindow):
             self._restore_backup()
         self._restore_logging_settings()
         self._update_startup_status()
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
 
     def _build_ui(self) -> None:
         root = QWidget(self)
@@ -291,6 +295,10 @@ class MainWindow(QMainWindow):
         self._update_backup_browse_state()
         self._update_backup_status()
         self._update_command_preview()
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
         if options.source is not None and options.destination is not None:
             self._set_status(
                 "Command-line Source and Destination loaded."
@@ -550,6 +558,10 @@ class MainWindow(QMainWindow):
         if not path:
             return
         save_profile(Path(path), self._profile())
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
         self._append_log(f"Profile saved: {path}")
 
     def _load_profile(self) -> None:
@@ -575,6 +587,10 @@ class MainWindow(QMainWindow):
         self._update_filter_summary(stale=False)
         self._update_backup_status()
         self._update_command_preview()
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
@@ -1021,6 +1037,10 @@ class MainWindow(QMainWindow):
         self._update_backup_browse_state()
         self._update_backup_status()
         self._update_command_preview()
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
 
     def _update_startup_status(self) -> None:
         if self.source_edit.text().strip() and self.destination_edit.text().strip():
@@ -1043,6 +1063,32 @@ class MainWindow(QMainWindow):
         settings.setValue("main-window/state", self.saveState())
         settings.sync()
         self.comparison.save_view_state()
+        try:
+            if (
+                os.environ.get("QT_QPA_PLATFORM") != "offscreen"
+                and getattr(self, "_baseline_profile", None) is not None
+                and self._profile() != self._baseline_profile
+            ):
+                answer = QMessageBox.question(
+                    self,
+                    "Save profile",
+                    "Settings changed since the last profile load or save. Save current settings as a profile?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    path, _selected = QFileDialog.getSaveFileName(
+                        self, "Save Profile", str(Path.home() / "qpy-rsync-profile.json"), "JSON (*.json)"
+                    )
+                    if path:
+                        save_profile(Path(path), self._profile())
+                        try:
+                            self._baseline_profile = self._profile()
+                        except ValueError:
+                            self._baseline_profile = None
+                        self._append_log(f"Profile saved: {path}")
+        except Exception:  # noqa: BLE001
+            pass
         super().closeEvent(event)  # type: ignore[arg-type]
         from PySide6.QtWidgets import QApplication
 
