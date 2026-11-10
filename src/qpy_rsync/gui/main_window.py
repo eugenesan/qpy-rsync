@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.rsync_command import build_compare_spec
+from qpy_rsync.backend.inventory import unchanged_changes
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
         self.filters_button = QPushButton("Filters...")
         self.filters_label = QLabel("Filters: 0 enabled / 0 total")
         self.show_unchanged = QCheckBox("Show unchanged files")
+        self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         for widget in (
             self.compare_button,
             self.cancel_button,
@@ -852,7 +854,8 @@ class MainWindow(QMainWindow):
         self._save_endpoints()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
-        self.comparison.set_changes(result.parsed.changes)
+        self._last_changed_changes = list(result.parsed.changes)
+        self._apply_inventory_mode()
         self.comparison.set_stale(False)
         self._set_locations_stale(False)
         self._validated_plan = None
@@ -862,6 +865,21 @@ class MainWindow(QMainWindow):
         count = len(result.parsed.changes)
         self.status_label.setText(f"Comparison complete: {count} changed object(s).")
         self._append_log(f"STATE comparison-complete changes={count}")
+
+    def _apply_inventory_mode(self) -> None:
+        if not getattr(self, "_last_changed_changes", None):
+            return
+        if self._active_profile is None:
+            return
+        if self.show_unchanged.isChecked():
+            try:
+                extra = unchanged_changes(self._active_profile, self._last_changed_changes)
+            except Exception as exc:  # noqa: BLE001
+                self._append_log(f"Inventory gathering failed: {exc}")
+                extra = []
+            self.comparison.set_changes(self._last_changed_changes + extra)
+        else:
+            self.comparison.set_changes(self._last_changed_changes)
 
     def _comparison_error(self, message: str) -> None:
         self.compare_button.setEnabled(True)
