@@ -462,10 +462,15 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, text: str, severity: str = "info") -> None:
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
-        self.status_label.setText(text)
         lines = [part.strip() for part in text.replace(". ", ".\n").splitlines() if part.strip()]
         self.status_label.setToolTip("\n".join(lines))
-        self.status_label.setStyleSheet(f"color: {colors.get(severity, '')};")
+        color = colors.get(severity, "")
+        if color:
+            self.status_label.setTextFormat(Qt.TextFormat.RichText)
+            self.status_label.setText(f'<span style="color:{color};">{text}</span>')
+        else:
+            self.status_label.setTextFormat(Qt.TextFormat.PlainText)
+            self.status_label.setText(text)
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
         if severity == "info" and text.startswith("Backups are disabled"):
