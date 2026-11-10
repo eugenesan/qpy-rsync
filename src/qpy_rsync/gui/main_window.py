@@ -550,7 +550,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         save_profile(Path(path), self._profile())
-        self._set_status(f"Profile saved: {path}", "success")
+        self._append_log(f"Profile saved: {path}")
 
     def _load_profile(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
@@ -570,7 +570,7 @@ class MainWindow(QMainWindow):
         self._save_filters()
         self._update_filter_summary(stale=False)
         self._update_backup_status()
-        self._set_status(f"Profile loaded: {path}", "success")
+        self._append_log(f"Profile loaded: {path}")
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
