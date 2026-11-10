@@ -1069,10 +1069,26 @@ class MainWindow(QMainWindow):
         settings.sync()
         self.comparison.save_view_state()
         try:
+            _current = self._profile()
+            _baseline = getattr(self, "_baseline_profile", None)
+
+            def _same_profile(a, b):
+                if a is None or b is None:
+                    return False
+                left = a.to_dict()
+                right = b.to_dict()
+                left.pop("profile_id", None)
+                right.pop("profile_id", None)
+                left.pop("name", None)
+                right.pop("name", None)
+                return left == right
+
+            if _baseline is not None and not _same_profile(_current, _baseline):
+                pass
             if (
                 os.environ.get("QT_QPA_PLATFORM") != "offscreen"
-                and getattr(self, "_baseline_profile", None) is not None
-                and self._profile() != self._baseline_profile
+                and _baseline is not None
+                and not _same_profile(_current, _baseline)
             ):
                 answer = QMessageBox.question(
                     self,
