@@ -1021,3 +1021,6 @@ class MainWindow(QMainWindow):
         settings.sync()
         self.comparison.save_view_state()
         super().closeEvent(event)  # type: ignore[arg-type]
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.instance().quit()  # type: ignore[union-attr]

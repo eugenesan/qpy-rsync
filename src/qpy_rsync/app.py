@@ -98,6 +98,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     app = QApplication([sys.argv[0], *qt_arguments])
     app.setApplicationName("qpy-rsync")
     app.setOrganizationName("qpy-rsync")
+    app.setQuitOnLastWindowClosed(True)
     from pathlib import Path
 
     from PySide6.QtGui import QIcon
