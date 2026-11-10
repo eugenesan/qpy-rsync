@@ -85,9 +85,9 @@ class MainWindow(QMainWindow):
         self._log_initialized = False
         self._build_ui()
         self._restore_window_state()
-        self._restore_endpoints()
-        self._restore_filters()
-        self._restore_backup()
+        if not self._restore_recent_profile():
+            self._restore_filters()
+            self._restore_backup()
         self._restore_logging_settings()
         self._update_startup_status()
 
@@ -447,7 +447,7 @@ class MainWindow(QMainWindow):
         self.destination_edit.setText(source)
         self.source_edit.blockSignals(False)
         self.destination_edit.blockSignals(False)
-        self._save_endpoints()
+        self._save_recent_profile()
         self._update_backup_browse_state()
         self._update_backup_status()
         if self.comparison.model.changes:
@@ -559,6 +559,10 @@ class MainWindow(QMainWindow):
         if not path:
             return
         profile = load_profile(Path(path))
+        self._apply_profile(profile)
+        self._append_log(f"Profile loaded: {path}")
+
+    def _apply_profile(self, profile: SyncProfile) -> None:
         self.source_edit.setText(profile.source.path)
         self.destination_edit.setText(profile.destination.path)
         index = self.sync_mode.findData(profile.transfer.sync_mode)
@@ -570,7 +574,7 @@ class MainWindow(QMainWindow):
         self._save_filters()
         self._update_filter_summary(stale=False)
         self._update_backup_status()
-        self._append_log(f"Profile loaded: {path}")
+        self._update_command_preview()
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
@@ -588,7 +592,7 @@ class MainWindow(QMainWindow):
             self._update_backup_status()
             return
         self._backup = updated
-        self._save_backup()
+        self._save_recent_profile()
         self._update_backup_status()
         self._validated_plan = None
         self.validate_plan_button.setText("Verify Actions")
@@ -907,7 +911,7 @@ class MainWindow(QMainWindow):
         self._append_log("STATE comparing")
 
     def _comparison_finished(self, result: CompareResult) -> None:
-        self._save_endpoints()
+        self._save_recent_profile()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self._last_changed_changes = list(result.parsed.changes)
@@ -954,16 +958,35 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(normalized.replace("\r", "\n"))
         self._write_session_log(normalized.replace("\r", "\n"))
 
-    def _save_endpoints(self) -> None:
+    def _recent_profile_path(self) -> Path:
         settings = QSettings()
-        settings.setValue("comparison/source", self.source_edit.text().strip())
-        settings.setValue("comparison/destination", self.destination_edit.text().strip())
-        settings.sync()
+        stored = str(settings.value("profile/recent_path", ""))
+        if stored:
+            return Path(stored).expanduser()
+        return Path.home() / ".local" / "share" / "qpy-rsync" / "recent-profile.json"
 
-    def _restore_endpoints(self) -> None:
+    def _save_recent_profile(self) -> None:
+        path = Path.home() / ".local" / "share" / "qpy-rsync" / "recent-profile.json"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            save_profile(path, self._profile())
+            QSettings().setValue("profile/recent_path", str(path))
+        except (OSError, ValueError):
+            pass
+
+    def _restore_recent_profile(self) -> bool:
         settings = QSettings()
-        self.source_edit.setText(str(settings.value("comparison/source", "")))
-        self.destination_edit.setText(str(settings.value("comparison/destination", "")))
+        stored = str(settings.value("profile/recent_path", ""))
+        if not stored:
+            return False
+        path = Path(stored).expanduser()
+        if not path.is_file():
+            return False
+        try:
+            self._apply_profile(load_profile(path))
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        return True
 
     def _save_filters(self) -> None:
         settings = QSettings()
