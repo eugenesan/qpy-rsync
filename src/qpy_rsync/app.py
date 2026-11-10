@@ -85,42 +85,20 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
     )
 
 
-_NOISY_QT_MESSAGES = (
-    "X server does not support XInput 2",
-    "Failed to initialize GLX",
-    "Cannot create platform OpenGL context",
-    "fallback to QtQuick software backend",
-    "libEGL warning:",
-)
-
-
-def _quiet_qt_message_handler(_mode: object, _context: object, message: str) -> None:
-    """Hide known remote-X11 noise while keeping every other Qt diagnostic."""
-    if any(fragment in message for fragment in _NOISY_QT_MESSAGES):
-        return
-    sys.stderr.write(f"{message}\n")
-    sys.stderr.flush()
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
-    # Keep the desktop's Qt style/theme (for example KDE Breeze). The KDE
-    # platform theme loads Qt Quick, which tries to create an OpenGL context.
-    # Remote X11 sessions often expose neither GLX nor EGL, so disable the XCB
-    # GL integration and let Qt Quick use its software renderer. The known
-    # resulting warnings are filtered below.
+    # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
+    # context. Remote X11 sessions often expose neither GLX nor EGL, so force
+    # the software renderer before Qt is initialized.
     os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
     os.environ.setdefault("QT_QUICK_BACKEND", "software")
     os.environ.setdefault("QSG_RHI_BACKEND", "software")
     try:
-        from PySide6.QtCore import qInstallMessageHandler
         from PySide6.QtWidgets import QApplication
     except ImportError as exc:
         print("PySide6 is required to run qpy-rsync.", file=sys.stderr)
         raise SystemExit(2) from exc
-
-    qInstallMessageHandler(_quiet_qt_message_handler)
 
     from qpy_rsync.gui.main_window import MainWindow
 

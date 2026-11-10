@@ -21,12 +21,10 @@ fi
 unset VIRTUAL_ENV PYENV_VERSION PYTHONHOME PYTHONPATH
 unset QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
 unset QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
-# Keep the desktop's own Qt style/theme (for example KDE Breeze). The KDE
-# platform theme loads Qt Quick, which tries to create an OpenGL context; remote
-# X11 sessions often expose neither GLX nor EGL. Disabling the XCB GL
-# integration keeps the platform theme intact and lets Qt Quick fall back to its
-# software renderer. app.py filters the resulting known warnings.
 export QT_XCB_GL_INTEGRATION=none
+# The KDE platform theme loads Qt Quick, which tries to create an OpenGL
+# context. Remote X11 sessions often expose neither GLX nor EGL, so force the
+# software renderer to avoid the noisy fallback warnings.
 export QT_QUICK_BACKEND=software
 export QSG_RHI_BACKEND=software
 export PYTHONPATH="$SCRIPT_DIR/src"
