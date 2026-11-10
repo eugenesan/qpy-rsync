@@ -462,7 +462,8 @@ class MainWindow(QMainWindow):
     def _set_status(self, text: str, severity: str = "info") -> None:
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         self.status_label.setText(text)
-        self.status_label.setToolTip(text)
+        wrapped = "\n".join(text[i : i + 80] for i in range(0, len(text), 80))
+        self.status_label.setToolTip(wrapped)
         self.status_label.setStyleSheet(f"color: {colors.get(severity, '')};")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
