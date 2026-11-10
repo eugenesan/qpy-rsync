@@ -89,11 +89,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
     # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
-    # context. Remote X11 sessions often expose neither GLX nor EGL, so force
-    # the software renderer before Qt is initialized.
-    os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
-    os.environ.setdefault("QT_QUICK_BACKEND", "software")
-    os.environ.setdefault("QSG_RHI_BACKEND", "software")
+    # context. Remote X11 sessions often expose neither GLX nor EGL, so use
+    # Qt's generic theme unless the user chose one explicitly. This suppresses
+    # QXcbConnection/libEGL warnings before Qt is initialized.
+    os.environ.setdefault("QT_QPA_PLATFORMTHEME", "generic")
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as exc:

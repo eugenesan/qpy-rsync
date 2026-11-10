@@ -21,11 +21,10 @@ fi
 unset VIRTUAL_ENV PYENV_VERSION PYTHONHOME PYTHONPATH
 unset QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
 unset QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
-export QT_XCB_GL_INTEGRATION=none
 # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
-# context. Remote X11 sessions often expose neither GLX nor EGL, so force the
-# software renderer to avoid the noisy fallback warnings.
-export QT_QUICK_BACKEND=software
-export QSG_RHI_BACKEND=software
+# context. Remote X11 sessions often expose neither GLX nor EGL, so use Qt's
+# generic theme unless the user chose a platform theme explicitly. This avoids
+# noisy QXcbConnection/libEGL warnings without disabling GL for other apps.
+export QT_QPA_PLATFORMTHEME=${QT_QPA_PLATFORMTHEME:-generic}
 export PYTHONPATH="$SCRIPT_DIR/src"
 exec "$PYTHON" -m qpy_rsync.app "$@"
