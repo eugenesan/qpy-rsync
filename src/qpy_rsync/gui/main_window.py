@@ -635,6 +635,8 @@ class MainWindow(QMainWindow):
         self._append_log("$ " + shlex.join(spec.argv()))
 
     def _update_backup_status(self) -> None:
+        if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
+            return
         try:
             profile = self._profile()
             messages = [
