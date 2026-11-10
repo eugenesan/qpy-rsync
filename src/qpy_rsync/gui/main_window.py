@@ -144,9 +144,9 @@ class MainWindow(QMainWindow):
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         for widget in (
             self.compare_button,
-            self.cancel_button,
             self.validate_plan_button,
             self.synchronize_button,
+            self.cancel_button,
             self.filters_button,
             self.filters_label,
         ):
@@ -212,9 +212,10 @@ class MainWindow(QMainWindow):
         self.log_file_edit = QLineEdit(str(self._log_file_path))
         self.log_file_browse = QPushButton("Browse...")
         log_group_layout.addWidget(QLabel("Log"))
-        log_group_layout.addWidget(self.log_file_checkbox)
         log_group_layout.addWidget(self.log_file_edit, 1)
         log_group_layout.addWidget(self.log_file_browse)
+        log_group_layout.addWidget(self.log_file_checkbox)
+        log_group_layout.addWidget(QLabel("Enable logging"))
 
         backup_row.addWidget(backup_group, 1)
         backup_row.addWidget(log_group, 1)
@@ -461,6 +462,7 @@ class MainWindow(QMainWindow):
     def _set_status(self, text: str, severity: str = "info") -> None:
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         self.status_label.setText(text)
+        self.status_label.setToolTip(text)
         self.status_label.setStyleSheet(f"color: {colors.get(severity, '')};")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
