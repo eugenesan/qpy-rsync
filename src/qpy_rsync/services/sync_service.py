@@ -43,23 +43,15 @@ def explain_rsync_exit(code: int) -> str:
     return _RSYNC_EXIT_MESSAGES.get(code, f"rsync exited with status {code}.")
 
 
-def _inside_smoke_root(value: str) -> bool:
-    candidate = Path(value).expanduser().resolve(strict=False)
-    root = SMOKE_ROOT.resolve(strict=False)
-    return candidate != root and root in candidate.parents
-
-
 def enforce_smoke_execution_boundary(profile: SyncProfile) -> None:
+    # Phase 1 of the post-1.15f safety review: local-to-local synchronization is
+    # allowed outside the smoke fixture, while SSH execution remains restricted.
     if profile.source.kind is not EndpointKind.LOCAL or profile.destination.kind is not EndpointKind.LOCAL:
-        raise ValueError("Real synchronization is currently limited to local smoke-test endpoints.")
-    if not _inside_smoke_root(profile.source.path) or not _inside_smoke_root(profile.destination.path):
         raise ValueError(
-            "Real synchronization is currently restricted to paths below /tmp/qpy-rsync-smoke/."
+            "Real synchronization is currently limited to local-to-local endpoints."
         )
-    if profile.backup.enabled and not _inside_smoke_root(profile.backup.directory):
-        raise ValueError(
-            "The enabled backup directory must also be below /tmp/qpy-rsync-smoke/."
-        )
+    # Backup paths are destination-side strings, not endpoints; SSH backup
+    # semantics remain deferred to a later safety review.
 
 
 class SyncService:
