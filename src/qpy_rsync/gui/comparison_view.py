@@ -224,13 +224,15 @@ class ComparisonView(QWidget):
     def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
         for tree in (self.source, self.action, self.destination):
             header = tree.header()
-            for section in range(header.count()):
-                if header.isSectionHidden(section):
-                    continue
-                if section == column:
-                    header.setSortIndicator(section, order)
-                else:
-                    header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+            visible = [
+                section
+                for section in range(header.count())
+                if not header.isSectionHidden(section)
+            ]
+            if column in visible:
+                header.setSortIndicator(column, order)
+            else:
+                header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
     def _source_path_for_proxy_index(self, index: QModelIndex) -> str | None:
         if not index.isValid():
@@ -424,7 +426,10 @@ class ComparisonView(QWidget):
         for tree in (self.source, self.action, self.destination):
             tree.expand(proxy_index)
             tree.setCurrentIndex(proxy_index)
-            tree.scrollTo(proxy_index)
+            # The object should appear in the middle of the pane.
+            tree.scrollTo(
+                proxy_index, QAbstractItemView.ScrollHint.PositionAtCenter
+            )
 
     def _find_node(self, node: object, path: str) -> object | None:
         for child in getattr(node, "children", ()):  # type: ignore[arg-type]

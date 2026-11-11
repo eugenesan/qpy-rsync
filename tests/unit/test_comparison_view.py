@@ -292,3 +292,56 @@ def test_header_click_sorts_the_tree_panes() -> None:
     assert paths() == ["b.txt", "c.txt", "a.txt"]
     view.close()
     application.processEvents()
+
+
+def test_sort_indicator_marks_the_sorted_column() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_changes(
+        [
+            Change("b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=30),
+            Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=10),
+        ]
+    )
+    application.processEvents()
+
+    view._sort_by_section(view.source.header(), 1)
+    application.processEvents()
+    assert view.source.header().sortIndicatorSection() == 1
+    assert view.model.sort_column() == 1
+    # The other panes do not show the column, so they carry no indicator.
+    assert view.action.header().sortIndicatorSection() == -1
+    assert view.destination.header().sortIndicatorSection() == -1
+
+    # The destination column marks its own header.
+    view._sort_by_section(view.destination.header(), 5)
+    application.processEvents()
+    assert view.destination.header().sortIndicatorSection() == 5
+    assert view.source.header().sortIndicatorSection() == -1
+    view.close()
+    application.processEvents()
+
+
+def test_selected_object_is_centered_in_the_panes() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    changes = [
+        Change(f"file{index}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
+        for index in range(60)
+    ]
+    view.set_changes(changes)
+    application.processEvents()
+
+    view.select_path("file40.txt")
+    application.processEvents()
+    index = view.source.currentIndex()
+    assert index.isValid()
+    rect = view.source.visualRect(index)
+    viewport = view.source.viewport().rect()
+    assert abs(rect.center().y() - viewport.center().y()) <= rect.height()
+    view.close()
+    application.processEvents()
