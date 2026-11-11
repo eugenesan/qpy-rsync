@@ -40,6 +40,10 @@ class TreeNode:
     children: list["TreeNode"] = field(default_factory=list)
     row_index: int = 0
     subtree_only_destination: bool = False
+    # The size of everything below a folder, so a folder row reports its
+    # contents instead of the size of the directory itself.
+    subtree_size: int = 0
+    subtree_destination_size: int = 0
 
     def child(self, row: int) -> "TreeNode":
         return self.children[row]
@@ -99,11 +103,34 @@ class ChangeTreeModel(QAbstractItemModel):
                 parent = node
             parent.change = change
         self._compute_subtree_flags(self.root)
+        self._compute_sizes(self.root)
         self._sort(self.root)
         self._assign_rows(self.root)
         self._override_paths = self.decisions.override_paths(self.changes)
         self.endResetModel()
         self._refresh_action_header()
+
+    def _compute_sizes(self, node: TreeNode) -> tuple[int, int]:
+        """Sum the sizes of the objects below a folder."""
+        source_total = 0
+        destination_total = 0
+        for child in node.children:
+            child_source, child_destination = self._compute_sizes(child)
+            source_total += child_source
+            destination_total += child_destination
+        if not node.children and node.change is not None:
+            change = node.change
+            source_total += int(change.size or 0)
+            destination_total += int(self._destination_size(change))
+        node.subtree_size = source_total
+        node.subtree_destination_size = destination_total
+        return source_total, destination_total
+
+    def _destination_size(self, change: Change) -> int:
+        if change.destination_size is not None:
+            return int(change.destination_size)
+        size, _time = self._destination_info(change.path.rstrip("/"))
+        return int(size or 0)
 
     def _compute_subtree_flags(self, node: TreeNode) -> bool:
         """Return whether every change in this subtree is destination-only."""
@@ -133,6 +160,14 @@ class ChangeTreeModel(QAbstractItemModel):
         return bool(node.children)
 
     def _size_value(self, node: TreeNode, column: int) -> int | None:
+        if node.children:
+            # A folder reports the objects it contains, not the size of its
+            # own directory record.
+            return (
+                node.subtree_size
+                if column == self.SOURCE_SIZE
+                else node.subtree_destination_size
+            )
         change = node.change
         if change is None:
             return None
@@ -268,6 +303,7 @@ class ChangeTreeModel(QAbstractItemModel):
     ) -> None:
         """Remember the size and the date of the listed destination objects."""
         self._destination_metadata = dict(metadata)
+        self._compute_sizes(self.root)
         if not self.root.children:
             return
         top = self.index(0, 0)
@@ -298,17 +334,16 @@ class ChangeTreeModel(QAbstractItemModel):
                 # Icons carry the action. Keeping the cell text empty leaves
                 # maximum room for object names in the tree panes.
                 return ""
+            if index.column() == self.SOURCE_SIZE:
+                if not source_present:
+                    return ""
+                return self._size(self._size_value(node, self.SOURCE_SIZE))
+            if index.column() == self.DESTINATION_SIZE:
+                if not destination_present:
+                    return ""
+                return self._size(self._size_value(node, self.DESTINATION_SIZE))
             if change is None:
                 return ""
-            if index.column() == self.SOURCE_SIZE:
-                return self._size(change.size) if source_present else ""
-            if index.column() == self.DESTINATION_SIZE:
-                if change.destination_size is not None:
-                    return self._size(change.destination_size)
-                size, _time = self._destination_info(node.path)
-                if size is not None:
-                    return self._size(size)
-                return self._size(change.size) if change.action is ChangeAction.DESTINATION_ONLY else ""
             if index.column() == self.SOURCE_TIME:
                 return change.modified_time or "" if source_present else ""
             if index.column() == self.DESTINATION_TIME:

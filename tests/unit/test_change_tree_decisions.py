@@ -172,3 +172,19 @@ def test_action_header_keeps_the_count_in_the_tooltip() -> None:
     accent = model.headerData(model.ACTION, Qt.Horizontal, Qt.ForegroundRole)
     assert accent is not None
     assert accent.name().lower() == ACTION_HEADER_ACCENT.lower()
+
+
+def test_folder_rows_report_the_size_of_their_contents() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [
+            Change("dir/a.bin", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=1000),
+            Change("dir/b.bin", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=2000),
+            Change("dir", ChangeAction.CREATE, ObjectKind.DIRECTORY, "cd+++++++++", size=4096),
+        ]
+    )
+    folder = model.index(0, 0)
+    assert folder.internalPointer().path == "dir"
+    # The folder reports its contents, not the size of its directory record.
+    assert model.data(model.index(0, model.SOURCE_SIZE)) == "2.9 KiB"
+    assert model.index(0, model.SOURCE_SIZE).data() == "2.9 KiB"
