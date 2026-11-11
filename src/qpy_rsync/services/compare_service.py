@@ -78,8 +78,11 @@ class CompareService:
             self._emit_line(self._buffer)
             self._buffer = ""
         debug("compare.finish", exit_code=process.exit_code, stdout=repr(process.stdout[:2000]), stderr=repr(process.stderr[:2000]))
-        if self._cancelled or process.crashed:
+        if self._cancelled:
             self.on_cancelled()
+            return
+        if process.crashed:
+            self.on_error("rsync terminated unexpectedly before comparison completed.")
             return
         if process.exit_code != 0:
             self.on_error(f"rsync exited with status {process.exit_code}: {process.stderr.strip()}")
