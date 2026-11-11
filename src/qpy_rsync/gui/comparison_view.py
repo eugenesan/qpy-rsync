@@ -31,7 +31,7 @@ from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binar
 
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
-ACTION_PANE_WIDTH = 150
+ACTION_PANE_WIDTH = 90
 ROW_HEIGHT = 22
 
 

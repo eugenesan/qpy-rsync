@@ -64,8 +64,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self.discarded_decisions = 0
         self.decisions_enabled = True
         self.stale = False
-        self._action_header = "Action"
-        self._action_header_tooltip = "Action"
+        self._action_header = "Actions"
+        self._action_header_tooltip = "Actions"
         self._modified_count = 0
         self._override_paths: set[str] = set()
 
@@ -164,9 +164,9 @@ class ChangeTreeModel(QAbstractItemModel):
         self._modified_count = modified
         # The header stays short so it fits into the fixed action column. The
         # number of modified decisions is shown in the header tooltip.
-        self._action_header = "Action*" if modified else "Action"
+        self._action_header = "Actions*" if modified else "Actions"
         self._action_header_tooltip = (
-            f"Action* ({modified} modified)" if modified else "Action"
+            f"Actions* ({modified} modified)" if modified else "Actions"
         )
         self.headerDataChanged.emit(
             Qt.Orientation.Horizontal, self.ACTION, self.ACTION

@@ -93,18 +93,18 @@ def test_override_count_tracks_active_explicit_decisions() -> None:
         [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
     assert model.decision_summary().modified == 0
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Actions"
     index = model.index(0, model.ACTION)
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
     assert model.decision_summary().modified == 1
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action*"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Actions*"
     assert (
         model.headerData(model.ACTION, Qt.Horizontal, Qt.ToolTipRole)
-        == "Action* (1 modified)"
+        == "Actions* (1 modified)"
     )
     model.reset_all_decisions()
     assert model.decision_summary().modified == 0
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Actions"
 
 
 def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
@@ -161,13 +161,13 @@ def test_action_header_keeps_the_count_in_the_tooltip() -> None:
     model.set_changes(
         [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Actions"
     index = model.index(0, model.ACTION)
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action*"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Actions*"
     assert (
         model.headerData(model.ACTION, Qt.Horizontal, Qt.ToolTipRole)
-        == "Action* (1 modified)"
+        == "Actions* (1 modified)"
     )
     accent = model.headerData(model.ACTION, Qt.Horizontal, Qt.ForegroundRole)
     assert accent is not None
