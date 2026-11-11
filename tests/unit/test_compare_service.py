@@ -42,6 +42,21 @@ def test_compare_service_reports_cancellation_without_finishing() -> None:
     assert finished == []
 
 
+def test_compare_service_reports_crashed_run_as_error() -> None:
+    app()
+    service = CompareService()
+    finished: list[object] = []
+    cancelled: list[bool] = []
+    errors: list[str] = []
+    service.on_finished = finished.append
+    service.on_cancelled = lambda: cancelled.append(True)
+    service.on_error = errors.append
+    service._finish(ProcessResult(-1, "", "", crashed=True))
+    assert cancelled == []
+    assert finished == []
+    assert errors == ["rsync terminated unexpectedly before comparison completed."]
+
+
 def test_plan_validation_service_streams_stdout() -> None:
     app()
     service = PlanValidationService()
