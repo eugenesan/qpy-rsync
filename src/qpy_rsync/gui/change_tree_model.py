@@ -7,7 +7,13 @@ from typing import Any
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor
 
-from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
+from qpy_rsync.core.changes import (
+    Change,
+    ChangeAction,
+    ChangeDecision,
+    ChangeDecisions,
+    ObjectKind,
+)
 
 from .icons import ACTION_LABELS, action_icon
 
@@ -68,6 +74,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self._action_header_tooltip = "Actions"
         self._modified_count = 0
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
+        self._sort_column = self.SOURCE_NAME
+        self._sort_order = Qt.SortOrder.AscendingOrder
         self._override_paths: set[str] = set()
 
     def set_changes(self, changes: list[Change]) -> None:
@@ -113,9 +121,78 @@ class ChangeTreeModel(QAbstractItemModel):
         return node.subtree_only_destination
 
     def _sort(self, node: TreeNode) -> None:
-        node.children.sort(key=lambda child: (not child.children, child.name.casefold()))
+        node.children.sort(key=lambda child: self._sort_key(child, self._sort_column))
+        if self._sort_order == Qt.SortOrder.DescendingOrder:
+            node.children.reverse()
         for child in node.children:
             self._sort(child)
+
+    def _is_directory(self, node: TreeNode) -> bool:
+        if node.change is not None:
+            return node.change.kind is ObjectKind.DIRECTORY
+        return bool(node.children)
+
+    def _size_value(self, node: TreeNode, column: int) -> int | None:
+        change = node.change
+        if change is None:
+            return None
+        if column == self.SOURCE_SIZE:
+            return change.size
+        if change.destination_size is not None:
+            return change.destination_size
+        size, _time = self._destination_info(node.path)
+        return size
+
+    def _time_value(self, node: TreeNode, column: int) -> str | None:
+        change = node.change
+        if change is None:
+            return None
+        if column == self.SOURCE_TIME:
+            return change.modified_time
+        if change.destination_time:
+            return change.destination_time
+        _size, time = self._destination_info(node.path)
+        return time
+
+    def _sort_key(self, node: TreeNode, column: int) -> tuple:
+        """Return the key a row is sorted by.
+
+        The name is the tie breaker, so the order stays stable.
+        """
+        name = node.name.casefold()
+        if column in (self.SOURCE_NAME, self.DESTINATION_NAME):
+            # Directories come first, the way the tree is built.
+            return (0 if self._is_directory(node) else 1, name)
+        if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
+            size = self._size_value(node, column)
+            return (size if size is not None else -1, name)
+        if column in (self.SOURCE_TIME, self.DESTINATION_TIME):
+            return (self._time_value(node, column) or "", name)
+        if column == self.ACTION:
+            action = self.effective_action(node)
+            return (ACTION_LABELS.get(action, action.value).casefold(), name)
+        return (name,)
+
+    def sort_column(self) -> int:
+        """Return the column the tree is sorted by."""
+        return self._sort_column
+
+    def sort_order(self) -> Qt.SortOrder:
+        """Return the order the tree is sorted in."""
+        return self._sort_order
+
+    def sort(  # noqa: A003
+        self,
+        column: int,
+        order: Qt.SortOrder = Qt.SortOrder.AscendingOrder,
+    ) -> None:
+        """Sort every level of the tree by the given column."""
+        self._sort_column = column
+        self._sort_order = order
+        self.layoutAboutToBeChanged.emit()
+        self._sort(self.root)
+        self._assign_rows(self.root)
+        self.layoutChanged.emit()
 
     def _assign_rows(self, node: TreeNode) -> None:
         for row, child in enumerate(node.children):

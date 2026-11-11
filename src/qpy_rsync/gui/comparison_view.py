@@ -151,6 +151,10 @@ class ComparisonView(QWidget):
         self.filter_edit.textChanged.connect(self.set_path_filter)
         self.expand_button.clicked.connect(self.expand_all)
         self.collapse_button.clicked.connect(self.collapse_all)
+        for tree in (self.source, self.action, self.destination):
+            tree.header().sectionClicked.connect(
+                lambda section, t=tree: self._sort_by_section(t, section)
+            )
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.header().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.header().sectionResized.connect(
@@ -189,10 +193,40 @@ class ComparisonView(QWidget):
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSortingEnabled(False)
         tree.header().setStretchLastSection(False)
+        tree.header().setSortIndicatorShown(True)
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(lambda point, t=tree: self._show_context_menu(t, point))
         tree.doubleClicked.connect(self._request_diff)
         return tree
+
+    def _sort_by_section(self, tree: QTreeView, section: int) -> None:
+        """Sort the tree panes by the clicked header.
+
+        All three panes show the same objects, so they share the order. The
+        section of a header is the column of the model, because every pane
+        shows a subset of the same columns.
+        """
+        column = section
+        order = Qt.SortOrder.AscendingOrder
+        if self.model.sort_column() == column:
+            order = (
+                Qt.SortOrder.DescendingOrder
+                if self.model.sort_order() == Qt.SortOrder.AscendingOrder
+                else Qt.SortOrder.AscendingOrder
+            )
+        self.model.sort(column, order)
+        self._show_sort_indicator(column, order)
+
+    def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
+        for tree in (self.source, self.action, self.destination):
+            header = tree.header()
+            for section in range(header.count()):
+                if header.isSectionHidden(section):
+                    continue
+                if section == column:
+                    header.setSortIndicator(section, order)
+                else:
+                    header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
     def _source_path_for_proxy_index(self, index: QModelIndex) -> str | None:
         if not index.isValid():

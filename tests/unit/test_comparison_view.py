@@ -245,3 +245,50 @@ def test_destination_metadata_fills_the_destination_columns() -> None:
     assert model.data(model.index(0, model.SOURCE_SIZE)) == "10 B"
     view.close()
     application.processEvents()
+
+
+def test_header_click_sorts_the_tree_panes() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    changes = [
+        Change("b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=30),
+        Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=10),
+        Change("c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=20),
+    ]
+    view.set_changes(changes)
+    application.processEvents()
+
+    def paths() -> list[str]:
+        model = view.model
+        return [
+            model.index(row, 0).internalPointer().path
+            for row in range(model.rowCount())
+        ]
+
+    def proxy_paths() -> list[str]:
+        return [
+            view.proxy.index(row, 0).data()
+            for row in range(view.proxy.rowCount())
+        ]
+
+    # The default order is by name.
+    assert paths() == ["a.txt", "b.txt", "c.txt"]
+
+    view._sort_by_section(view.source.header(), 1)
+    application.processEvents()
+    assert paths() == ["a.txt", "c.txt", "b.txt"]
+    assert proxy_paths() == ["a.txt", "c.txt", "b.txt"]
+
+    # A second click reverses the order.
+    view._sort_by_section(view.source.header(), 1)
+    application.processEvents()
+    assert paths() == ["b.txt", "c.txt", "a.txt"]
+
+    # The order survives a rebuild of the tree.
+    view.set_changes(changes)
+    application.processEvents()
+    assert paths() == ["b.txt", "c.txt", "a.txt"]
+    view.close()
+    application.processEvents()
