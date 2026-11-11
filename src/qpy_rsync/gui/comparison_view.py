@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator
+
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSize, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -36,8 +39,13 @@ class UniformRowDelegate(QStyledItemDelegate):
     """Keep row heights identical in all three synchronized tree panes."""
 
     def sizeHint(self, option: object, index: QModelIndex) -> QSize:  # noqa: N802
-        size = super().sizeHint(option, index)  # type: ignore[arg-type]
-        return QSize(size.width(), ROW_HEIGHT)
+        # The default implementation asks the model for every role and walks
+        # the style, which is far too expensive while a large tree expands.
+        # Only the text width matters here; the height is fixed anyway.
+        text = index.data(Qt.ItemDataRole.DisplayRole)
+        metrics = option.fontMetrics  # type: ignore[attr-defined]
+        width = metrics.horizontalAdvance(str(text or "")) + 24
+        return QSize(width, ROW_HEIGHT)
 
 
 class ComparisonView(QWidget):
@@ -52,6 +60,8 @@ class ComparisonView(QWidget):
         self.model = ChangeTreeModel(self)
         self._source_root = ""
         self._destination_root = ""
+        self._update_freeze = 0
+        self._syncing_expansion = False
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
         self.proxy = ChangeTreeFilterProxyModel(self)
@@ -298,11 +308,33 @@ class ComparisonView(QWidget):
                 if origin is target:
                     continue
                 origin.verticalScrollBar().valueChanged.connect(target.verticalScrollBar().setValue)
-                origin.expanded.connect(lambda index, t=target: t.expand(self._column_zero(index)))
-                origin.collapsed.connect(lambda index, t=target: t.collapse(self._column_zero(index)))
+                origin.expanded.connect(lambda index, t=target: self._expand_in(t, index))
+                origin.collapsed.connect(lambda index, t=target: self._collapse_in(t, index))
                 origin.selectionModel().currentChanged.connect(
                     lambda current, _previous, t=target: self._set_current(t, current)
                 )
+
+    def _expand_in(self, tree: QTreeView, index: QModelIndex) -> None:
+        """Mirror a user expansion into the other panes."""
+        if self._syncing_expansion:
+            # Programmatic expansion updates every pane at once. Mirroring it
+            # row by row would relayout each tree once per row.
+            return
+        tree.expand(self._column_zero(index))
+
+    def _collapse_in(self, tree: QTreeView, index: QModelIndex) -> None:
+        """Mirror a user collapse into the other panes."""
+        if self._syncing_expansion:
+            return
+        tree.collapse(self._column_zero(index))
+
+    @contextmanager
+    def _synced_expansion(self) -> Iterator[None]:
+        self._syncing_expansion = True
+        try:
+            yield
+        finally:
+            self._syncing_expansion = False
 
     @staticmethod
     def _column_zero(index: QModelIndex) -> QModelIndex:
@@ -336,18 +368,33 @@ class ComparisonView(QWidget):
         self.model.set_changes(changes)  # type: ignore[arg-type]
 
         def restore_views() -> None:
-            for tree in trees:
-                tree.setUpdatesEnabled(True)
-                tree.viewport().update()
-            if expanded_paths:
-                self._expand_paths(expanded_paths)
-            else:
-                # Expanding every row of a large tree keeps the UI busy for a
-                # long time. Show the first level and let the user expand further.
-                self.expand_initial()
+            with self._frozen_updates():
+                if expanded_paths:
+                    self._expand_paths(expanded_paths)
+                else:
+                    # Expanding every row of a large tree keeps the UI busy for a
+                    # long time. Show the first level and let the user expand further.
+                    self.expand_initial()
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
         QTimer.singleShot(0, restore_views)
+
+    @contextmanager
+    def _frozen_updates(self) -> Iterator[None]:
+        """Lay out the trees only once while rows are expanded or collapsed."""
+        self._update_freeze += 1
+        trees = (self.source, self.action, self.destination)
+        if self._update_freeze == 1:
+            for tree in trees:
+                tree.setUpdatesEnabled(False)
+        try:
+            yield
+        finally:
+            self._update_freeze -= 1
+            if self._update_freeze == 0:
+                for tree in trees:
+                    tree.setUpdatesEnabled(True)
+                    tree.viewport().update()
 
     def _expanded_paths(self) -> set[str]:
         paths: set[str] = set()
@@ -368,22 +415,23 @@ class ComparisonView(QWidget):
         return paths
 
     def _expand_paths(self, paths: set[str]) -> None:
-        stack = [
-            self.proxy.index(row, 0) for row in range(self.proxy.rowCount())
-        ]
-        while stack:
-            index = stack.pop()
-            if not index.isValid():
-                continue
-            path = self._source_path_for_proxy_index(index)
-            if path not in paths:
-                continue
-            for tree in (self.source, self.action, self.destination):
-                tree.expand(index)
-            stack.extend(
-                self.proxy.index(row, 0, index)
-                for row in range(self.proxy.rowCount(index))
-            )
+        with self._synced_expansion():
+            stack = [
+                self.proxy.index(row, 0) for row in range(self.proxy.rowCount())
+            ]
+            while stack:
+                index = stack.pop()
+                if not index.isValid():
+                    continue
+                path = self._source_path_for_proxy_index(index)
+                if path not in paths:
+                    continue
+                for tree in (self.source, self.action, self.destination):
+                    tree.expand(index)
+                stack.extend(
+                    self.proxy.index(row, 0, index)
+                    for row in range(self.proxy.rowCount(index))
+                )
 
     def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
         self.proxy.set_visible_actions(actions)
@@ -450,20 +498,25 @@ class ComparisonView(QWidget):
 
     def expand_initial(self, limit: int = 200) -> None:
         """Expand the first level only; large trees stay responsive."""
-        for row in range(min(self.proxy.rowCount(), limit)):
-            index = self.proxy.index(row, 0)
-            if not index.isValid():
-                continue
-            for tree in (self.source, self.action, self.destination):
-                tree.expand(index)
+        with self._frozen_updates(), self._synced_expansion():
+            for row in range(min(self.proxy.rowCount(), limit)):
+                index = self.proxy.index(row, 0)
+                if not index.isValid() or not self.proxy.rowCount(index):
+                    # Expanding a leaf still triggers a full layout of the
+                    # tree, which is far too expensive for large comparisons.
+                    continue
+                for tree in (self.source, self.action, self.destination):
+                    tree.expand(index)
 
     def expand_all(self) -> None:
-        for tree in (self.source, self.action, self.destination):
-            tree.expandAll()
+        with self._frozen_updates(), self._synced_expansion():
+            for tree in (self.source, self.action, self.destination):
+                tree.expandAll()
 
     def collapse_all(self) -> None:
-        for tree in (self.source, self.action, self.destination):
-            tree.collapseAll()
+        with self._frozen_updates(), self._synced_expansion():
+            for tree in (self.source, self.action, self.destination):
+                tree.collapseAll()
 
     def save_view_state(self) -> None:
         settings = app_settings()

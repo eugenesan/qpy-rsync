@@ -426,7 +426,9 @@ class MainWindow(QMainWindow):
                 CONTROL_ICON_SIZE, CONTROL_ICON_SIZE
             )
         )
-        icon.setFixedSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        # The label matches the height of the buttons in the same row while the
+        # glyph keeps the icon size used everywhere else in the application.
+        icon.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setObjectName(f"{title.lower()}-location-label")
         icon.setToolTip(f"{title} directory")
