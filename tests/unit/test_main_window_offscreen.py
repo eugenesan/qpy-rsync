@@ -365,3 +365,20 @@ def test_command_preview_wraps_without_widening_window() -> None:
     assert window.minimumSizeHint().width() == width
     window.close()
     application.processEvents()
+
+
+def test_command_preview_splitter_is_resizable() -> None:
+    from PySide6.QtWidgets import QSizePolicy
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    preview = window.command_preview_label
+    assert window.preview_log_splitter.orientation() == Qt.Orientation.Vertical
+    assert window.preview_log_splitter.indexOf(preview) >= 0
+    assert preview.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Fixed
+    assert preview.maximumHeight() > preview.minimumHeight()
+    window.close()
+    application.processEvents()
+
+

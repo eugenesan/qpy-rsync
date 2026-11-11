@@ -23,8 +23,8 @@ class CommandPreview(QPlainTextEdit):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setTabChangesFocus(True)
         self.setMinimumWidth(0)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(self._preferred_height())
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumHeight(self._preferred_height())
         self.setText(text)
 
     def _preferred_height(self) -> int:
