@@ -287,3 +287,71 @@ def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) 
     assert "STATE synchronization-failed" in content
     window.close()
     application.processEvents()
+
+
+def test_unchanged_inventory_is_async_and_cached() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    QSettings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changed = Change(
+        "file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
+    )
+    window._last_changed_changes = [changed]
+
+    gathered: list[object] = []
+
+    class FakeInventory:
+        def gather(self, profile, changes):
+            gathered.append((profile, changes))
+            return 7
+
+        def cancel(self):
+            pass
+
+    window._inventory_service = FakeInventory()
+    window.show_unchanged.setChecked(True)
+    assert len(gathered) == 1
+    assert window.comparison.model.rowCount() == 0
+
+    extra = Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
+    window._inventory_finished(7, [extra])
+    assert window.comparison.model.rowCount() == 2
+    assert "unchanged=1" in window.log.toPlainText()
+
+    window.show_unchanged.setChecked(False)
+    window.show_unchanged.setChecked(True)
+    assert len(gathered) == 1
+    assert window.comparison.model.rowCount() == 2
+    window.close()
+    application.processEvents()
+
+
+def test_command_preview_wraps_without_widening_window() -> None:
+    application = app()
+    QSettings().clear()
+    window = MainWindow()
+    window.resize(900, 620)
+    window.ensurePolished()
+    width = window.minimumSizeHint().width()
+    long_path = "/srv/" + "/".join(f"segment-{index}" for index in range(30)) + "/"
+    window.source_edit.setText(long_path)
+    window.destination_edit.setText(long_path.replace("/srv/", "/backup/"))
+    window._set_hovered_action("compare")
+    window._update_command_preview()
+    application.processEvents()
+    preview = window.command_preview_label
+    assert preview.full_text().startswith("$ rsync ")
+    assert not preview.isHidden()
+    assert preview.lineWrapMode() == preview.LineWrapMode.WidgetWidth
+    assert (
+        preview.horizontalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    assert window.minimumSizeHint().width() == width
+    window.close()
+    application.processEvents()

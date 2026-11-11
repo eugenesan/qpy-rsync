@@ -85,7 +85,13 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
             self._invalidate_cache()
             return
         self._invalidate_cache()
-        self.invalidateFilter()
+        # Qt 6.10 renamed the row-only invalidation helper. Keep the fallback
+        # for older PySide6 versions still shipped by Ubuntu.
+        invalidate_rows = getattr(self, "invalidateRowsFilter", None)
+        if invalidate_rows is not None:
+            invalidate_rows()
+        else:
+            self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # noqa: N802
         model = self.sourceModel()

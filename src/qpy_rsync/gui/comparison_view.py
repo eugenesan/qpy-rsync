@@ -295,9 +295,12 @@ class ComparisonView(QWidget):
 
     def _refresh_action_filter(self) -> None:
         # A decision can change a destination-only row into a delete row, so
-        # action filters may need re-evaluation. Path-only filtering is cheap
-        # to invalidate but does not need a full re-filter run here.
-        self.proxy.refresh_filters(force=False)
+        # action filters may need re-evaluation. When no action filter is
+        # active, only the cached visible-path set has to be invalidated.
+        if self.proxy.visible_actions() is not None:
+            self.proxy.refresh_filters()
+        else:
+            self.proxy.refresh_filters(force=False)
 
     def set_stale(self, stale: bool) -> None:
         if stale:

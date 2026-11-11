@@ -1,12 +1,32 @@
 from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QTimer
-from PySide6.QtWidgets import QAbstractItemView,QDialog,QDialogButtonBox,QFileDialog,QHeaderView,QHBoxLayout,QInputDialog,QMessageBox,QPushButton,QTableView,QVBoxLayout
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QTimer, Qt
+from PySide6.QtWidgets import QAbstractItemView,QComboBox,QDialog,QDialogButtonBox,QFileDialog,QHeaderView,QHBoxLayout,QInputDialog,QMessageBox,QPushButton,QStyledItemDelegate,QTableView,QVBoxLayout
 from qpy_rsync.backend.rsync_filters import export_filter_file,import_filter_file
 from qpy_rsync.core.enums import FilterRuleType
 from qpy_rsync.core.models import FilterRule
 from .filter_rule_model import FilterRuleModel
+
+
+class FilterTypeDelegate(QStyledItemDelegate):
+    """Dropdown editor for the filter Type column."""
+
+    def createEditor(self, parent, option, index):  # noqa: N802
+        editor = QComboBox(parent)
+        for rule_type in FilterRuleType:
+            editor.addItem(rule_type.value.capitalize(), rule_type.value)
+        return editor
+
+    def setEditorData(self, editor, index):  # noqa: N802
+        value = index.data(Qt.ItemDataRole.EditRole)
+        position = editor.findData(value)
+        editor.setCurrentIndex(position if position >= 0 else 0)
+
+    def setModelData(self, editor, model, index):  # noqa: N802
+        model.setData(index, editor.currentData(), Qt.ItemDataRole.EditRole)
+
+
 class FilterEditorDialog(QDialog):
     def __init__(self,rules,parent=None):
         super().__init__(parent); self.setWindowTitle("Rsync include/exclude filters"); self.resize(900,430); self.model=FilterRuleModel(deepcopy(rules),self); self.table=QTableView(self); self.table.setModel(self.model); self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows); self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
@@ -17,6 +37,9 @@ class FilterEditorDialog(QDialog):
         header.setSectionResizeMode(self.model.COMMENT, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(self.model.STATUS, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setColumnWidth(self.model.COMMENT, 180)
+        self.table.setItemDelegateForColumn(
+            self.model.TYPE, FilterTypeDelegate(self.table)
+        )
         self.table.clicked.connect(self._normalize_selection)
         QTimer.singleShot(0, self._select_initial_row)
         controls=QHBoxLayout()

@@ -82,3 +82,19 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     for tooltip in tooltips:
         assert "Display only" in tooltip
         assert "mode selection" in tooltip
+
+
+def test_action_filter_survives_model_reset() -> None:
+    model = _model()
+    proxy = _proxy(model)
+    proxy.set_visible_actions({ChangeAction.CREATE})
+    assert _names(proxy) == {"new.txt"}
+
+    model.set_changes(
+        [
+            Change("fresh.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("updated.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+        ]
+    )
+    assert _names(proxy) == {"fresh.txt"}
+    assert proxy.visible_actions() == {ChangeAction.CREATE}

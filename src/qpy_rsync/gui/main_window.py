@@ -29,19 +29,24 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
-from qpy_rsync.backend.inventory import unchanged_changes
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import load_profile, save_profile
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
-from qpy_rsync.core.execution_plan import ExecutionPlan, build_execution_plan, check_plan_freshness
+from qpy_rsync.core.execution_plan import (
+    ExecutionPlan,
+    build_execution_plan,
+    check_plan_freshness,
+    profile_fingerprint,
+)
 from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile, TransferOptions
 from qpy_rsync.core.validation import validate_profile
 from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
+from qpy_rsync.services.inventory_service import InventoryService
 from qpy_rsync.services.plan_validation_service import PlanValidationResult, PlanValidationService
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
@@ -81,6 +86,14 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_error = self._plan_validation_error
         self._plan_validation.on_log = self._append_log
         self._plan_validation.on_spec = self._log_spec
+        self._inventory_service = InventoryService(self)
+        self._inventory_service.finished.connect(self._inventory_finished)
+        self._inventory_service.failed.connect(self._inventory_failed)
+        self._inventory_token = 0
+        self._inventory_pending_key: object | None = None
+        self._inventory_cache_key: object | None = None
+        self._inventory_cache: list[object] | None = None
+        self._last_changed_changes: list[object] = []
         self._sync_service = SyncService(self)
         self._sync_service.on_started = self._sync_started
         self._sync_service.on_finished = self._sync_finished
@@ -1006,6 +1019,9 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
 
     def _comparison_started(self) -> None:
+        self._inventory_service.cancel()
+        self._inventory_token = 0
+        self._inventory_pending_key = None
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.progress_bar.setValue(0)
@@ -1067,19 +1083,73 @@ class MainWindow(QMainWindow):
         self.comparison.proxy.set_visible_actions(selected)
 
     def _apply_inventory_mode(self) -> None:
-        if not getattr(self, "_last_changed_changes", None):
+        changed = list(self._last_changed_changes)
+        if not changed or self._active_profile is None:
             return
-        if self._active_profile is None:
+        if not self.show_unchanged.isChecked():
+            self._inventory_service.cancel()
+            self._inventory_token = 0
+            self._inventory_pending_key = None
+            self.comparison.set_changes(changed)
             return
+        key = self._inventory_key(self._active_profile, changed)
+        if self._inventory_cache_key == key and self._inventory_cache is not None:
+            self.comparison.set_changes(changed + list(self._inventory_cache))
+            self.progress_label.setText(
+                f"Showing {len(self._inventory_cache)} unchanged object(s)"
+            )
+            return
+        if self._inventory_pending_key == key and self._inventory_token:
+            return
+        self._inventory_pending_key = key
+        self.progress_label.setText("Gathering unchanged objects...")
+        self._append_log("STATE inventory-started")
+        self._inventory_token = self._inventory_service.gather(
+            deepcopy(self._active_profile), changed
+        )
+
+    @staticmethod
+    def _inventory_key(profile: SyncProfile, changed: list[object]) -> object:
+        paths = frozenset(
+            str(getattr(change, "path", "")).rstrip("/") for change in changed
+        )
+        return (profile_fingerprint(profile), paths)
+
+    def _inventory_finished(self, token: int, extra: object) -> None:
+        if token != self._inventory_token:
+            return
+        self._inventory_token = 0
+        changed = list(self._last_changed_changes)
+        if (
+            not self.show_unchanged.isChecked()
+            or self._active_profile is None
+            or not changed
+        ):
+            return
+        key = self._inventory_key(self._active_profile, changed)
+        if key != self._inventory_pending_key:
+            return
+        result = list(extra)  # type: ignore[arg-type]
+        self._inventory_cache_key = key
+        self._inventory_cache = result
+        self.comparison.set_changes(changed + result)
+        self.progress_label.setText(
+            f"Inventory complete: {len(result)} unchanged object(s)"
+        )
+        self._append_log(f"STATE inventory-complete unchanged={len(result)}")
+
+    def _inventory_failed(self, token: int, message: str) -> None:
+        if token != self._inventory_token:
+            return
+        self._inventory_token = 0
+        self._inventory_pending_key = None
+        self._append_log(f"Inventory gathering failed: {message}")
         if self.show_unchanged.isChecked():
-            try:
-                extra = unchanged_changes(self._active_profile, self._last_changed_changes)
-            except Exception as exc:  # noqa: BLE001
-                self._append_log(f"Inventory gathering failed: {exc}")
-                extra = []
-            self.comparison.set_changes(self._last_changed_changes + extra)
-        else:
-            self.comparison.set_changes(self._last_changed_changes)
+            self._set_status(
+                "Could not gather unchanged objects; showing changed objects only.",
+                "warning",
+            )
+            self.comparison.set_changes(list(self._last_changed_changes))
 
     def _comparison_error(self, message: str) -> None:
         self.compare_button.setEnabled(True)
