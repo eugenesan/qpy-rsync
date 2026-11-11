@@ -370,3 +370,54 @@ def test_saved_header_state_keeps_the_headers_clickable() -> None:
         assert not tree.header().sectionsMovable()
     restored.close()
     application.processEvents()
+
+
+def test_folder_size_follows_the_action_filters() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_changes(
+        [
+            Change("dir/new.bin", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=1000),
+            Change("dir/upd.bin", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......", size=2000),
+            Change("dir/del.bin", ChangeAction.DELETE, ObjectKind.FILE, "*deleting", size=4000),
+        ]
+    )
+    application.processEvents()
+    model = view.model
+    # The folder reports the objects that are displayed below it.
+    assert model.data(model.index(0, model.SOURCE_SIZE)) == "6.8 KiB"
+
+    view.set_action_filter({ChangeAction.CREATE})
+    application.processEvents()
+    assert model.data(model.index(0, model.SOURCE_SIZE)) == "1000 B"
+
+    view.set_action_filter(None)
+    application.processEvents()
+    assert model.data(model.index(0, model.SOURCE_SIZE)) == "6.8 KiB"
+    view.close()
+    application.processEvents()
+
+
+def test_folder_size_grows_with_the_unchanged_objects() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    changed = Change(
+        "dir/new.bin", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=1000
+    )
+    unchanged = Change(
+        "dir/same.bin", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=3000
+    )
+    view.set_changes([changed])
+    application.processEvents()
+    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE)) == "1000 B"
+
+    # The inventory adds the unchanged objects to the comparison.
+    view.set_changes([changed, unchanged], preserve_expansion=True)
+    application.processEvents()
+    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE)) == "3.9 KiB"
+    view.close()
+    application.processEvents()

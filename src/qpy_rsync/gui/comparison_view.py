@@ -480,6 +480,7 @@ class ComparisonView(QWidget):
         # Without this the new objects, for example the unchanged ones of an
         # inventory, would only appear after the next comparison.
         self.proxy.refresh_filters(force=True)
+        self._sync_visible_sizes()
         self.changes_updated.emit(list(self.model.changes))
 
         def restore_views() -> None:
@@ -548,9 +549,14 @@ class ComparisonView(QWidget):
                     for row in range(self.proxy.rowCount(index))
                 )
 
+    def _sync_visible_sizes(self) -> None:
+        """Let the folder sizes follow the rows that the filters show."""
+        self.model.set_visible_paths(self.proxy.visible_paths())
+
     def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
         """Show only the given actions and refresh the overview."""
         self.proxy.set_visible_actions(actions)
+        self._sync_visible_sizes()
         # The overview counts the objects that the filters show.
         self.changes_updated.emit(list(self.model.changes))
 
@@ -562,6 +568,7 @@ class ComparisonView(QWidget):
             self.proxy.refresh_filters()
         else:
             self.proxy.refresh_filters(force=False)
+        self._sync_visible_sizes()
         # The overview counts the objects that the filters show.
         self.changes_updated.emit(list(self.model.changes))
 

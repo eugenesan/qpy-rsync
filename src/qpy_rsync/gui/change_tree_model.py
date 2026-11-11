@@ -78,6 +78,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._action_header_tooltip = "Actions"
         self._modified_count = 0
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
+        self._visible_paths: set[str] | None = None
         self._sort_column = self.SOURCE_NAME
         self._sort_order = Qt.SortOrder.AscendingOrder
         self._override_paths: set[str] = set()
@@ -118,7 +119,11 @@ class ChangeTreeModel(QAbstractItemModel):
             child_source, child_destination = self._compute_sizes(child)
             source_total += child_source
             destination_total += child_destination
-        if not node.children and node.change is not None:
+        if (
+            not node.children
+            and node.change is not None
+            and (self._visible_paths is None or node.path in self._visible_paths)
+        ):
             change = node.change
             source_total += int(change.size or 0)
             destination_total += int(self._destination_size(change))
@@ -296,6 +301,23 @@ class ChangeTreeModel(QAbstractItemModel):
         )
         self.headerDataChanged.emit(
             Qt.Orientation.Horizontal, self.ACTION, self.ACTION
+        )
+
+    def set_visible_paths(self, paths: set[str] | None) -> None:
+        """Restrict the folder sizes to the rows that the filters show.
+
+        A folder row must not claim more bytes than the rows below it. The
+        objects that a display filter hides no longer add to the total, and
+        the unchanged objects add to it as soon as the inventory lists them.
+        """
+        self._visible_paths = None if paths is None else set(paths)
+        self._compute_sizes(self.root)
+        if not self.root.children:
+            return
+        self.dataChanged.emit(
+            self.index(0, 0),
+            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
+            [Qt.ItemDataRole.DisplayRole],
         )
 
     def set_destination_metadata(
