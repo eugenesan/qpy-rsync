@@ -581,3 +581,22 @@ def test_command_preview_minimum_height_follows_the_command() -> None:
     assert preview.minimumHeight() > single_line
     window.close()
     application.processEvents()
+
+
+def test_rows_use_separators_between_the_control_groups() -> None:
+    from PySide6.QtWidgets import QFrame
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    separators = [
+        frame
+        for frame in window.findChildren(QFrame)
+        if frame.frameShape() == QFrame.Shape.VLine
+    ]
+    # Swap | Compare, Load Profile | Filter/Find, Source Browse | filters,
+    # filters | unchanged, unchanged | Destination, Protect nested | Log and
+    # the Journal | State divider.
+    assert len(separators) == 7
+    window.close()
+    application.processEvents()

@@ -38,6 +38,16 @@ from qpy_rsync.storage.profile_store import (
     save_profile,
 )
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
+
+
+def vertical_separator() -> QFrame:
+    """A thin line that groups the controls of a row."""
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.VLine)
+    line.setFrameShadow(QFrame.Shadow.Plain)
+    line.setFixedWidth(1)
+    line.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+    return line
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
@@ -177,6 +187,7 @@ class MainWindow(QMainWindow):
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
         controls.addWidget(self.swap_button)
+        controls.addWidget(vertical_separator())
         self.compare_button = QPushButton("Compare")
         self.compare_button.setToolTip(
             "Compare Source and Destination using an rsync dry run.\n"
@@ -221,17 +232,20 @@ class MainWindow(QMainWindow):
             self.load_profile_button,
         ):
             controls.addWidget(widget)
+        controls.addWidget(vertical_separator())
         controls.addWidget(self.comparison.controls, 1)
         layout.addLayout(controls)
 
         locations = QHBoxLayout()
-        source_panel = self._location_panel("Source", self.source_edit)
+        source_panel = self._location_panel("Source", self.source_edit, trailing=True)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
         destination_panel = self._location_panel("Destination", self.destination_edit)
         locations.addWidget(source_panel, 40)
         locations.addWidget(self.action_filters, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(vertical_separator())
         locations.addWidget(self.comparison.view_controls, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(vertical_separator())
         locations.addWidget(destination_panel, 40)
         layout.addLayout(locations)
 
@@ -345,6 +359,7 @@ class MainWindow(QMainWindow):
         log_group_layout.addWidget(QLabel("Enable logging"))
 
         backup_row.addWidget(backup_group, 1)
+        backup_row.addWidget(vertical_separator())
         backup_row.addWidget(log_group, 1)
         backup_layout.addLayout(backup_row)
         layout.addWidget(backup_panel)
@@ -429,7 +444,9 @@ class MainWindow(QMainWindow):
         if options.compare:
             QTimer.singleShot(0, self._compare)
 
-    def _location_panel(self, title: str, edit: QLineEdit) -> QWidget:
+    def _location_panel(
+        self, title: str, edit: QLineEdit, *, trailing: bool = False
+    ) -> QWidget:
         panel = QWidget(self)
         row = QHBoxLayout(panel)
         row.setContentsMargins(0, 0, 0, 0)
@@ -452,6 +469,8 @@ class MainWindow(QMainWindow):
         browse.clicked.connect(lambda: self._browse(edit))
         row.addWidget(edit, 1)
         row.addWidget(browse)
+        if trailing:
+            row.addWidget(vertical_separator())
         return panel
 
     def _path_row(self, edit: QLineEdit) -> QWidget:

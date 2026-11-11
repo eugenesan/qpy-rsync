@@ -5,14 +5,13 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
 
 from .icons import ACTION_LABELS, action_icon
 
 ACTION_HEADER_ACCENT = "#0891B2"
-ACTION_HEADER_FONT_SIZE = 10
 
 
 def full_path(root: str, path: str) -> str:
@@ -155,12 +154,6 @@ class ChangeTreeModel(QAbstractItemModel):
                     return self._action_header_tooltip
                 if role == Qt.ItemDataRole.ForegroundRole and self._modified_count:
                     return QColor(ACTION_HEADER_ACCENT)
-                if role == Qt.ItemDataRole.FontRole:
-                    # A smaller label keeps the narrow action column free of
-                    # empty background.
-                    font = QFont()
-                    font.setPointSize(ACTION_HEADER_FONT_SIZE)
-                    return font
                 return None
             if role == Qt.ItemDataRole.DisplayRole:
                 return self.HEADERS[section]

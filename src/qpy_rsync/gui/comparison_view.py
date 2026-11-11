@@ -33,7 +33,7 @@ CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
 # The action column only carries a checkbox, a glyph and the short "Actions"
 # header, so it hugs its content instead of leaving empty background.
-ACTION_PANE_WIDTH = 64
+ACTION_PANE_WIDTH = 78
 ROW_HEIGHT = 22
 
 
@@ -70,13 +70,15 @@ class ComparisonView(QWidget):
         self.proxy.setSourceModel(self.model)
         self.source = self._tree("Source")
         self.action = self._tree("Action")
-        # The action pane shows the same rows as the file panes, which already
-        # carry a scroll bar. Its own scroll bar would only take space away
-        # from the narrow column.
+        self.destination = self._tree("Destination")
+        # The panes scroll together, so only the last one needs a scroll bar.
+        # The others use the full width for the file names.
+        self.source.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.action.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.destination = self._tree("Destination")
         # The action column only carries a checkbox and an icon, so it keeps a
         # fixed width and the two file panes share the remaining space.
         self.action.setSizePolicy(
