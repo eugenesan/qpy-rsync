@@ -49,7 +49,8 @@ class ComparisonView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.model = ChangeTreeModel(self)
-        self.source_root = ""
+        self._source_root = ""
+        self._destination_root = ""
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
         self.proxy = ChangeTreeFilterProxyModel(self)
@@ -127,6 +128,24 @@ class ComparisonView(QWidget):
         self._restore_view_state()
         self._synchronize()
 
+    @property
+    def source_root(self) -> str:
+        return self._source_root
+
+    @source_root.setter
+    def source_root(self, value: str) -> None:
+        self._source_root = value.rstrip("/")
+        self.model.source_root = self._source_root
+
+    @property
+    def destination_root(self) -> str:
+        return self._destination_root
+
+    @destination_root.setter
+    def destination_root(self, value: str) -> None:
+        self._destination_root = value.rstrip("/")
+        self.model.destination_root = self._destination_root
+
     def _tree(self, label: str) -> QTreeView:
         tree = QTreeView()
         tree.setModel(self.proxy)
@@ -161,34 +180,14 @@ class ComparisonView(QWidget):
         # index's internalPointer as a TreeNode; doing so can crash PySide/Qt.
         path = self._source_path_for_proxy_index(index)
         change = self._change_for_index(index)
-        is_unchanged = change is not None and getattr(change, "action", None) is ChangeAction.NO_CHANGE
-        menu = QMenu(tree)
-        copy_path_action = None
-        diff_action = None
-        reset_one = reset_subtree = reset_all = None
-        if is_unchanged:
-            copy_path_action = menu.addAction("Copy Path")
-            copy_path_action.setEnabled(path is not None)
-        else:
-            diff_action = menu.addAction("Open in Diff Tool")
-            diff_action.setEnabled(change is not None)
-            if tree is self.action and path is not None:
-                menu.addSeparator()
-                reset_one = menu.addAction("Reset This Decision")
-                reset_subtree = menu.addAction("Reset Subtree Decisions")
-                reset_all = menu.addAction("Reset All Decisions")
-                reset_all.setEnabled(self.model.decisions.has_explicit())
+        menu, copy_path_action, diff_action, reset_one, reset_subtree, reset_all = (
+            self._build_context_menu(tree, path, change)
+        )
         selected = menu.exec(tree.viewport().mapToGlobal(point))
         if selected is diff_action:
             self._request_diff(index)
         elif selected is copy_path_action and path is not None:
-            from PySide6.QtWidgets import QApplication
-
-            root = getattr(self, "source_root", "")
-            full_path = f"{root}/{path}" if root else path
-            if root and root.endswith("/"):
-                full_path = f"{root}{path}"
-            QApplication.clipboard().setText(full_path)
+            self._copy_path(tree, path)
         elif selected is reset_one and path is not None:
             self.model.reset_decision(path)
         elif selected is reset_subtree and path is not None:
@@ -203,6 +202,46 @@ class ComparisonView(QWidget):
             )
             if answer == QMessageBox.StandardButton.Reset:
                 self.model.reset_all_decisions()
+
+    def _absolute_path(self, tree: QTreeView, path: str | None) -> str:
+        if path is None:
+            return ""
+        root = self.destination_root if tree is self.destination else self.source_root
+        return full_path(root, path)
+
+    def _copy_path(self, tree: QTreeView, path: str) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText(self._absolute_path(tree, path))
+
+    def _build_context_menu(
+        self, tree: QTreeView, path: str | None, change: object | None
+    ) -> tuple[QMenu, object | None, object | None, object | None, object | None, object | None]:
+        is_unchanged = (
+            change is not None
+            and getattr(change, "action", None) is ChangeAction.NO_CHANGE
+        )
+        absolute_path = self._absolute_path(tree, path)
+        menu = QMenu(tree)
+        if absolute_path:
+            heading = menu.addAction(absolute_path)
+            heading.setEnabled(False)
+            menu.addSeparator()
+        copy_path_action = menu.addAction("Copy Path")
+        copy_path_action.setEnabled(path is not None)
+        diff_action = None
+        reset_one = reset_subtree = reset_all = None
+        if not is_unchanged:
+            menu.addSeparator()
+            diff_action = menu.addAction("Open in Diff Tool")
+            diff_action.setEnabled(change is not None)
+            if tree is self.action and path is not None:
+                menu.addSeparator()
+                reset_one = menu.addAction("Reset This Decision")
+                reset_subtree = menu.addAction("Reset Subtree Decisions")
+                reset_all = menu.addAction("Reset All Decisions")
+                reset_all.setEnabled(self.model.decisions.has_explicit())
+        return menu, copy_path_action, diff_action, reset_one, reset_subtree, reset_all
 
     def _request_diff(self, index: QModelIndex) -> None:
         change = self._change_for_index(index)

@@ -57,6 +57,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self.root = TreeNode("", "")
         self.decisions = ChangeDecisions()
         self.changes: list[Change] = []
+        self.source_root = ""
+        self.destination_root = ""
         self.discarded_decisions = 0
         self.decisions_enabled = True
         self.stale = False
@@ -212,13 +214,30 @@ class ChangeTreeModel(QAbstractItemModel):
 
     def _tooltip_for(self, node: TreeNode, column: int) -> str:
         change = node.change
-        if change is None:
-            return node.path
+        source_full = full_path(self.source_root, node.path)
+        destination_full = full_path(self.destination_root, node.path)
+        destination_column = column in {
+            self.DESTINATION_NAME,
+            self.DESTINATION_SIZE,
+            self.DESTINATION_TIME,
+        }
         if column == self.ACTION:
+            if change is None:
+                return f"Source: {source_full}\nDestination: {destination_full}"
             label = ACTION_LABELS.get(self.effective_action(node), "")
-            details = f"{label}\n{change.itemized_code}: {change.reason}" if label else f"{change.itemized_code}: {change.reason}"
-            return f"{change.path}\n{details}"
-        return change.path
+            details = (
+                f"{label}\n{change.itemized_code}: {change.reason}"
+                if label
+                else f"{change.itemized_code}: {change.reason}"
+            )
+            return (
+                f"Source: {source_full}\n"
+                f"Destination: {destination_full}\n"
+                f"{details}"
+            )
+        if destination_column:
+            return destination_full
+        return source_full
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         flags = super().flags(index)

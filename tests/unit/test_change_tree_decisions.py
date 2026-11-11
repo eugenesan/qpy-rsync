@@ -122,17 +122,31 @@ def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
 
 
 def test_tooltips_show_full_object_path() -> None:
+    from qpy_rsync.gui.change_tree_model import full_path
+
     model = ChangeTreeModel()
+    model.source_root = "/home/user/Source"
+    model.destination_root = "/mnt/backup/Destination"
     model.set_changes(
         [Change("docs/reports/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
+    assert full_path("/home/user/Source/", "/docs/") == "/home/user/Source/docs"
     directory = model.index(0, model.SOURCE_NAME)
-    assert model.data(directory, Qt.ItemDataRole.ToolTipRole) == "docs"
+    assert model.data(directory, Qt.ItemDataRole.ToolTipRole) == "/home/user/Source/docs"
     child = model.index(0, model.SOURCE_NAME, directory)
-    assert model.data(child, Qt.ItemDataRole.ToolTipRole) == "docs/reports"
+    assert model.data(child, Qt.ItemDataRole.ToolTipRole) == "/home/user/Source/docs/reports"
     leaf = model.index(0, model.SOURCE_NAME, child)
-    assert model.data(leaf, Qt.ItemDataRole.ToolTipRole) == "docs/reports/file.txt"
+    assert (
+        model.data(leaf, Qt.ItemDataRole.ToolTipRole)
+        == "/home/user/Source/docs/reports/file.txt"
+    )
+    destination_leaf = leaf.siblingAtColumn(model.DESTINATION_NAME)
+    assert (
+        model.data(destination_leaf, Qt.ItemDataRole.ToolTipRole)
+        == "/mnt/backup/Destination/docs/reports/file.txt"
+    )
     action = leaf.siblingAtColumn(model.ACTION)
     tooltip = model.data(action, Qt.ItemDataRole.ToolTipRole)
-    assert "docs/reports/file.txt" in tooltip
+    assert "/home/user/Source/docs/reports/file.txt" in tooltip
+    assert "/mnt/backup/Destination/docs/reports/file.txt" in tooltip
     assert "Update" in tooltip

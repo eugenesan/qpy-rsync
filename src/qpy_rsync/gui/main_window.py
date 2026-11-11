@@ -1064,6 +1064,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
+        self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
         self._apply_inventory_mode()
         self.comparison.set_stale(False)
         self._set_locations_stale(False)

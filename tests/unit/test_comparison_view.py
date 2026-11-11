@@ -87,3 +87,30 @@ def test_control_buttons_use_consistent_large_icons() -> None:
     application.processEvents()
 
 
+def test_context_menu_copies_full_path_for_every_pane() -> None:
+    from qpy_rsync.core.changes import Change, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.source_root = "/srv/Source"
+    view.destination_root = "/mnt/Destination"
+    view.set_changes(
+        [Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")]
+    )
+    application.processEvents()
+    for tree, expected in (
+        (view.source, "/srv/Source/docs"),
+        (view.destination, "/mnt/Destination/docs"),
+        (view.action, "/srv/Source/docs"),
+    ):
+        menu, copy_path, _diff, _one, _subtree, _all = view._build_context_menu(
+            tree, "docs", None
+        )
+        texts = [action.text() for action in menu.actions()]
+        assert expected in texts
+        assert "Copy Path" in texts
+        assert copy_path.isEnabled()
+        view._copy_path(tree, "docs")
+        assert QApplication.clipboard().text() == expected
+    view.close()
+    application.processEvents()
