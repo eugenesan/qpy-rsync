@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fnmatch import fnmatchcase
 
-from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, Signal
 
 from qpy_rsync.core.changes import ChangeAction
 
@@ -17,6 +17,8 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
     and froze the UI.
     """
 
+    sorted = Signal(int, object)
+
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self._pattern = ""
@@ -24,6 +26,7 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
         self._visible_actions: set[ChangeAction] | None = None
         self._visible_paths: set[str] = set()
         self._cache_valid = False
+        self._sort_column = 0
         self.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.setRecursiveFilteringEnabled(False)
         self.setAutoAcceptChildRows(False)
@@ -101,6 +104,32 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
         if not self._cache_valid:
             self._rebuild_cache()
         return set(self._visible_paths)
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:  # noqa: A003
+        """Sort the rows by the column of the source model.
+
+        The source model sorts the levels of its tree, the proxy then orders
+        the rows it shows. A view without a sorted column asks for ``-1``,
+        which is ignored.
+        """
+        if column < 0:
+            return
+        self._sort_column = column
+        model = self.sourceModel()
+        sort = getattr(model, "sort", None)
+        if sort is not None:
+            sort(column, order)
+        super().sort(column, order)
+        self.sorted.emit(column, order)
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:  # noqa: N802
+        """Order the rows like the source model does."""
+        model = self.sourceModel()
+        key_of = getattr(model, "sort_key_for_index", None)
+        if key_of is None:
+            return super().lessThan(left, right)
+        column = self._sort_column
+        return bool(key_of(left, column) < key_of(right, column))
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # noqa: N802
         model = self.sourceModel()

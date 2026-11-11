@@ -181,12 +181,25 @@ class ChangeTreeModel(QAbstractItemModel):
         """Return the order the tree is sorted in."""
         return self._sort_order
 
+    def sort_key_for_index(self, index: QModelIndex, column: int) -> tuple:
+        """Return the key a row is sorted by, for the proxy."""
+        if not index.isValid():
+            return ("",)
+        node: TreeNode = index.internalPointer()
+        return self._sort_key(node, column)
+
     def sort(  # noqa: A003
         self,
         column: int,
         order: Qt.SortOrder = Qt.SortOrder.AscendingOrder,
     ) -> None:
-        """Sort every level of the tree by the given column."""
+        """Sort every level of the tree by the given column.
+
+        A view without a sorted column asks for ``-1``; that request is
+        ignored, so a queued sort cannot undo the order of the tree.
+        """
+        if column < 0:
+            return
         self._sort_column = column
         self._sort_order = order
         self.layoutAboutToBeChanged.emit()

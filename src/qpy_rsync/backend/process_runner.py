@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import signal
+
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Callable
@@ -55,6 +58,7 @@ class QtProcessRunner:
             raise RuntimeError("PySide6 is required for QtProcessRunner") from exc
         self._process = QProcess(parent)
         self._state = ProcessState.IDLE
+        self._paused = False
         self._stdout = bytearray()
         self._stderr = bytearray()
         self.on_started: Callable[[], None] = lambda: None
@@ -105,6 +109,56 @@ class QtProcessRunner:
             from PySide6.QtCore import QTimer
 
             QTimer.singleShot(force_after_ms, self._kill_if_running)
+
+    def pause(self) -> bool:
+        """Suspend the running process until it is resumed.
+
+        A local transfer runs as ``rsync`` itself, a remote one through
+        ``setsid``, which starts a new session. Suspending the whole group
+        stops the transfer and the ssh connection with it.
+        """
+        pid = int(self._process.processId())
+        if pid <= 0:
+            return False
+        try:
+            group = os.getpgid(pid)
+        except OSError:
+            return False
+        try:
+            if group == os.getpgrp():
+                # The process shares the group of the application, only it may
+                # be stopped.
+                os.kill(pid, signal.SIGSTOP)
+            else:
+                os.killpg(group, signal.SIGSTOP)
+        except OSError:
+            return False
+        self._paused = True
+        return True
+
+    def resume(self) -> bool:
+        """Continue a suspended process."""
+        pid = int(self._process.processId())
+        if pid <= 0:
+            return False
+        try:
+            group = os.getpgid(pid)
+        except OSError:
+            return False
+        try:
+            if group == os.getpgrp():
+                os.kill(pid, signal.SIGCONT)
+            else:
+                os.killpg(group, signal.SIGCONT)
+        except OSError:
+            return False
+        self._paused = False
+        return True
+
+    @property
+    def paused(self) -> bool:
+        """Whether the process is currently suspended."""
+        return self._paused
 
     def shutdown(self, timeout_ms: int = 2000) -> None:
         """Stop a running process and wait for it.

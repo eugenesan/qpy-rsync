@@ -152,10 +152,8 @@ class ComparisonView(QWidget):
         self.filter_edit.textChanged.connect(self.set_path_filter)
         self.expand_button.clicked.connect(self.expand_all)
         self.collapse_button.clicked.connect(self.collapse_all)
-        for tree in (self.source, self.action, self.destination):
-            tree.header().sectionClicked.connect(
-                lambda section, t=tree: self._sort_by_section(t, section)
-            )
+        # The header of a pane sorts the shared model, so every pane follows.
+        self.proxy.sorted.connect(self._sync_sort_indicators)
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.header().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.header().sectionResized.connect(
@@ -193,7 +191,7 @@ class ComparisonView(QWidget):
         tree.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        tree.setSortingEnabled(False)
+        tree.setSortingEnabled(True)
         tree.header().setStretchLastSection(False)
         tree.header().setSortIndicatorShown(True)
         # Without clickable sections the header never reports a click.
@@ -204,7 +202,7 @@ class ComparisonView(QWidget):
         return tree
 
     def _sort_by_section(self, tree: QTreeView, section: int) -> None:
-        """Sort the tree panes by the clicked header.
+        """Sort the tree panes by the given column, like a header click.
 
         All three panes show the same objects, so they share the order. The
         section of a header is the column of the model, because every pane
@@ -218,8 +216,11 @@ class ComparisonView(QWidget):
                 if self.model.sort_order() == Qt.SortOrder.AscendingOrder
                 else Qt.SortOrder.AscendingOrder
             )
-        self.model.sort(column, order)
-        self._show_sort_indicator(column, order)
+        self.proxy.sort(column, order)
+
+    def _sync_sort_indicators(self) -> None:
+        """Show the sorted column in every pane that displays it."""
+        self._show_sort_indicator(self.model.sort_column(), self.model.sort_order())
 
     def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
         for tree in (self.source, self.action, self.destination):
@@ -231,7 +232,7 @@ class ComparisonView(QWidget):
             ]
             if column in visible:
                 header.setSortIndicator(column, order)
-            else:
+            elif header.sortIndicatorSection() >= 0:
                 header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
     def _source_path_for_proxy_index(self, index: QModelIndex) -> str | None:

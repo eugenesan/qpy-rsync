@@ -5,7 +5,11 @@ import re
 from typing import Callable
 
 from qpy_rsync.backend.diagnostics import debug
-from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
+from qpy_rsync.backend.process_runner import (
+    ProcessResult,
+    ProcessState,
+    QtProcessRunner,
+)
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.rsync_parser import ParseResult, parse_output
 from qpy_rsync.backend.sync_progress import SyncProgress, parse_sync_progress
@@ -47,6 +51,23 @@ class CompareService:
     def cancel(self) -> None:
         self._cancelled = True
         self._runner.cancel()
+
+    @property
+    def state(self) -> ProcessState:
+        """Return the state of the rsync process."""
+        return self._runner.state
+
+    def pause(self) -> bool:
+        """Suspend a running comparison."""
+        return self._runner.pause()
+
+    def resume(self) -> bool:
+        """Continue a suspended comparison."""
+        return self._runner.resume()
+
+    @property
+    def paused(self) -> bool:
+        return self._runner.paused
 
     def shutdown(self, timeout_ms: int = 2000) -> None:
         """Stop a running comparison so the window can be closed."""

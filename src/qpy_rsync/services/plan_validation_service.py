@@ -103,6 +103,18 @@ class PlanValidationService:
         self._cancelled = True
         self._runner.cancel()
 
+    def pause(self) -> bool:
+        """Suspend a running validation."""
+        return self._runner.pause()
+
+    def resume(self) -> bool:
+        """Continue a suspended validation."""
+        return self._runner.resume()
+
+    @property
+    def paused(self) -> bool:
+        return self._runner.paused
+
     def shutdown(self, timeout_ms: int = 2000) -> None:
         """Stop a running validation so the window can be closed."""
         self._cancelled = True
