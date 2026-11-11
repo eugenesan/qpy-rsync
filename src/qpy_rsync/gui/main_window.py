@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_started = self._plan_validation_started
         self._plan_validation.on_finished = self._plan_validation_finished
         self._plan_validation.on_error = self._plan_validation_error
+        self._plan_validation.on_cancelled = self._plan_validation_cancelled
         self._plan_validation.on_log = self._append_log
         self._plan_validation.on_spec = self._log_spec
         self._inventory_service = InventoryService(self)
@@ -190,9 +191,12 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
         self.validate_plan_button = QPushButton("Verify Actions")
         self.validate_plan_button.setToolTip(
-            "Verify the selected actions with a second rsync dry run.\n"
-            "No files are changed.\n"
-            "For SSH endpoints this connects to the remote host again, so the "
+            "Verify the selected actions.\n"
+            "When no checkbox decisions were changed after the comparison, the\n"
+            "latest comparison is reused immediately.\n"
+            "Otherwise a second rsync dry run checks the selected subset; that run\n"
+            "can be cancelled.\n"
+            "For SSH endpoints the dry run connects to the remote host again, so the\n"
             "remote host must be reachable and credentials must be available."
         )
         self.synchronize_button = QPushButton("Synchronize...")
@@ -868,17 +872,33 @@ class MainWindow(QMainWindow):
                 "Plan validation is blocked: " + "; ".join(freshness.reasons),
             )
             return
+        if not self.comparison.model.decisions.has_explicit():
+            # The comparison already itemized exactly this selection, so a second
+            # identical rsync dry run would add no information. Reuse the parsed
+            # result; modified decisions still take the full validation path.
+            self._plan_validation_started()
+            mismatch = compare_plan_to_changes(
+                self._current_plan, self.comparison.model.changes
+            )
+            self._append_log("STATE verification-reused-comparison")
+            self._plan_validation_finished(
+                PlanValidationResult(mismatch.valid, mismatch, "", 0)
+            )
+            return
         self._plan_validation.validate(self._active_profile, self._current_plan)
 
     def _plan_validation_started(self) -> None:
+        self._begin_bulk_logging()
         self._execution_gate.verification_started()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verifying...")
-        self.status_label.setText("Verifying selected actions with a second dry run...")
+        self.cancel_button.setEnabled(True)
+        self.status_label.setText("Verifying selected actions...")
         self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
+        self.cancel_button.setEnabled(False)
         self.validate_plan_button.setEnabled(True)
         self.validate_plan_button.setText("Verify Actions")
         if result.valid:
@@ -888,6 +908,7 @@ class MainWindow(QMainWindow):
             self.validate_plan_button.setText("Actions Verified")
             self.status_label.setText("Selected actions verified. No files were changed.")
             self._append_log("STATE actions-verified")
+            self._end_bulk_logging()
             return
         self._validated_plan = None
         self._execution_gate.verification_failed()
@@ -901,10 +922,24 @@ class MainWindow(QMainWindow):
             for path, action, kind in result.mismatch.unexpected
         )
         detail = "\n".join(part for part in (missing, unexpected) if part)
+        self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
         self.status_label.setText("Plan validation failed; synchronization remains blocked.")
 
+    def _plan_validation_cancelled(self) -> None:
+        self.cancel_button.setEnabled(False)
+        self._validated_plan = None
+        if self._execution_gate.state is ExecutionGateState.VERIFYING:
+            self._execution_gate.verification_failed()
+        self.synchronize_button.setEnabled(False)
+        self.validate_plan_button.setEnabled(self._current_plan is not None)
+        self.validate_plan_button.setText("Verify Actions")
+        self.status_label.setText("Action verification was cancelled.")
+        self._append_log("STATE verification-cancelled")
+        self._end_bulk_logging()
+
     def _plan_validation_error(self, message: str) -> None:
+        self.cancel_button.setEnabled(False)
         self._validated_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
             self._execution_gate.verification_failed()
@@ -913,6 +948,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setText("Verify Actions")
         self.status_label.setText("Plan validation failed.")
         self._append_log(message)
+        self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation failed", message)
 
     def _show_sync_confirmation(self) -> None:

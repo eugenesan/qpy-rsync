@@ -421,3 +421,58 @@ def test_bulk_logging_flushes_once_at_the_end() -> None:
     application.processEvents()
 
 
+def test_verification_reuses_fresh_comparison() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+
+    class RejectProcess:
+        def validate(self, *_args, **_kwargs):
+            raise AssertionError("fresh comparisons must not start another dry run")
+
+    window._plan_validation = RejectProcess()
+    window._validate_selected_plan()
+    assert window.validate_plan_button.text() == "Actions Verified"
+    assert window._validated_plan is window._current_plan
+    assert "STATE verification-reused-comparison" in window.log.toPlainText()
+    assert not window.cancel_button.isEnabled()
+    window.close()
+    application.processEvents()
+
+
+def test_verification_can_be_cancelled() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+    window._plan_validation_started()
+    assert window.cancel_button.isEnabled()
+    window._plan_validation_cancelled()
+    assert not window.cancel_button.isEnabled()
+    assert window.validate_plan_button.text() == "Verify Actions"
+    assert "STATE verification-cancelled" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+

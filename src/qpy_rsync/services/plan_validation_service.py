@@ -58,9 +58,11 @@ class PlanValidationService:
         self._plan: ExecutionPlan | None = None
         self._delete_enabled = False
         self._buffer = ""
+        self._cancelled = False
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[PlanValidationResult], None] = lambda _result: None
         self.on_error: Callable[[str], None] = lambda _message: None
+        self.on_cancelled: Callable[[], None] = lambda: None
         self.on_log: Callable[[str], None] = lambda _message: None
         self.on_spec: Callable[[object], None] = lambda _spec: None
         self._runner.on_stdout = self._stdout_chunk
@@ -76,6 +78,7 @@ class PlanValidationService:
             return
         self._plan = plan
         self._buffer = ""
+        self._cancelled = False
         selected_deletions = any(
             item.included and item.action is ChangeAction.DELETE
             for item in plan.items
@@ -95,6 +98,7 @@ class PlanValidationService:
             raise
 
     def cancel(self) -> None:
+        self._cancelled = True
         self._runner.cancel()
 
     def _stdout_chunk(self, text: str) -> None:
@@ -116,8 +120,13 @@ class PlanValidationService:
         self._filter_path = None
 
     def _error(self, message: str) -> None:
-        self._cleanup()
-        self.on_error(message)
+        try:
+            if self._cancelled:
+                self.on_cancelled()
+                return
+            self.on_error(message)
+        finally:
+            self._cleanup()
 
     def _finish(self, process: ProcessResult) -> None:
         if self._buffer:
@@ -126,6 +135,9 @@ class PlanValidationService:
             if cleaned and parse_sync_progress(cleaned) is None:
                 self.on_log(cleaned)
         try:
+            if self._cancelled:
+                self.on_cancelled()
+                return
             if process.exit_code != 0:
                 self.on_error(
                     f"Validation dry-run exited with status {process.exit_code}: {process.stderr.strip()}"
@@ -140,4 +152,5 @@ class PlanValidationService:
         except ValueError as exc:
             self.on_error(f"Could not parse validation dry-run output: {exc}")
         finally:
+            self._cancelled = False
             self._cleanup()
