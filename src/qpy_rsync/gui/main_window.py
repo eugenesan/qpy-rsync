@@ -910,6 +910,7 @@ class MainWindow(QMainWindow):
 
     def _plan_validation_started(self) -> None:
         self._begin_bulk_logging()
+        self._set_hovered_action("verify")
         self._execution_gate.verification_started()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
@@ -1035,12 +1036,13 @@ class MainWindow(QMainWindow):
 
     def _sync_started(self) -> None:
         self._begin_bulk_logging()
+        self._set_hovered_action("synchronize")
         self._execution_gate.execution_started()
         self._set_busy_controls(True)
         self.comparison.set_stale(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Synchronizing...")
-        self._set_status("Synchronization is running in the disposable smoke-test tree...", "warning")
+        self._set_status("Synchronization is running. The selected actions are applied now.", "warning")
         self._append_log("STATE synchronization-started")
 
     def _sync_progress(self, progress: object) -> None:
@@ -1135,6 +1137,7 @@ class MainWindow(QMainWindow):
 
     def _comparison_started(self) -> None:
         self._begin_bulk_logging()
+        self._set_hovered_action("compare")
         self._inventory_service.cancel()
         self._inventory_token = 0
         self._inventory_pending_key = None

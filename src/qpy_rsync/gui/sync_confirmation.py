@@ -113,7 +113,8 @@ class SyncConfirmationDialog(QDialog):
         details.setReadOnly(True)
         details.setPlainText(
             "This confirmation is based on a verified second dry run.\n"
-            "Confirming will launch write-capable rsync for the disposable smoke-test paths.\n"
+            "Confirming will launch write-capable rsync for the reviewed "
+            "Source and Destination.\n"
             "The private decision filter is recreated and removed after execution."
         )
         details.setMaximumHeight(90)

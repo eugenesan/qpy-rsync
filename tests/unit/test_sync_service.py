@@ -9,7 +9,7 @@ from qpy_rsync.core.execution_plan import build_execution_plan
 from qpy_rsync.core.models import BackupOptions, Endpoint, SyncProfile, TransferOptions
 from qpy_rsync.services.sync_service import (
     SyncService,
-    enforce_smoke_execution_boundary,
+    enforce_execution_boundary,
     explain_rsync_exit,
 )
 
@@ -50,10 +50,10 @@ def plan(item: SyncProfile):
     )
 
 
-def test_smoke_boundary_allows_ssh_endpoints() -> None:
+def test_execution_boundary_allows_ssh_endpoints() -> None:
     item = profile()
     item.source = Endpoint(EndpointKind.SSH, "host:/tmp/qpy-rsync-smoke/source/")
-    enforce_smoke_execution_boundary(item)
+    enforce_execution_boundary(item)
 
 
 def test_service_builds_real_sync_and_removes_private_filter() -> None:

@@ -14,9 +14,6 @@ from qpy_rsync.core.enums import EndpointKind
 from qpy_rsync.core.execution_plan import ExecutionPlan, profile_fingerprint
 from qpy_rsync.core.models import SyncProfile
 
-SMOKE_ROOT = Path("/tmp/qpy-rsync-smoke")
-
-
 @dataclass(slots=True, frozen=True)
 class SyncResult:
     exit_code: int
@@ -43,10 +40,14 @@ def explain_rsync_exit(code: int) -> str:
     return _RSYNC_EXIT_MESSAGES.get(code, f"rsync exited with status {code}.")
 
 
-def enforce_smoke_execution_boundary(profile: SyncProfile) -> None:
-    # Phase 3 of the post-1.15f safety review: SSH execution is enabled using
-    # the existing askpass/environment integration. No path restriction remains.
-    pass
+def enforce_execution_boundary(profile: SyncProfile) -> None:
+    """Check that the profile may be executed.
+
+    The earlier restriction to a disposable smoke-test tree was lifted in the
+    safety review. Local and SSH endpoints are both allowed, so there is no
+    path restriction left to enforce.
+    """
+    return None
 
 
 class SyncService:
@@ -75,7 +76,7 @@ class SyncService:
         self.on_stdout(text)
 
     def synchronize(self, profile: SyncProfile, plan: ExecutionPlan) -> ProcessSpec:
-        enforce_smoke_execution_boundary(profile)
+        enforce_execution_boundary(profile)
         if plan.profile_fingerprint != profile_fingerprint(profile):
             raise ValueError("The verified synchronization plan is stale.")
         if not plan.included_items:
