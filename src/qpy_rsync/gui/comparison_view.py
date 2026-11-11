@@ -312,7 +312,10 @@ class ComparisonView(QWidget):
             QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows,
         )
 
-    def set_changes(self, changes: list[object]) -> None:
+    def set_changes(
+        self, changes: list[object], *, preserve_expansion: bool = False
+    ) -> None:
+        expanded_paths = self._expanded_paths() if preserve_expansion else set()
         trees = (self.source, self.action, self.destination)
         for tree in trees:
             tree.setUpdatesEnabled(False)
@@ -324,12 +327,51 @@ class ComparisonView(QWidget):
             for tree in trees:
                 tree.setUpdatesEnabled(True)
                 tree.viewport().update()
-            # Expanding every row of a large tree keeps the UI busy for a long
-            # time. Show the first level and let the user expand further.
-            self.expand_initial()
+            if expanded_paths:
+                self._expand_paths(expanded_paths)
+            else:
+                # Expanding every row of a large tree keeps the UI busy for a
+                # long time. Show the first level and let the user expand further.
+                self.expand_initial()
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
         QTimer.singleShot(0, restore_views)
+
+    def _expanded_paths(self) -> set[str]:
+        paths: set[str] = set()
+        stack = [
+            self.proxy.index(row, 0) for row in range(self.proxy.rowCount())
+        ]
+        while stack:
+            index = stack.pop()
+            if not index.isValid() or not self.source.isExpanded(index):
+                continue
+            path = self._source_path_for_proxy_index(index)
+            if path:
+                paths.add(path)
+            stack.extend(
+                self.proxy.index(row, 0, index)
+                for row in range(self.proxy.rowCount(index))
+            )
+        return paths
+
+    def _expand_paths(self, paths: set[str]) -> None:
+        stack = [
+            self.proxy.index(row, 0) for row in range(self.proxy.rowCount())
+        ]
+        while stack:
+            index = stack.pop()
+            if not index.isValid():
+                continue
+            path = self._source_path_for_proxy_index(index)
+            if path not in paths:
+                continue
+            for tree in (self.source, self.action, self.destination):
+                tree.expand(index)
+            stack.extend(
+                self.proxy.index(row, 0, index)
+                for row in range(self.proxy.rowCount(index))
+            )
 
     def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
         self.proxy.set_visible_actions(actions)

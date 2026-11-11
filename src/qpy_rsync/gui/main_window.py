@@ -1095,7 +1095,7 @@ class MainWindow(QMainWindow):
 
     def _apply_inventory_mode(self) -> None:
         changed = list(self._last_changed_changes)
-        if not changed or self._active_profile is None:
+        if self._active_profile is None:
             return
         if not self.show_unchanged.isChecked():
             self._inventory_service.cancel()
@@ -1105,9 +1105,12 @@ class MainWindow(QMainWindow):
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
-            self.comparison.set_changes(changed + list(self._inventory_cache))
+            self.comparison.set_changes(
+                changed + list(self._inventory_cache), preserve_expansion=True
+            )
             self.progress_label.setText(
-                f"Showing {len(self._inventory_cache)} unchanged object(s)"
+                f"Showing {len(self._inventory_cache)} unchanged object(s); "
+                "expand folders to view nested objects."
             )
             return
         if self._inventory_pending_key == key and self._inventory_token:
@@ -1134,7 +1137,6 @@ class MainWindow(QMainWindow):
         if (
             not self.show_unchanged.isChecked()
             or self._active_profile is None
-            or not changed
         ):
             return
         key = self._inventory_key(self._active_profile, changed)
@@ -1143,9 +1145,12 @@ class MainWindow(QMainWindow):
         result = list(extra)  # type: ignore[arg-type]
         self._inventory_cache_key = key
         self._inventory_cache = result
-        self.comparison.set_changes(changed + result)
+        self.comparison.set_changes(
+            changed + result, preserve_expansion=True
+        )
         self.progress_label.setText(
-            f"Inventory complete: {len(result)} unchanged object(s)"
+            f"Inventory complete: {len(result)} unchanged object(s); "
+            "expand folders to view nested objects."
         )
         self._append_log(f"STATE inventory-complete unchanged={len(result)}")
 

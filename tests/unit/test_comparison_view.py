@@ -114,3 +114,31 @@ def test_context_menu_copies_full_path_for_every_pane() -> None:
         assert QApplication.clipboard().text() == expected
     view.close()
     application.processEvents()
+def test_inventory_update_preserves_expanded_folders() -> None:
+    from qpy_rsync.core.changes import Change, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_changes(
+        [Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")]
+    )
+    application.processEvents()
+    directory = view.proxy.index(0, 0)
+    for tree in (view.source, view.action, view.destination):
+        tree.expand(directory)
+    view.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("docs/same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
+        ],
+        preserve_expansion=True,
+    )
+    application.processEvents()
+    restored = view.proxy.index(0, 0)
+    assert view.proxy.rowCount(restored) == 2
+    for tree in (view.source, view.action, view.destination):
+        assert tree.isExpanded(restored)
+    view.close()
+    application.processEvents()
+
+
