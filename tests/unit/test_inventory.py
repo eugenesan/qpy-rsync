@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qpy_rsync.backend.inventory import inventory_paths, unchanged_changes
+from qpy_rsync.backend.inventory import InventoryEntry, inventory_paths, unchanged_changes
 from qpy_rsync.core.changes import ChangeAction, ObjectKind
 from qpy_rsync.core.enums import EndpointKind, FilterRuleType
 from qpy_rsync.core.models import Endpoint, FilterRule, SyncProfile
@@ -32,8 +32,11 @@ def test_inventory_paths_honor_exclude_filters(tmp_path: Path) -> None:
     source = inventory_paths(profile.source, profile)
     destination = inventory_paths(profile.destination, profile)
 
-    assert source == {"keep.txt": ObjectKind.FILE}
-    assert destination == {"keep.txt": ObjectKind.FILE}
+    assert list(source) == ["keep.txt"]
+    assert list(destination) == ["keep.txt"]
+    assert source["keep.txt"].kind is ObjectKind.FILE
+    assert source["keep.txt"].size == 4
+    assert source["keep.txt"].modified_time
 
 
 def test_unchanged_changes_honor_exclude_filters(tmp_path: Path) -> None:
@@ -44,3 +47,8 @@ def test_unchanged_changes_honor_exclude_filters(tmp_path: Path) -> None:
     assert [(change.path, change.action) for change in changes] == [
         ("keep.txt", ChangeAction.NO_CHANGE)
     ]
+    change = changes[0]
+    assert change.size == 4
+    assert change.modified_time
+    assert change.destination_size == 4
+    assert change.destination_time

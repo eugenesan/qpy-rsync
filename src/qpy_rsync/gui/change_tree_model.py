@@ -193,11 +193,15 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.SOURCE_SIZE:
                 return self._size(change.size) if source_present else ""
             if index.column() == self.DESTINATION_SIZE:
+                if change.destination_size is not None:
+                    return self._size(change.destination_size)
                 return self._size(change.size) if change.action is ChangeAction.DESTINATION_ONLY else ""
             if index.column() == self.SOURCE_TIME:
                 return change.modified_time or "" if source_present else ""
             if index.column() == self.DESTINATION_TIME:
-                return ""  # rsync itemized output does not provide destination mtime.
+                # The itemized output of a comparison does not carry the
+                # modification time of the destination. An inventory knows it.
+                return change.destination_time or ""
         if role == Qt.ItemDataRole.DecorationRole and index.column() == self.ACTION:
             return self._decoration_for(node)
         if role == Qt.ItemDataRole.ToolTipRole:

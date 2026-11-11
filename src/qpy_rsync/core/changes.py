@@ -34,6 +34,11 @@ class Change:
     modified_time: str | None = None
     link_target: str | None = None
     reason: str = ""
+    # The itemized output of a comparison only carries the metadata of the
+    # source. The destination values are known for the objects an inventory
+    # listed.
+    destination_size: int | None = None
+    destination_time: str | None = None
 
     @property
     def is_deletion(self) -> bool:
