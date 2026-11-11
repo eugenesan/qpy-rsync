@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync.backend.inventory import InventoryResult
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
@@ -48,6 +49,17 @@ def vertical_separator() -> QFrame:
     line.setFixedWidth(1)
     line.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
     return line
+
+
+def _inventory_result(payload: object) -> InventoryResult:
+    """Read the outcome of an inventory run."""
+    if isinstance(payload, InventoryResult):
+        return payload
+    # Older callers deliver a plain list of unchanged objects.
+    return InventoryResult(
+        unchanged=list(payload),  # type: ignore[call-overload]
+        destination_metadata={},
+    )
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
@@ -1201,6 +1213,9 @@ class MainWindow(QMainWindow):
         self._inventory_service.cancel()
         self._inventory_token = 0
         self._inventory_pending_key = None
+        # The metadata of the previous comparison no longer describes the
+        # destination.
+        self.comparison.set_destination_metadata({})
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.progress_bar.setValue(0)
@@ -1272,18 +1287,27 @@ class MainWindow(QMainWindow):
         """Gather the unchanged objects when the inventory runs automatically.
 
         The result is cached for the comparison, so the unchanged button only
-        shows the cached objects instead of running the inventory again.
+        shows the cached objects instead of running the inventory again. The
+        unchanged objects stay hidden until the user asks for them.
         """
         if not self.inventory_after_compare_button.isChecked():
             self._apply_inventory_mode()
             return
-        if not self.show_unchanged.isChecked():
-            # Switching the button on starts the inventory.
-            self.show_unchanged.setChecked(True)
+        changed = list(self._last_changed_changes)
+        if self._active_profile is None:
             return
-        self._apply_inventory_mode()
+        key = self._inventory_key(self._active_profile, changed)
+        if self._inventory_cache_key == key and self._inventory_cache is not None:
+            return
+        if self._inventory_pending_key == key and self._inventory_token:
+            return
+        # The compared objects are shown right away, the unchanged objects
+        # stay hidden until the user asks for them.
+        self.comparison.set_changes(changed)
+        self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
+        """Show or hide the unchanged objects of the current comparison."""
         changed = list(self._last_changed_changes)
         if self._active_profile is None:
             return
@@ -1309,6 +1333,10 @@ class MainWindow(QMainWindow):
         # merged in when the inventory completes, so the tree never stays
         # empty and no second comparison is needed.
         self.comparison.set_changes(changed)
+        self._start_inventory(key, changed)
+
+    def _start_inventory(self, key: object, changed: list[object]) -> None:
+        """List both trees in the background."""
         self._inventory_pending_key = key
         self.progress_label.setText("Gathering unchanged objects...")
         self._append_log("STATE inventory-started")
@@ -1330,25 +1358,28 @@ class MainWindow(QMainWindow):
             return
         self._inventory_token = 0
         changed = list(self._last_changed_changes)
-        if (
-            not self.show_unchanged.isChecked()
-            or self._active_profile is None
-        ):
+        if self._active_profile is None:
             return
         key = self._inventory_key(self._active_profile, changed)
         if key != self._inventory_pending_key:
             return
-        result = list(extra)  # type: ignore[arg-type]
+        result = _inventory_result(extra)
         self._inventory_cache_key = key
-        self._inventory_cache = result
-        self.comparison.set_changes(
-            changed + result, preserve_expansion=True
-        )
+        self._inventory_cache = list(result.unchanged)
+        # The listing knows the destination of every object, so the tree can
+        # show its size and date.
+        self.comparison.set_destination_metadata(result.destination_metadata)
+        if self.show_unchanged.isChecked():
+            self.comparison.set_changes(
+                changed + list(result.unchanged), preserve_expansion=True
+            )
         self.progress_label.setText(
-            f"Inventory complete: {len(result)} unchanged object(s); "
+            f"Inventory complete: {len(result.unchanged)} unchanged object(s); "
             "expand folders to view nested objects."
         )
-        self._append_log(f"STATE inventory-complete unchanged={len(result)}")
+        self._append_log(
+            f"STATE inventory-complete unchanged={len(result.unchanged)}"
+        )
 
     def _inventory_failed(self, token: int, message: str) -> None:
         if self._closing:

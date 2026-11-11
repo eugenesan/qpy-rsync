@@ -79,7 +79,21 @@ def inventory_paths(
     return paths
 
 
-def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
+@dataclass(slots=True, frozen=True)
+class InventoryResult:
+    """The outcome of one inventory run.
+
+    The unchanged objects are the ones that both trees share. The metadata of
+    the destination is kept for every listed object, so the tree can also
+    show the size and the date of the changed objects.
+    """
+
+    unchanged: list[Change]
+    destination_metadata: dict[str, tuple[int | None, str | None]]
+
+
+def gather_inventory(profile, changed: Iterable[Change]) -> InventoryResult:
+    """List both trees and report the unchanged objects and the metadata."""
     changed_paths = {change.path.rstrip("/") for change in changed}
     ancestor_paths = set()
     for changed_path in changed_paths:
@@ -88,13 +102,13 @@ def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
             ancestor_paths.add("/".join(parts[:index]))
     source_paths = inventory_paths(profile.source, profile)
     destination_paths = inventory_paths(profile.destination, profile)
-    result: list[Change] = []
+    unchanged: list[Change] = []
     for path in sorted(source_paths.keys() & destination_paths.keys()):
         if path in changed_paths or path in ancestor_paths:
             continue
         source = source_paths[path]
         destination = destination_paths[path]
-        result.append(
+        unchanged.append(
             Change(
                 path,
                 ChangeAction.NO_CHANGE,
@@ -106,4 +120,13 @@ def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
                 destination_time=destination.modified_time,
             )
         )
-    return result
+    metadata = {
+        path: (entry.size, entry.modified_time)
+        for path, entry in destination_paths.items()
+    }
+    return InventoryResult(unchanged=unchanged, destination_metadata=metadata)
+
+
+def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
+    """Return the objects that both trees share unchanged."""
+    return gather_inventory(profile, changed).unchanged

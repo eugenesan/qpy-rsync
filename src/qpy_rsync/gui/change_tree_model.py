@@ -67,6 +67,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._action_header = "Actions"
         self._action_header_tooltip = "Actions"
         self._modified_count = 0
+        self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self._override_paths: set[str] = set()
 
     def set_changes(self, changes: list[Change]) -> None:
@@ -172,6 +173,25 @@ class ChangeTreeModel(QAbstractItemModel):
             Qt.Orientation.Horizontal, self.ACTION, self.ACTION
         )
 
+    def set_destination_metadata(
+        self, metadata: dict[str, tuple[int | None, str | None]]
+    ) -> None:
+        """Remember the size and the date of the listed destination objects."""
+        self._destination_metadata = dict(metadata)
+        if not self.root.children:
+            return
+        top = self.index(0, 0)
+        if not top.isValid():
+            return
+        self.dataChanged.emit(
+            top,
+            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
+            [Qt.ItemDataRole.DisplayRole],
+        )
+
+    def _destination_info(self, path: str) -> tuple[int | None, str | None]:
+        return self._destination_metadata.get(path, (None, None))
+
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid():
             return None
@@ -195,13 +215,19 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.DESTINATION_SIZE:
                 if change.destination_size is not None:
                     return self._size(change.destination_size)
+                size, _time = self._destination_info(node.path)
+                if size is not None:
+                    return self._size(size)
                 return self._size(change.size) if change.action is ChangeAction.DESTINATION_ONLY else ""
             if index.column() == self.SOURCE_TIME:
                 return change.modified_time or "" if source_present else ""
             if index.column() == self.DESTINATION_TIME:
                 # The itemized output of a comparison does not carry the
                 # modification time of the destination. An inventory knows it.
-                return change.destination_time or ""
+                if change.destination_time:
+                    return change.destination_time
+                _size, time = self._destination_info(node.path)
+                return time or ""
         if role == Qt.ItemDataRole.DecorationRole and index.column() == self.ACTION:
             return self._decoration_for(node)
         if role == Qt.ItemDataRole.ToolTipRole:

@@ -603,6 +603,7 @@ def test_rows_use_separators_between_the_control_groups() -> None:
 
 
 def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
+    from qpy_rsync.backend.inventory import InventoryResult
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -637,10 +638,11 @@ def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
     window.inventory_after_compare_button.setChecked(True)
     window._apply_inventory_after_compare()
     assert len(gathered) == 1
-    assert window.show_unchanged.isChecked()
+    # The unchanged objects stay hidden until the user asks for them.
+    assert not window.show_unchanged.isChecked()
 
     # The unchanged button reuses the result of the comparison.
-    window._inventory_finished(gathered and 101, [])
+    window._inventory_finished(101, InventoryResult([], {}))
     application.processEvents()
     window.show_unchanged.setChecked(False)
     window.show_unchanged.setChecked(True)

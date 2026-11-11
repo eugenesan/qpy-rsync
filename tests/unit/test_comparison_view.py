@@ -215,3 +215,33 @@ def test_action_column_hugs_its_content() -> None:
     assert font is None
     view.close()
     application.processEvents()
+
+
+def test_destination_metadata_fills_the_destination_columns() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    change = Change(
+        "a.txt",
+        ChangeAction.UPDATE_CONTENT,
+        ObjectKind.FILE,
+        ">f.st......",
+        size=10,
+        modified_time="2026/11/10-20:32:20",
+    )
+    view.set_changes([change])
+    application.processEvents()
+    model = view.model
+    assert model.data(model.index(0, model.DESTINATION_SIZE)) == ""
+
+    view.set_destination_metadata({"a.txt": (6, "2026/11/09-10:00:00")})
+    application.processEvents()
+    assert model.data(model.index(0, model.DESTINATION_SIZE)) == "6 B"
+    assert (
+        model.data(model.index(0, model.DESTINATION_TIME)) == "2026/11/09-10:00:00"
+    )
+    # The source columns still report the values of the comparison.
+    assert model.data(model.index(0, model.SOURCE_SIZE)) == "10 B"
+    view.close()
+    application.processEvents()

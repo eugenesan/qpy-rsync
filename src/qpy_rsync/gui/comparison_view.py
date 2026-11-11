@@ -64,6 +64,7 @@ class ComparisonView(QWidget):
         self._destination_root = ""
         self._update_freeze = 0
         self._syncing_expansion = False
+        self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
         self.proxy = ChangeTreeFilterProxyModel(self)
@@ -366,6 +367,13 @@ class ComparisonView(QWidget):
             QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows,
         )
 
+    def set_destination_metadata(
+        self, metadata: dict[str, tuple[int | None, str | None]]
+    ) -> None:
+        """Show the size and the date of the listed destination objects."""
+        self._destination_metadata = dict(metadata)
+        self.model.set_destination_metadata(self._destination_metadata)
+
     def set_changes(
         self, changes: list[object], *, preserve_expansion: bool = False
     ) -> None:
@@ -376,6 +384,9 @@ class ComparisonView(QWidget):
             tree.setCurrentIndex(QModelIndex())
             tree.selectionModel().clear()
         self.model.set_changes(changes)  # type: ignore[arg-type]
+        if self._destination_metadata:
+            # The metadata belongs to the comparison, not to the rows.
+            self.model.set_destination_metadata(self._destination_metadata)
         # A model reset alone leaves the proxy with the previous row mapping.
         # Without this the new objects, for example the unchanged ones of an
         # inventory, would only appear after the next comparison.

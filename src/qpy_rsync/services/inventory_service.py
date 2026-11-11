@@ -4,7 +4,7 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
-from qpy_rsync.backend.inventory import unchanged_changes
+from qpy_rsync.backend.inventory import gather_inventory
 from qpy_rsync.core.changes import Change
 from qpy_rsync.core.models import SyncProfile
 
@@ -54,11 +54,11 @@ class InventoryService(QObject):
         self,
         parent: object | None = None,
         *,
-        gather: Callable[[SyncProfile, list[Change]], list[Change]] | None = None,
+        gather: Callable[[SyncProfile, list[Change]], object] | None = None,
         pool: QThreadPool | None = None,
     ) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
-        self._gather = gather or unchanged_changes
+        self._gather = gather or gather_inventory
         self._pool = pool or QThreadPool.globalInstance()
         self._token = 0
         self._signals = _WorkerSignals(self)
