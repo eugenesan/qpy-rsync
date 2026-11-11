@@ -28,6 +28,7 @@ from qpy_rsync.storage.settings import app_settings
 
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
+ACTION_PANE_WIDTH = 150
 ROW_HEIGHT = 22
 
 
@@ -58,11 +59,20 @@ class ComparisonView(QWidget):
         self.source = self._tree("Source")
         self.action = self._tree("Action")
         self.destination = self._tree("Destination")
+        # The action column only carries a checkbox and an icon, so it keeps a
+        # fixed width and the two file panes share the remaining space.
+        self.action.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+        )
+        self.action.setFixedWidth(ACTION_PANE_WIDTH)
         self._configure_columns()
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.source)
         self.splitter.addWidget(self.action)
         self.splitter.addWidget(self.destination)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
+        self.splitter.setStretchFactor(2, 1)
         self.filter_edit = QLineEdit()
         self.filter_edit.setPlaceholderText("Pictures/, Documents, School-Report-202*, *.jpg")
         self.filter_edit.setClearButtonEnabled(True)
@@ -268,7 +278,9 @@ class ComparisonView(QWidget):
         self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.ResizeToContents)
         self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.ResizeToContents)
-        self.action.header().setSectionResizeMode(self.model.ACTION, QHeaderView.ResizeMode.Stretch)
+        self.action.header().setSectionResizeMode(
+            self.model.ACTION, QHeaderView.ResizeMode.Fixed
+        )
         self.destination.header().setSectionResizeMode(
             self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch
         )
@@ -466,7 +478,7 @@ class ComparisonView(QWidget):
         if state is not None:
             self.splitter.restoreState(state)
         else:
-            self.splitter.setSizes([450, 150, 450])
+            self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
         source = settings.value("comparison/source-header")
         destination = settings.value("comparison/destination-header")
         if source is not None:
