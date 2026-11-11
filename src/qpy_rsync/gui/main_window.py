@@ -47,12 +47,16 @@ from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
 from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
 from qpy_rsync.services.inventory_service import InventoryService
-from qpy_rsync.services.plan_validation_service import PlanValidationResult, PlanValidationService
+from qpy_rsync.services.plan_validation_service import (
+    PlanValidationResult,
+    PlanValidationService,
+    compare_plan_to_changes,
+)
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
-from .comparison_view import CONTROL_SIZE, ComparisonView
+from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE, ComparisonView
 from .icons import destination_icon, source_icon, swap_icon
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
@@ -156,7 +160,7 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.sync_mode)
         self.swap_button = QToolButton()
         self.swap_button.setIcon(swap_icon())
-        self.swap_button.setIconSize(QSize(18, 18))
+        self.swap_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
         self.swap_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
@@ -365,7 +369,13 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
         icon = QLabel()
-        icon.setPixmap((source_icon() if title == "Source" else destination_icon()).pixmap(18, 18))
+        icon.setPixmap(
+            (source_icon() if title == "Source" else destination_icon()).pixmap(
+                CONTROL_ICON_SIZE, CONTROL_ICON_SIZE
+            )
+        )
+        icon.setFixedSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setObjectName(f"{title.lower()}-location-label")
         icon.setToolTip(f"{title} directory")
         icon.setAccessibleName(f"{title} directory")

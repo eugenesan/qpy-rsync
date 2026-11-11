@@ -7,7 +7,10 @@ from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, Q
 
 from qpy_rsync.core.changes import ChangeAction
 
-ICON_SIZE = 16
+# Icons are drawn on a 16x16 grid and rendered at a larger size so Qt can
+# downscale them cleanly for 24px tool buttons and checkboxes.
+ICON_SIZE = 64
+ICON_GRID = 16
 
 ACCENT = QColor("#0891B2")
 
@@ -38,6 +41,7 @@ def _pixmap() -> tuple[QPixmap, QPainter]:
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
+    painter.scale(ICON_SIZE / ICON_GRID, ICON_SIZE / ICON_GRID)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     return pixmap, painter
 

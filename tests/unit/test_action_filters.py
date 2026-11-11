@@ -77,11 +77,15 @@ def test_action_filter_none_shows_everything() -> None:
 def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     app()
     bar = ActionFilterBar()
-    tooltips = [child.toolTip() for child in bar.findChildren(QCheckBox)]
+    boxes = bar.findChildren(QCheckBox)
+    tooltips = [child.toolTip() for child in boxes]
     assert tooltips
     for tooltip in tooltips:
         assert "Display only" in tooltip
         assert "mode selection" in tooltip
+    for box in boxes:
+        assert box.height() == 40
+        assert box.iconSize().width() == 24
 
 
 def test_action_filter_survives_model_reset() -> None:

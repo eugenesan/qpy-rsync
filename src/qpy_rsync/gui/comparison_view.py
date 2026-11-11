@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
 )
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
-from .change_tree_model import ChangeTreeModel
+from .change_tree_model import ChangeTreeModel, full_path
 from .icons import unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.storage.settings import app_settings
 
-CONTROL_SIZE = 30
+CONTROL_SIZE = 40
+CONTROL_ICON_SIZE = 24
 ROW_HEIGHT = 22
 
 
@@ -110,7 +112,7 @@ class ComparisonView(QWidget):
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-            button.setIconSize(QSize(18, 18))
+            button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.splitter)

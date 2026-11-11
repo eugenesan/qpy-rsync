@@ -4,7 +4,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QStyleOptionViewItem
 
-from qpy_rsync.gui.comparison_view import ROW_HEIGHT, ComparisonView
+from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.gui.comparison_view import (
+    CONTROL_ICON_SIZE,
+    CONTROL_SIZE,
+    ROW_HEIGHT,
+    ComparisonView,
+)
+from qpy_rsync.gui.icons import action_icon
 
 
 def app() -> QApplication:
@@ -58,3 +65,25 @@ def test_action_filter_keeps_expanded_paths() -> None:
         assert tree.isExpanded(restored)
     view.close()
     application.processEvents()
+
+
+def test_control_buttons_use_consistent_large_icons() -> None:
+    application = app()
+    view = ComparisonView()
+    for button in (
+        view.inventory_button,
+        view.expand_button,
+        view.collapse_button,
+    ):
+        assert button.size().width() == CONTROL_SIZE
+        assert button.size().height() == CONTROL_SIZE
+        assert button.iconSize().width() == CONTROL_ICON_SIZE
+    pixmap = action_icon(ChangeAction.CREATE).pixmap(
+        CONTROL_ICON_SIZE, CONTROL_ICON_SIZE
+    )
+    assert pixmap.width() == CONTROL_ICON_SIZE
+    assert pixmap.height() == CONTROL_ICON_SIZE
+    view.close()
+    application.processEvents()
+
+

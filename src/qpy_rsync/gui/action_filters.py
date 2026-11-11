@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QSizePolicy, QWidget
 
 from qpy_rsync.core.changes import ChangeAction
 
-from .comparison_view import CONTROL_SIZE
+from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE
 from .icons import ACTION_LABELS, action_icon
 
 FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (
@@ -33,7 +33,7 @@ class ActionFilterBar(QWidget):
         for action in FILTERABLE_ACTIONS:
             box = QCheckBox(self)
             box.setIcon(action_icon(action))
-            box.setIconSize(QSize(18, 18))
+            box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
             box.setFixedHeight(CONTROL_SIZE)
             box.setToolTip(self._tooltip(action))
             box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} objects")

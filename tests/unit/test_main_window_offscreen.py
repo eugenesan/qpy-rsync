@@ -30,6 +30,16 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert not window.comparison.expand_button.icon().isNull()
     assert not window.comparison.collapse_button.icon().isNull()
     assert not window.comparison.inventory_button.icon().isNull()
+    assert window.swap_button.size().width() == 40
+    assert window.swap_button.size().height() == 40
+    assert window.swap_button.iconSize().width() == 24
+    for button in (
+        window.comparison.inventory_button,
+        window.comparison.expand_button,
+        window.comparison.collapse_button,
+    ):
+        assert button.size().width() == 40
+        assert button.iconSize().width() == 24
     window.source_edit.setText("/src/")
     window.destination_edit.setText("/dst/")
     window._swap_endpoints()
