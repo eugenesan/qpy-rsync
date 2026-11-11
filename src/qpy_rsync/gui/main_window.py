@@ -1274,9 +1274,14 @@ class MainWindow(QMainWindow):
 
     def _log_spec(self, spec: object) -> None:
         argv = getattr(spec, "argv", None)
+        if callable(argv):
+            argv = argv()
         if argv is None:
-            return
-        self._append_log("$ " + shlex.join(list(argv)))
+            program = getattr(spec, "program", None)
+            if program is None:
+                return
+            argv = [program, *getattr(spec, "arguments", ())]
+        self._append_log("$ " + shlex.join([str(item) for item in argv]))
 
     def _append_log(self, text: str) -> None:
         if not text:

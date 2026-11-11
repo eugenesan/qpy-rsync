@@ -482,3 +482,14 @@ def test_verification_can_be_cancelled() -> None:
     application.processEvents()
 
 
+def test_log_spec_renders_process_argv() -> None:
+    from qpy_rsync.backend.rsync_command import ProcessSpec
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.log.clear()
+    window._log_spec(ProcessSpec("rsync", ("--dry-run", "/src/"), {}))
+    assert "$ rsync --dry-run /src/" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
