@@ -113,6 +113,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     icon_path = Path(__file__).resolve().parents[2] / "qpy-rsync.svg"
     if icon_path.is_file():
         app.setWindowIcon(QIcon(str(icon_path)))
+    from qpy_rsync.storage.settings import migrate_legacy_settings
+
+    migrate_legacy_settings()
     window = MainWindow()
     if icon_path.is_file():
         window.setWindowIcon(QIcon(str(icon_path)))

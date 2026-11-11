@@ -3,10 +3,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QSettings, Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.gui.main_window import MainWindow
+from qpy_rsync.storage.settings import app_settings
 
 
 def app() -> QApplication:
@@ -17,7 +18,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     application = app()
     QCoreApplication.setOrganizationName("qpy-rsync-tests")
     QCoreApplication.setApplicationName("wide-ui")
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     assert window.validate_plan_button.text() == "Verify Actions"
     assert not window.swap_button.icon().isNull()
@@ -51,7 +52,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
 
 def test_startup_hides_selected_actions() -> None:
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     assert not window.plan_summary_label.isVisible()
     assert "Choose Source and Destination" in window.status_label.text()
@@ -65,7 +66,7 @@ def test_backup_change_keeps_comparison_fresh() -> None:
     from qpy_rsync.backend.rsync_parser import ParseResult
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.source_edit.setText("/src/")
     window.destination_edit.setText("/dst/")
@@ -97,7 +98,7 @@ def test_swap_marks_existing_comparison_outdated() -> None:
     from qpy_rsync.services.compare_service import CompareResult
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.source_edit.setText("/src/")
     window.destination_edit.setText("/dst/")
@@ -136,7 +137,7 @@ def test_browse_start_uses_existing_parent(tmp_path) -> None:
 
 def test_filter_find_focus_and_ui_labels() -> None:
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.comparison.filter_edit.setText("*.jpg")
     window.comparison.filter_button.click()
@@ -159,7 +160,7 @@ def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> N
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.comparison.set_changes(
         [Change("docs/file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
@@ -184,7 +185,7 @@ def test_proxy_index_path_is_mapped_to_source_safely() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.comparison.set_changes(
         [Change("docs/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
@@ -200,8 +201,8 @@ def test_command_line_options_override_restored_values_without_immediate_persist
     from qpy_rsync.core.enums import SyncMode
 
     application = app()
-    QSettings().clear()
-    settings = QSettings()
+    app_settings().clear()
+    settings = app_settings()
     settings.setValue("comparison/source", "/remembered-source/")
     settings.setValue("comparison/destination", "/remembered-destination/")
     window = MainWindow()
@@ -229,7 +230,7 @@ def test_command_line_compare_is_queued(monkeypatch) -> None:
     from qpy_rsync.core.enums import SyncMode
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     queued = []
     monkeypatch.setattr(
         "qpy_rsync.gui.main_window.QTimer.singleShot",
@@ -247,7 +248,7 @@ def test_command_line_compare_is_queued(monkeypatch) -> None:
 
 def test_xdg_default_log_and_visible_pane_preserve_history(tmp_path, monkeypatch) -> None:
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     window = MainWindow()
     window._restore_logging_settings()
@@ -266,7 +267,7 @@ def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) 
     from qpy_rsync.services.sync_service import SyncResult
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     window = MainWindow()
     window._restore_logging_settings()
@@ -303,7 +304,7 @@ def test_unchanged_inventory_is_async_and_cached() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.source_edit.setText("/src/")
     window.destination_edit.setText("/dst/")
@@ -343,7 +344,7 @@ def test_unchanged_inventory_is_async_and_cached() -> None:
 
 def test_command_preview_wraps_without_widening_window() -> None:
     application = app()
-    QSettings().clear()
+    app_settings().clear()
     window = MainWindow()
     window.resize(900, 620)
     window.ensurePolished()
@@ -378,6 +379,44 @@ def test_command_preview_splitter_is_resizable() -> None:
     assert window.preview_log_splitter.indexOf(preview) >= 0
     assert preview.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Fixed
     assert preview.maximumHeight() > preview.minimumHeight()
+    window.close()
+    application.processEvents()
+
+
+def test_recent_profile_is_stored_in_app_settings(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    window = MainWindow()
+    window.source_edit.setText(str(tmp_path / "src"))
+    window.destination_edit.setText(str(tmp_path / "dst"))
+    window._save_recent_profile()
+
+    settings = app_settings()
+    assert settings.contains("profile/recent")
+    assert not settings.contains("profile/recent_path")
+    assert not (tmp_path / ".local/share/qpy-rsync/recent-profile.json").exists()
+
+    restored = MainWindow()
+    # Endpoint parsing treats the location as a directory and appends a slash.
+    assert restored.source_edit.text() == str(tmp_path / "src") + "/"
+    assert restored.destination_edit.text() == str(tmp_path / "dst") + "/"
+    window.close()
+    restored.close()
+    application.processEvents()
+def test_bulk_logging_flushes_once_at_the_end() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.log.clear()
+    window._begin_bulk_logging()
+    window._append_log("first record")
+    window._append_log("second record")
+    assert window.log.toPlainText() == ""
+    window._end_bulk_logging()
+    text = window.log.toPlainText()
+    assert "first record" in text
+    assert "second record" in text
     window.close()
     application.processEvents()
 

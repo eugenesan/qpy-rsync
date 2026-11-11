@@ -22,9 +22,14 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def profile_to_json(profile: SyncProfile) -> str:
+    """Serialize a profile for storage in application settings."""
+    return json.dumps(_jsonable(profile), indent=2, sort_keys=True) + "\n"
+
+
 def save_profile(path: Path, profile: SyncProfile) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(_jsonable(profile), indent=2, sort_keys=True) + "\n"
+    payload = profile_to_json(profile)
     descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -40,8 +45,15 @@ def save_profile(path: Path, profile: SyncProfile) -> None:
         raise
 
 
+def profile_from_json(payload: str) -> SyncProfile:
+    return _profile_from_dict(json.loads(payload))
+
+
 def load_profile(path: Path) -> SyncProfile:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    return profile_from_json(path.read_text(encoding="utf-8"))
+
+
+def _profile_from_dict(raw: dict[str, Any]) -> SyncProfile:
     source = Endpoint(kind=EndpointKind(raw["source"]["kind"]), path=raw["source"]["path"], host=raw["source"].get("host"), user=raw["source"].get("user"))
     destination = Endpoint(kind=EndpointKind(raw["destination"]["kind"]), path=raw["destination"]["path"], host=raw["destination"].get("host"), user=raw["destination"].get("user"))
     preservation = PreservationOptions(**raw.get("preservation", {}))

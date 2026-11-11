@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QSettings, QSize, QTimer, Qt
+from PySide6.QtCore import QProcess, QSize, QTimer, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -31,7 +31,13 @@ from PySide6.QtWidgets import (
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
-from qpy_rsync.storage.profile_store import load_profile, save_profile
+from qpy_rsync.storage.profile_store import (
+    load_profile,
+    profile_from_json,
+    profile_to_json,
+    save_profile,
+)
+from qpy_rsync.storage.settings import app_settings
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
@@ -112,6 +118,13 @@ class MainWindow(QMainWindow):
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
+        self._log_handle = None
+        self._log_buffer: list[str] = []
+        self._bulk_logging = False
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.setSingleShot(True)
+        self._log_flush_timer.setInterval(100)
+        self._log_flush_timer.timeout.connect(self._flush_log)
         self._build_ui()
         self._restore_window_state()
         if not self._restore_recent_profile():
@@ -420,7 +433,7 @@ class MainWindow(QMainWindow):
         return root / "qpy-rsync.log"
 
     def _restore_logging_settings(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         self._log_file_enabled = settings.value("logging/enabled", True, type=bool)
         stored = str(settings.value("logging/path", str(self._default_log_file_path())))
         self._log_file_path = Path(stored).expanduser()
@@ -433,15 +446,16 @@ class MainWindow(QMainWindow):
         self._update_logging_controls()
 
     def _logging_settings_changed(self, _checked: bool | None = None, *, save: bool = True) -> None:
+        self._flush_log()
+        self._close_session_log()
         self._log_file_enabled = self.log_file_checkbox.isChecked()
         value = self.log_file_edit.text().strip()
         self._log_file_path = Path(value).expanduser() if value else self._default_log_file_path()
         if not value:
             self.log_file_edit.setText(str(self._log_file_path))
-        self._log_initialized = False
         self._update_logging_controls()
         if save:
-            settings = QSettings()
+            settings = app_settings()
             settings.setValue("logging/enabled", self._log_file_enabled)
             settings.setValue("logging/path", str(self._log_file_path))
             settings.sync()
@@ -462,22 +476,36 @@ class MainWindow(QMainWindow):
             self.log_file_edit.setText(selected)
             self._logging_settings_changed()
 
+    def _open_session_log(self):
+        if self._log_handle is not None:
+            return self._log_handle
+        self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_handle = self._log_file_path.open("a", encoding="utf-8")
+        self._log_handle.write(
+            f"\n===== qpy-rsync session {datetime.now(timezone.utc).isoformat()} =====\n"
+        )
+        self._log_handle.flush()
+        self._log_initialized = True
+        return self._log_handle
+
+    def _close_session_log(self) -> None:
+        if self._log_handle is not None:
+            try:
+                self._log_handle.flush()
+            finally:
+                self._log_handle.close()
+                self._log_handle = None
+        self._log_initialized = False
+
     def _write_session_log(self, text: str) -> None:
         if not self._log_file_enabled:
             return
-        self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._log_initialized:
-            with self._log_file_path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    f"\n===== qpy-rsync session {datetime.now(timezone.utc).isoformat()} =====\n"
-                )
-            self._log_initialized = True
+        handle = self._open_session_log()
         timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        with self._log_file_path.open("a", encoding="utf-8") as handle:
-            for line in text.splitlines() or [""]:
-                handle.write(f"{timestamp} {line}\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        for line in text.splitlines() or [""]:
+            handle.write(f"{timestamp} {line}\n")
+        # Buffered writes avoid one fsync (and one open/close) per rsync line.
+        handle.flush()
 
     @staticmethod
     def _browse_start_directory(value: str) -> str:
@@ -949,6 +977,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(busy)
 
     def _sync_started(self) -> None:
+        self._begin_bulk_logging()
         self._execution_gate.execution_started()
         self._set_busy_controls(True)
         self.comparison.set_stale(True)
@@ -977,6 +1006,7 @@ class MainWindow(QMainWindow):
         self._append_log(
             f"STATE synchronization-completed exit_code={result.exit_code}"
         )
+        self._end_bulk_logging()
         self._set_busy_controls(False)
         self._validated_plan = None
         self._current_plan = None
@@ -1002,6 +1032,7 @@ class MainWindow(QMainWindow):
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
         self._append_log(message)
+        self._end_bulk_logging()
         self._set_status(
             "Synchronization was cancelled; compare again before retrying."
             if cancelled
@@ -1022,6 +1053,7 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid location", str(exc))
             return
+        self._flush_log()
         self.log.clear()
         self._active_profile = profile
         self._comparison_profile = profile
@@ -1045,6 +1077,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
 
     def _comparison_started(self) -> None:
+        self._begin_bulk_logging()
         self._inventory_service.cancel()
         self._inventory_token = 0
         self._inventory_pending_key = None
@@ -1071,6 +1104,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Comparison cancelled")
         self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")
         self._append_log("STATE comparison-cancelled")
+        self._end_bulk_logging()
 
     def _comparison_finished(self, result: CompareResult) -> None:
         self._save_recent_profile()
@@ -1091,6 +1125,7 @@ class MainWindow(QMainWindow):
         count = len(result.parsed.changes)
         self.status_label.setText(f"Comparison complete: {count} changed object(s).")
         self._append_log(f"STATE comparison-complete changes={count}")
+        self._end_bulk_logging()
 
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         from PySide6.QtCore import QEvent
@@ -1189,6 +1224,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Comparison failed")
         self.status_label.setText("Comparison failed.")
         self._append_log(message)
+        self._end_bulk_logging()
         QMessageBox.critical(self, "Comparison failed", message)
 
     def _log_spec(self, spec: object) -> None:
@@ -1203,46 +1239,92 @@ class MainWindow(QMainWindow):
         normalized = text.rstrip("\r\n")
         if not normalized:
             return
-        self.log.appendPlainText(normalized.replace("\r", "\n"))
-        self._write_session_log(normalized.replace("\r", "\n"))
+        self._log_buffer.append(normalized.replace("\r", "\n"))
+        if self._bulk_logging:
+            if not self._log_flush_timer.isActive():
+                self._log_flush_timer.start()
+            return
+        self._flush_log()
 
-    def _recent_profile_path(self) -> Path:
-        settings = QSettings()
-        stored = str(settings.value("profile/recent_path", ""))
-        if stored:
-            return Path(stored).expanduser()
+    def _flush_log(self) -> None:
+        if self._log_flush_timer.isActive():
+            self._log_flush_timer.stop()
+        if not self._log_buffer:
+            return
+        text = "\n".join(self._log_buffer)
+        self._log_buffer.clear()
+        self.log.appendPlainText(text)
+        self._write_session_log(text)
+
+    def _begin_bulk_logging(self) -> None:
+        self._bulk_logging = True
+
+    def _end_bulk_logging(self) -> None:
+        self._bulk_logging = False
+        if self._log_flush_timer.isActive():
+            self._log_flush_timer.stop()
+        self._flush_log()
+
+    @staticmethod
+    def _legacy_recent_profile_path() -> Path:
         return Path.home() / ".local" / "share" / "qpy-rsync" / "recent-profile.json"
 
     def _save_recent_profile(self) -> None:
-        path = Path.home() / ".local" / "share" / "qpy-rsync" / "recent-profile.json"
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            save_profile(path, self._profile())
-            QSettings().setValue("profile/recent_path", str(path))
-        except (OSError, ValueError):
-            pass
+            payload = profile_to_json(self._profile())
+        except (TypeError, ValueError):
+            return
+        settings = app_settings()
+        settings.setValue("profile/recent", payload)
+        settings.remove("profile/recent_path")
+        settings.sync()
 
     def _restore_recent_profile(self) -> bool:
-        settings = QSettings()
+        settings = app_settings()
+        payload = str(settings.value("profile/recent", ""))
+        if payload:
+            try:
+                self._apply_profile(profile_from_json(payload))
+            except (ValueError, KeyError, TypeError):
+                settings.remove("profile/recent")
+                settings.sync()
+                return False
+            return True
+
+        # Migrate the old dedicated recent-profile.json without recreating it.
         stored = str(settings.value("profile/recent_path", ""))
         if not stored:
             return False
         path = Path(stored).expanduser()
         if not path.is_file():
+            settings.remove("profile/recent_path")
+            settings.sync()
             return False
         try:
-            self._apply_profile(load_profile(path))
+            profile = load_profile(path)
         except (OSError, ValueError, KeyError, TypeError):
+            return False
+        settings.setValue("profile/recent", profile_to_json(profile))
+        settings.remove("profile/recent_path")
+        settings.sync()
+        if path == self._legacy_recent_profile_path():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        try:
+            self._apply_profile(profile)
+        except (ValueError, KeyError, TypeError):
             return False
         return True
 
     def _save_filters(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         settings.setValue("comparison/filters", encode_filters(self._filters))
         settings.sync()
 
     def _restore_filters(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         payload = str(settings.value("comparison/filters", ""))
         try:
             self._filters = decode_filters(payload)
@@ -1252,12 +1334,12 @@ class MainWindow(QMainWindow):
         self._update_filter_summary()
 
     def _save_backup(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         settings.setValue("comparison/backup", encode_backup(self._backup))
         settings.sync()
 
     def _restore_backup(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         payload = str(settings.value("comparison/backup", ""))
         try:
             self._backup = decode_backup(payload)
@@ -1281,18 +1363,24 @@ class MainWindow(QMainWindow):
             self._set_status("Choose Source and Destination above the comparison panes.")
 
     def _restore_window_state(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         geometry = settings.value("main-window/geometry")
         state = settings.value("main-window/state")
         if geometry is not None:
             self.restoreGeometry(geometry)
         if state is not None:
             self.restoreState(state)
+        preview_state = settings.value("command-preview/splitter")
+        if preview_state is not None:
+            self.preview_log_splitter.restoreState(preview_state)
 
     def closeEvent(self, event: object) -> None:  # noqa: N802
-        settings = QSettings()
+        settings = app_settings()
         settings.setValue("main-window/geometry", self.saveGeometry())
         settings.setValue("main-window/state", self.saveState())
+        settings.setValue(
+            "command-preview/splitter", self.preview_log_splitter.saveState()
+        )
         settings.sync()
         self.comparison.save_view_state()
         try:
@@ -1337,6 +1425,8 @@ class MainWindow(QMainWindow):
                         self._append_log(f"Profile saved: {path}")
         except Exception:  # noqa: BLE001
             pass
+        self._flush_log()
+        self._close_session_log()
         super().closeEvent(event)  # type: ignore[arg-type]
         from PySide6.QtWidgets import QApplication
 

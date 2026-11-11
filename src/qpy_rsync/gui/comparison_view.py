@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSettings, QSize, QTimer, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSize, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -454,14 +454,14 @@ class ComparisonView(QWidget):
             tree.collapseAll()
 
     def save_view_state(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         settings.setValue("comparison/splitter", self.splitter.saveState())
         settings.setValue("comparison/source-header", self.source.header().saveState())
         settings.setValue("comparison/destination-header", self.destination.header().saveState())
         settings.sync()
 
     def _restore_view_state(self) -> None:
-        settings = QSettings()
+        settings = app_settings()
         state = settings.value("comparison/splitter")
         if state is not None:
             self.splitter.restoreState(state)
