@@ -57,6 +57,7 @@ class ComparisonView(QWidget):
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
+    sort_changed = Signal(int, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -161,6 +162,10 @@ class ComparisonView(QWidget):
         )
         self._restore_view_state()
         self._synchronize()
+        # Tell the panes that the tree starts sorted by name. The first click
+        # on that header then reverses the order instead of doing nothing.
+        for tree in (self.source, self.action, self.destination):
+            tree.sortByColumn(self.model.SOURCE_NAME, Qt.SortOrder.AscendingOrder)
         self._show_sort_indicator(self.model.SOURCE_NAME, Qt.SortOrder.AscendingOrder)
 
     @property
@@ -221,6 +226,7 @@ class ComparisonView(QWidget):
     def _sync_sort_indicators(self) -> None:
         """Show the sorted column in every pane that displays it."""
         self._show_sort_indicator(self.model.sort_column(), self.model.sort_order())
+        self.sort_changed.emit(self.model.sort_column(), self.model.sort_order())
 
     def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
         for tree in (self.source, self.action, self.destination):
@@ -660,3 +666,14 @@ class ComparisonView(QWidget):
             self.source.header().restoreState(source)
         if destination is not None:
             self.destination.header().restoreState(destination)
+        # A header state written by an older version also restores whether the
+        # sections are clickable. The panes must stay sortable, so the flags
+        # are applied again after the sizes and the hidden columns.
+        for header in (
+            self.source.header(),
+            self.action.header(),
+            self.destination.header(),
+        ):
+            header.setSectionsMovable(False)
+            header.setSectionsClickable(True)
+            header.setSortIndicatorShown(True)

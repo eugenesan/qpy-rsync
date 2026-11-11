@@ -184,6 +184,7 @@ class MainWindow(QMainWindow):
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
+        self.comparison.sort_changed.connect(self._comparison_sorted)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -1265,6 +1266,27 @@ class MainWindow(QMainWindow):
         self._comparison_profile = profile
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
+
+    def _comparison_sorted(self, column: int, order: object) -> None:
+        """Report the new order of the comparison."""
+        labels = {
+            0: "File/Directory",
+            1: "Size",
+            2: "Modified",
+            3: "Actions",
+            4: "File/Directory",
+            5: "Size",
+            6: "Modified",
+        }
+        label = labels.get(int(column), "the selected column")
+        direction = (
+            "descending" if order == Qt.SortOrder.DescendingOrder else "ascending"
+        )
+        self._set_status(
+            f"Sorted by {label} ({direction}). Click the header again to reverse the order.",
+            "info",
+        )
+        self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
     def _overview_updated(self, changes: object) -> None:
         """Refresh the overview with the objects the filters show."""

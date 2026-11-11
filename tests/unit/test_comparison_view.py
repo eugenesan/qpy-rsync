@@ -345,3 +345,28 @@ def test_selected_object_is_centered_in_the_panes() -> None:
     assert abs(rect.center().y() - viewport.center().y()) <= rect.height()
     view.close()
     application.processEvents()
+
+
+def test_saved_header_state_keeps_the_headers_clickable() -> None:
+    from qpy_rsync.storage.settings import app_settings, encode_binary
+
+    application = app()
+    app_settings().clear()
+    view = ComparisonView()
+    header = view.source.header()
+    # An older version saved a state whose sections were not clickable.
+    header.setSectionsClickable(False)
+    header.setSortIndicatorShown(False)
+    state = header.saveState()
+    view.close()
+    app_settings().setValue("comparison/source-header", encode_binary(state))
+    app_settings().sync()
+
+    restored = ComparisonView()
+    application.processEvents()
+    for tree in (restored.source, restored.action, restored.destination):
+        assert tree.header().sectionsClickable()
+        assert tree.header().isSortIndicatorShown()
+        assert not tree.header().sectionsMovable()
+    restored.close()
+    application.processEvents()
