@@ -184,3 +184,29 @@ def test_expanding_a_large_tree_stays_responsive() -> None:
     assert elapsed < 20.0
     view.close()
     application.processEvents()
+
+
+def test_action_column_hugs_its_content() -> None:
+    from PySide6.QtCore import Qt
+
+    from qpy_rsync.gui.change_tree_model import ACTION_HEADER_FONT_SIZE
+    from qpy_rsync.gui.comparison_view import ACTION_PANE_WIDTH
+
+    application = app()
+    view = ComparisonView()
+    application.processEvents()
+    assert view.action.width() == ACTION_PANE_WIDTH
+    # The file panes already show a scroll bar, the narrow column does not
+    # need one of its own.
+    assert (
+        view.action.verticalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    # A smaller header label keeps the column free of empty background.
+    font = view.model.headerData(
+        view.model.ACTION, Qt.Orientation.Horizontal, Qt.ItemDataRole.FontRole
+    )
+    assert font is not None
+    assert font.pointSize() == ACTION_HEADER_FONT_SIZE
+    view.close()
+    application.processEvents()
