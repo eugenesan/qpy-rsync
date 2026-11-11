@@ -56,6 +56,7 @@ class ComparisonView(QWidget):
     diff_requested = Signal(object)
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
+    changes_updated = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -162,6 +163,7 @@ class ComparisonView(QWidget):
         )
         self._restore_view_state()
         self._synchronize()
+        self._show_sort_indicator(self.model.SOURCE_NAME, Qt.SortOrder.AscendingOrder)
 
     @property
     def source_root(self) -> str:
@@ -194,6 +196,8 @@ class ComparisonView(QWidget):
         tree.setSortingEnabled(False)
         tree.header().setStretchLastSection(False)
         tree.header().setSortIndicatorShown(True)
+        # Without clickable sections the header never reports a click.
+        tree.header().setSectionsClickable(True)
         tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(lambda point, t=tree: self._show_context_menu(t, point))
         tree.doubleClicked.connect(self._request_diff)
@@ -401,6 +405,36 @@ class ComparisonView(QWidget):
             QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows,
         )
 
+    def select_path(self, path: str) -> None:
+        """Select the object with the given path in the tree panes."""
+        node = self._find_node(self.model.root, path)
+        if node is None:
+            return
+        chain = []
+        current = node
+        while current is not None and current.parent is not None:
+            chain.append(current)
+            current = current.parent
+        index = QModelIndex()
+        for item in reversed(chain):
+            index = self.model.index(item.row_index, 0, index)
+        proxy_index = self.proxy.mapFromSource(index)
+        if not proxy_index.isValid():
+            return
+        for tree in (self.source, self.action, self.destination):
+            tree.expand(proxy_index)
+            tree.setCurrentIndex(proxy_index)
+            tree.scrollTo(proxy_index)
+
+    def _find_node(self, node: object, path: str) -> object | None:
+        for child in getattr(node, "children", ()):  # type: ignore[arg-type]
+            if getattr(child, "path", None) == path:
+                return child
+            found = self._find_node(child, path)
+            if found is not None:
+                return found
+        return None
+
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
@@ -425,6 +459,7 @@ class ComparisonView(QWidget):
         # Without this the new objects, for example the unchanged ones of an
         # inventory, would only appear after the next comparison.
         self.proxy.refresh_filters(force=True)
+        self.changes_updated.emit(list(self.model.changes))
 
         def restore_views() -> None:
             with self._frozen_updates():

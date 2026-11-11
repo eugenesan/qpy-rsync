@@ -86,6 +86,7 @@ from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
 from .comparison_view import CONTROL_SIZE, ComparisonView
 from .icons import destination_icon, source_icon
+from .overview import OverviewPane
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
@@ -181,6 +182,7 @@ class MainWindow(QMainWindow):
         self.comparison = ComparisonView()
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
+        self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -281,9 +283,16 @@ class MainWindow(QMainWindow):
         self.main_splitter = splitter
         splitter.addWidget(self.comparison)
         log_panel = QWidget(self)
-        log_layout = QVBoxLayout(log_panel)
+        log_layout = QHBoxLayout(log_panel)
         log_layout.setContentsMargins(0, 0, 0, 0)
-        log_layout.setSpacing(2)
+        log_layout.setSpacing(4)
+        log_splitter = QSplitter(Qt.Orientation.Horizontal)
+        log_splitter.setChildrenCollapsible(False)
+        log_splitter.setHandleWidth(6)
+        log_column = QWidget(self)
+        log_layout_column = QVBoxLayout(log_column)
+        log_layout_column.setContentsMargins(0, 0, 0, 0)
+        log_layout_column.setSpacing(2)
         self.log_header = QLabel("Journal")
         self.log_header.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -349,9 +358,18 @@ class MainWindow(QMainWindow):
         self.preview_log_splitter.setSizes(
             [self.command_preview_label.minimumHeight(), 110]
         )
-        log_layout.addWidget(self.progress_bar)
-        log_layout.addWidget(self.progress_label)
-        log_layout.addWidget(self.preview_log_splitter, 1)
+        log_layout_column.addWidget(self.progress_bar)
+        log_layout_column.addWidget(self.progress_label)
+        log_layout_column.addWidget(self.preview_log_splitter, 1)
+        log_splitter.addWidget(log_column)
+        # The overview summarises the comparison next to the journal.
+        self.overview = OverviewPane(self)
+        self.overview.object_activated.connect(self._overview_object_activated)
+        log_splitter.addWidget(self.overview)
+        log_splitter.setStretchFactor(0, 1)
+        log_splitter.setStretchFactor(1, 0)
+        log_splitter.setSizes([600, 500])
+        log_layout.addWidget(log_splitter, 1)
         splitter.addWidget(log_panel)
         splitter.setSizes([380, 250])
         layout.addWidget(splitter, 1)
@@ -1190,6 +1208,17 @@ class MainWindow(QMainWindow):
         self._comparison_profile = profile
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
+
+    def _overview_updated(self, changes: object) -> None:
+        """Refresh the overview with the objects of the comparison."""
+        root_name = ""
+        if self._active_profile is not None:
+            root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
+        self.overview.set_changes(list(changes), root_name)  # type: ignore[arg-type]
+
+    def _overview_object_activated(self, path: str) -> None:
+        """Select an object of the overview in the tree panes."""
+        self.comparison.select_path(path)
 
     def _open_diff_tool(self, change: object) -> None:
         if self._active_profile is None:
