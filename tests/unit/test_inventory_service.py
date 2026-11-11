@@ -3,7 +3,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import threading
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QThreadPool, QTimer
+from PySide6.QtCore import QEventLoop, QThreadPool, QTimer
+from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.core.enums import EndpointKind
@@ -11,8 +12,8 @@ from qpy_rsync.core.models import Endpoint, SyncProfile
 from qpy_rsync.services.inventory_service import InventoryService
 
 
-def app() -> QCoreApplication:
-    return QCoreApplication.instance() or QCoreApplication([])
+def app() -> QApplication:
+    return QApplication.instance() or QApplication([])
 
 
 def profile() -> SyncProfile:

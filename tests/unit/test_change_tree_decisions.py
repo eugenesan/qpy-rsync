@@ -119,3 +119,20 @@ def test_destination_only_checkbox_toggles_keep_and_delete() -> None:
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
     assert model.effective_action(index.internalPointer()) is ChangeAction.DESTINATION_ONLY
     assert model.data(index, Qt.ItemDataRole.DisplayRole) == ""
+
+
+def test_tooltips_show_full_object_path() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("docs/reports/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
+    )
+    directory = model.index(0, model.SOURCE_NAME)
+    assert model.data(directory, Qt.ItemDataRole.ToolTipRole) == "docs"
+    child = model.index(0, model.SOURCE_NAME, directory)
+    assert model.data(child, Qt.ItemDataRole.ToolTipRole) == "docs/reports"
+    leaf = model.index(0, model.SOURCE_NAME, child)
+    assert model.data(leaf, Qt.ItemDataRole.ToolTipRole) == "docs/reports/file.txt"
+    action = leaf.siblingAtColumn(model.ACTION)
+    tooltip = model.data(action, Qt.ItemDataRole.ToolTipRole)
+    assert "docs/reports/file.txt" in tooltip
+    assert "Update" in tooltip
