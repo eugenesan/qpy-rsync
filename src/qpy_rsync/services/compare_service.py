@@ -48,6 +48,11 @@ class CompareService:
         self._cancelled = True
         self._runner.cancel()
 
+    def shutdown(self, timeout_ms: int = 2000) -> None:
+        """Stop a running comparison so the window can be closed."""
+        self._cancelled = True
+        self._runner.shutdown(timeout_ms)
+
     def _stdout_chunk(self, text: str) -> None:
         """Stream rsync output while keeping partial lines buffered.
 

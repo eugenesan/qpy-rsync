@@ -106,6 +106,17 @@ class QtProcessRunner:
 
             QTimer.singleShot(force_after_ms, self._kill_if_running)
 
+    def shutdown(self, timeout_ms: int = 2000) -> None:
+        """Stop a running process and wait for it.
+
+        The window owns the process, so a process that is still running when
+        the window closes would be destroyed with a warning.
+        """
+        if self._state in {ProcessState.STARTING, ProcessState.RUNNING}:
+            self._process.kill()
+            self._process.waitForFinished(timeout_ms)
+        self._state = ProcessState.FINISHED
+
     def _started(self) -> None:
         self._state = ProcessState.RUNNING
         debug("process.started", pid=int(self._process.processId()))

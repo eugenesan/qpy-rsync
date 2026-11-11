@@ -102,6 +102,11 @@ class SyncService:
         self._cancel_requested = True
         self._runner.cancel()
 
+    def shutdown(self, timeout_ms: int = 2000) -> None:
+        """Stop a running synchronization so the window can be closed."""
+        self._cancel_requested = True
+        self._runner.shutdown(timeout_ms)
+
     def _cleanup(self) -> None:
         if self._filter_context is not None:
             self._filter_context.__exit__(None, None, None)

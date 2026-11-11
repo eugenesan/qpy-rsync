@@ -530,3 +530,22 @@ def test_legacy_recent_profile_file_is_migrated_and_removed(
     assert window.source_edit.text() == str(tmp_path / "src") + "/"
     window.close()
     application.processEvents()
+
+
+def test_closing_the_window_stops_running_operations() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    stopped: list[str] = []
+
+    class FakeService:
+        def shutdown(self) -> None:
+            stopped.append("shutdown")
+
+    window._service = FakeService()
+    window._sync_service = FakeService()
+    window._plan_validation = FakeService()
+    window.close()
+    application.processEvents()
+    assert stopped == ["shutdown", "shutdown", "shutdown"]
+    assert window._closing is True

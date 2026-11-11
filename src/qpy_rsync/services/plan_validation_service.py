@@ -103,6 +103,11 @@ class PlanValidationService:
         self._cancelled = True
         self._runner.cancel()
 
+    def shutdown(self, timeout_ms: int = 2000) -> None:
+        """Stop a running validation so the window can be closed."""
+        self._cancelled = True
+        self._runner.shutdown(timeout_ms)
+
     def _stdout_chunk(self, text: str) -> None:
         """Stream dry-run records to the Journal as they arrive."""
         if not text:

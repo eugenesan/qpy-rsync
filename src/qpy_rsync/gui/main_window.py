@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._hovered_action = "compare"
+        self._closing = False
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
@@ -920,6 +921,8 @@ class MainWindow(QMainWindow):
         self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
+        if self._closing:
+            return
         self.cancel_button.setEnabled(False)
         self.validate_plan_button.setEnabled(True)
         self.validate_plan_button.setText("Verify Actions")
@@ -949,6 +952,8 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Plan validation failed; synchronization remains blocked.")
 
     def _plan_validation_cancelled(self) -> None:
+        if self._closing:
+            return
         self.cancel_button.setEnabled(False)
         self._validated_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
@@ -1046,6 +1051,8 @@ class MainWindow(QMainWindow):
         self._append_log("STATE synchronization-started")
 
     def _sync_progress(self, progress: object) -> None:
+        if self._closing:
+            return
         percent = getattr(progress, "percent", 0)
         completed = getattr(progress, "files_completed", 0)
         remaining = getattr(progress, "files_remaining", 0)
@@ -1059,6 +1066,8 @@ class MainWindow(QMainWindow):
         )
 
     def _sync_finished(self, result: SyncResult) -> None:
+        if self._closing:
+            return
         self.progress_bar.setValue(100)
         self.progress_label.setText("Synchronization completed")
         self._execution_gate.execution_completed()
@@ -1077,6 +1086,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._compare)
 
     def _sync_error(self, message: str, cancelled: bool = False) -> None:
+        if self._closing:
+            return
         if self._execution_gate.state is ExecutionGateState.EXECUTING:
             if cancelled:
                 self._execution_gate.execution_cancelled()
@@ -1158,6 +1169,8 @@ class MainWindow(QMainWindow):
         )
 
     def _comparison_cancelled(self) -> None:
+        if self._closing:
+            return
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_bar.setValue(0)
@@ -1167,6 +1180,8 @@ class MainWindow(QMainWindow):
         self._end_bulk_logging()
 
     def _comparison_finished(self, result: CompareResult) -> None:
+        if self._closing:
+            return
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
@@ -1245,6 +1260,8 @@ class MainWindow(QMainWindow):
         return (profile_fingerprint(profile), paths)
 
     def _inventory_finished(self, token: int, extra: object) -> None:
+        if self._closing:
+            return
         if token != self._inventory_token:
             return
         self._inventory_token = 0
@@ -1270,6 +1287,8 @@ class MainWindow(QMainWindow):
         self._append_log(f"STATE inventory-complete unchanged={len(result)}")
 
     def _inventory_failed(self, token: int, message: str) -> None:
+        if self._closing:
+            return
         if token != self._inventory_token:
             return
         self._inventory_token = 0
@@ -1283,6 +1302,8 @@ class MainWindow(QMainWindow):
             self.comparison.set_changes(list(self._last_changed_changes))
 
     def _comparison_error(self, message: str) -> None:
+        if self._closing:
+            return
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
@@ -1446,7 +1467,26 @@ class MainWindow(QMainWindow):
         if preview_state is not None:
             self.preview_log_splitter.restoreState(preview_state)
 
+    def _shutdown_operations(self) -> None:
+        """Stop every running operation before the window is destroyed."""
+        for service in (self._service, self._sync_service, self._plan_validation):
+            shutdown = getattr(service, "shutdown", None)
+            if shutdown is None:
+                continue
+            try:
+                shutdown()
+            except RuntimeError:
+                pass
+        try:
+            self._inventory_service.cancel()
+        except RuntimeError:
+            pass
+
     def closeEvent(self, event: object) -> None:  # noqa: N802
+        # Stop the running rsync processes first. They are owned by the window,
+        # so a process that is still running would be destroyed with it.
+        self._closing = True
+        self._shutdown_operations()
         settings = app_settings()
         settings.setValue(
             "main-window/geometry", encode_binary(self.saveGeometry())
