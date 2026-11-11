@@ -382,9 +382,14 @@ def test_command_preview_splitter_is_resizable() -> None:
     assert preview.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Fixed
     assert preview.maximumHeight() > preview.minimumHeight()
     assert (
-        window.log.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
+        window.log.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
     )
     assert window.log.minimumHeight() < window.log.minimumSizeHint().height()
+    # The Journal label keeps its natural height so no gap opens up between
+    # the label and the Journal box.
+    assert window.log_header.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
+    # Status messages share the row of the Journal label.
+    assert window.log_header.parentWidget() is window.status_label.parentWidget()
     window.close()
     application.processEvents()
 

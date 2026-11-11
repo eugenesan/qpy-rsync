@@ -246,14 +246,21 @@ class MainWindow(QMainWindow):
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(2)
         self.log_header = QLabel("Journal")
+        self.log_header.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        self.status_label = QLabel()
+        self.status_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
-        # The splitter, not the text widget's size hint, decides how much room
-        # the Journal gets; otherwise the preview divider cannot move.
+        # The Journal box absorbs the extra room of its pane. The header keeps
+        # its natural height so no gap opens up between the label and the box.
         self.log.setMinimumHeight(32)
         self.log.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self.progress_label = QLabel("")
         self.progress_bar = QProgressBar()
@@ -266,8 +273,13 @@ class MainWindow(QMainWindow):
         log_container_layout = QVBoxLayout(log_container)
         log_container_layout.setContentsMargins(0, 0, 0, 0)
         log_container_layout.setSpacing(2)
-        log_container_layout.addWidget(self.log_header)
-        log_container_layout.addWidget(self.log)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(6)
+        header_row.addWidget(self.log_header)
+        header_row.addWidget(self.status_label, 1)
+        log_container_layout.addLayout(header_row)
+        log_container_layout.addWidget(self.log, 1)
         self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
         self.preview_log_splitter.setChildrenCollapsible(False)
         self.preview_log_splitter.setHandleWidth(6)
@@ -326,8 +338,6 @@ class MainWindow(QMainWindow):
         self.plan_summary_label = QLabel()
         self.plan_summary_label.hide()
         layout.addWidget(self.plan_summary_label)
-        self.status_label = QLabel()
-        layout.addWidget(self.status_label)
         self.setCentralWidget(root)
 
         self.compare_button.clicked.connect(self._compare)
