@@ -48,9 +48,9 @@ class ActionFilterBar(QWidget):
         label = ACTION_LABELS.get(action, action.value)
         return (
             f"Display only: {label}\n"
-            "This checkbox filters the comparison view only. "
-            "It does not change what rsync transfers or deletes. "
-            "Use the mode selection to control synchronization behavior."
+            "This checkbox filters the view and doesn't affect the sync. "
+            "Use the sync mode selector or the action checkboxes below to "
+            "control the sync."
         )
 
     def visible_actions(self) -> set[ChangeAction]:

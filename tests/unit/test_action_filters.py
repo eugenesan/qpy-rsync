@@ -83,7 +83,8 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     assert tooltips
     for tooltip in tooltips:
         assert "Display only" in tooltip
-        assert "mode selection" in tooltip
+        assert "doesn't affect the sync" in tooltip
+        assert "sync mode selector" in tooltip
     for box in boxes:
         # The glyph matches the size of the buttons in the same row.
         assert box.height() >= CONTROL_SIZE
