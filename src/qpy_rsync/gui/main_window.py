@@ -1342,13 +1342,16 @@ class MainWindow(QMainWindow):
             return True
 
         # Migrate the old dedicated recent-profile.json without recreating it.
-        stored = str(settings.value("profile/recent_path", ""))
-        if not stored:
-            return False
-        path = Path(stored).expanduser()
+        stored = str(settings.value("profile/recent_path", "")).strip()
+        path = (
+            Path(stored).expanduser()
+            if stored
+            else self._legacy_recent_profile_path()
+        )
         if not path.is_file():
-            settings.remove("profile/recent_path")
-            settings.sync()
+            if stored:
+                settings.remove("profile/recent_path")
+                settings.sync()
             return False
         try:
             profile = load_profile(path)

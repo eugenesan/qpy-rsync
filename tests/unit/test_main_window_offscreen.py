@@ -480,8 +480,6 @@ def test_verification_can_be_cancelled() -> None:
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
     application.processEvents()
-
-
 def test_log_spec_renders_process_argv() -> None:
     from qpy_rsync.backend.rsync_command import ProcessSpec
 
@@ -491,5 +489,36 @@ def test_log_spec_renders_process_argv() -> None:
     window.log.clear()
     window._log_spec(ProcessSpec("rsync", ("--dry-run", "/src/"), {}))
     assert "$ rsync --dry-run /src/" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_legacy_recent_profile_file_is_migrated_and_removed(
+    tmp_path, monkeypatch
+) -> None:
+    from qpy_rsync.core.endpoints import parse_endpoint
+    from qpy_rsync.core.models import SyncProfile
+    from qpy_rsync.storage.profile_store import save_profile
+
+    application = app()
+    app_settings().clear()
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    legacy = tmp_path / ".local/share/qpy-rsync/recent-profile.json"
+    save_profile(
+        legacy,
+        SyncProfile(
+            name="legacy",
+            source=parse_endpoint(str(tmp_path / "src")),
+            destination=parse_endpoint(str(tmp_path / "dst")),
+        ),
+    )
+    assert legacy.is_file()
+
+    window = MainWindow()
+    settings = app_settings()
+    assert settings.contains("profile/recent")
+    assert not settings.contains("profile/recent_path")
+    assert not legacy.exists()
+    assert window.source_edit.text() == str(tmp_path / "src") + "/"
     window.close()
     application.processEvents()
