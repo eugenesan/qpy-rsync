@@ -11,6 +11,8 @@ from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeD
 
 from .icons import ACTION_LABELS, action_icon
 
+ACTION_HEADER_ACCENT = "#0891B2"
+
 
 def full_path(root: str, path: str) -> str:
     """Join an endpoint root and a relative comparison path."""
@@ -63,6 +65,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self.decisions_enabled = True
         self.stale = False
         self._action_header = "Action"
+        self._action_header_tooltip = "Action"
+        self._modified_count = 0
         self._override_paths: set[str] = set()
 
     def set_changes(self, changes: list[Change]) -> None:
@@ -142,15 +146,26 @@ class ChangeTreeModel(QAbstractItemModel):
         return self.COLUMN_COUNT
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:  # noqa: N802
-        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+        if orientation == Qt.Orientation.Horizontal:
             if section == self.ACTION:
-                return self._action_header
-            return self.HEADERS[section]
+                if role == Qt.ItemDataRole.DisplayRole:
+                    return self._action_header
+                if role == Qt.ItemDataRole.ToolTipRole:
+                    return self._action_header_tooltip
+                if role == Qt.ItemDataRole.ForegroundRole and self._modified_count:
+                    return QColor(ACTION_HEADER_ACCENT)
+                return None
+            if role == Qt.ItemDataRole.DisplayRole:
+                return self.HEADERS[section]
         return None
 
     def _refresh_action_header(self) -> None:
         modified = len(self._override_paths)
-        self._action_header = (
+        self._modified_count = modified
+        # The header stays short so it fits into the fixed action column. The
+        # number of modified decisions is shown in the header tooltip.
+        self._action_header = "Action*" if modified else "Action"
+        self._action_header_tooltip = (
             f"Action* ({modified} modified)" if modified else "Action"
         )
         self.headerDataChanged.emit(

@@ -289,7 +289,7 @@ class ComparisonView(QWidget):
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.ResizeToContents)
         self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.ResizeToContents)
         self.action.header().setSectionResizeMode(
-            self.model.ACTION, QHeaderView.ResizeMode.Fixed
+            self.model.ACTION, QHeaderView.ResizeMode.Stretch
         )
         self.destination.header().setSectionResizeMode(
             self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch

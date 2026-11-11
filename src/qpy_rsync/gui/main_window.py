@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,7 +24,6 @@ from PySide6.QtWidgets import (
     QToolTip,
     QPushButton,
     QSplitter,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -62,8 +62,8 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
-from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE, ComparisonView
-from .icons import destination_icon, source_icon, swap_icon
+from .comparison_view import CONTROL_SIZE, ComparisonView
+from .icons import destination_icon, source_icon
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .filter_settings import decode_filters, encode_filters
@@ -173,13 +173,9 @@ class MainWindow(QMainWindow):
             "New Only: copy missing objects; do not update or delete existing objects."
         )
         controls.addWidget(self.sync_mode)
-        self.swap_button = QToolButton()
-        self.swap_button.setIcon(swap_icon())
-        self.swap_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.swap_button = QPushButton("Swap")
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
-        self.swap_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-        self.swap_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         controls.addWidget(self.swap_button)
         self.compare_button = QPushButton("Compare")
         self.compare_button.setToolTip(
@@ -250,10 +246,25 @@ class MainWindow(QMainWindow):
         self.log_header.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        self.status_label = QLabel()
-        self.status_label.setSizePolicy(
+        self.header_separator = QFrame()
+        self.header_separator.setFrameShape(QFrame.Shape.VLine)
+        self.header_separator.setFrameShadow(QFrame.Shadow.Plain)
+        self.header_separator.setFixedWidth(1)
+        self.state_label = QLabel("State")
+        self.state_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        # The state is shown in a read-only field that uses the background of
+        # the window, so it does not look like another black text box.
+        self.status_edit = QLineEdit()
+        self.status_edit.setReadOnly(True)
+        self.status_edit.setFrame(False)
+        self.status_edit.setCursorPosition(0)
+        self.status_edit.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
         )
+        self.status_edit.setObjectName("status-edit")
+        self._apply_status_style("")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
@@ -278,7 +289,9 @@ class MainWindow(QMainWindow):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(6)
         header_row.addWidget(self.log_header)
-        header_row.addWidget(self.status_label, 1)
+        header_row.addWidget(self.header_separator)
+        header_row.addWidget(self.state_label)
+        header_row.addWidget(self.status_edit, 1)
         log_container_layout.addLayout(header_row)
         log_container_layout.addWidget(self.log, 1)
         self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -424,11 +437,10 @@ class MainWindow(QMainWindow):
         icon = QLabel()
         icon.setPixmap(
             (source_icon() if title == "Source" else destination_icon()).pixmap(
-                CONTROL_ICON_SIZE, CONTROL_ICON_SIZE
+                CONTROL_SIZE, CONTROL_SIZE
             )
         )
-        # The label matches the height of the buttons in the same row while the
-        # glyph keeps the icon size used everywhere else in the application.
+        # The glyph matches the size of the buttons in the same row.
         icon.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setObjectName(f"{title.lower()}-location-label")
@@ -609,17 +621,18 @@ class MainWindow(QMainWindow):
         self.source_edit.setStyleSheet(style)
         self.destination_edit.setStyleSheet(style)
 
+    def _apply_status_style(self, color: str) -> None:
+        style = "background-color: palette(window); border: none; padding: 0px 2px;"
+        if color:
+            style += f" color: {color};"
+        self.status_edit.setStyleSheet(style)
+
     def _set_status(self, text: str, severity: str = "info") -> None:
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         lines = [part.strip() for part in text.replace(". ", ".\n").splitlines() if part.strip()]
-        self.status_label.setToolTip("\n".join(lines))
-        color = colors.get(severity, "")
-        if color:
-            self.status_label.setTextFormat(Qt.TextFormat.RichText)
-            self.status_label.setText(f'<span style="color:{color};">{text}</span>')
-        else:
-            self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-            self.status_label.setText(text)
+        self.status_edit.setToolTip("\n".join(lines))
+        self._apply_status_style(colors.get(severity, ""))
+        self.status_edit.setText(text.replace("\n", " "))
         self._append_log(f"STATUS {text}")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
@@ -682,7 +695,7 @@ class MainWindow(QMainWindow):
         self._update_filter_summary(stale=True)
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
-        self.status_label.setText(
+        self.status_edit.setText(
             "Stale comparison: filter rules changed. Compare again to refresh results."
         )
 
@@ -917,7 +930,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verifying...")
         self.cancel_button.setEnabled(True)
-        self.status_label.setText("Verifying selected actions...")
+        self.status_edit.setText("Verifying selected actions...")
         self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
@@ -931,7 +944,7 @@ class MainWindow(QMainWindow):
             self._execution_gate.verification_succeeded()
             self.synchronize_button.setEnabled(True)
             self.validate_plan_button.setText("Actions Verified")
-            self.status_label.setText("Selected actions verified. No files were changed.")
+            self.status_edit.setText("Selected actions verified. No files were changed.")
             self._append_log("STATE actions-verified")
             self._end_bulk_logging()
             return
@@ -949,7 +962,7 @@ class MainWindow(QMainWindow):
         detail = "\n".join(part for part in (missing, unexpected) if part)
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
-        self.status_label.setText("Plan validation failed; synchronization remains blocked.")
+        self.status_edit.setText("Plan validation failed; synchronization remains blocked.")
 
     def _plan_validation_cancelled(self) -> None:
         if self._closing:
@@ -961,7 +974,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self.validate_plan_button.setText("Verify Actions")
-        self.status_label.setText("Action verification was cancelled.")
+        self.status_edit.setText("Action verification was cancelled.")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
 
@@ -973,7 +986,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self.validate_plan_button.setText("Verify Actions")
-        self.status_label.setText("Plan validation failed.")
+        self.status_edit.setText("Plan validation failed.")
         self._append_log(message)
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation failed", message)
@@ -1144,7 +1157,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not start diff tool", request.tool.executable)
             return
         self._append_log("$ " + shlex.join([request.tool.executable, *arguments]))
-        self.status_label.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
+        self.status_edit.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
 
     def _comparison_started(self) -> None:
         self._begin_bulk_logging()
@@ -1156,7 +1169,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Comparing...")
-        self.status_label.setText("Comparing...")
+        self.status_edit.setText("Comparing...")
         self._append_log("STATE comparing")
 
     def _comparison_progress(self, progress: object) -> None:
@@ -1198,7 +1211,7 @@ class MainWindow(QMainWindow):
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)
-        self.status_label.setText(f"Comparison complete: {count} changed object(s).")
+        self.status_edit.setText(f"Comparison complete: {count} changed object(s).")
         self._append_log(f"STATE comparison-complete changes={count}")
         self._end_bulk_logging()
 
@@ -1307,7 +1320,7 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
-        self.status_label.setText("Comparison failed.")
+        self.status_edit.setText("Comparison failed.")
         self._append_log(message)
         self._end_bulk_logging()
         QMessageBox.critical(self, "Comparison failed", message)

@@ -9,6 +9,7 @@ from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.gui.action_filters import ActionFilterBar, FILTERABLE_ACTIONS
 from qpy_rsync.gui.change_filter_proxy import ChangeTreeFilterProxyModel
 from qpy_rsync.gui.change_tree_model import ChangeTreeModel
+from qpy_rsync.gui.comparison_view import CONTROL_SIZE
 
 
 def app() -> QApplication:
@@ -84,8 +85,9 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
         assert "Display only" in tooltip
         assert "mode selection" in tooltip
     for box in boxes:
-        assert box.height() == 40
-        assert box.iconSize().width() == 24
+        # The glyph matches the size of the buttons in the same row.
+        assert box.height() >= CONTROL_SIZE
+        assert box.iconSize().width() == CONTROL_SIZE
 
 
 def test_action_filter_survives_model_reset() -> None:

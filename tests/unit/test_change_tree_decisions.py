@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ObjectKind
-from qpy_rsync.gui.change_tree_model import ChangeTreeModel
+from qpy_rsync.gui.change_tree_model import ACTION_HEADER_ACCENT, ChangeTreeModel
 
 
 def test_action_column_checkbox_updates_explicit_decision() -> None:
@@ -97,7 +97,11 @@ def test_override_count_tracks_active_explicit_decisions() -> None:
     index = model.index(0, model.ACTION)
     assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
     assert model.decision_summary().modified == 1
-    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action* (1 modified)"
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action*"
+    assert (
+        model.headerData(model.ACTION, Qt.Horizontal, Qt.ToolTipRole)
+        == "Action* (1 modified)"
+    )
     model.reset_all_decisions()
     assert model.decision_summary().modified == 0
     assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
@@ -150,3 +154,21 @@ def test_tooltips_show_full_object_path() -> None:
     assert "/home/user/Source/docs/reports/file.txt" in tooltip
     assert "/mnt/backup/Destination/docs/reports/file.txt" in tooltip
     assert "Update" in tooltip
+
+
+def test_action_header_keeps_the_count_in_the_tooltip() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
+    )
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action"
+    index = model.index(0, model.ACTION)
+    assert model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert model.headerData(model.ACTION, Qt.Horizontal, Qt.DisplayRole) == "Action*"
+    assert (
+        model.headerData(model.ACTION, Qt.Horizontal, Qt.ToolTipRole)
+        == "Action* (1 modified)"
+    )
+    accent = model.headerData(model.ACTION, Qt.Horizontal, Qt.ForegroundRole)
+    assert accent is not None
+    assert accent.name().lower() == ACTION_HEADER_ACCENT.lower()

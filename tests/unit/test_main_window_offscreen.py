@@ -4,7 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from qpy_rsync.gui.main_window import MainWindow
 from qpy_rsync.storage.settings import app_settings
@@ -21,7 +21,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     app_settings().clear()
     window = MainWindow()
     assert window.validate_plan_button.text() == "Verify Actions"
-    assert not window.swap_button.icon().isNull()
+    assert window.swap_button.text() == "Swap"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.filter_edit.minimumWidth() == 180
     assert window.comparison.filter_edit.maximumWidth() > 1000
@@ -31,9 +31,8 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert not window.comparison.expand_button.icon().isNull()
     assert not window.comparison.collapse_button.icon().isNull()
     assert not window.comparison.inventory_button.icon().isNull()
-    assert window.swap_button.size().width() == 40
-    assert window.swap_button.size().height() == 40
-    assert window.swap_button.iconSize().width() == 24
+    # The swap button is a plain text button like the other controls.
+    assert window.swap_button.sizeHint().height() == window.compare_button.sizeHint().height()
     for button in (
         window.comparison.inventory_button,
         window.comparison.expand_button,
@@ -55,7 +54,7 @@ def test_startup_hides_selected_actions() -> None:
     app_settings().clear()
     window = MainWindow()
     assert not window.plan_summary_label.isVisible()
-    assert "Choose Source and Destination" in window.status_label.text()
+    assert "Choose Source and Destination" in window.status_edit.text()
     window.close()
     application.processEvents()
 
@@ -123,7 +122,7 @@ def test_swap_marks_existing_comparison_outdated() -> None:
     assert "#0891B2" in window.source_edit.styleSheet()
     assert window._current_plan is None
     assert not window.validate_plan_button.isEnabled()
-    assert "old direction" in window.status_label.text()
+    assert "old direction" in window.status_edit.text()
     window.close()
     application.processEvents()
 
@@ -146,8 +145,8 @@ def test_filter_find_focus_and_ui_labels() -> None:
     assert window.comparison.model.HEADERS[0] == "File/Directory"
     assert window.comparison.model.HEADERS[4] == "File/Directory"
     assert window.log_header.text() == "Journal"
-    source_label = window.findChild(type(window.status_label), "source-location-label")
-    destination_label = window.findChild(type(window.status_label), "destination-location-label")
+    source_label = window.findChild(QLabel, "source-location-label")
+    destination_label = window.findChild(QLabel, "destination-location-label")
     assert not source_label.pixmap().isNull()
     assert not destination_label.pixmap().isNull()
     assert source_label.toolTip() == "Source directory"
@@ -392,7 +391,7 @@ def test_command_preview_splitter_is_resizable() -> None:
     # the label and the Journal box.
     assert window.log_header.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
     # Status messages share the row of the Journal label.
-    assert window.log_header.parentWidget() is window.status_label.parentWidget()
+    assert window.log_header.parentWidget() is window.status_edit.parentWidget()
     window.close()
     application.processEvents()
 
@@ -549,3 +548,36 @@ def test_closing_the_window_stops_running_operations() -> None:
     application.processEvents()
     assert stopped == ["shutdown", "shutdown", "shutdown"]
     assert window._closing is True
+
+
+def test_state_field_replaces_the_status_row() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    # The state messages live next to the Journal label, separated from it.
+    assert window.state_label.text() == "State"
+    assert window.log_header.parentWidget() is window.status_edit.parentWidget()
+    assert window.status_edit.isReadOnly()
+    assert window.header_separator.parentWidget() is window.status_edit.parentWidget()
+    window._set_status("Comparison failed.", "error")
+    assert "Comparison failed." in window.status_edit.text()
+    assert "Comparison failed." in window.status_edit.toolTip()
+    window.close()
+    application.processEvents()
+
+
+def test_command_preview_minimum_height_follows_the_command() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    preview = window.command_preview_label
+    preview.setText("rsync -a /src/ /dst/")
+    application.processEvents()
+    single_line = preview.minimumHeight()
+    assert single_line < preview.fontMetrics().lineSpacing() * 2
+
+    preview.setText("rsync " + "--very-long-option " * 12 + "/src/ /dst/")
+    application.processEvents()
+    assert preview.minimumHeight() > single_line
+    window.close()
+    application.processEvents()
