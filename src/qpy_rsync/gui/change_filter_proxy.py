@@ -96,6 +96,12 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
             self._invalidate_cache()
             self.invalidateFilter()
 
+    def visible_paths(self) -> set[str]:
+        """Return the paths that the current filters show."""
+        if not self._cache_valid:
+            self._rebuild_cache()
+        return set(self._visible_paths)
+
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # noqa: N802
         model = self.sourceModel()
         if model is None:

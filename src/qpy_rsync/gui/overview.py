@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPalette
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
-    QGridLayout,
+    QHeaderView,
     QLabel,
     QSizePolicy,
     QStyle,
@@ -17,19 +17,24 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.core.changes import Change, ChangeAction
+from qpy_rsync.core.changes import Change
 
-from .icons import ACTION_COLORS, ACTION_LABELS
+from .icons import ACCENT
 
-# The markers of the overview use the same colors as the action icons.
-LEGEND: tuple[tuple[ChangeAction, str], ...] = (
-    (ChangeAction.CREATE, "New"),
-    (ChangeAction.UPDATE_CONTENT, "Updated"),
-    (ChangeAction.REPLACE, "Replaced"),
-    (ChangeAction.DELETE, "Deleted"),
-    (ChangeAction.DESTINATION_ONLY, "Kept"),
-    (ChangeAction.NO_CHANGE, "Unchanged"),
-)
+# The name FreeFileSync gives to the objects that live in the compared
+# folder itself.
+FILES_LABEL = "Files"
+
+
+def format_size(size: int) -> str:
+    """Format a number of bytes the way the tree panes do."""
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    value = float(size)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return ""
 
 
 @dataclass(slots=True)
@@ -40,22 +45,35 @@ class OverviewNode:
     path: str
     parent: "OverviewNode | None" = None
     children: list["OverviewNode"] = field(default_factory=list)
-    source_markers: list[tuple[ChangeAction, str]] = field(default_factory=list)
-    destination_markers: list[tuple[ChangeAction, str]] = field(default_factory=list)
+    count: int = 0
+    size: int = 0
+    is_files: bool = False
+
+    @property
+    def total_count(self) -> int:
+        """The number of objects of the folder including its subfolders."""
+        return self.count + sum(child.total_count for child in self.children)
+
+    @property
+    def total_size(self) -> int:
+        """The size of the folder including its subfolders."""
+        return self.size + sum(child.total_size for child in self.children)
 
 
 class OverviewModel(QAbstractItemModel):
-    """The folder structure of a comparison with the objects of every folder.
+    """The folder structure of a comparison with the size of every folder.
 
-    Like the overview of FreeFileSync, the rows are the folders and every
-    object of a folder is a small marker, coloured by its action.
+    Like the overview of FreeFileSync, every row is a folder and reports the
+    number of objects and the size of that folder. The objects of the
+    compared folder itself are listed in a "Files" row.
     """
 
-    MarkersRole = Qt.ItemDataRole.UserRole + 20
+    ShareRole = Qt.ItemDataRole.UserRole + 20
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.root = OverviewNode("", "")
+        self._level_totals: dict[int, int] = {}
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         self.beginResetModel()
@@ -67,19 +85,11 @@ class OverviewModel(QAbstractItemModel):
             path = str(getattr(change, "path", "")).rstrip("/")
             if not path:
                 continue
-            action = change.action
             parent_path, _separator, _name = path.rpartition("/")
             folder = self._ensure_folder(folders, parent_path)
-            if action is not ChangeAction.DESTINATION_ONLY:
-                folder.source_markers.append((action, path))
-            if action in {
-                ChangeAction.DELETE,
-                ChangeAction.DESTINATION_ONLY,
-                ChangeAction.NO_CHANGE,
-            }:
-                folder.destination_markers.append((action, path))
-        for node in folders.values():
-            node.children.sort(key=lambda child: child.name.casefold())
+            folder.count += 1
+            folder.size += int(getattr(change, "size", None) or 0)
+        self._prepare(folders)
         self.endResetModel()
 
     def _ensure_folder(self, folders: dict[str, OverviewNode], path: str) -> OverviewNode:
@@ -92,6 +102,44 @@ class OverviewModel(QAbstractItemModel):
         parent.children.append(node)
         folders[path] = node
         return node
+
+    def _prepare(self, folders: dict[str, OverviewNode]) -> None:
+        """Sort the folders and lift the rows of the compared folder."""
+        base = folders[""]
+        # The compared folder itself is not a row, so its objects get one.
+        if base.count:
+            base.children.append(
+                OverviewNode(
+                    FILES_LABEL,
+                    base.path,
+                    base,
+                    count=base.count,
+                    size=base.size,
+                    is_files=True,
+                )
+            )
+            base.count = 0
+            base.size = 0
+        for node in folders.values():
+            node.children.sort(
+                key=lambda child: (
+                    -child.total_size,
+                    -child.total_count,
+                    child.name.casefold(),
+                )
+            )
+        # The folders of the compared folder are the rows of the overview.
+        self.root.children = base.children
+        for child in self.root.children:
+            child.parent = self.root
+        self._level_totals = {}
+        for node in folders.values():
+            self._level_totals[id(node)] = sum(
+                child.total_size for child in node.children
+            )
+        self._level_totals[id(self.root)] = sum(
+            child.total_size for child in self.root.children
+        )
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
         parent_node = parent.internalPointer() if parent.isValid() else self.root
@@ -115,11 +163,11 @@ class OverviewModel(QAbstractItemModel):
         return len(node.children)
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: ARG002, B008, N802
-        return 2
+        return 4
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> object:  # noqa: N802
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return "Source" if section == 0 else "Destination"
+            return ("", "Folder", "Items", "Size")[section]
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
@@ -127,89 +175,86 @@ class OverviewModel(QAbstractItemModel):
             return None
         node: OverviewNode = index.internalPointer()
         if role == Qt.ItemDataRole.DisplayRole:
-            return node.name
-        if role == self.MarkersRole:
-            return (
-                node.source_markers if index.column() == 0 else node.destination_markers
-            )
+            if index.column() == 0:
+                return self._percentage(index)
+            if index.column() == 1:
+                return node.name
+            if index.column() == 2:
+                return str(node.total_count)
+            return format_size(node.total_size)
+        if role == self.ShareRole:
+            return self._share(index)
         if role == Qt.ItemDataRole.ToolTipRole:
-            return f"{node.path or '/'} ({len(node.source_markers)} source, {len(node.destination_markers)} destination)"
+            return (
+                f"{node.path or '/'}\n{node.total_count} object(s), "
+                f"{format_size(node.total_size)}"
+            )
         return None
 
+    def _share(self, index: QModelIndex) -> float:
+        node: OverviewNode = index.internalPointer()
+        parent = node.parent
+        total = self._level_totals.get(id(parent), 0) if parent is not None else 0
+        if not total:
+            return 0.0
+        return min(1.0, node.total_size / total)
 
-class OverviewDelegate(QStyledItemDelegate):
-    """Draw the folder name and the markers of the objects it contains."""
+    def _percentage(self, index: QModelIndex) -> str:
+        return f"{round(self._share(index) * 100)}%"
 
-    marker_clicked = Signal(str)
+    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:  # noqa: A003
+        """Sort the folders by their number of objects or by their size."""
+        self.layoutAboutToBeChanged.emit()
+        self._sort(self.root, column, order)
+        self.layoutChanged.emit()
 
-    MARKER_SIZE = 8
-    MARKER_GAP = 2
-    NAME_GAP = 10
+    def _sort(self, node: OverviewNode, column: int, order: Qt.SortOrder) -> None:
+        if column == 2:
+            key = lambda child: child.total_count  # noqa: E731
+        else:
+            key = lambda child: child.total_size  # noqa: E731
+        node.children.sort(key=key, reverse=order == Qt.SortOrder.DescendingOrder)
+        for child in node.children:
+            self._sort(child, column, order)
 
-    def _markers(self, index: QModelIndex) -> list[tuple[ChangeAction, str]]:
-        markers = index.data(OverviewModel.MarkersRole)
-        return list(markers) if markers else []
 
-    def _marker_rects(
-        self, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> list[tuple[QRect, ChangeAction, str]]:
-        markers = self._markers(index)
-        if not markers:
-            return []
-        name = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        metrics = option.fontMetrics
-        x = option.rect.x() + metrics.horizontalAdvance(str(name)) + self.NAME_GAP
-        y = option.rect.y() + (option.rect.height() - self.MARKER_SIZE) // 2
-        rects: list[tuple[QRect, ChangeAction, str]] = []
-        for action, path in markers:
-            rects.append((QRect(x, y, self.MARKER_SIZE, self.MARKER_SIZE), action, path))
-            x += self.MARKER_SIZE + self.MARKER_GAP
-        return rects
+class OverviewBarDelegate(QStyledItemDelegate):
+    """Draw the share of a folder as a bar with the percentage on top."""
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
-        # The background is drawn by the style, the name and the markers by
-        # this delegate.
         styled = QStyleOptionViewItem(option)
         styled.text = ""
-        styled.icon = QIcon()
         widget = styled.widget
         style = widget.style() if widget is not None else QApplication.style()
         style.drawPrimitive(
             QStyle.PrimitiveElement.PE_PanelItemViewItem, styled, painter, widget
         )
-        name = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
-        metrics = option.fontMetrics
+        share = index.data(OverviewModel.ShareRole)
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        if share is None or not text:
+            return
         painter.save()
-        # The markers belong to the cell, they must not spill into the next
-        # column.
         painter.setClipRect(option.rect)
+        # The bar grows from the left, the accent marks the share.
+        bar = QColor(ACCENT)
+        bar.setAlpha(120)
+        width = int(option.rect.width() * float(share))
+        painter.fillRect(
+            option.rect.left(), option.rect.top(), width, option.rect.height(), bar
+        )
         painter.setPen(option.palette.color(QPalette.ColorRole.Text))
         painter.drawText(
             option.rect,
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            metrics.elidedText(name, Qt.TextElideMode.ElideRight, option.rect.width()),
+            text,
         )
-        for rect, action, _path in self._marker_rects(option, index):
-            painter.fillRect(rect, ACTION_COLORS.get(action, QColor("#64748b")))
         painter.restore()
-
-    def mousePressEvent(
-        self, event: object, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> None:
-        position = getattr(event, "position", None)
-        point = position() if callable(position) else getattr(event, "pos", lambda: None)()
-        if point is not None:
-            for rect, _action, path in self._marker_rects(option, index):
-                if rect.contains(point.toPoint() if hasattr(point, "toPoint") else point):
-                    self.marker_clicked.emit(path)
-                    return
-        super().mousePressEvent(event, option, index)
 
 
 class OverviewPane(QWidget):
     """A compact overview of the comparison, in the style of FreeFileSync."""
 
-    object_activated = Signal(str)
+    folder_activated = Signal(str)
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -223,38 +268,42 @@ class OverviewPane(QWidget):
         title.setStyleSheet("font-weight: bold;")
         layout.addWidget(title)
 
-        legend_grid = QGridLayout()
-        legend_grid.setContentsMargins(0, 0, 0, 0)
-        legend_grid.setHorizontalSpacing(6)
-        legend_grid.setVerticalSpacing(2)
-        for position, (action, label) in enumerate(LEGEND):
-            swatch = QLabel()
-            swatch.setFixedSize(10, 10)
-            swatch.setStyleSheet(
-                f"background-color: {ACTION_COLORS.get(action, QColor('#64748b')).name()};"
-            )
-            row, column = divmod(position, 3)
-            legend_grid.addWidget(swatch, row, column * 2)
-            legend_grid.addWidget(QLabel(label), row, column * 2 + 1)
-        legend_grid.setColumnStretch(6, 1)
-        layout.addLayout(legend_grid)
-
         self.model = OverviewModel(self)
         self.tree = QTreeView()
         self.tree.setObjectName("overview-tree")
         self.tree.setModel(self.model)
-        self.delegate = OverviewDelegate(self.tree)
-        self.tree.setItemDelegate(self.delegate)
         self.tree.setUniformRowHeights(True)
         self.tree.setHeaderHidden(False)
-        self.tree.header().setStretchLastSection(False)
-        # The markers need room, a busy folder scrolls the pane sideways.
-        self.tree.setColumnWidth(0, 240)
-        self.tree.setColumnWidth(1, 240)
+        self.tree.setSortingEnabled(True)
+        self.tree.setIndentation(12)
+        self.tree.setItemDelegateForColumn(0, OverviewBarDelegate(self.tree))
+        self.tree.header().setSortIndicatorShown(True)
+        self.tree.header().setSectionsClickable(True)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().resizeSection(0, 52)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.delegate.marker_clicked.connect(self.object_activated.emit)
         layout.addWidget(self.tree, 1)
+        # The size of a folder is the interesting number, like in FreeFileSync.
+        self.tree.sortByColumn(3, Qt.SortOrder.DescendingOrder)
+        self.tree.activated.connect(self._folder_activated)
+
+    def _folder_activated(self, index: QModelIndex) -> None:
+        if not index.isValid():
+            return
+        node: OverviewNode = index.internalPointer()
+        if node.path:
+            self.folder_activated.emit(node.path)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
+        header = self.tree.header()
+        column = header.sortIndicatorSection()
+        order = header.sortIndicatorOrder()
+        if column < 0:
+            column = 3
+            order = Qt.SortOrder.DescendingOrder
         self.model.set_changes(changes, root_name)
+        self.tree.sortByColumn(column, order)
         self.tree.expandToDepth(0)

@@ -364,7 +364,7 @@ class MainWindow(QMainWindow):
         log_splitter.addWidget(log_column)
         # The overview summarises the comparison next to the journal.
         self.overview = OverviewPane(self)
-        self.overview.object_activated.connect(self._overview_object_activated)
+        self.overview.folder_activated.connect(self._overview_folder_activated)
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
         log_splitter.setStretchFactor(1, 0)
@@ -1210,14 +1210,15 @@ class MainWindow(QMainWindow):
         self._service.compare(profile)
 
     def _overview_updated(self, changes: object) -> None:
-        """Refresh the overview with the objects of the comparison."""
+        """Refresh the overview with the objects the filters show."""
         root_name = ""
         if self._active_profile is not None:
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
-        self.overview.set_changes(list(changes), root_name)  # type: ignore[arg-type]
+        visible = self.comparison.visible_changes()
+        self.overview.set_changes(list(visible), root_name)
 
-    def _overview_object_activated(self, path: str) -> None:
-        """Select an object of the overview in the tree panes."""
+    def _overview_folder_activated(self, path: str) -> None:
+        """Select a folder of the overview in the tree panes."""
         self.comparison.select_path(path)
 
     def _open_diff_tool(self, change: object) -> None:
@@ -1310,7 +1311,7 @@ class MainWindow(QMainWindow):
 
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None
-        self.comparison.proxy.set_visible_actions(selected)
+        self.comparison.set_action_filter(selected)
 
     def _apply_inventory_after_compare(self) -> None:
         """Gather the unchanged objects when the inventory runs automatically.

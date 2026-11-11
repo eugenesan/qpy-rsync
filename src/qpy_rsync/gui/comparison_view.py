@@ -435,6 +435,15 @@ class ComparisonView(QWidget):
                 return found
         return None
 
+    def visible_changes(self) -> list[object]:
+        """The objects of the comparison that the action filters show."""
+        visible = self.proxy.visible_paths()
+        return [
+            change
+            for change in self.model.changes
+            if str(getattr(change, "path", "")).rstrip("/") in visible
+        ]
+
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
@@ -528,7 +537,10 @@ class ComparisonView(QWidget):
                 )
 
     def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
+        """Show only the given actions and refresh the overview."""
         self.proxy.set_visible_actions(actions)
+        # The overview counts the objects that the filters show.
+        self.changes_updated.emit(list(self.model.changes))
 
     def _refresh_action_filter(self) -> None:
         # A decision can change a destination-only row into a delete row, so
@@ -538,6 +550,8 @@ class ComparisonView(QWidget):
             self.proxy.refresh_filters()
         else:
             self.proxy.refresh_filters(force=False)
+        # The overview counts the objects that the filters show.
+        self.changes_updated.emit(list(self.model.changes))
 
     def set_stale(self, stale: bool) -> None:
         if stale:
