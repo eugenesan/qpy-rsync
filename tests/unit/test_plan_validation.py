@@ -41,3 +41,25 @@ def test_selected_destination_only_delete_matches_delete_result() -> None:
         [Change("extra.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")],
     )
     assert mismatch.valid
+
+
+def test_cancellation_is_reported_once_when_error_and_finish_fire() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.backend.process_runner import ProcessResult
+    from qpy_rsync.services.plan_validation_service import PlanValidationService
+
+    application = QApplication.instance() or QApplication([])
+    service = PlanValidationService()
+    cancelled: list[str] = []
+    errors: list[str] = []
+    service.on_cancelled = lambda: cancelled.append("cancelled")
+    service.on_error = lambda message: errors.append(message)
+    service._cancelled = True
+
+    service._error("process killed")
+    service._finish(ProcessResult(exit_code=1, stdout="", stderr="", crashed=True))
+
+    assert cancelled == ["cancelled"]
+    assert errors == []
+    application.processEvents()

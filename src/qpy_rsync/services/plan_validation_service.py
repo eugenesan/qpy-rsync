@@ -59,6 +59,7 @@ class PlanValidationService:
         self._delete_enabled = False
         self._buffer = ""
         self._cancelled = False
+        self._cancel_reported = False
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[PlanValidationResult], None] = lambda _result: None
         self.on_error: Callable[[str], None] = lambda _message: None
@@ -79,6 +80,7 @@ class PlanValidationService:
         self._plan = plan
         self._buffer = ""
         self._cancelled = False
+        self._cancel_reported = False
         selected_deletions = any(
             item.included and item.action is ChangeAction.DELETE
             for item in plan.items
@@ -119,16 +121,29 @@ class PlanValidationService:
         self._filter_context = None
         self._filter_path = None
 
+    def _report_cancelled(self) -> None:
+        if self._cancel_reported:
+            return
+        self._cancel_reported = True
+        self.on_cancelled()
+
     def _error(self, message: str) -> None:
         try:
+            if self._cancel_reported:
+                return
             if self._cancelled:
-                self.on_cancelled()
+                self._report_cancelled()
                 return
             self.on_error(message)
         finally:
+            self._cancelled = False
             self._cleanup()
 
     def _finish(self, process: ProcessResult) -> None:
+        if self._cancel_reported:
+            self._cancelled = False
+            self._cleanup()
+            return
         if self._buffer:
             cleaned = self._buffer.strip()
             self._buffer = ""
@@ -136,7 +151,7 @@ class PlanValidationService:
                 self.on_log(cleaned)
         try:
             if self._cancelled:
-                self.on_cancelled()
+                self._report_cancelled()
                 return
             if process.exit_code != 0:
                 self.on_error(
