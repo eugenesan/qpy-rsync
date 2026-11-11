@@ -377,8 +377,14 @@ def test_command_preview_splitter_is_resizable() -> None:
     preview = window.command_preview_label
     assert window.preview_log_splitter.orientation() == Qt.Orientation.Vertical
     assert window.preview_log_splitter.indexOf(preview) >= 0
+    assert window.preview_log_splitter.handleWidth() >= 6
+    assert not preview.isHidden()
     assert preview.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Fixed
     assert preview.maximumHeight() > preview.minimumHeight()
+    assert (
+        window.log.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
+    )
+    assert window.log.minimumHeight() < window.log.minimumSizeHint().height()
     window.close()
     application.processEvents()
 

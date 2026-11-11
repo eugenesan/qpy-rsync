@@ -25,6 +25,7 @@ class CommandPreview(QPlainTextEdit):
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setMinimumHeight(self._preferred_height())
+        self.setPlaceholderText("Command preview appears here.")
         self.setText(text)
 
     def _preferred_height(self) -> int:
@@ -33,7 +34,6 @@ class CommandPreview(QPlainTextEdit):
     def setText(self, text: str) -> None:  # noqa: N802
         self.setPlainText(text)
         self.moveCursor(QTextCursor.MoveOperation.Start)
-        self.setVisible(bool(text.strip()))
         self.setToolTip(text if text.strip() else "")
 
     def full_text(self) -> str:

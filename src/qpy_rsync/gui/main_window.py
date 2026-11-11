@@ -239,6 +239,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(locations)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter = splitter
         splitter.addWidget(self.comparison)
         log_panel = QWidget(self)
         log_layout = QVBoxLayout(log_panel)
@@ -248,6 +249,12 @@ class MainWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
+        # The splitter, not the text widget's size hint, decides how much room
+        # the Journal gets; otherwise the preview divider cannot move.
+        self.log.setMinimumHeight(32)
+        self.log.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+        )
         self.progress_label = QLabel("")
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -255,6 +262,7 @@ class MainWindow(QMainWindow):
         self.command_preview_label = CommandPreview("")
         self.command_preview_label.setObjectName("command-preview-label")
         log_container = QWidget(self)
+        log_container.setMinimumHeight(0)
         log_container_layout = QVBoxLayout(log_container)
         log_container_layout.setContentsMargins(0, 0, 0, 0)
         log_container_layout.setSpacing(2)
@@ -262,6 +270,7 @@ class MainWindow(QMainWindow):
         log_container_layout.addWidget(self.log)
         self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
         self.preview_log_splitter.setChildrenCollapsible(False)
+        self.preview_log_splitter.setHandleWidth(6)
         self.preview_log_splitter.setToolTip(
             "Drag the divider to resize the command preview."
         )
@@ -276,7 +285,7 @@ class MainWindow(QMainWindow):
         log_layout.addWidget(self.progress_label)
         log_layout.addWidget(self.preview_log_splitter, 1)
         splitter.addWidget(log_panel)
-        splitter.setSizes([520, 110])
+        splitter.setSizes([380, 250])
         layout.addWidget(splitter, 1)
 
         backup_panel = QWidget(self)
