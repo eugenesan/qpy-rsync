@@ -600,3 +600,50 @@ def test_rows_use_separators_between_the_control_groups() -> None:
     assert len(separators) == 7
     window.close()
     application.processEvents()
+
+
+def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    gathered: list[list[object]] = []
+
+    class FakeInventory:
+        def gather(self, profile, changes):
+            gathered.append(list(changes))
+            return 100 + len(gathered)
+
+        def cancel(self):
+            pass
+
+    window._inventory_service = FakeInventory()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changed = Change(
+        "file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
+    )
+    window._last_changed_changes = [changed]
+
+    assert window.inventory_after_compare_button.text() == "Inventory"
+    assert "inventory" in window.inventory_after_compare_button.toolTip().lower()
+
+    # Without the toggle the comparison does not gather the unchanged objects.
+    window._apply_inventory_after_compare()
+    assert gathered == []
+
+    window.inventory_after_compare_button.setChecked(True)
+    window._apply_inventory_after_compare()
+    assert len(gathered) == 1
+    assert window.show_unchanged.isChecked()
+
+    # The unchanged button reuses the result of the comparison.
+    window._inventory_finished(gathered and 101, [])
+    application.processEvents()
+    window.show_unchanged.setChecked(False)
+    window.show_unchanged.setChecked(True)
+    assert len(gathered) == 1
+    window.close()
+    application.processEvents()

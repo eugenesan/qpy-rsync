@@ -197,6 +197,18 @@ class MainWindow(QMainWindow):
         )
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
+        self.inventory_after_compare_button = QPushButton("Inventory")
+        self.inventory_after_compare_button.setCheckable(True)
+        self.inventory_after_compare_button.setToolTip(
+            "Run an inventory after every comparison.\n"
+            "The inventory lists Source and Destination and adds the unchanged\n"
+            "objects to the comparison, so they are shown together with the\n"
+            "changed ones. The unchanged button then reuses this result\n"
+            "instead of running the inventory a second time."
+        )
+        self.inventory_after_compare_button.setAccessibleName(
+            "Inventory after comparison"
+        )
         self.validate_plan_button = QPushButton("Verify Actions")
         self.validate_plan_button.setToolTip(
             "Verify the selected actions.\n"
@@ -222,8 +234,12 @@ class MainWindow(QMainWindow):
         self.load_profile_button = QPushButton("Load Profile...")
         self.show_unchanged = self.comparison.inventory_button
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
+        self.inventory_after_compare_button.toggled.connect(
+            self._inventory_after_compare_changed
+        )
+        controls.addWidget(self.compare_button)
+        controls.addWidget(self.inventory_after_compare_button)
         for widget in (
-            self.compare_button,
             self.validate_plan_button,
             self.synchronize_button,
             self.cancel_button,
@@ -1063,6 +1079,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.swap_button.setEnabled(not busy)
         self.filters_button.setEnabled(not busy)
+        self.inventory_after_compare_button.setEnabled(not busy)
         self.sync_mode.setEnabled(not busy)
         self.source_edit.setEnabled(not busy)
         self.destination_edit.setEnabled(not busy)
@@ -1222,7 +1239,7 @@ class MainWindow(QMainWindow):
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
-        self._apply_inventory_mode()
+        self._apply_inventory_after_compare()
         self.comparison.set_stale(False)
         self._set_locations_stale(False)
         self._validated_plan = None
@@ -1250,6 +1267,21 @@ class MainWindow(QMainWindow):
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None
         self.comparison.proxy.set_visible_actions(selected)
+
+    def _apply_inventory_after_compare(self) -> None:
+        """Gather the unchanged objects when the inventory runs automatically.
+
+        The result is cached for the comparison, so the unchanged button only
+        shows the cached objects instead of running the inventory again.
+        """
+        if not self.inventory_after_compare_button.isChecked():
+            self._apply_inventory_mode()
+            return
+        if not self.show_unchanged.isChecked():
+            # Switching the button on starts the inventory.
+            self.show_unchanged.setChecked(True)
+            return
+        self._apply_inventory_mode()
 
     def _apply_inventory_mode(self) -> None:
         changed = list(self._last_changed_changes)
@@ -1498,6 +1530,19 @@ class MainWindow(QMainWindow):
         preview_state = decode_binary(settings.value("command-preview/splitter"))
         if preview_state is not None:
             self.preview_log_splitter.restoreState(preview_state)
+        value = settings.value("comparison/inventory-after-compare", False)
+        checked = (
+            value
+            if isinstance(value, bool)
+            else str(value).strip().lower() in ("true", "1", "yes")
+        )
+        self.inventory_after_compare_button.setChecked(checked)
+
+    def _inventory_after_compare_changed(self, checked: bool) -> None:
+        """Remember whether the inventory runs automatically after a compare."""
+        settings = app_settings()
+        settings.setValue("comparison/inventory-after-compare", bool(checked))
+        settings.sync()
 
     def _shutdown_operations(self) -> None:
         """Stop every running operation before the window is destroyed."""
