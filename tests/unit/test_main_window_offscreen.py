@@ -327,11 +327,14 @@ def test_unchanged_inventory_is_async_and_cached() -> None:
     window._inventory_service = FakeInventory()
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
-    assert window.comparison.model.rowCount() == 0
+    # The compared objects are shown while the inventory is still running.
+    assert window.comparison.model.rowCount() == 1
 
     extra = Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
     window._inventory_finished(7, [extra])
     assert window.comparison.model.rowCount() == 2
+    # The unchanged object appears without another comparison.
+    assert window.comparison.proxy.rowCount() == 2
     assert "unchanged=1" in window.log.toPlainText()
 
     window.show_unchanged.setChecked(False)

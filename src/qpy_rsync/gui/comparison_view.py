@@ -27,7 +27,7 @@ from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel, full_path
 from .icons import unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
-from qpy_rsync.storage.settings import app_settings
+from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
@@ -366,6 +366,10 @@ class ComparisonView(QWidget):
             tree.setCurrentIndex(QModelIndex())
             tree.selectionModel().clear()
         self.model.set_changes(changes)  # type: ignore[arg-type]
+        # A model reset alone leaves the proxy with the previous row mapping.
+        # Without this the new objects, for example the unchanged ones of an
+        # inventory, would only appear after the next comparison.
+        self.proxy.refresh_filters(force=True)
 
         def restore_views() -> None:
             with self._frozen_updates():
@@ -520,20 +524,28 @@ class ComparisonView(QWidget):
 
     def save_view_state(self) -> None:
         settings = app_settings()
-        settings.setValue("comparison/splitter", self.splitter.saveState())
-        settings.setValue("comparison/source-header", self.source.header().saveState())
-        settings.setValue("comparison/destination-header", self.destination.header().saveState())
+        settings.setValue(
+            "comparison/splitter", encode_binary(self.splitter.saveState())
+        )
+        settings.setValue(
+            "comparison/source-header",
+            encode_binary(self.source.header().saveState()),
+        )
+        settings.setValue(
+            "comparison/destination-header",
+            encode_binary(self.destination.header().saveState()),
+        )
         settings.sync()
 
     def _restore_view_state(self) -> None:
         settings = app_settings()
-        state = settings.value("comparison/splitter")
+        state = decode_binary(settings.value("comparison/splitter"))
         if state is not None:
             self.splitter.restoreState(state)
         else:
             self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
-        source = settings.value("comparison/source-header")
-        destination = settings.value("comparison/destination-header")
+        source = decode_binary(settings.value("comparison/source-header"))
+        destination = decode_binary(settings.value("comparison/destination-header"))
         if source is not None:
             self.source.header().restoreState(source)
         if destination is not None:

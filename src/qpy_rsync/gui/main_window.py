@@ -37,7 +37,7 @@ from qpy_rsync.storage.profile_store import (
     profile_to_json,
     save_profile,
 )
-from qpy_rsync.storage.settings import app_settings
+from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
@@ -1223,6 +1223,10 @@ class MainWindow(QMainWindow):
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
+        # Show the compared objects right away. The unchanged objects are
+        # merged in when the inventory completes, so the tree never stays
+        # empty and no second comparison is needed.
+        self.comparison.set_changes(changed)
         self._inventory_pending_key = key
         self.progress_label.setText("Gathering unchanged objects...")
         self._append_log("STATE inventory-started")
@@ -1429,22 +1433,25 @@ class MainWindow(QMainWindow):
 
     def _restore_window_state(self) -> None:
         settings = app_settings()
-        geometry = settings.value("main-window/geometry")
-        state = settings.value("main-window/state")
+        geometry = decode_binary(settings.value("main-window/geometry"))
+        state = decode_binary(settings.value("main-window/state"))
         if geometry is not None:
             self.restoreGeometry(geometry)
         if state is not None:
             self.restoreState(state)
-        preview_state = settings.value("command-preview/splitter")
+        preview_state = decode_binary(settings.value("command-preview/splitter"))
         if preview_state is not None:
             self.preview_log_splitter.restoreState(preview_state)
 
     def closeEvent(self, event: object) -> None:  # noqa: N802
         settings = app_settings()
-        settings.setValue("main-window/geometry", self.saveGeometry())
-        settings.setValue("main-window/state", self.saveState())
         settings.setValue(
-            "command-preview/splitter", self.preview_log_splitter.saveState()
+            "main-window/geometry", encode_binary(self.saveGeometry())
+        )
+        settings.setValue("main-window/state", encode_binary(self.saveState()))
+        settings.setValue(
+            "command-preview/splitter",
+            encode_binary(self.preview_log_splitter.saveState()),
         )
         settings.sync()
         self.comparison.save_view_state()

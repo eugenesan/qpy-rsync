@@ -142,3 +142,45 @@ def test_inventory_update_preserves_expanded_folders() -> None:
     application.processEvents()
 
 
+
+
+def test_updated_objects_appear_without_a_new_comparison() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    changed = Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
+    view.set_changes([changed])
+    application.processEvents()
+    assert view.proxy.rowCount() == 1
+
+    unchanged = Change("b.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
+    view.set_changes([changed, unchanged], preserve_expansion=True)
+    application.processEvents()
+    assert view.proxy.rowCount() == 2
+    view.close()
+    application.processEvents()
+
+
+def test_expanding_a_large_tree_stays_responsive() -> None:
+    import time
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    changes = [
+        Change(f"file{index}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
+        for index in range(2000)
+    ]
+    view.set_changes(changes)
+    application.processEvents()
+
+    started = time.monotonic()
+    view.expand_all()
+    application.processEvents()
+    elapsed = time.monotonic() - started
+    # A quadratic implementation needed minutes for this tree.
+    assert elapsed < 20.0
+    view.close()
+    application.processEvents()
