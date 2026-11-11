@@ -1,21 +1,36 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from typing import Iterable
 
 from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+from qpy_rsync.core.models import SyncProfile
+
+from .rsync_command import build_inventory_spec
 
 
-def inventory_paths(endpoint: Endpoint) -> dict[str, ObjectKind]:
+def inventory_paths(
+    endpoint: Endpoint, profile: SyncProfile | None = None
+) -> dict[str, ObjectKind]:
     operand = endpoint.rsync_operand()
     if not operand.endswith("/"):
         operand += "/"
+    environment = None
+    if profile is None:
+        command = ["rsync", "-r", "--list-only", "--", operand]
+    else:
+        spec = build_inventory_spec(profile, endpoint)
+        command = spec.argv()
+        environment = os.environ.copy()
+        environment.update(spec.environment)
     result = subprocess.run(
-        ["rsync", "-r", "--list-only", operand],
+        command,
         capture_output=True,
         text=True,
         check=False,
+        env=environment,
     )
     paths: dict[str, ObjectKind] = {}
     for line in result.stdout.splitlines():
@@ -44,8 +59,8 @@ def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
         parts = changed_path.split("/")
         for index in range(1, len(parts)):
             ancestor_paths.add("/".join(parts[:index]))
-    source_paths = inventory_paths(profile.source)
-    destination_paths = inventory_paths(profile.destination)
+    source_paths = inventory_paths(profile.source, profile)
+    destination_paths = inventory_paths(profile.destination, profile)
     result: list[Change] = []
     for path in sorted(source_paths.keys() & destination_paths.keys()):
         if path in changed_paths or path in ancestor_paths:

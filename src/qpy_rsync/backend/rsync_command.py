@@ -6,6 +6,7 @@ from pathlib import Path
 import shlex
 
 from qpy_rsync.core.backup_paths import backup_protection_arguments, destination_backup_directory
+from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.enums import DeleteTiming, EndpointKind, SyncMode
 from qpy_rsync.core.models import SyncProfile
 from qpy_rsync.core.validation import has_errors, validate_profile
@@ -135,6 +136,20 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
         # keeps them as retained, non-executable rows.
         args.append("--delete-during")
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
+    return _process_spec(profile, args)
+
+
+def build_inventory_spec(profile: SyncProfile, endpoint: Endpoint) -> ProcessSpec:
+    """List one endpoint's objects using the profile's include/exclude rules."""
+    operand = endpoint.rsync_operand()
+    if not operand.endswith("/"):
+        operand += "/"
+    args = ["-r", "--list-only"]
+    remote_shell = _remote_shell_argument(profile)
+    if remote_shell is not None:
+        args.extend(("-e", remote_shell))
+    args.extend(filter_arguments(profile.filters))
+    args.extend(("--", operand))
     return _process_spec(profile, args)
 
 
