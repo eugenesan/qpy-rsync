@@ -181,3 +181,19 @@
 - Add guided synchronization smoke-test framework and reporting.
 - Validate Update, Mirror, and New Only synchronization modes with real rsync execution.
 - Validate cancellation and failure execution paths.
+
+## milestone 1.15f interface and performance
+
+- Enlarge the shared controls and render the icons from a 64 px canvas so they stay sharp at 24 px.
+- Show absolute source and destination paths in the tooltips and the context menu, and add a copy-path entry to every object.
+- Keep the journal box directly below its label, let it fill the pane, and show the status messages next to the label.
+- Give the action column between the tree panes a fixed width and size the location icons like the buttons in their row.
+- Make the command preview resizable and always visible, and let it follow the running operation.
+- Store the application settings in `~/.local/state/qpy-rsyncstaterc`, migrate the legacy configuration once, and keep the recent profile inside the state file.
+- Write the widget state as base64 text so the state file stays readable for other INI parsers.
+- Batch the journal writes, reuse one log handle, and stop writing every rsync line to disk during a comparison.
+- Reuse a fresh comparison for the verification instead of starting an identical second dry run, and allow cancelling a modified selection.
+- Report a cancelled verification only once and render the rsync specification of every dry run in the journal.
+- Keep the tree expansion linear instead of quadratic, so comparisons with thousands of objects stay responsive.
+- Show the objects of an inventory immediately and re-evaluate the filtered rows, so the unchanged objects appear without another comparison.
+- Stop the running rsync processes when the window closes.
