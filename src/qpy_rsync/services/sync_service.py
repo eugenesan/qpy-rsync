@@ -91,7 +91,13 @@ class SyncService:
                 continue
             self.on_stdout(cleaned)
 
-    def synchronize(self, profile: SyncProfile, plan: ExecutionPlan) -> ProcessSpec:
+    def synchronize(
+        self,
+        profile: SyncProfile,
+        plan: ExecutionPlan,
+        *,
+        filter_path: Path | None = None,
+    ) -> ProcessSpec:
         enforce_execution_boundary(profile)
         if plan.profile_fingerprint != profile_fingerprint(profile):
             raise ValueError("The verified synchronization plan is stale.")
@@ -104,9 +110,17 @@ class SyncService:
         )
         self._cancel_requested = False
         self._buffer = ""
-        self._filter_context = temporary_decision_filter(plan)
-        self._filter_path = self._filter_context.__enter__()
-        spec = build_sync_spec(effective_profile, filter_file=self._filter_path)
+        if filter_path is None:
+            self._filter_context = temporary_decision_filter(plan)
+            self._filter_path = self._filter_context.__enter__()
+        else:
+            # The confirmation dialog owns this filter so it could show the
+            # exact command before the user accepted.
+            self._filter_context = None
+            self._filter_path = None
+        spec = build_sync_spec(
+            effective_profile, filter_file=filter_path or self._filter_path
+        )
         try:
             self.on_spec(spec)
             self._runner.start(spec)

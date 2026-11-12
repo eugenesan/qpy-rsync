@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.inventory import InventoryResult
 from qpy_rsync.backend.process_runner import ProcessState
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
@@ -182,6 +183,7 @@ class MainWindow(QMainWindow):
         self._inventory_pending_key: object | None = None
         self._inventory_cache_key: object | None = None
         self._inventory_cache: list[object] | None = None
+        self._dialog_filter_context: object | None = None
         self._last_changed_changes: list[object] = []
         self._sync_service = SyncService(self)
         self._sync_service.on_started = self._sync_started
@@ -1373,18 +1375,43 @@ class MainWindow(QMainWindow):
             )
             return
         self._execution_gate.confirmation_opened()
-        dialog = SyncConfirmationDialog(self._active_profile, self._validated_plan, self)
-        accepted = bool(dialog.exec())
-        if not accepted:
-            self._execution_gate.confirmation_cancelled()
-            self.synchronize_button.setEnabled(True)
-            return
+        self._cleanup_dialog_filter()
+        filter_context = temporary_decision_filter(self._validated_plan)
+        filter_path = filter_context.__enter__()
+        self._dialog_filter_context = filter_context
+        started = False
         try:
-            self._sync_service.synchronize(self._active_profile, self._validated_plan)
-        except ValueError as exc:
-            self._execution_gate.confirmation_cancelled()
-            self.synchronize_button.setEnabled(True)
-            QMessageBox.critical(self, "Synchronization blocked", str(exc))
+            dialog = SyncConfirmationDialog(
+                self._active_profile,
+                self._validated_plan,
+                self,
+                filter_path=filter_path,
+            )
+            accepted = bool(dialog.exec())
+            if not accepted:
+                self._execution_gate.confirmation_cancelled()
+                self.synchronize_button.setEnabled(True)
+                return
+            try:
+                self._sync_service.synchronize(
+                    self._active_profile,
+                    self._validated_plan,
+                    filter_path=filter_path,
+                )
+                started = True
+            except ValueError as exc:
+                self._execution_gate.confirmation_cancelled()
+                self.synchronize_button.setEnabled(True)
+                QMessageBox.critical(self, "Synchronization blocked", str(exc))
+        finally:
+            if not started:
+                self._cleanup_dialog_filter()
+
+    def _cleanup_dialog_filter(self) -> None:
+        context = self._dialog_filter_context
+        self._dialog_filter_context = None
+        if context is not None:
+            context.__exit__(None, None, None)  # type: ignore[attr-defined]
 
     def _cancel_active_operation(self) -> None:
         if self._execution_gate.state is ExecutionGateState.EXECUTING:
@@ -1481,6 +1508,7 @@ class MainWindow(QMainWindow):
         )
 
     def _sync_finished(self, result: SyncResult) -> None:
+        self._cleanup_dialog_filter()
         if self._closing:
             return
         self.progress_bar.setValue(100)
@@ -1501,6 +1529,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._compare)
 
     def _sync_error(self, message: str, cancelled: bool = False) -> None:
+        self._cleanup_dialog_filter()
         if self._closing:
             return
         if self._execution_gate.state is ExecutionGateState.EXECUTING:
@@ -2029,6 +2058,7 @@ class MainWindow(QMainWindow):
 
     def _shutdown_operations(self) -> None:
         """Stop every running operation before the window is destroyed."""
+        self._cleanup_dialog_filter()
         for service in (self._service, self._sync_service, self._plan_validation):
             shutdown = getattr(service, "shutdown", None)
             if shutdown is None:

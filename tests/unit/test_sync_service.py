@@ -100,3 +100,17 @@ def test_cancel_delegates_and_reports_cancelled() -> None:
 
 def test_known_exit_explanation() -> None:
     assert "partial transfer" in explain_rsync_exit(23)
+
+
+def test_service_reuses_the_confirmation_filter(tmp_path) -> None:
+    item = profile()
+    runner = FakeRunner()
+    service = SyncService(runner=runner)
+    filter_path = tmp_path / "plan.rules"
+    filter_path.write_text("+ /new.txt\n", encoding="utf-8")
+    spec = service.synchronize(item, plan(item), filter_path=filter_path)
+    merge = next(arg for arg in spec.arguments if arg.startswith("--filter=merge "))
+    assert Path(merge.removeprefix("--filter=merge ")) == filter_path
+    runner.on_finished(ProcessResult(0, "ok", ""))
+    # The owner of a supplied filter is responsible for removing it.
+    assert filter_path.exists()

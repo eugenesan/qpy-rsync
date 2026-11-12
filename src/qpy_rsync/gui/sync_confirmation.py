@@ -81,7 +81,14 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
 class SyncConfirmationDialog(QDialog):
     """Final review required before write-capable synchronization."""
 
-    def __init__(self, profile: SyncProfile, plan: ExecutionPlan, parent=None) -> None:
+    def __init__(
+        self,
+        profile: SyncProfile,
+        plan: ExecutionPlan,
+        parent=None,
+        *,
+        filter_path: Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Confirm synchronization")
         self.resize(720, 620)
@@ -164,7 +171,8 @@ class SyncConfirmationDialog(QDialog):
             command = shlex.join(
                 build_sync_argv(
                     effective,
-                    filter_file=Path("<temporary decision filter>"),
+                    filter_file=filter_path
+                    or Path("<temporary decision filter>"),
                 )
             )
         except ValueError as exc:
@@ -186,15 +194,16 @@ class SyncConfirmationDialog(QDialog):
         self.command.setFixedHeight(92)
         self.command.setToolTip(
             "The full rsync command for this synchronization. The temporary "
-            "decision filter is created when the synchronization starts."
+            "decision filter is created for this confirmation and removed "
+            "after the synchronization."
         )
         layout.addWidget(self.command)
 
         self.details = QLabel(
             "This confirmation is based on a verified second dry run. "
             "Confirming will launch write-capable rsync for the reviewed "
-            "Source and Destination. The private decision filter is recreated "
-            "and removed after execution."
+            "Source and Destination. The private decision filter is created "
+            "for this confirmation and removed after execution."
         )
         self.details.setObjectName("confirmation-details")
         self.details.setWordWrap(True)

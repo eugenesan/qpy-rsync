@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
@@ -100,5 +101,22 @@ def test_confirmation_command_keeps_the_ssh_authority() -> None:
     dialog = SyncConfirmationDialog(item, plan)
     command = dialog.command.toPlainText()
     assert "alice@example.org:/src/" in command
+    dialog.close()
+    application.processEvents()
+
+
+def test_confirmation_command_uses_the_real_filter_path() -> None:
+    application = app()
+    item = profile()
+    plan = build_execution_plan(
+        item,
+        [Change("new", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")],
+        ChangeDecisions(),
+    )
+    filter_path = Path("/tmp/qpy-rsync-plan-test.rules")
+    dialog = SyncConfirmationDialog(item, plan, filter_path=filter_path)
+    command = dialog.command.toPlainText()
+    assert str(filter_path) in command
+    assert "<temporary decision filter>" not in command
     dialog.close()
     application.processEvents()

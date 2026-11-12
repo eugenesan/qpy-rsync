@@ -295,3 +295,7 @@
 ## milestone 1.15s verification progress cleanup
 
 - The progress pane now leaves “Verifying selected actions...” when verification finishes, fails or is cancelled, and reports the final verification state instead.
+
+## milestone 1.15t real decision-filter path
+
+- The synchronization dialog creates the private decision filter before it opens and shows its real path in the command preview. The same file is used by the synchronization and removed when it finishes, fails or is cancelled.
