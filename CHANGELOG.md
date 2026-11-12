@@ -197,3 +197,17 @@
 - Keep the tree expansion linear instead of quadratic, so comparisons with thousands of objects stay responsive.
 - Show the objects of an inventory immediately and re-evaluate the filtered rows, so the unchanged objects appear without another comparison.
 - Stop the running rsync processes when the window closes.
+
+## milestone 1.15g review fixes
+
+- Verify Actions can run again after a successful verification instead of raising an invalid gate transition.
+- Store the recent profile and the filter rules as base64 text, so the KDE configuration reader no longer rejects the state file.
+- Keep rsync progress and speed lines in the session log and out of the journal, and derive the progress percentage from the files already checked so dry runs show progress.
+- Show the progress bar only while an operation runs, and turn the Pause button into Resume while a transfer is suspended.
+- Expand every folder after a comparison, so the trees never start half collapsed.
+- Use a faded equals icon for folders present on both sides and a tribar for unchanged items, including the inventory button.
+- Show folder and file-type icons (picture, document, archive, database, executable, regular) and set changed items in bold.
+- Report the number of selected items and their total size in the summary pane and the confirmation dialog.
+- Address the comparison content as items everywhere in the interface.
+- Add a menu bar with F1 to F11 shortcuts, an About dialog and a profile folder in `$XDG_CONFIG_HOME/qpy-rsync/profiles`.
+- Add Debian packaging in `debian/`.
