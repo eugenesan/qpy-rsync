@@ -791,7 +791,10 @@ class MainWindow(QMainWindow):
 
     def _open_path(self, path: Path, what: str) -> None:
         if not path.exists():
+            message = f"{what} does not exist:\n{path}"
             self._set_status(f"{what} does not exist: {path}", "warning")
+            self._append_log(f"STATUS {message}")
+            QMessageBox.warning(self, "Location not found", message)
             return
         url = QUrl.fromLocalFile(str(path))
         if QDesktopServices.openUrl(url):
@@ -853,6 +856,34 @@ class MainWindow(QMainWindow):
                 self._set_status(f"Could not create the log file: {exc}", "error")
                 return
         self._open_path(path, "log file")
+
+    @staticmethod
+    def _missing_local_directories(profile: SyncProfile) -> list[str]:
+        missing: list[str] = []
+        for title, endpoint in (
+            ("Source", profile.source),
+            ("Destination", profile.destination),
+        ):
+            if endpoint.kind is not EndpointKind.LOCAL:
+                continue
+            path = Path(endpoint.path).expanduser()
+            if not path.exists():
+                missing.append(f"{title}: {path} does not exist.")
+            elif not path.is_dir():
+                missing.append(f"{title}: {path} is not a directory.")
+        return missing
+
+    def _warn_missing_local_directories(
+        self, missing: list[str], action: str
+    ) -> None:
+        detail = "\n".join(missing)
+        self._set_status(f"{action} cancelled: {detail}", "warning")
+        self._append_log(f"{action} cancelled: {detail}")
+        QMessageBox.warning(
+            self,
+            "Location not found",
+            detail + "\n\nCreate the directory or choose another location.",
+        )
 
     def _location_panel(
         self, title: str, edit: QLineEdit, *, trailing: bool = False
@@ -1716,6 +1747,10 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid location", str(exc))
             return
+        missing = self._missing_local_directories(profile)
+        if missing:
+            self._warn_missing_local_directories(missing, "Comparison")
+            return
         self._flush_log()
         self.log.clear()
         self._last_plan_summary = None
@@ -1930,6 +1965,11 @@ class MainWindow(QMainWindow):
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
+        if self._active_profile is not None:
+            missing = self._missing_local_directories(self._active_profile)
+            if missing:
+                self._warn_missing_local_directories(missing, "Inventory")
+                return
         self._inventory_pending_key = key
         self.progress_label.setText("Gathering unchanged items...")
         self.progress_bar.setVisible(True)

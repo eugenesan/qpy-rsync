@@ -317,14 +317,18 @@ def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) 
     application.processEvents()
 
 
-def test_unchanged_inventory_is_async_and_cached() -> None:
+def test_unchanged_inventory_is_async_and_cached(tmp_path) -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window.source_edit.setText("/src/")
-    window.destination_edit.setText("/dst/")
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
     window._active_profile = window._profile()
     changed = Change(
         "file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
@@ -628,13 +632,17 @@ def test_rows_use_separators_between_the_control_groups() -> None:
     application.processEvents()
 
 
-def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
+def test_inventory_toggle_runs_the_inventory_after_a_comparison(tmp_path) -> None:
     from qpy_rsync.backend.inventory import InventoryResult
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
     app_settings().clear()
     window = MainWindow()
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
     gathered: list[list[object]] = []
 
     class FakeInventory:
@@ -646,8 +654,8 @@ def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
             pass
 
     window._inventory_service = FakeInventory()
-    window.source_edit.setText("/src/")
-    window.destination_edit.setText("/dst/")
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
     window._active_profile = window._profile()
     changed = Change(
         "file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
@@ -702,14 +710,18 @@ def test_help_menu_and_synchronize_tooltip() -> None:
     application.processEvents()
 
 
-def test_turning_inventory_on_runs_it_for_the_current_comparison() -> None:
+def test_turning_inventory_on_runs_it_for_the_current_comparison(tmp_path) -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window.source_edit.setText("/src/")
-    window.destination_edit.setText("/dst/")
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
     window._active_profile = window._profile()
     change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
     window._last_changed_changes = [change]
@@ -904,5 +916,75 @@ def test_open_buttons_follow_remote_and_missing_log_file(tmp_path, monkeypatch) 
     window._open_log_file()
     assert log_file.exists()
     assert opened == [str(log_file)]
+    window.close()
+    application.processEvents()
+
+
+def test_compare_refuses_missing_local_directories(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    warnings: list[object] = []
+    compared: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.warning",
+        lambda *_args, **_kwargs: warnings.append(_args),
+    )
+    monkeypatch.setattr(
+        window._service, "compare", lambda profile: compared.append(profile)
+    )
+    window.source_edit.setText(str(tmp_path / "missing-source") + "/")
+    window.destination_edit.setText(str(tmp_path / "missing-destination") + "/")
+    window._compare()
+    assert warnings
+    assert not compared
+    assert "does not exist" in window.status_edit.text()
+    window.close()
+    application.processEvents()
+
+
+def test_inventory_refuses_missing_local_directories(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    gathered: list[object] = []
+
+    class FakeInventory:
+        def gather(self, profile, changes):
+            gathered.append((profile, changes))
+            return 1
+
+        def cancel(self):
+            pass
+
+    window._inventory_service = FakeInventory()
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.warning",
+        lambda *_args, **_kwargs: warnings.append(_args),
+    )
+    window.source_edit.setText(str(tmp_path / "missing-source") + "/")
+    window.destination_edit.setText(str(tmp_path / "missing-destination") + "/")
+    window._active_profile = window._profile()
+    window._start_inventory("key", [])
+    assert warnings
+    assert not gathered
+    window.close()
+    application.processEvents()
+
+
+def test_open_missing_directory_shows_a_warning(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.warning",
+        lambda *_args, **_kwargs: warnings.append(_args),
+    )
+    window.source_edit.setText(str(tmp_path / "missing-source") + "/")
+    window._open_location_directory("Source")
+    assert warnings
+    assert "does not exist" in window.status_edit.text()
     window.close()
     application.processEvents()

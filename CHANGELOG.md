@@ -333,3 +333,8 @@
 ## milestone 1.15ab external open buttons
 
 - Source, Destination and Backup gained folder buttons, and Log gained a file button. They open the location with Qt's `QDesktopServices`, falling back to `xdg-open`, and report remote or missing paths in the status line.
+
+## milestone 1.15ac missing location warnings
+
+- Opening a missing directory now shows a warning dialog instead of failing silently.
+- Compare and inventory refuse to start when a local Source or Destination is missing or is not a directory, and explain the problem in a dialog, the status field and the journal.
