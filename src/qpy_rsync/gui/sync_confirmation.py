@@ -105,7 +105,7 @@ class SyncConfirmationDialog(QDialog):
         self.warning.setWordWrap(True)
         if summary.destructive:
             self.warning.setText(
-                f"Warning: {summary.destructive} destructive operation(s) will replace or delete destination objects."
+                f"Warning: {summary.destructive} destructive item(s) will replace or delete destination items."
             )
             self.warning.setStyleSheet("color: #B91C1C; font-weight: bold;")
         else:

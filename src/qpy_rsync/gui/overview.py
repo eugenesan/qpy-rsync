@@ -176,7 +176,7 @@ class OverviewModel(QAbstractItemModel):
             return self._share(index)
         if role == Qt.ItemDataRole.ToolTipRole:
             return (
-                f"{node.path or '/'}\n{node.total_count} object(s), "
+                f"{node.path or '/'}\n{node.total_count} item(s), "
                 f"{format_size(node.total_size)}"
             )
         return None

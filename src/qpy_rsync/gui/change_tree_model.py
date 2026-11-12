@@ -120,7 +120,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._refresh_action_header()
 
     def _compute_sizes(self, node: TreeNode) -> tuple[int, int]:
-        """Sum the sizes of the objects below a folder."""
+        """Sum the sizes of the items below a folder."""
         source_total = 0
         destination_total = 0
         for child in node.children:
@@ -331,7 +331,7 @@ class ChangeTreeModel(QAbstractItemModel):
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
-        """Remember the size and the date of the listed destination objects."""
+        """Remember the size and the date of the listed destination items."""
         self._destination_metadata = dict(metadata)
         self._compute_sizes(self.root)
         if not self.root.children:

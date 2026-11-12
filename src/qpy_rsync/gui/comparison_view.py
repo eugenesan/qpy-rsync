@@ -448,7 +448,7 @@ class ComparisonView(QWidget):
         return None
 
     def visible_changes(self) -> list[object]:
-        """The objects of the comparison that the action filters show."""
+        """The items of the comparison that the action filters show."""
         visible = self.proxy.visible_paths()
         return [
             change
@@ -459,7 +459,7 @@ class ComparisonView(QWidget):
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
-        """Show the size and the date of the listed destination objects."""
+        """Show the size and the date of the listed destination items."""
         self._destination_metadata = dict(metadata)
         self.model.set_destination_metadata(self._destination_metadata)
 

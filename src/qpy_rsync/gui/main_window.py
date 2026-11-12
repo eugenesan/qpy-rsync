@@ -71,7 +71,7 @@ def _inventory_result(payload: object) -> InventoryResult:
     """Read the outcome of an inventory run."""
     if isinstance(payload, InventoryResult):
         return payload
-    # Older callers deliver a plain list of unchanged objects.
+    # Older callers deliver a plain list of unchanged items.
     return InventoryResult(
         unchanged=list(payload),  # type: ignore[call-overload]
         destination_metadata={},
@@ -213,9 +213,9 @@ class MainWindow(QMainWindow):
         self.sync_mode.addItem("New Only", SyncMode.NEW_ONLY)
         self.sync_mode.setToolTip(
             "Mode selection\n"
-            "Update: copy new and changed objects; keep destination-only objects.\n"
+            "Update: copy new and changed items; keep destination-only items.\n"
             "Mirror: make Destination match Source, including deletions.\n"
-            "New Only: copy missing objects; do not update or delete existing objects."
+            "New Only: copy missing items; do not update or delete existing items."
         )
         controls.addWidget(self.sync_mode)
         self.swap_button = QPushButton("Swap")
@@ -242,7 +242,7 @@ class MainWindow(QMainWindow):
         self.inventory_after_compare_button.setToolTip(
             "Run an inventory after every comparison.\n"
             "The inventory lists Source and Destination and adds the unchanged\n"
-            "objects to the comparison, so they are shown together with the\n"
+            "items to the comparison, so they are shown together with the\n"
             "changed ones. The unchanged button then reuses this result\n"
             "instead of running the inventory a second time."
         )
@@ -774,7 +774,7 @@ class MainWindow(QMainWindow):
             )
         elif mode is SyncMode.MIRROR:
             self._set_status(
-                "Mirror can delete objects that exist only in Destination. Click Compare and review deletions.",
+                "Mirror can delete items that exist only in Destination. Click Compare and review deletions.",
                 "error",
             )
         self._update_command_preview()
@@ -1317,7 +1317,7 @@ class MainWindow(QMainWindow):
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
     def _overview_updated(self, changes: object) -> None:
-        """Refresh the overview with the objects the filters show."""
+        """Refresh the overview with the items the filters show."""
         root_name = ""
         if self._active_profile is not None:
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
@@ -1406,7 +1406,7 @@ class MainWindow(QMainWindow):
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)
-        self.status_edit.setText(f"Comparison complete: {count} changed object(s).")
+        self.status_edit.setText(f"Comparison complete: {count} changed item(s).")
         self._append_log(f"STATE comparison-complete changes={count}")
         self._end_bulk_logging()
 
@@ -1428,7 +1428,7 @@ class MainWindow(QMainWindow):
         self.comparison.set_action_filter(selected)
 
     def _apply_inventory_after_compare(self) -> None:
-        """Gather the unchanged objects when the inventory runs automatically.
+        """Gather the unchanged items when the inventory runs automatically.
 
         The result is cached for the comparison, so the unchanged button only
         shows the cached objects instead of running the inventory again. The
@@ -1451,7 +1451,7 @@ class MainWindow(QMainWindow):
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
-        """Show or hide the unchanged objects of the current comparison."""
+        """Show or hide the unchanged items of the current comparison."""
         changed = list(self._last_changed_changes)
         if self._active_profile is None:
             return
@@ -1467,8 +1467,8 @@ class MainWindow(QMainWindow):
                 changed + list(self._inventory_cache), preserve_expansion=True
             )
             self.progress_label.setText(
-                f"Showing {len(self._inventory_cache)} unchanged object(s); "
-                "expand folders to view nested objects."
+                f"Showing {len(self._inventory_cache)} unchanged item(s); "
+                "expand folders to view nested items."
             )
             return
         if self._inventory_pending_key == key and self._inventory_token:
@@ -1482,7 +1482,7 @@ class MainWindow(QMainWindow):
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
         self._inventory_pending_key = key
-        self.progress_label.setText("Gathering unchanged objects...")
+        self.progress_label.setText("Gathering unchanged items...")
         self._append_log("STATE inventory-started")
         self._inventory_token = self._inventory_service.gather(
             deepcopy(self._active_profile), changed
@@ -1518,8 +1518,8 @@ class MainWindow(QMainWindow):
                 changed + list(result.unchanged), preserve_expansion=True
             )
         self.progress_label.setText(
-            f"Inventory complete: {len(result.unchanged)} unchanged object(s); "
-            "expand folders to view nested objects."
+            f"Inventory complete: {len(result.unchanged)} unchanged item(s); "
+            "expand folders to view nested items."
         )
         self._append_log(
             f"STATE inventory-complete unchanged={len(result.unchanged)}"
@@ -1535,7 +1535,7 @@ class MainWindow(QMainWindow):
         self._append_log(f"Inventory gathering failed: {message}")
         if self.show_unchanged.isChecked():
             self._set_status(
-                "Could not gather unchanged objects; showing changed objects only.",
+                "Could not gather unchanged items; showing changed items only.",
                 "warning",
             )
             self.comparison.set_changes(list(self._last_changed_changes))

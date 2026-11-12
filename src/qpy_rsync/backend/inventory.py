@@ -85,7 +85,7 @@ class InventoryResult:
 
     The unchanged objects are the ones that both trees share. The metadata of
     the destination is kept for every listed object, so the tree can also
-    show the size and the date of the changed objects.
+    show the size and the date of the changed items.
     """
 
     unchanged: list[Change]

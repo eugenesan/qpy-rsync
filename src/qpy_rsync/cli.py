@@ -142,7 +142,7 @@ def print_result(profile: SyncProfile, parsed, *, as_json: bool) -> None:
     print(f"Backup:      {profile.backup.directory or 'disabled'}")
     print()
     if not parsed.changes:
-        print("No changed objects.")
+        print("No changed items.")
     else:
         for change in parsed.changes:
             print(f"{change.action.value:18} {change.kind.value:10} {change.path}")

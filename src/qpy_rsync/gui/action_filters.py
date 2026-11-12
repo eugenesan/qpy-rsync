@@ -37,7 +37,7 @@ class ActionFilterBar(QWidget):
             box.setIconSize(QSize(CONTROL_SIZE, CONTROL_SIZE))
             box.setFixedHeight(CONTROL_SIZE + 8)
             box.setToolTip(self._tooltip(action))
-            box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} objects")
+            box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} items")
             box.setChecked(True)
             box.toggled.connect(lambda _checked: self._emit_change())
             layout.addWidget(box)
