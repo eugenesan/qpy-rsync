@@ -266,3 +266,7 @@
 - The overview combines the share bar and its percentage in one column.
 - The comparison trees gain an Items column on each side, reporting all objects below a folder, including nested folders.
 - The auto-expand limit applies per directory again, and every directory above the limit is marked at any depth, not only the top level. Branches without an oversized directory expand natively in one pass.
+
+## milestone 1.15n limited-folder finder
+
+- The comparison controls gained a checkable button, left of Unchanged, that filters the trees to the folders left collapsed by the auto-expand limit and opens their ancestors. Expanding the last marked folder restores the full tree automatically.

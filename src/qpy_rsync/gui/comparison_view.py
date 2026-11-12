@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel, full_path
-from .icons import app_menu_icon, unchanged_icon
+from .icons import app_menu_icon, folder_limited_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
@@ -144,6 +144,13 @@ class ComparisonView(QWidget):
             "Temporarily filter paths shown in the current comparison. "
             "This does not change rsync include or exclude rules."
         )
+        self.limited_button = QToolButton()
+        self.limited_button.setCheckable(True)
+        self.limited_button.setIcon(folder_limited_icon())
+        self.limited_button.setToolTip(
+            "Show only folders left collapsed by the auto-expand limit"
+        )
+        self.limited_button.setAccessibleName("Show limited folders")
         self.inventory_button = QToolButton()
         self.inventory_button.setCheckable(True)
         self.inventory_button.setIcon(unchanged_icon())
@@ -166,6 +173,7 @@ class ComparisonView(QWidget):
         view_layout = QHBoxLayout(self.view_controls)
         view_layout.setContentsMargins(0, 0, 0, 0)
         view_layout.setSpacing(2)
+        view_layout.addWidget(self.limited_button)
         view_layout.addWidget(self.inventory_button)
         view_layout.addWidget(self.expand_button)
         view_layout.addWidget(self.collapse_button)
@@ -189,7 +197,13 @@ class ComparisonView(QWidget):
         self.menu_button.setAccessibleName("Application menu")
         controls.addWidget(self.menu_button)
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
-        for button in (self.inventory_button, self.expand_button, self.collapse_button):
+        self.limited_button.toggled.connect(self._set_limited_only)
+        for button in (
+            self.limited_button,
+            self.inventory_button,
+            self.expand_button,
+            self.collapse_button,
+        ):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
             button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -457,6 +471,8 @@ class ComparisonView(QWidget):
         if path:
             # The user opened a folder that the automatic limit left closed.
             self.model.clear_expand_limited(path)
+            if self.limited_button.isChecked():
+                self._refresh_limited_button(self.model.limited_paths())
         tree.expand(self._column_zero(index))
 
     def _collapse_in(self, tree: QTreeView, index: QModelIndex) -> None:
@@ -723,9 +739,11 @@ class ComparisonView(QWidget):
         maximum = self._expand_limit if limit is None else max(1, int(limit))
         if mode == "none":
             self.model.set_expand_limited_paths(set(), maximum)
+            self._refresh_limited_button(set())
             return
         limited, ancestors = self._limited_paths(maximum)
         self.model.set_expand_limited_paths(limited, maximum)
+        self._refresh_limited_button(limited)
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 if mode == "first":
@@ -737,6 +755,46 @@ class ComparisonView(QWidget):
                         self._expand_branch(
                             tree, self.model.index(row, 0), limited, ancestors
                         )
+
+    def _set_limited_only(self, checked: bool) -> None:
+        paths = self.model.limited_paths()
+        self.proxy.set_limited_only(checked, paths)
+        if checked and paths:
+            self._expand_limited_ancestors(paths)
+
+    def _refresh_limited_button(self, limited: set[str]) -> None:
+        has_limited = bool(limited)
+        self.limited_button.setEnabled(has_limited)
+        if has_limited:
+            self.limited_button.setToolTip(
+                f"Show only the {len(limited)} folder(s) left collapsed by "
+                "the auto-expand limit"
+            )
+            if self.limited_button.isChecked():
+                self.proxy.set_limited_only(True, limited)
+        else:
+            self.limited_button.setToolTip(
+                "No folders are above the auto-expand limit"
+            )
+            if self.limited_button.isChecked():
+                self.limited_button.setChecked(False)
+
+    def _expand_limited_ancestors(self, paths: set[str]) -> None:
+        ancestors: set[str] = set()
+        for path in paths:
+            current = path.rpartition("/")[0]
+            while current:
+                ancestors.add(current)
+                current = current.rpartition("/")[0]
+        with self._frozen_updates(), self._synced_expansion():
+            for path in sorted(ancestors, key=lambda value: value.count("/")):
+                source_index = self.model.index_for_path(path)
+                proxy_index = self.proxy.mapFromSource(source_index)
+                if not proxy_index.isValid():
+                    continue
+                for tree in (self.source, self.action, self.destination):
+                    if not tree.isExpanded(proxy_index):
+                        tree.expand(proxy_index)
 
     def _expand_first_level(self, tree: QTreeView, limited: set[str]) -> None:
         for row in range(self.model.rowCount()):
@@ -805,6 +863,7 @@ class ComparisonView(QWidget):
 
     def expand_all(self) -> None:
         self.model.set_expand_limited_paths(set(), self._expand_limit)
+        self._refresh_limited_button(set())
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.expandAll()

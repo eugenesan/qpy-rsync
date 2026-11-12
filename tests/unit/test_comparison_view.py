@@ -71,6 +71,7 @@ def test_control_buttons_use_consistent_large_icons() -> None:
     application = app()
     view = ComparisonView()
     for button in (
+        view.limited_button,
         view.inventory_button,
         view.expand_button,
         view.collapse_button,
@@ -493,10 +494,24 @@ def test_expand_limit_marks_limited_folders_at_every_depth() -> None:
     assert "limit 2" in tooltip
     assert not view.model.data(big, Qt.ItemDataRole.DecorationRole).isNull()
 
-    # Opening the folder by hand removes its marker.
-    view.source.expand(proxy_big)
+    # The marker button filters the tree down to the marked folder and its
+    # ancestors, and opens the ancestor so the folder is reachable.
+    assert view.limited_button.isEnabled()
+    view.limited_button.setChecked(True)
     application.processEvents()
-    assert "limit 2" not in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
+    assert view.proxy.rowCount() == 1
+    filtered_dir = view.proxy.index(0, 0)
+    assert view.proxy.data(filtered_dir) == "dir"
+    assert view.proxy.rowCount(filtered_dir) == 1
+    assert view.proxy.data(view.proxy.index(0, 0, filtered_dir)) == "big"
+    assert view.source.isExpanded(filtered_dir)
+
+    # Expanding the last marked folder clears the marker and shows the full
+    # tree again.
+    view.source.expand(view.proxy.index(0, 0, filtered_dir))
+    application.processEvents()
+    assert not view.limited_button.isChecked()
+    assert view.proxy.rowCount(filtered_dir) == 2
     view.close()
     application.processEvents()
 

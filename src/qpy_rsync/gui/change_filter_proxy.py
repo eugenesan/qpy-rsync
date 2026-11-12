@@ -25,6 +25,9 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
         self._include_directory_contents = False
         self._visible_actions: set[ChangeAction] | None = None
         self._visible_paths: set[str] = set()
+        self._row_paths: set[str] = set()
+        self._limited_only = False
+        self._limited_paths: set[str] = set()
         self._cache_valid = False
         self._sort_column = 0
         self.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -77,6 +80,18 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
 
     def visible_actions(self) -> set[ChangeAction] | None:
         return None if self._visible_actions is None else set(self._visible_actions)
+
+    def set_limited_only(self, enabled: bool, paths: set[str] | None = None) -> None:
+        """Show only the marked folders and the ancestors that lead to them."""
+        new_paths = set(paths or ()) if enabled else set()
+        if enabled == self._limited_only and new_paths == self._limited_paths:
+            return
+        self._limited_only = enabled
+        self._limited_paths = new_paths
+        self.refresh_filters()
+
+    def limited_only(self) -> bool:
+        return self._limited_only
 
     def refresh_filters(self, *, force: bool = True) -> None:
         """Re-evaluate rows without resetting the model.
@@ -139,10 +154,11 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
             self._rebuild_cache()
         index = model.index(source_row, 0, source_parent)
         node = index.internalPointer()
-        return getattr(node, "path", None) in self._visible_paths
+        return getattr(node, "path", None) in self._row_paths
 
     def _rebuild_cache(self) -> None:
         self._visible_paths = set()
+        self._row_paths = set()
         self._cache_valid = True
         model = self.sourceModel()
         root = getattr(model, "root", None)
@@ -180,6 +196,16 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
 
         for child in getattr(root, "children", ()):
             visit(child, False)
+        if self._limited_only:
+            allowed: set[str] = set()
+            for path in self._limited_paths:
+                current = path.rstrip("/")
+                while current:
+                    allowed.add(current)
+                    current = current.rpartition("/")[0]
+            self._row_paths = allowed
+        else:
+            self._row_paths = set(self._visible_paths)
 
     @staticmethod
     def _action_allowed(
