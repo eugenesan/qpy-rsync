@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -214,7 +215,7 @@ class MainWindow(QMainWindow):
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.sort_changed.connect(self._comparison_sorted)
-        self.comparison.settings_requested.connect(self._edit_settings)
+
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -451,11 +452,9 @@ class MainWindow(QMainWindow):
         backup_layout.addLayout(backup_row)
         layout.addWidget(backup_panel)
 
-        self.plan_summary_label = QLabel()
-        self.plan_summary_label.hide()
-        layout.addWidget(self.plan_summary_label)
         self.setCentralWidget(root)
         self._build_menus()
+        self._build_menu_button()
 
         self.compare_button.clicked.connect(self._compare)
         self.sync_mode.currentIndexChanged.connect(self._sync_mode_changed)
@@ -627,6 +626,21 @@ class MainWindow(QMainWindow):
             mode = "all"
         self._expand_mode = mode
         self.comparison.set_expand_mode(mode)
+
+    def _build_menu_button(self) -> None:
+        """Mirror the menu bar in a button, for desktops without a global menu."""
+        menu = QMenu(self)
+        for menu_action in self.menuBar().actions():
+            submenu = menu_action.menu()
+            if submenu is None:
+                continue
+            mirror = menu.addMenu(submenu.title().replace("&", ""))
+            for item in submenu.actions():
+                if item.isSeparator():
+                    mirror.addSeparator()
+                else:
+                    mirror.addAction(item)
+        self.comparison.menu_button.setMenu(menu)
 
     def _show_about(self) -> None:
         from .about import show_about
@@ -1067,7 +1081,7 @@ class MainWindow(QMainWindow):
         self._validated_plan = None
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verify Actions")
-        self.plan_summary_label.hide()
+        self.overview.set_summary("")
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
@@ -1079,7 +1093,7 @@ class MainWindow(QMainWindow):
     def _refresh_plan_summary(self) -> None:
         if self._active_profile is None:
             self._current_plan = None
-            self.plan_summary_label.setText("")
+            self.overview.set_summary("")
             self.validate_plan_button.setEnabled(False)
             return
         self._current_plan = build_execution_plan(
@@ -1088,19 +1102,17 @@ class MainWindow(QMainWindow):
             self.comparison.model.decisions,
         )
         summary = self._current_plan.summary
-        self.plan_summary_label.setText(
-            "Selected: "
-            f"{summary.included} items, {format_size(summary.total_size)}; "
-            f"{summary.excluded} unchecked, "
-            f"{summary.modified} modified, "
-            f"{summary.retained_destination_only} retained in Destination, "
-            f"{summary.destructive} destructive; "
-            f"create {summary.creates}, update {summary.updates}, "
-            f"metadata {summary.metadata}, replace {summary.replacements}, "
-            f"delete {summary.deletions}; "
+        self.overview.set_summary(
+            f"Selected: {summary.included} items, "
+            f"{format_size(summary.total_size)}\n"
+            f"new {summary.creates}  ·  updated {summary.updates}  ·  "
+            f"metadata {summary.metadata}  ·  replaced {summary.replacements}  ·  "
+            f"deleted {summary.deletions}\n"
+            f"kept {summary.retained_destination_only}  ·  "
+            f"unchecked {summary.excluded}  ·  modified {summary.modified}  ·  "
+            f"destructive {summary.destructive}  ·  "
             f"backup {'on' if summary.backup_enabled else 'off'}"
         )
-        self.plan_summary_label.show()
         self.validate_plan_button.setEnabled(summary.included > 0)
         self.synchronize_button.setEnabled(False)
         self._execution_gate.selection_changed(included=summary.included)
@@ -1360,7 +1372,7 @@ class MainWindow(QMainWindow):
         self._set_busy_controls(False)
         self._validated_plan = None
         self._current_plan = None
-        self.plan_summary_label.hide()
+        self.overview.set_summary("")
         self._set_status(
             f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
             "success",

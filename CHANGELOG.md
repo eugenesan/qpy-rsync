@@ -220,3 +220,10 @@
 - The tree header calls its rows items and the inventory button shows unchanged items.
 - The overview has a Share column header and room for three-digit percentages.
 - Button tooltips name the shortcut of the matching menu action.
+
+## milestone 1.15h follow-up
+
+- The summary of the proposed synchronization moved from the status line into the overview pane.
+- A Menu button mirrors the application menu, for desktops whose global menu does not reach Qt applications.
+- Unchanged items use a checkmark, faded in the trees, so it differs from the active checkboxes and frees the tribar for the menu button.
+- Icons of rows without a checkbox line up with the icons of the selectable rows.

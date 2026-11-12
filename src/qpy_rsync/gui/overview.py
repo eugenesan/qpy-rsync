@@ -65,6 +65,10 @@ class OverviewModel(QAbstractItemModel):
         self.root = OverviewNode("", "")
         self._level_totals: dict[int, int] = {}
 
+    def set_summary(self, text: str) -> None:
+        """Show the summary of the proposed synchronization."""
+        self.summary_label.setText(text)
+
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         self.beginResetModel()
         self.root = OverviewNode("", "")
@@ -276,6 +280,15 @@ class OverviewPane(QWidget):
         self.tree.header().resizeSection(0, 64)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
+
+        self.summary_label = QLabel()
+        self.summary_label.setObjectName("overview-summary")
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.summary_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        layout.addWidget(self.summary_label)
         # The size of a folder is the interesting number, like in FreeFileSync.
         self.tree.sortByColumn(3, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
@@ -286,6 +299,10 @@ class OverviewPane(QWidget):
         node: OverviewNode = index.internalPointer()
         if node.path:
             self.folder_activated.emit(node.path)
+
+    def set_summary(self, text: str) -> None:
+        """Show the summary of the proposed synchronization."""
+        self.summary_label.setText(text)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         header = self.tree.header()

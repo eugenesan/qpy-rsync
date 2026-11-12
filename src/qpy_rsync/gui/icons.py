@@ -313,12 +313,35 @@ def folder_sync_changed_icon() -> QIcon:
 
 @lru_cache(maxsize=None)
 def unchanged_icon() -> QIcon:
-    """Tribar icon for an unchanged item (also the inventory button)."""
-    color = ACTION_COLORS[ChangeAction.NO_CHANGE]
+    """Checkmark for an unchanged item (also the inventory button)."""
+    return _checkmark_icon(ACTION_COLORS[ChangeAction.NO_CHANGE])
+
+
+@lru_cache(maxsize=None)
+def unchanged_faded_icon() -> QIcon:
+    """Faded checkmark, so an unchanged row reads as inactive."""
+    color = QColor(ACTION_COLORS[ChangeAction.NO_CHANGE])
+    color.setAlpha(120)
+    return _checkmark_icon(color)
+
+
+def _checkmark_icon(color: QColor) -> QIcon:
     pixmap, painter = _pixmap()
-    painter.setPen(_pen(color))
-    for y in (5.0, 8.0, 11.0):
-        painter.drawLine(QPointF(4.0, y), QPointF(12.0, y))
+    painter.setPen(_pen(color, 2.0))
+    painter.drawLine(QPointF(4.0, 8.6), QPointF(6.9, 11.4))
+    painter.drawLine(QPointF(6.9, 11.4), QPointF(12.0, 4.8))
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
+def app_menu_icon() -> QIcon:
+    """Hamburger icon of the application menu button."""
+    color = QColor("#94a3b8")
+    pixmap, painter = _pixmap()
+    painter.setPen(_pen(color, 1.8))
+    for y in (4.5, 8.0, 11.5):
+        painter.drawLine(QPointF(3.5, y), QPointF(12.5, y))
     painter.end()
     return QIcon(pixmap)
 

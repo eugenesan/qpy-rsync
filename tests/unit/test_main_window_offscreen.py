@@ -53,7 +53,7 @@ def test_startup_hides_selected_actions() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    assert not window.plan_summary_label.isVisible()
+    assert window.overview.summary_label.text() == ""
     assert "Choose Source and Destination" in window.status_edit.text()
     window.close()
     application.processEvents()

@@ -4,8 +4,10 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStyle,
+    QStyleOptionViewItem,
     QStyledItemDelegate,
     QToolButton,
     QTreeView,
@@ -25,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel, full_path
-from .icons import settings_icon, unchanged_icon
+from .icons import app_menu_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
@@ -50,6 +53,35 @@ class UniformRowDelegate(QStyledItemDelegate):
         return QSize(width, ROW_HEIGHT)
 
 
+class ActionColumnDelegate(UniformRowDelegate):
+    """Align the icon of a row without a checkbox with the other icons.
+
+    Rows that cannot be selected carry no check indicator, so the style
+    draws their icon where the checkbox of the other rows sits. Painting
+    the background first and shifting the content keeps the icons in one
+    column.
+    """
+
+    def paint(self, painter: object, option: object, index: QModelIndex) -> None:
+        if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
+            super().paint(painter, option, index)  # type: ignore[arg-type]
+            return
+        styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+        styled.text = ""
+        styled.icon = QIcon()
+        widget = styled.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawPrimitive(
+            QStyle.PrimitiveElement.PE_PanelItemViewItem, styled, painter, widget
+        )
+        shifted = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+        offset = (
+            style.pixelMetric(QStyle.PixelMetric.PM_IndicatorWidth, None, widget) + 4
+        )
+        shifted.rect = shifted.rect.adjusted(offset, 0, 0, 0)
+        super().paint(painter, shifted, index)  # type: ignore[arg-type]
+
+
 class ComparisonView(QWidget):
     """Synchronized source/action/destination tree panes."""
 
@@ -58,7 +90,7 @@ class ComparisonView(QWidget):
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
     sort_changed = Signal(int, object)
-    settings_requested = Signal()
+
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,6 +107,7 @@ class ComparisonView(QWidget):
         self.proxy.setSourceModel(self.model)
         self.source = self._tree("Source")
         self.action = self._tree("Action")
+        self.action.setItemDelegate(ActionColumnDelegate(self.action))
         self.destination = self._tree("Destination")
         # The panes scroll together, so only the last one needs a scroll bar.
         # The others use the full width for the file names.
@@ -144,14 +177,16 @@ class ComparisonView(QWidget):
         self.filter_button.clicked.connect(self.focus_path_filter)
         controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
-        self.settings_button = QToolButton()
-        self.settings_button.setIcon(settings_icon())
-        self.settings_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.settings_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-        self.settings_button.setToolTip("Settings (Ctrl+,)")
-        self.settings_button.setAccessibleName("Settings")
-        self.settings_button.clicked.connect(self.settings_requested.emit)
-        controls.addWidget(self.settings_button)
+        self.menu_button = QToolButton()
+        self.menu_button.setIcon(app_menu_icon())
+        self.menu_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.menu_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.menu_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self.menu_button.setToolTip("Application menu")
+        self.menu_button.setAccessibleName("Application menu")
+        controls.addWidget(self.menu_button)
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)

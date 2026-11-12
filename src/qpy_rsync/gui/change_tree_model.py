@@ -23,6 +23,7 @@ from .icons import (
     folder_icon,
     folder_sync_changed_icon,
     folder_sync_icon,
+    unchanged_faded_icon,
     unchanged_icon,
 )
 
@@ -545,8 +546,9 @@ class ChangeTreeModel(QAbstractItemModel):
                 return folder_sync_icon()
             return action_icon(action, accent=overridden)
         if action is ChangeAction.NO_CHANGE:
-            # An unchanged item carries the tribar, not the equals of a folder.
-            return unchanged_icon()
+            # An unchanged item carries a faded checkmark, not the equals of
+            # a folder.
+            return unchanged_faded_icon()
         return action_icon(action, accent=overridden)
 
     @staticmethod
