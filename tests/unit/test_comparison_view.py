@@ -421,3 +421,39 @@ def test_folder_size_grows_with_the_unchanged_objects() -> None:
     assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE)) == "3.9 KiB"
     view.close()
     application.processEvents()
+
+
+def test_all_folders_are_expanded_after_a_comparison() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_changes(
+        [
+            Change("a/b/c/deep.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("a/b/other.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        ]
+    )
+    application.processEvents()
+
+    def collapsed_paths(parent=None, depth=0, out=None):
+        from PySide6.QtCore import QModelIndex
+
+        if out is None:
+            out = []
+        if parent is None:
+            parent = QModelIndex()
+        for row in range(view.proxy.rowCount(parent)):
+            index = view.proxy.index(row, 0, parent)
+            source = view.proxy.mapToSource(index)
+            node = source.internalPointer()
+            if view.proxy.rowCount(index):
+                if not view.source.isExpanded(index):
+                    out.append(node.path)
+                collapsed_paths(index, depth + 1, out)
+        return out
+
+    # Every folder is open, so a comparison never starts half collapsed.
+    assert collapsed_paths() == []
+    view.close()
+    application.processEvents()

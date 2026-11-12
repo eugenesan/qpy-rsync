@@ -623,17 +623,17 @@ class ComparisonView(QWidget):
                 children.reverse()
                 stack.extend(children)
 
-    def expand_initial(self, limit: int = 200) -> None:
-        """Expand the first level only; large trees stay responsive."""
+    def expand_initial(self, limit: int = 20000) -> None:
+        """Expand every folder, so a comparison never starts half collapsed.
+
+        Very large comparisons stay collapsed: expanding ten thousand rows
+        once is fast, but the view would no longer be overviewable.
+        """
+        if len(self.model.changes) > limit:
+            return
         with self._frozen_updates(), self._synced_expansion():
-            for row in range(min(self.proxy.rowCount(), limit)):
-                index = self.proxy.index(row, 0)
-                if not index.isValid() or not self.proxy.rowCount(index):
-                    # Expanding a leaf still triggers a full layout of the
-                    # tree, which is far too expensive for large comparisons.
-                    continue
-                for tree in (self.source, self.action, self.destination):
-                    tree.expand(index)
+            for tree in (self.source, self.action, self.destination):
+                tree.expandAll()
 
     def expand_all(self) -> None:
         with self._frozen_updates(), self._synced_expansion():
