@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPalette
+from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
@@ -60,6 +60,14 @@ class OverviewModel(QAbstractItemModel):
     """
 
     ShareRole = Qt.ItemDataRole.UserRole + 20
+
+    FOLDER = 0
+    SHARE = 1
+    PERCENT = 2
+    ITEMS = 3
+    SIZE = 4
+    COLUMN_COUNT = 5
+    HEADERS = ("Folder", "Share", "%", "Items", "Size")
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -159,11 +167,11 @@ class OverviewModel(QAbstractItemModel):
         return len(node.children)
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: ARG002, B008, N802
-        return 4
+        return self.COLUMN_COUNT
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> object:  # noqa: N802
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return ("Share", "Folder", "Items", "Size")[section]
+            return self.HEADERS[section]
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
@@ -171,11 +179,15 @@ class OverviewModel(QAbstractItemModel):
             return None
         node: OverviewNode = index.internalPointer()
         if role == Qt.ItemDataRole.DisplayRole:
-            if index.column() == 0:
-                return self._percentage(index)
-            if index.column() == 1:
+            if index.column() == self.FOLDER:
                 return node.name
-            if index.column() == 2:
+            if index.column() == self.SHARE:
+                # The bar delegate paints the share; the text has its own
+                # column so deep folder indentation cannot cut it off.
+                return ""
+            if index.column() == self.PERCENT:
+                return self._percentage(index)
+            if index.column() == self.ITEMS:
                 return str(node.total_count)
             return format_size(node.total_size)
         if role == self.ShareRole:
@@ -214,7 +226,9 @@ class OverviewModel(QAbstractItemModel):
         self.layoutChanged.emit()
 
     def _sort(self, node: OverviewNode, column: int, order: Qt.SortOrder) -> None:
-        if column == 2:
+        if column == self.FOLDER:
+            key = lambda child: child.name.casefold()  # noqa: E731
+        elif column == self.ITEMS:
             key = lambda child: child.total_count  # noqa: E731
         else:
             key = lambda child: child.total_size  # noqa: E731
@@ -224,7 +238,7 @@ class OverviewModel(QAbstractItemModel):
 
 
 class OverviewBarDelegate(QStyledItemDelegate):
-    """Draw the share of a folder as a bar with the percentage on top."""
+    """Draw the share of a folder as a bar without text."""
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         styled = QStyleOptionViewItem(option)
@@ -235,8 +249,7 @@ class OverviewBarDelegate(QStyledItemDelegate):
             QStyle.PrimitiveElement.PE_PanelItemViewItem, styled, painter, widget
         )
         share = index.data(OverviewModel.ShareRole)
-        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
-        if share is None or not text:
+        if share is None:
             return
         painter.save()
         painter.setClipRect(option.rect)
@@ -246,12 +259,6 @@ class OverviewBarDelegate(QStyledItemDelegate):
         width = int(option.rect.width() * float(share))
         painter.fillRect(
             option.rect.left(), option.rect.top(), width, option.rect.height(), bar
-        )
-        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
-        painter.drawText(
-            option.rect,
-            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            text,
         )
         painter.restore()
 
@@ -281,19 +288,26 @@ class OverviewPane(QWidget):
         self.tree.setHeaderHidden(False)
         self.tree.setSortingEnabled(True)
         self.tree.setIndentation(12)
-        self.tree.setItemDelegateForColumn(0, OverviewBarDelegate(self.tree))
+        self.tree.setItemDelegateForColumn(
+            OverviewModel.SHARE, OverviewBarDelegate(self.tree)
+        )
         self.tree.header().setSortIndicatorShown(True)
         self.tree.header().setSectionsClickable(True)
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.header().resizeSection(0, 64)
+        self.tree.header().setStretchLastSection(False)
+        for section in range(OverviewModel.COLUMN_COUNT):
+            self.tree.header().setSectionResizeMode(
+                section, QHeaderView.ResizeMode.Interactive
+            )
+        self.tree.header().resizeSection(OverviewModel.FOLDER, 200)
+        self.tree.header().resizeSection(OverviewModel.SHARE, 72)
+        self.tree.header().resizeSection(OverviewModel.PERCENT, 44)
+        self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
+        self.tree.header().resizeSection(OverviewModel.SIZE, 84)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
 
         # The size of a folder is the interesting number, like in FreeFileSync.
-        self.tree.sortByColumn(3, Qt.SortOrder.DescendingOrder)
+        self.tree.sortByColumn(OverviewModel.SIZE, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
 
     def _folder_activated(self, index: QModelIndex) -> None:
@@ -308,7 +322,7 @@ class OverviewPane(QWidget):
         column = header.sortIndicatorSection()
         order = header.sortIndicatorOrder()
         if column < 0:
-            column = 3
+            column = OverviewModel.SIZE
             order = Qt.SortOrder.DescendingOrder
         self.model.set_changes(changes, root_name)
         self.tree.sortByColumn(column, order)

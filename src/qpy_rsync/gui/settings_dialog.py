@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -25,10 +26,11 @@ class SettingsDialog(QDialog):
         parent: QWidget | None = None,
         *,
         expand_mode: str = "all",
+        expand_limit: int = 256,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.resize(460, 200)
+        self.resize(480, 250)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -43,9 +45,20 @@ class SettingsDialog(QDialog):
         )
         form.addRow("After a comparison", self.expand_combo)
 
+        self.limit_spin = QSpinBox()
+        self.limit_spin.setRange(1, 1_000_000)
+        self.limit_spin.setValue(max(1, int(expand_limit)))
+        self.limit_spin.setSuffix(" items")
+        self.limit_spin.setToolTip(
+            "A folder with more direct items than this stays collapsed after "
+            "a comparison. The tree marks it, and you can open it manually."
+        )
+        form.addRow("Auto-expand folders up to", self.limit_spin)
+
         hint = QLabel(
-            "Collapsed folders keep a marker in the Actions column when they "
-            "contain changed items, and their tooltip reports the count."
+            "Folders left collapsed by the limit carry an amber marker; their "
+            "tooltip explains why. Collapsed folders with changes keep a "
+            "marker in the Actions column as well."
         )
         hint.setWordWrap(True)
         form.addRow("", hint)
@@ -60,3 +73,6 @@ class SettingsDialog(QDialog):
 
     def expand_mode(self) -> str:
         return str(self.expand_combo.currentData())
+
+    def expand_limit(self) -> int:
+        return int(self.limit_spin.value())

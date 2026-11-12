@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QProcess, QSize, QTimer, Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QCheckBox,
     QComboBox,
@@ -149,6 +150,7 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_spec = self._log_spec
         self._plan_validation.on_transient = self._append_transient_log
         self._inventory_service = InventoryService(self)
+        self._inventory_service.progress.connect(self._inventory_progress)
         self._inventory_service.finished.connect(self._inventory_finished)
         self._inventory_service.failed.connect(self._inventory_failed)
         self._inventory_token = 0
@@ -166,6 +168,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
         self._expand_mode = "all"
+        self._expand_limit = 256
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
@@ -612,18 +615,29 @@ class MainWindow(QMainWindow):
     def _edit_settings(self) -> None:
         from .settings_dialog import SettingsDialog
 
-        dialog = SettingsDialog(self, expand_mode=self._expand_mode)
+        dialog = SettingsDialog(
+            self,
+            expand_mode=self._expand_mode,
+            expand_limit=self._expand_limit,
+        )
         if not dialog.exec():
             return
         mode = dialog.expand_mode()
-        if mode == self._expand_mode:
+        limit = dialog.expand_limit()
+        if mode == self._expand_mode and limit == self._expand_limit:
             return
         self._expand_mode = mode
+        self._expand_limit = limit
         settings = app_settings()
         settings.setValue("view/expand-after-compare", mode)
+        settings.setValue("view/expand-limit", limit)
         settings.sync()
         self.comparison.set_expand_mode(mode)
-        self._append_log(f"Settings: folders after a comparison = {mode}")
+        self.comparison.set_expand_limit(limit)
+        self._append_log(
+            "Settings: folders after a comparison = "
+            f"{mode}; auto-expand limit = {limit} items"
+        )
         if self.comparison.model.changes:
             self.comparison.expand_initial()
 
@@ -632,8 +646,15 @@ class MainWindow(QMainWindow):
         mode = str(settings.value("view/expand-after-compare", "all")).strip()
         if mode not in {"all", "first", "none"}:
             mode = "all"
+        try:
+            limit = int(settings.value("view/expand-limit", 256))
+        except (TypeError, ValueError):
+            limit = 256
+        limit = max(1, min(limit, 1_000_000))
         self._expand_mode = mode
+        self._expand_limit = limit
         self.comparison.set_expand_mode(mode)
+        self.comparison.set_expand_limit(limit)
 
     def _build_menu_button(self) -> None:
         """Mirror the menu bar in a button, for desktops without a global menu."""
@@ -1615,16 +1636,16 @@ class MainWindow(QMainWindow):
             self._inventory_service.cancel()
             self._inventory_token = 0
             self._inventory_pending_key = None
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.progress_label.setText("Unchanged items hidden")
             self.comparison.set_changes(changed)
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
-            self.comparison.set_changes(
-                changed + list(self._inventory_cache), preserve_expansion=True
-            )
-            self.progress_label.setText(
-                f"Showing {len(self._inventory_cache)} unchanged item(s); "
-                "expand folders to view nested items."
+            self._populate_unchanged(
+                changed + list(self._inventory_cache),
+                len(self._inventory_cache),
             )
             return
         if self._inventory_pending_key == key and self._inventory_token:
@@ -1635,14 +1656,44 @@ class MainWindow(QMainWindow):
         self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
 
+    def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
+        """Rebuild the trees and report that the big list is on its way."""
+        self.progress_label.setText(
+            f"Adding {unchanged:,} unchanged item(s) to the comparison..."
+        )
+        self.progress_label.repaint()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.comparison.set_changes(changes, preserve_expansion=True)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.progress_label.setText(
+            f"Showing {unchanged:,} unchanged item(s); "
+            "expand folders to view nested items."
+        )
+
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
         self._inventory_pending_key = key
         self.progress_label.setText("Gathering unchanged items...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)
         self._append_log("STATE inventory-started")
         self._inventory_token = self._inventory_service.gather(
             deepcopy(self._active_profile), changed
         )
+
+    def _inventory_progress(self, token: int, phase: str, count: int) -> None:
+        if self._closing or token != self._inventory_token:
+            return
+        if phase == "Matching":
+            self.progress_label.setText("Matching unchanged items...")
+        else:
+            self.progress_label.setText(
+                f"Gathering unchanged items ({phase}): {count:,} objects..."
+            )
 
     @staticmethod
     def _inventory_key(profile: SyncProfile, changed: list[object]) -> object:
@@ -1670,9 +1721,12 @@ class MainWindow(QMainWindow):
         # show its size and date.
         self.comparison.set_destination_metadata(result.destination_metadata)
         if self.show_unchanged.isChecked():
-            self.comparison.set_changes(
-                changed + list(result.unchanged), preserve_expansion=True
+            self._populate_unchanged(
+                changed + list(result.unchanged), len(result.unchanged)
             )
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(100)
         self.progress_label.setText(
             f"Inventory complete: {len(result.unchanged)} unchanged item(s); "
             "expand folders to view nested items."
@@ -1688,6 +1742,9 @@ class MainWindow(QMainWindow):
             return
         self._inventory_token = 0
         self._inventory_pending_key = None
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Inventory gathering failed")
         self._append_log(f"Inventory gathering failed: {message}")
         if self.show_unchanged.isChecked():
             self._set_status(
@@ -1884,6 +1941,15 @@ class MainWindow(QMainWindow):
         settings = app_settings()
         settings.setValue("comparison/inventory-after-compare", bool(checked))
         settings.sync()
+        if (
+            checked
+            and self._active_profile is not None
+            and self.comparison.model.changes
+            and not self.comparison.model.stale
+        ):
+            # Turning the toggle on for an existing comparison starts the
+            # inventory that would otherwise have run after the comparison.
+            self._apply_inventory_after_compare()
 
     def _shutdown_operations(self) -> None:
         """Stop every running operation before the window is destroyed."""

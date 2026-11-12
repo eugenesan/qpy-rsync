@@ -68,3 +68,25 @@ def test_inventory_service_returns_increasing_tokens() -> None:
     service.cancel()
     assert second > first
     QThreadPool.globalInstance().waitForDone(5000)
+
+
+def test_inventory_service_reports_listing_progress() -> None:
+    application = app()
+    reports: list[tuple[str, int]] = []
+
+    def gather(_profile: SyncProfile, _changed: list[Change], progress) -> list[Change]:
+        progress("Source", 500)
+        progress("Destination", 750)
+        return []
+
+    service = InventoryService(gather=gather)
+    service.progress.connect(lambda _token, phase, count: reports.append((phase, count)))
+    loop = QEventLoop()
+    service.finished.connect(lambda *_: loop.quit())
+    QTimer.singleShot(5000, loop.quit)
+    service.gather(profile(), [])
+    loop.exec()
+    QThreadPool.globalInstance().waitForDone(5000)
+    application.processEvents()
+    assert ("Source", 500) in reports
+    assert ("Destination", 750) in reports

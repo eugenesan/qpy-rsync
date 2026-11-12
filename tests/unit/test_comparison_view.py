@@ -457,3 +457,52 @@ def test_all_folders_are_expanded_after_a_comparison() -> None:
     assert collapsed_paths() == []
     view.close()
     application.processEvents()
+
+
+def test_expand_limit_marks_large_folders_and_keeps_them_collapsed() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_expand_mode("all")
+    view.set_expand_limit(2)
+    view.set_changes(
+        [
+            Change("dir/big/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/big/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/big/c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/small/x.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        ]
+    )
+    application.processEvents()
+
+    directory = view.model.index(0, 0)
+    big = view.model.index(0, 0, directory)
+    assert big.internalPointer().name == "big"
+    assert "limit 2" in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
+    assert not view.model.data(big, Qt.ItemDataRole.DecorationRole).isNull()
+    proxy_dir = view.proxy.mapFromSource(directory)
+    proxy_big = view.proxy.mapFromSource(big)
+    assert view.source.isExpanded(proxy_dir)
+    assert not view.source.isExpanded(proxy_big)
+
+    # Opening the folder by hand removes the warning marker.
+    view.source.expand(proxy_big)
+    application.processEvents()
+    assert "limit 2" not in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
+    view.close()
+    application.processEvents()
+
+
+def test_tree_headers_are_resizable() -> None:
+    application = app()
+    view = ComparisonView()
+    for tree in (view.source, view.destination):
+        header = tree.header()
+        for section in range(header.count()):
+            assert (
+                header.sectionResizeMode(section)
+                == header.ResizeMode.Interactive
+            )
+    view.close()
+    application.processEvents()

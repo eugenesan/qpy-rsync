@@ -100,6 +100,7 @@ class ComparisonView(QWidget):
         self._update_freeze = 0
         self._syncing_expansion = False
         self._expand_mode = "all"
+        self._expand_limit = 256
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
@@ -394,21 +395,28 @@ class ComparisonView(QWidget):
         self.destination.setTreePosition(self.model.DESTINATION_NAME)
         self.action.setRootIsDecorated(False)
         self.action.setIndentation(0)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.ResizeToContents)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.ResizeToContents)
+        self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
+        self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
+        self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
+        self.source.header().resizeSection(self.model.SOURCE_NAME, 260)
+        self.source.header().resizeSection(self.model.SOURCE_SIZE, 90)
+        self.source.header().resizeSection(self.model.SOURCE_TIME, 150)
         self.action.header().setSectionResizeMode(
-            self.model.ACTION, QHeaderView.ResizeMode.Stretch
+            self.model.ACTION, QHeaderView.ResizeMode.Interactive
+        )
+        self.action.header().resizeSection(self.model.ACTION, ACTION_PANE_WIDTH)
+        self.destination.header().setSectionResizeMode(
+            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Interactive
         )
         self.destination.header().setSectionResizeMode(
-            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch
+            self.model.DESTINATION_SIZE, QHeaderView.ResizeMode.Interactive
         )
         self.destination.header().setSectionResizeMode(
-            self.model.DESTINATION_SIZE, QHeaderView.ResizeMode.ResizeToContents
+            self.model.DESTINATION_TIME, QHeaderView.ResizeMode.Interactive
         )
-        self.destination.header().setSectionResizeMode(
-            self.model.DESTINATION_TIME, QHeaderView.ResizeMode.ResizeToContents
-        )
+        self.destination.header().resizeSection(self.model.DESTINATION_NAME, 260)
+        self.destination.header().resizeSection(self.model.DESTINATION_SIZE, 90)
+        self.destination.header().resizeSection(self.model.DESTINATION_TIME, 150)
 
     def _synchronize(self) -> None:
         trees = (self.source, self.action, self.destination)
@@ -429,6 +437,10 @@ class ComparisonView(QWidget):
             # Programmatic expansion updates every pane at once. Mirroring it
             # row by row would relayout each tree once per row.
             return
+        path = self._source_path_for_proxy_index(index)
+        if path:
+            # The user opened a folder that the automatic limit left closed.
+            self.model.clear_expand_limited(path)
         tree.expand(self._column_zero(index))
 
     def _collapse_in(self, tree: QTreeView, index: QModelIndex) -> None:
@@ -599,6 +611,7 @@ class ComparisonView(QWidget):
                     self.proxy.index(row, 0, index)
                     for row in range(self.proxy.rowCount(index))
                 )
+        self.model.clear_expand_limited(paths)
 
     def _sync_visible_sizes(self) -> None:
         """Let the folder sizes follow the rows that the filters show."""
@@ -678,26 +691,57 @@ class ComparisonView(QWidget):
         """Choose how the folders are opened after a comparison."""
         self._expand_mode = mode
 
-    def expand_initial(self, limit: int = 20000) -> None:
+    def set_expand_limit(self, limit: int) -> None:
+        """Limit how many items a folder may hold to open automatically."""
+        self._expand_limit = max(1, int(limit))
+
+    def expand_initial(self, limit: int | None = None) -> None:
         """Open the folders the way the settings ask for.
 
-        Very large comparisons stay collapsed: expanding ten thousand rows
-        once is fast, but the view would no longer be overviewable.
+        A folder with more direct items than the configured limit stays
+        collapsed and carries a marker, so a huge comparison cannot freeze
+        the view by expanding everything at once.
         """
         mode = self._expand_mode
-        if mode == "none" or len(self.model.changes) > limit:
+        maximum = self._expand_limit if limit is None else max(1, int(limit))
+        if mode == "none":
+            self.model.set_expand_limited_paths(set(), maximum)
             return
+        limited: set[str] = set()
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
-                if mode == "first":
-                    for row in range(tree.model().rowCount()):
-                        index = tree.model().index(row, 0)
-                        if tree.model().rowCount(index):
-                            tree.expand(index)
-                else:
-                    tree.expandAll()
+                for row in range(self.model.rowCount()):
+                    self._expand_auto(
+                        tree, self.model.index(row, 0), limited, maximum, 0
+                    )
+        self.model.set_expand_limited_paths(limited, maximum)
+
+    def _expand_auto(
+        self,
+        tree: QTreeView,
+        source_index: QModelIndex,
+        limited: set[str],
+        maximum: int,
+        depth: int,
+    ) -> None:
+        """Expand one folder if its direct item count is within the limit."""
+        node = source_index.internalPointer()
+        if node is None or not node.children:
+            return
+        if self._expand_mode == "first" and depth >= 1:
+            return
+        if len(node.children) > maximum:
+            limited.add(node.path)
+            return
+        proxy_index = self.proxy.mapFromSource(source_index)
+        if proxy_index.isValid():
+            tree.expand(proxy_index)
+        for row in range(self.model.rowCount(source_index)):
+            child = self.model.index(row, 0, source_index)
+            self._expand_auto(tree, child, limited, maximum, depth + 1)
 
     def expand_all(self) -> None:
+        self.model.set_expand_limited_paths(set(), self._expand_limit)
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.expandAll()

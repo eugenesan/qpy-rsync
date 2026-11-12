@@ -301,6 +301,18 @@ def folder_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def folder_limited_icon() -> QIcon:
+    """Folder icon with a marker for a folder left collapsed by the limit."""
+    pixmap, painter = _pixmap()
+    _draw_folder(painter, QColor("#94a3b8"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#f59e0b")))
+    painter.drawEllipse(QPointF(12.0, 12.0), 3.0, 3.0)
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
 def folder_sync_icon() -> QIcon:
     """Faded equals icon for a folder that exists on both sides."""
     color = QColor("#94a3b8")

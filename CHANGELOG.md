@@ -236,3 +236,12 @@
 - Help -> How-To (F1) opens a scrollable explanation of the workflow, the actions and the verification step; About no longer takes a shortcut.
 - The Synchronize tooltip explains the confirmation dialog and the dependency on Verify Actions.
 - The synchronization dialog no longer requires an extra acknowledgement checkbox; the reviewed dialog itself is the confirmation. Its fingerprint moved into the header, the explanatory paragraph is bold text instead of a text box, and the statistics are a two-column table.
+
+## milestone 1.15i overview and large comparisons
+
+- The overview tree separates the share bar, the percentage, the folder hierarchy, the item count and the size into their own columns, so deep indentation cannot cut a percentage. Overview and comparison headers are resizable.
+- Turning Inventory on for an existing comparison starts the inventory immediately.
+- Inventory reports the number of objects listed for the Source, the Destination and the matching phase; the progress bar runs while it works and the journal reports the result.
+- Adding a large unchanged set shows a wait cursor and a population message instead of appearing frozen.
+- Unchanged-item tooltips no longer end with the raw `=:` itemized code.
+- Settings gained an auto-expand limit (default 256 items per folder). Folders above the limit stay collapsed with an amber marker and a tooltip explaining why; opening one by hand clears the marker.

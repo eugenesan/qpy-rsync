@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Callable, Iterable
 
 from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
@@ -35,7 +35,9 @@ def _parse_time(date: str, time: str) -> str:
 
 
 def inventory_paths(
-    endpoint: Endpoint, profile: SyncProfile | None = None
+    endpoint: Endpoint,
+    profile: SyncProfile | None = None,
+    progress: Callable[[int], None] | None = None,
 ) -> dict[str, InventoryEntry]:
     operand = endpoint.rsync_operand()
     if not operand.endswith("/"):
@@ -48,15 +50,17 @@ def inventory_paths(
         command = spec.argv()
         environment = os.environ.copy()
         environment.update(spec.environment)
-    result = subprocess.run(
+    process = subprocess.Popen(
         command,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         text=True,
-        check=False,
         env=environment,
     )
     paths: dict[str, InventoryEntry] = {}
-    for line in result.stdout.splitlines():
+    assert process.stdout is not None
+    for line in process.stdout:
+        line = line.rstrip("\r\n")
         if not line.strip():
             continue
         if line.startswith("sending incremental file list"):
@@ -76,6 +80,11 @@ def inventory_paths(
             size=_parse_size(size_text),
             modified_time=_parse_time(date, time),
         )
+        if progress is not None and len(paths) % 500 == 0:
+            progress(len(paths))
+    process.wait()
+    if progress is not None:
+        progress(len(paths))
     return paths
 
 
@@ -92,7 +101,11 @@ class InventoryResult:
     destination_metadata: dict[str, tuple[int | None, str | None]]
 
 
-def gather_inventory(profile, changed: Iterable[Change]) -> InventoryResult:
+def gather_inventory(
+    profile,
+    changed: Iterable[Change],
+    progress: Callable[[str, int], None] | None = None,
+) -> InventoryResult:
     """List both trees and report the unchanged objects and the metadata."""
     changed_paths = {change.path.rstrip("/") for change in changed}
     ancestor_paths = set()
@@ -100,8 +113,18 @@ def gather_inventory(profile, changed: Iterable[Change]) -> InventoryResult:
         parts = changed_path.split("/")
         for index in range(1, len(parts)):
             ancestor_paths.add("/".join(parts[:index]))
-    source_paths = inventory_paths(profile.source, profile)
-    destination_paths = inventory_paths(profile.destination, profile)
+    source_progress = (
+        (lambda count: progress("Source", count)) if progress is not None else None
+    )
+    destination_progress = (
+        (lambda count: progress("Destination", count))
+        if progress is not None
+        else None
+    )
+    source_paths = inventory_paths(profile.source, profile, source_progress)
+    destination_paths = inventory_paths(profile.destination, profile, destination_progress)
+    if progress is not None:
+        progress("Matching", 0)
     unchanged: list[Change] = []
     for path in sorted(source_paths.keys() & destination_paths.keys()):
         if path in changed_paths or path in ancestor_paths:

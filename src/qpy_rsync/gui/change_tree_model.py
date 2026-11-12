@@ -21,6 +21,7 @@ from .icons import (
     action_icon,
     file_type_icon,
     folder_icon,
+    folder_limited_icon,
     folder_sync_changed_icon,
     folder_sync_icon,
     unchanged_faded_icon,
@@ -93,12 +94,16 @@ class ChangeTreeModel(QAbstractItemModel):
         self._sort_column = self.SOURCE_NAME
         self._sort_order = Qt.SortOrder.AscendingOrder
         self._override_paths: set[str] = set()
+        self._expand_limited_paths: set[str] = set()
+        self.expand_limit = 256
+        self._nodes: dict[str, TreeNode] = {}
 
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(self.changes)
         self.root = TreeNode("", "")
+        self._expand_limited_paths = set()
         nodes: dict[str, TreeNode] = {"": self.root}
         for change in sorted(changes, key=lambda item: (item.path.count("/"), item.path)):
             clean_path = change.path.rstrip("/")
@@ -114,6 +119,7 @@ class ChangeTreeModel(QAbstractItemModel):
                     nodes[current_path] = node
                 parent = node
             parent.change = change
+        self._nodes = nodes
         self._compute_subtree_flags(self.root)
         self._compute_sizes(self.root)
         self._compute_changed(self.root)
@@ -122,6 +128,39 @@ class ChangeTreeModel(QAbstractItemModel):
         self._override_paths = self.decisions.override_paths(self.changes)
         self.endResetModel()
         self._refresh_action_header()
+
+    def set_expand_limited_paths(self, paths: set[str], limit: int) -> None:
+        """Remember the folders that were left collapsed by the auto limit."""
+        new_paths = {path for path in paths if path}
+        new_limit = max(1, int(limit))
+        changed = self._expand_limited_paths ^ new_paths
+        if not changed and new_limit == self.expand_limit:
+            return
+        self._expand_limited_paths = new_paths
+        self.expand_limit = new_limit
+        for path in changed:
+            self._notify_node_changed(path)
+
+    def clear_expand_limited(self, paths: str | set[str] | list[str]) -> None:
+        """Remove the limit marker from folders the user opened manually."""
+        values = {paths} if isinstance(paths, str) else set(paths)
+        removed = self._expand_limited_paths & values
+        if not removed:
+            return
+        self._expand_limited_paths -= removed
+        for path in removed:
+            self._notify_node_changed(path)
+
+    def _notify_node_changed(self, path: str) -> None:
+        node = self._nodes.get(path)
+        if node is None or not node.children:
+            return
+        index = self.createIndex(node.row_index, self.SOURCE_NAME, node)
+        self.dataChanged.emit(
+            index,
+            index.siblingAtColumn(self.DESTINATION_NAME),
+            [Qt.ItemDataRole.DecorationRole, Qt.ItemDataRole.ToolTipRole],
+        )
 
     def _compute_changed(self, node: TreeNode) -> int:
         """Count the changed items below a folder."""
@@ -453,6 +492,13 @@ class ChangeTreeModel(QAbstractItemModel):
             self.DESTINATION_SIZE,
             self.DESTINATION_TIME,
         }
+        limited_note = ""
+        if node.path in self._expand_limited_paths and node.children:
+            limited_note = (
+                f"\n\nLeft collapsed automatically: this folder has "
+                f"{len(node.children)} items (limit {self.expand_limit}).\n"
+                "Expand it manually or raise the limit in Settings."
+            )
         if column == self.ACTION:
             if change is None:
                 extra = (
@@ -460,21 +506,32 @@ class ChangeTreeModel(QAbstractItemModel):
                     if node.children and node.subtree_changed
                     else ""
                 )
-                return f"Source: {source_full}\nDestination: {destination_full}{extra}"
+                return (
+                    f"Source: {source_full}\nDestination: {destination_full}"
+                    f"{extra}{limited_note}"
+                )
             label = ACTION_LABELS.get(self.effective_action(node), "")
-            details = (
-                f"{label}\n{change.itemized_code}: {change.reason}"
-                if label
-                else f"{change.itemized_code}: {change.reason}"
-            )
+            if change.action is ChangeAction.NO_CHANGE:
+                # An unchanged row has nothing to explain beyond its label;
+                # the raw itemized code would only add a stray separator.
+                details = label
+            else:
+                detail_line = ": ".join(
+                    part for part in (change.itemized_code, change.reason) if part
+                )
+                details = (
+                    f"{label}\n{detail_line}"
+                    if label and detail_line
+                    else (label or detail_line)
+                )
             return (
                 f"Source: {source_full}\n"
                 f"Destination: {destination_full}\n"
-                f"{details}"
+                f"{details}{limited_note}"
             )
         if destination_column:
-            return destination_full
-        return source_full
+            return destination_full + limited_note
+        return source_full + limited_note
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         flags = super().flags(index)
@@ -551,12 +608,13 @@ class ChangeTreeModel(QAbstractItemModel):
             return unchanged_faded_icon()
         return action_icon(action, accent=overridden)
 
-    @staticmethod
-    def _item_icon(node: TreeNode) -> Any:
+    def _item_icon(self, node: TreeNode) -> Any:
         """Icon of the name columns: a folder or the type of the file."""
         if node.children or (
             node.change is not None and node.change.kind is ObjectKind.DIRECTORY
         ):
+            if node.path in self._expand_limited_paths:
+                return folder_limited_icon()
             return folder_icon()
         if node.change is not None and node.change.kind is ObjectKind.SYMLINK:
             return file_type_icon("link")

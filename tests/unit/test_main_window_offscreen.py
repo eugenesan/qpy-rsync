@@ -678,3 +678,45 @@ def test_help_menu_and_synchronize_tooltip() -> None:
     assert "Shortcut: F9" in tooltip
     window.close()
     application.processEvents()
+
+
+def test_turning_inventory_on_runs_it_for_the_current_comparison() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+    window._last_changed_changes = [change]
+    window.comparison.set_changes([change])
+    window.comparison.set_stale(False)
+
+    gathered: list[tuple[object, list[object]]] = []
+
+    class FakeInventory:
+        def gather(self, profile, changed):
+            gathered.append((profile, list(changed)))
+            return 1
+
+        def cancel(self):
+            pass
+
+    window._inventory_service = FakeInventory()
+    window.inventory_after_compare_button.setChecked(True)
+    assert gathered
+    assert gathered[0][1][0].path == "file.txt"
+    window.close()
+    application.processEvents()
+
+
+def test_restored_expansion_limit_defaults_to_256() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window._expand_limit == 256
+    assert window.comparison._expand_limit == 256
+    window.close()
+    application.processEvents()

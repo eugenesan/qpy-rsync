@@ -188,3 +188,16 @@ def test_folder_rows_report_the_size_of_their_contents() -> None:
     # The folder reports its contents, not the size of its directory record.
     assert model.data(model.index(0, model.SOURCE_SIZE)) == "2.9 KiB"
     assert model.index(0, model.SOURCE_SIZE).data() == "2.9 KiB"
+
+
+def test_unchanged_tooltip_has_no_raw_itemized_separator() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")]
+    )
+    tooltip = model.data(
+        model.index(0, model.ACTION), Qt.ItemDataRole.ToolTipRole
+    )
+    assert "Unchanged" in tooltip
+    assert ":=" not in tooltip
+    assert not tooltip.rstrip().endswith("=")

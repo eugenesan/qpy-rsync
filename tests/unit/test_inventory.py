@@ -29,11 +29,13 @@ def _trees(root: Path) -> SyncProfile:
 def test_inventory_paths_honor_exclude_filters(tmp_path: Path) -> None:
     profile = _trees(tmp_path)
 
-    source = inventory_paths(profile.source, profile)
+    reports: list[int] = []
+    source = inventory_paths(profile.source, profile, reports.append)
     destination = inventory_paths(profile.destination, profile)
 
     assert list(source) == ["keep.txt"]
     assert list(destination) == ["keep.txt"]
+    assert reports and reports[-1] >= 1
     assert source["keep.txt"].kind is ObjectKind.FILE
     assert source["keep.txt"].size == 4
     assert source["keep.txt"].modified_time

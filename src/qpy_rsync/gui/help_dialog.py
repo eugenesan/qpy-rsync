@@ -65,6 +65,13 @@ result.
 
 9. Profiles (F2/F3)
    Save and load the whole setup in $XDG_CONFIG_HOME/qpy-rsync/profiles.
+
+10. Large comparisons
+    Settings (Ctrl+,) limits how many direct items a folder may have to open
+    automatically (default 256). Larger folders stay collapsed and carry an
+    amber marker; their tooltip explains the limit. Expand them by hand or
+    raise the limit. Inventory reports the number of listed objects while it
+    works, and adding a large unchanged set shows a population message.
 """
 
 
