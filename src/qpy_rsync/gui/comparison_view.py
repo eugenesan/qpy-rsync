@@ -104,6 +104,7 @@ class ComparisonView(QWidget):
         self._expand_mode = "all"
         self._expand_limit = 256
         self._expand_generation = 0
+        self._closing = False
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
@@ -811,6 +812,10 @@ class ComparisonView(QWidget):
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.collapseAll()
+
+    def closeEvent(self, event: object) -> None:  # noqa: N802
+        self._closing = True
+        super().closeEvent(event)  # type: ignore[arg-type]
 
     def save_view_state(self) -> None:
         settings = app_settings()
