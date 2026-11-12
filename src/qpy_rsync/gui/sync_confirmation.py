@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from qpy_rsync.backend.decision_filters import decision_filter_lines
 from qpy_rsync.backend.rsync_command import build_sync_argv
 from qpy_rsync.core.backup_paths import backup_summary
 from qpy_rsync.core.changes import ChangeAction
@@ -91,7 +92,7 @@ class SyncConfirmationDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Confirm synchronization")
-        self.resize(720, 620)
+        self.resize(720, 700)
         summary = confirmation_summary(profile, plan)
 
         layout = QVBoxLayout(self)
@@ -198,6 +199,28 @@ class SyncConfirmationDialog(QDialog):
             "after the synchronization."
         )
         layout.addWidget(self.command, 1)
+
+        rules_label = QLabel("Decision rules")
+        rules_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(rules_label)
+        self.rules = QPlainTextEdit()
+        self.rules.setObjectName("confirmation-rules")
+        self.rules.setReadOnly(True)
+        rule_lines = decision_filter_lines(plan)
+        self.rules.setPlainText("\n".join(rule_lines))
+        self.rules.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        self.rules.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.rules.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        )
+        self.rules.setMinimumHeight(82)
+        self.rules.setToolTip(
+            "The temporary rsync filter rules that implement the selected "
+            "decisions for this synchronization."
+        )
+        layout.addWidget(self.rules, 1)
 
         self.details = QLabel(
             "This confirmation is based on a verified second dry run. "

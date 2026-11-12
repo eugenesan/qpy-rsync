@@ -70,9 +70,14 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     assert dialog.stats.item(5, 2).text() == "Nested protection"
     command = dialog.command.toPlainText()
     assert dialog.command.isReadOnly()
+    assert dialog.rules.isReadOnly()
     assert (
         dialog.command.lineWrapMode()
         == dialog.command.LineWrapMode.WidgetWidth
+    )
+    assert (
+        dialog.rules.lineWrapMode()
+        == dialog.rules.LineWrapMode.WidgetWidth
     )
     assert (
         dialog.command.wordWrapMode()
@@ -133,10 +138,34 @@ def test_command_box_grows_with_the_dialog() -> None:
     dialog = SyncConfirmationDialog(item, plan)
     dialog.resize(720, 450)
     dialog.layout().activate()
-    short = dialog.command.height()
-    dialog.resize(720, 700)
+    short_command = dialog.command.height()
+    short_rules = dialog.rules.height()
+    dialog.resize(720, 850)
     dialog.layout().activate()
-    tall = dialog.command.height()
-    assert tall > short
+    assert dialog.command.height() > short_command
+    assert dialog.rules.height() > short_rules
+    dialog.close()
+    application.processEvents()
+
+
+def test_confirmation_shows_the_decision_rule_contents() -> None:
+    application = app()
+    item = profile()
+    plan = build_execution_plan(
+        item,
+        [
+            Change(
+                "extra",
+                ChangeAction.DESTINATION_ONLY,
+                ObjectKind.FILE,
+                "*deleting",
+            )
+        ],
+        ChangeDecisions(),
+    )
+    dialog = SyncConfirmationDialog(item, plan)
+    text = dialog.rules.toPlainText()
+    assert "P /extra" in text
+    assert "- /extra" in text
     dialog.close()
     application.processEvents()

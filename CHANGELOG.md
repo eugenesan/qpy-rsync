@@ -303,3 +303,7 @@
 ## milestone 1.15u resizable command preview
 
 - The rsync command box in the synchronization dialog now grows and shrinks with the dialog instead of keeping a fixed height.
+
+## milestone 1.15v decision rule preview
+
+- The synchronization dialog shows the generated decision-filter rules in a read-only, wrapping, resizable text box next to the command preview.
