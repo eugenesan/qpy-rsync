@@ -251,3 +251,8 @@
 - The synchronization dialog shows the full rsync command in a read-only monospaced box; the temporary decision-filter path is shown as a placeholder.
 - Loading a profile with SSH endpoints now restores the complete `[user@]host:path` location instead of only the remote path.
 - The Save and Load profile buttons swapped places, so Load comes first like the File menu.
+
+## milestone 1.15k command wrapping and expansion speed
+
+- The command box in the synchronization dialog wraps long options and scrolls vertically.
+- Automatic folder expansion maps each folder to the proxy once and opens it in all three panes instead of repeating the lookup per pane; large trees are opened in small event-loop batches so the window stays responsive while a comparison is prepared.

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QFontDatabase, QTextOption
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -179,8 +179,11 @@ class SyncConfirmationDialog(QDialog):
         self.command.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )
-        self.command.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.command.setFixedHeight(82)
+        self.command.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.command.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        )
+        self.command.setFixedHeight(92)
         self.command.setToolTip(
             "The full rsync command for this synchronization. The temporary "
             "decision filter is created when the synchronization starts."

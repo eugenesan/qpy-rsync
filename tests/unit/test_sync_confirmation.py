@@ -69,6 +69,14 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     assert dialog.stats.item(5, 2).text() == "Nested protection"
     command = dialog.command.toPlainText()
     assert dialog.command.isReadOnly()
+    assert (
+        dialog.command.lineWrapMode()
+        == dialog.command.LineWrapMode.WidgetWidth
+    )
+    assert (
+        dialog.command.wordWrapMode()
+        == dialog.command.wordWrapMode().WrapAtWordBoundaryOrAnywhere
+    )
     assert command.startswith("rsync ")
     assert "--itemize-changes" in command
     assert "--dry-run" not in command
