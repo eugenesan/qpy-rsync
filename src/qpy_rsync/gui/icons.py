@@ -298,6 +298,20 @@ def folder_sync_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def folder_sync_changed_icon() -> QIcon:
+    """Faded equals icon with an accent dot for a folder that holds changes."""
+    color = QColor("#94a3b8")
+    color.setAlpha(150)
+    pixmap, painter = _pixmap()
+    _draw_unchanged(painter, color)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(ACCENT))
+    painter.drawEllipse(QPointF(12.0, 12.0), 3.0, 3.0)
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
 def unchanged_icon() -> QIcon:
     """Tribar icon for an unchanged item (also the inventory button)."""
     color = ACTION_COLORS[ChangeAction.NO_CHANGE]
@@ -305,5 +319,24 @@ def unchanged_icon() -> QIcon:
     painter.setPen(_pen(color))
     for y in (5.0, 8.0, 11.0):
         painter.drawLine(QPointF(4.0, y), QPointF(12.0, y))
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
+def settings_icon() -> QIcon:
+    """Gear icon for the settings button."""
+    color = QColor("#94a3b8")
+    pixmap, painter = _pixmap()
+    painter.setPen(_pen(color, 1.4))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(QPointF(8.0, 8.0), 2.6, 2.6)
+    for step in range(8):
+        import math
+
+        angle = math.radians(step * 45)
+        inner = QPointF(8 + 4.2 * math.cos(angle), 8 + 4.2 * math.sin(angle))
+        outer = QPointF(8 + 6.2 * math.cos(angle), 8 + 6.2 * math.sin(angle))
+        painter.drawLine(inner, outer)
     painter.end()
     return QIcon(pixmap)

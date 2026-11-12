@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel, full_path
-from .icons import unchanged_icon
+from .icons import settings_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
@@ -58,6 +58,7 @@ class ComparisonView(QWidget):
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
     sort_changed = Signal(int, object)
+    settings_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -66,6 +67,7 @@ class ComparisonView(QWidget):
         self._destination_root = ""
         self._update_freeze = 0
         self._syncing_expansion = False
+        self._expand_mode = "all"
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
@@ -111,8 +113,8 @@ class ComparisonView(QWidget):
         self.inventory_button = QToolButton()
         self.inventory_button.setCheckable(True)
         self.inventory_button.setIcon(unchanged_icon())
-        self.inventory_button.setToolTip("Show unchanged files")
-        self.inventory_button.setAccessibleName("Show unchanged files")
+        self.inventory_button.setToolTip("Show unchanged items")
+        self.inventory_button.setAccessibleName("Show unchanged items")
         self.expand_button = QToolButton()
         self.expand_button.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown)
@@ -142,6 +144,14 @@ class ComparisonView(QWidget):
         self.filter_button.clicked.connect(self.focus_path_filter)
         controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
+        self.settings_button = QToolButton()
+        self.settings_button.setIcon(settings_icon())
+        self.settings_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.settings_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.settings_button.setToolTip("Settings (Ctrl+,)")
+        self.settings_button.setAccessibleName("Settings")
+        self.settings_button.clicked.connect(self.settings_requested.emit)
+        controls.addWidget(self.settings_button)
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
         for button in (self.inventory_button, self.expand_button, self.collapse_button):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -629,17 +639,28 @@ class ComparisonView(QWidget):
                 children.reverse()
                 stack.extend(children)
 
+    def set_expand_mode(self, mode: str) -> None:
+        """Choose how the folders are opened after a comparison."""
+        self._expand_mode = mode
+
     def expand_initial(self, limit: int = 20000) -> None:
-        """Expand every folder, so a comparison never starts half collapsed.
+        """Open the folders the way the settings ask for.
 
         Very large comparisons stay collapsed: expanding ten thousand rows
         once is fast, but the view would no longer be overviewable.
         """
-        if len(self.model.changes) > limit:
+        mode = self._expand_mode
+        if mode == "none" or len(self.model.changes) > limit:
             return
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
-                tree.expandAll()
+                if mode == "first":
+                    for row in range(tree.model().rowCount()):
+                        index = tree.model().index(row, 0)
+                        if tree.model().rowCount(index):
+                            tree.expand(index)
+                else:
+                    tree.expandAll()
 
     def expand_all(self) -> None:
         with self._frozen_updates(), self._synced_expansion():

@@ -157,7 +157,7 @@ class OverviewModel(QAbstractItemModel):
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> object:  # noqa: N802
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return ("", "Folder", "Items", "Size")[section]
+            return ("Share", "Folder", "Items", "Size")[section]
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> object:
@@ -273,7 +273,7 @@ class OverviewPane(QWidget):
         self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.tree.header().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.header().resizeSection(0, 52)
+        self.tree.header().resizeSection(0, 64)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
         # The size of a folder is the interesting number, like in FreeFileSync.

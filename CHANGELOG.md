@@ -211,3 +211,12 @@
 - Address the comparison content as items everywhere in the interface.
 - Add a menu bar with F1 to F11 shortcuts, an About dialog and a profile folder in `$XDG_CONFIG_HOME/qpy-rsync/profiles`.
 - Add Debian packaging in `debian/`.
+
+## milestone 1.15h review fixes
+
+- The folder expansion after a comparison follows a setting (all, first level, none) in the new Settings dialog, reachable from Edit and from a gear button next to the filter field.
+- Folders that hold changes are bold and carry an accent dot on their equals icon, also while they are collapsed.
+- File-type icons only appear on the side where the item exists.
+- The tree header calls its rows items and the inventory button shows unchanged items.
+- The overview has a Share column header and room for three-digit percentages.
+- Button tooltips name the shortcut of the matching menu action.

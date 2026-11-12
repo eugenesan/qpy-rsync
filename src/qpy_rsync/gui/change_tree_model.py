@@ -21,6 +21,7 @@ from .icons import (
     action_icon,
     file_type_icon,
     folder_icon,
+    folder_sync_changed_icon,
     folder_sync_icon,
     unchanged_icon,
 )
@@ -52,6 +53,7 @@ class TreeNode:
     # contents instead of the size of the directory itself.
     subtree_size: int = 0
     subtree_destination_size: int = 0
+    subtree_changed: int = 0
 
     def child(self, row: int) -> "TreeNode":
         return self.children[row]
@@ -70,7 +72,7 @@ class ChangeTreeModel(QAbstractItemModel):
     DESTINATION_SIZE = 5
     DESTINATION_TIME = 6
     COLUMN_COUNT = 7
-    HEADERS = ("File/Directory", "Size", "Modified", "Action", "File/Directory", "Size", "Modified")
+    HEADERS = ("Item", "Size", "Modified", "Action", "Item", "Size", "Modified")
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -113,11 +115,22 @@ class ChangeTreeModel(QAbstractItemModel):
             parent.change = change
         self._compute_subtree_flags(self.root)
         self._compute_sizes(self.root)
+        self._compute_changed(self.root)
         self._sort(self.root)
         self._assign_rows(self.root)
         self._override_paths = self.decisions.override_paths(self.changes)
         self.endResetModel()
         self._refresh_action_header()
+
+    def _compute_changed(self, node: TreeNode) -> int:
+        """Count the changed items below a folder."""
+        total = 0
+        if node.change is not None and node.change.action is not ChangeAction.NO_CHANGE:
+            total += 1
+        for child in node.children:
+            total += self._compute_changed(child)
+        node.subtree_changed = total
+        return total
 
     def _compute_sizes(self, node: TreeNode) -> tuple[int, int]:
         """Sum the sizes of the items below a folder."""
@@ -386,17 +399,23 @@ class ChangeTreeModel(QAbstractItemModel):
         if role == Qt.ItemDataRole.DecorationRole:
             if index.column() == self.ACTION:
                 return self._decoration_for(node)
-            if index.column() in (self.SOURCE_NAME, self.DESTINATION_NAME):
+            if index.column() == self.SOURCE_NAME:
+                if not source_present:
+                    return None
                 return self._item_icon(node)
-        if (
-            role == Qt.ItemDataRole.FontRole
-            and change is not None
-            and change.action is not ChangeAction.NO_CHANGE
-            and index.column() != self.ACTION
-        ):
-            font = QFont()
-            font.setBold(True)
-            return font
+            if index.column() == self.DESTINATION_NAME:
+                if not destination_present:
+                    return None
+                return self._item_icon(node)
+        if role == Qt.ItemDataRole.FontRole and index.column() != self.ACTION:
+            # Changed items and folders that hold changes are set in bold.
+            changed = (
+                change is not None and change.action is not ChangeAction.NO_CHANGE
+            ) or (bool(node.children) and node.subtree_changed > 0)
+            if changed:
+                font = QFont()
+                font.setBold(True)
+                return font
         if role == Qt.ItemDataRole.ToolTipRole:
             return self._tooltip_for(node, index.column())
         if (
@@ -435,7 +454,12 @@ class ChangeTreeModel(QAbstractItemModel):
         }
         if column == self.ACTION:
             if change is None:
-                return f"Source: {source_full}\nDestination: {destination_full}"
+                extra = (
+                    f"\n{node.subtree_changed} changed item(s) inside"
+                    if node.children and node.subtree_changed
+                    else ""
+                )
+                return f"Source: {source_full}\nDestination: {destination_full}{extra}"
             label = ACTION_LABELS.get(self.effective_action(node), "")
             details = (
                 f"{label}\n{change.itemized_code}: {change.reason}"
@@ -514,7 +538,10 @@ class ChangeTreeModel(QAbstractItemModel):
         overridden = (not self.stale) and node.path in self._override_paths
         if node.children or (change is not None and change.kind is ObjectKind.DIRECTORY):
             if action is ChangeAction.NO_CHANGE:
-                # A directory present on both sides.
+                # A directory present on both sides; the accent dot marks a
+                # folder that holds changes while it is collapsed.
+                if node.subtree_changed:
+                    return folder_sync_changed_icon()
                 return folder_sync_icon()
             return action_icon(action, accent=overridden)
         if action is ChangeAction.NO_CHANGE:

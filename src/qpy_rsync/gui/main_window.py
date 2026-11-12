@@ -55,7 +55,14 @@ _PAUSE_TOOLTIP = (
     "For a remote endpoint the connection stays open and the transfer\n"
     "resumes where it stopped."
 )
-_RESUME_TOOLTIP = "Continue the paused rsync operation."
+_RESUME_TOOLTIP = "Continue the paused rsync operation.\n\nShortcut: F11"
+
+
+def with_shortcut(tooltip: str, shortcut: str) -> str:
+    """Add the keyboard shortcut of the matching menu action to a tooltip."""
+    if not shortcut:
+        return tooltip
+    return f"{tooltip}\n\nShortcut: {shortcut}"
 
 
 def vertical_separator() -> QFrame:
@@ -157,6 +164,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_progress = self._sync_progress
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
+        self._expand_mode = "all"
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._hovered_action = "compare"
@@ -172,6 +180,7 @@ class MainWindow(QMainWindow):
         self._log_flush_timer.setInterval(100)
         self._log_flush_timer.timeout.connect(self._flush_log)
         self._build_ui()
+        self._restore_view_settings()
         self._restore_window_state()
         if not self._restore_recent_profile():
             self._restore_filters()
@@ -205,6 +214,7 @@ class MainWindow(QMainWindow):
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.sort_changed.connect(self._comparison_sorted)
+        self.comparison.settings_requested.connect(self._edit_settings)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -465,6 +475,18 @@ class MainWindow(QMainWindow):
         ):
             button.installEventFilter(self)
             button.setProperty("previewAction", action)
+        for button, shortcut in (
+            (self.compare_button, "F5"),
+            (self.validate_plan_button, "F8"),
+            (self.synchronize_button, "F9"),
+            (self.cancel_button, "F10"),
+            (self.pause_button, "F11"),
+            (self.filters_button, "F7"),
+            (self.save_profile_button, "F2"),
+            (self.load_profile_button, "F3"),
+        ):
+            button.setToolTip(with_shortcut(button.toolTip(), shortcut))
+        self.show_unchanged.setToolTip(with_shortcut(self.show_unchanged.toolTip(), "F6"))
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
         self.destination_edit.editingFinished.connect(self._update_command_preview)
@@ -541,6 +563,7 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
         )
+        self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 
         actions_menu = menu_bar.addMenu("&Actions")
         self._add_action(
@@ -578,6 +601,32 @@ class MainWindow(QMainWindow):
         action.triggered.connect(slot)  # type: ignore[arg-type]
         menu.addAction(action)  # type: ignore[attr-defined]
         return action
+
+    def _edit_settings(self) -> None:
+        from .settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self, expand_mode=self._expand_mode)
+        if not dialog.exec():
+            return
+        mode = dialog.expand_mode()
+        if mode == self._expand_mode:
+            return
+        self._expand_mode = mode
+        settings = app_settings()
+        settings.setValue("view/expand-after-compare", mode)
+        settings.sync()
+        self.comparison.set_expand_mode(mode)
+        self._append_log(f"Settings: folders after a comparison = {mode}")
+        if self.comparison.model.changes:
+            self.comparison.expand_initial()
+
+    def _restore_view_settings(self) -> None:
+        settings = app_settings()
+        mode = str(settings.value("view/expand-after-compare", "all")).strip()
+        if mode not in {"all", "first", "none"}:
+            mode = "all"
+        self._expand_mode = mode
+        self.comparison.set_expand_mode(mode)
 
     def _show_about(self) -> None:
         from .about import show_about
