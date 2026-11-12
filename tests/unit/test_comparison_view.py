@@ -523,15 +523,22 @@ def test_expand_limit_marks_limited_folders_at_every_depth() -> None:
 def test_tree_headers_are_resizable() -> None:
     application = app()
     view = ComparisonView()
-    for tree in (view.source, view.destination):
-        # The last visible column fills the pane, leaving no empty strip.
-        assert tree.header().stretchLastSection()
+    name_columns = {
+        view.source: view.model.SOURCE_NAME,
+        view.destination: view.model.DESTINATION_NAME,
+    }
+    for tree, name_column in name_columns.items():
         header = tree.header()
+        assert not header.stretchLastSection()
         for section in range(header.count()):
-            assert (
-                header.sectionResizeMode(section)
-                == header.ResizeMode.Interactive
+            if header.isSectionHidden(section):
+                continue
+            expected = (
+                header.ResizeMode.Stretch
+                if section == name_column
+                else header.ResizeMode.Interactive
             )
+            assert header.sectionResizeMode(section) == expected
     view.close()
     application.processEvents()
 

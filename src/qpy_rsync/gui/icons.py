@@ -176,6 +176,10 @@ def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
 @lru_cache(maxsize=None)
 def swap_icon() -> QIcon:
     """Icon used for the Source/Destination swap button."""
+    for name in ("swap-panels-symbolic", "swap-panels"):
+        icon = QIcon.fromTheme(name)
+        if not icon.isNull():
+            return icon
     pixmap, painter = _pixmap()
     painter.setPen(_pen(QColor("#1d4ed8")))
     painter.drawLine(QPointF(3.5, 5.5), QPointF(12.0, 5.5))
@@ -198,10 +202,53 @@ def _theme_icon(*names: str, fallback: QStyle.StandardPixmap) -> QIcon:
 def source_icon() -> QIcon:
     """The system folder icon of the source side."""
     return _theme_icon(
+        "inode-directory-symbolic",
+        "inode-directory",
         "folder-open-symbolic",
         "folder-open",
         "folder",
         fallback=QStyle.StandardPixmap.SP_DirOpenIcon,
+    )
+
+
+def compare_icon() -> QIcon:
+    """The system icon for the Compare action."""
+    return _theme_icon(
+        "kr_comparedirs",
+        "kr_comparedir",
+        "document-compareright",
+        "document-compareright-symbolic",
+        fallback=QStyle.StandardPixmap.SP_FileDialogContentsView,
+    )
+
+
+def verify_icon() -> QIcon:
+    """The system icon for verifying the selected actions."""
+    return _theme_icon(
+        "answer-symbolic",
+        "answer",
+        "answer-correct",
+        "Answer",
+        fallback=QStyle.StandardPixmap.SP_DialogApplyButton,
+    )
+
+
+def verified_icon() -> QIcon:
+    """The system icon shown after the actions were verified."""
+    return _theme_icon(
+        "answer-correct-symbolic",
+        "answer-correct",
+        "dialog-ok-apply",
+        fallback=QStyle.StandardPixmap.SP_DialogApplyButton,
+    )
+
+
+def synchronize_icon() -> QIcon:
+    """The system icon that starts the synchronization."""
+    return _theme_icon(
+        "media-playback-start-symbolic",
+        "media-playback-start",
+        fallback=QStyle.StandardPixmap.SP_MediaPlay,
     )
 
 

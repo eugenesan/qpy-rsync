@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
+from qpy_rsync.gui.comparison_view import CONTROL_SIZE
 from qpy_rsync.gui.main_window import MainWindow
 from qpy_rsync.storage.settings import app_settings
 
@@ -20,7 +21,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     QCoreApplication.setApplicationName("wide-ui")
     app_settings().clear()
     window = MainWindow()
-    assert window.validate_plan_button.text() == "Verify Actions"
+    assert window.validate_plan_button.accessibleName() == "Verify Actions"
     assert window.swap_button.accessibleName() == "Swap Source and Destination"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.filter_edit.minimumWidth() == 180
@@ -31,9 +32,22 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert not window.comparison.expand_button.icon().isNull()
     assert not window.comparison.collapse_button.icon().isNull()
     assert not window.comparison.inventory_button.icon().isNull()
-    # The secondary actions are compact icon buttons.
-    assert window.swap_button.icon().isNull() is False
-    assert window.swap_button.size().width() < window.compare_button.sizeHint().width()
+    # The toolbar actions are icon buttons of the common control size.
+    for button in (
+        window.swap_button,
+        window.compare_button,
+        window.inventory_after_compare_button,
+        window.validate_plan_button,
+        window.synchronize_button,
+        window.cancel_button,
+        window.pause_button,
+        window.filters_button,
+        window.load_profile_button,
+        window.save_profile_button,
+    ):
+        assert not button.icon().isNull()
+        assert button.width() == CONTROL_SIZE
+        assert button.height() == CONTROL_SIZE
     for button in (
         window.comparison.inventory_button,
         window.comparison.expand_button,
@@ -460,7 +474,7 @@ def test_verification_reuses_fresh_comparison() -> None:
 
     window._plan_validation = RejectProcess()
     window._validate_selected_plan()
-    assert window.validate_plan_button.text() == "Actions Verified"
+    assert window.validate_plan_button.accessibleName() == "Actions Verified"
     assert window._validated_plan is window._current_plan
     assert "STATE verification-reused-comparison" in window.log.toPlainText()
     log = window.log.toPlainText()
@@ -493,7 +507,7 @@ def test_verification_can_be_cancelled() -> None:
     assert window.cancel_button.isEnabled()
     window._plan_validation_cancelled()
     assert not window.cancel_button.isEnabled()
-    assert window.validate_plan_button.text() == "Verify Actions"
+    assert window.validate_plan_button.accessibleName() == "Verify Actions"
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
     application.processEvents()

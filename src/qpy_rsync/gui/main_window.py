@@ -60,6 +60,16 @@ _PAUSE_TOOLTIP = (
 )
 _RESUME_TOOLTIP = "Continue the paused rsync operation.\n\nShortcut: F11"
 
+_VERIFY_TOOLTIP = (
+    "Verify the selected actions.\n"
+    "When no checkbox decisions were changed after the comparison, the\n"
+    "latest comparison is reused immediately.\n"
+    "Otherwise a second rsync dry run checks the selected subset; that run\n"
+    "can be cancelled.\n"
+    "For SSH endpoints the dry run connects to the remote host again, so the\n"
+    "remote host must be reachable and credentials must be available."
+)
+
 
 def with_shortcut(tooltip: str, shortcut: str) -> str:
     """Add the keyboard shortcut of the matching menu action to a tooltip."""
@@ -115,6 +125,7 @@ from .command_preview import CommandPreview
 from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE, ComparisonView
 from .icons import (
     cancel_icon,
+    compare_icon,
     destination_icon,
     filters_icon,
     inventory_mode_icon,
@@ -123,6 +134,9 @@ from .icons import (
     save_icon,
     source_icon,
     swap_icon,
+    synchronize_icon,
+    verified_icon,
+    verify_icon,
 )
 from .overview import OverviewPane
 from .filter_editor import FilterEditorDialog
@@ -251,13 +265,15 @@ class MainWindow(QMainWindow):
         self.swap_button.setAccessibleName("Swap Source and Destination")
         controls.addWidget(self.swap_button)
         controls.addWidget(vertical_separator())
-        self.compare_button = QPushButton("Compare")
+        self.compare_button = QToolButton()
+        self.compare_button.setIcon(compare_icon())
         self.compare_button.setToolTip(
             "Compare Source and Destination using an rsync dry run.\n"
             "No files are changed.\n"
             "For SSH endpoints this connects to the remote host, so the remote "
             "host must be reachable and credentials must be available."
         )
+        self.compare_button.setAccessibleName("Compare")
         self.cancel_button = QToolButton()
         self.cancel_button.setIcon(cancel_icon())
         self.cancel_button.setToolTip("Cancel the running operation")
@@ -282,17 +298,13 @@ class MainWindow(QMainWindow):
         self.inventory_after_compare_button.setAccessibleName(
             "Inventory after comparison"
         )
-        self.validate_plan_button = QPushButton("Verify Actions")
-        self.validate_plan_button.setToolTip(
-            "Verify the selected actions.\n"
-            "When no checkbox decisions were changed after the comparison, the\n"
-            "latest comparison is reused immediately.\n"
-            "Otherwise a second rsync dry run checks the selected subset; that run\n"
-            "can be cancelled.\n"
-            "For SSH endpoints the dry run connects to the remote host again, so the\n"
-            "remote host must be reachable and credentials must be available."
-        )
-        self.synchronize_button = QPushButton("Synchronize...")
+        self.validate_plan_button = QToolButton()
+        self.validate_plan_button.setIcon(verify_icon())
+        self.validate_plan_button.setToolTip(_VERIFY_TOOLTIP)
+        self.validate_plan_button.setAccessibleName("Verify Actions")
+        self.synchronize_button = QToolButton()
+        self.synchronize_button.setIcon(synchronize_icon())
+        self.synchronize_button.setAccessibleName("Synchronize")
         self.synchronize_button.setToolTip(
             "Open the confirmation dialog and write the verified plan.\n"
             "The button stays disabled until Verify Actions (F8) succeeds for\n"
@@ -300,13 +312,6 @@ class MainWindow(QMainWindow):
             "the verification."
         )
         self.synchronize_button.setEnabled(False)
-        self.validate_plan_button.setMinimumWidth(
-            max(
-                self.validate_plan_button.fontMetrics().horizontalAdvance("Verify Actions"),
-                self.validate_plan_button.fontMetrics().horizontalAdvance("Actions Verified"),
-            )
-            + 28
-        )
         self.validate_plan_button.setEnabled(False)
         self.filters_button = QToolButton()
         self.filters_button.setIcon(filters_icon())
@@ -322,14 +327,17 @@ class MainWindow(QMainWindow):
         self.save_profile_button.setAccessibleName("Save Profile")
         for button in (
             self.swap_button,
+            self.compare_button,
             self.inventory_after_compare_button,
+            self.validate_plan_button,
+            self.synchronize_button,
             self.cancel_button,
             self.pause_button,
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
         ):
-            button.setFixedSize(CONTROL_ICON_SIZE + 8, 28)
+            button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
             button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         self.show_unchanged = self.comparison.inventory_button
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
@@ -1077,7 +1085,7 @@ class MainWindow(QMainWindow):
         self._save_recent_profile()
         self._update_backup_status()
         self._validated_plan = None
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
         if self._active_profile is not None and self.comparison.model.changes:
             self._active_profile.backup = BackupOptions(
                 directory=updated.directory,
@@ -1150,6 +1158,25 @@ class MainWindow(QMainWindow):
         else:
             self._set_backup_message(status.message, "success" if status.nonempty is False else "info")
 
+    def _set_verify_state(self, state: str) -> None:
+        """Update the icon and the accessible label of Verify Actions."""
+        if state == "verified":
+            self.validate_plan_button.setIcon(verified_icon())
+            self.validate_plan_button.setAccessibleName("Actions Verified")
+            self.validate_plan_button.setToolTip(
+                with_shortcut(
+                    "Actions verified. Verify again to refresh the plan.", "F8"
+                )
+            )
+        elif state == "verifying":
+            self.validate_plan_button.setIcon(verify_icon())
+            self.validate_plan_button.setAccessibleName("Verifying selected actions")
+            self.validate_plan_button.setToolTip("Verifying selected actions...")
+        else:
+            self.validate_plan_button.setIcon(verify_icon())
+            self.validate_plan_button.setAccessibleName("Verify Actions")
+            self.validate_plan_button.setToolTip(with_shortcut(_VERIFY_TOOLTIP, "F8"))
+
     def _invalidate_plan_context(self) -> None:
         self._execution_gate.invalidate()
         self.synchronize_button.setEnabled(False)
@@ -1157,12 +1184,12 @@ class MainWindow(QMainWindow):
         self._validated_plan = None
         self._last_plan_summary = None
         self.validate_plan_button.setEnabled(False)
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
         self.synchronize_button.setEnabled(False)
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
         if self._active_profile is not None and self.comparison.model.changes:
             self._refresh_plan_summary()
 
@@ -1233,7 +1260,7 @@ class MainWindow(QMainWindow):
         self._execution_gate.verification_started()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
-        self.validate_plan_button.setText("Verifying...")
+        self._set_verify_state("verifying")
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
         self._reset_pause_button()
@@ -1250,12 +1277,12 @@ class MainWindow(QMainWindow):
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
         self.validate_plan_button.setEnabled(True)
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
         if result.valid:
             self._validated_plan = self._current_plan
             self._execution_gate.verification_succeeded()
             self.synchronize_button.setEnabled(True)
-            self.validate_plan_button.setText("Actions Verified")
+            self._set_verify_state("verified")
             if self._current_plan is not None:
                 summary = self._current_plan.summary
                 noun = "item" if summary.included == 1 else "items"
@@ -1297,7 +1324,7 @@ class MainWindow(QMainWindow):
             self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
         self.status_edit.setText("Action verification was cancelled.")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
@@ -1309,7 +1336,7 @@ class MainWindow(QMainWindow):
             self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
-        self.validate_plan_button.setText("Verify Actions")
+        self._set_verify_state("idle")
         self.status_edit.setText("Plan validation failed.")
         self._append_log(message)
         self._end_bulk_logging()

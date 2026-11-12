@@ -267,9 +267,9 @@ class ComparisonView(QWidget):
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSortingEnabled(True)
-        # The last visible column absorbs the remaining pane width; otherwise
-        # the header leaves an empty strip after Modified.
-        tree.header().setStretchLastSection(True)
+        # The name column absorbs the remaining pane width; the size, item
+        # count and timestamp columns keep their chosen widths.
+        tree.header().setStretchLastSection(False)
         tree.header().setSortIndicatorShown(True)
         # Without clickable sections the header never reports a click.
         tree.header().setSectionsClickable(True)
@@ -435,7 +435,7 @@ class ComparisonView(QWidget):
         self.destination.setTreePosition(self.model.DESTINATION_NAME)
         self.action.setRootIsDecorated(False)
         self.action.setIndentation(0)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
+        self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
         self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
@@ -448,7 +448,7 @@ class ComparisonView(QWidget):
         )
         self.action.header().resizeSection(self.model.ACTION, ACTION_PANE_WIDTH)
         self.destination.header().setSectionResizeMode(
-            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Interactive
+            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch
         )
         self.destination.header().setSectionResizeMode(
             self.model.DESTINATION_ITEMS, QHeaderView.ResizeMode.Interactive

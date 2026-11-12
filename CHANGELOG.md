@@ -285,3 +285,9 @@
 
 - The last visible column of each comparison pane stretches to the pane edge, so no empty column appears after Modified.
 - Secondary toolbar actions use compact icon buttons with tooltips and menu shortcuts. The action-filter checkboxes are smaller. The window can now shrink to 1280 px and has a minimum width of about 966 px in the default theme.
+
+## milestone 1.15r theme icons and name-column width
+
+- Compare, Verify Actions and Synchronize use theme icons (`kr_comparedirs`, `answer`, `media-playback-start-symbolic`); Swap uses `swap-panels-symbolic` and the Source icon uses `inode-directory-symbolic`.
+- All toolbar icon buttons use the common 40 px control size.
+- The Item column in each compare tree absorbs the extra pane width; Items, Size and Modified keep their widths.
