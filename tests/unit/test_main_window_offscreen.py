@@ -913,11 +913,18 @@ def test_open_buttons_follow_remote_and_missing_log_file(tmp_path, monkeypatch) 
     assert not opened
     assert "remote" in window.status_edit.text().lower()
 
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.warning",
+        lambda *_args, **_kwargs: warnings.append(_args),
+    )
     log_file = tmp_path / "new-session.log"
     window.log_file_edit.setText(str(log_file))
     window._open_log_file()
-    assert log_file.exists()
-    assert opened == [str(log_file)]
+    assert warnings
+    assert not log_file.exists()
+    assert opened == []
+    assert "does not exist" in window.status_edit.text()
     window.close()
     application.processEvents()
 
@@ -992,13 +999,57 @@ def test_open_missing_directory_shows_a_warning(tmp_path, monkeypatch) -> None:
     application.processEvents()
 
 
-def test_status_messages_are_also_shown_in_the_status_bar() -> None:
+def test_status_bar_shows_only_warnings_and_errors() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
+    window._set_status("Everything is fine.", "success")
+    assert window.status_bar_label.text() == ""
+    window._set_status("Just information.", "info")
+    assert window.status_bar_label.text() == ""
+
     window._set_status("Source is missing.", "warning")
     assert window.status_bar_label.text() == "Source is missing."
     assert window.status_bar_label.toolTip() == "Source is missing."
-    assert "STATUS Source is missing." in window.log.toPlainText()
+
+    window._set_status("Open failed.", "error")
+    assert window.status_bar_label.text() == "Open failed."
+    assert "STATUS Open failed." in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_failed_external_open_shows_an_error(tmp_path, monkeypatch) -> None:
+    from PySide6.QtCore import QProcess
+    from PySide6.QtGui import QDesktopServices
+
+    application = app()
+    app_settings().clear()
+    directory = tmp_path / "source"
+    directory.mkdir()
+    errors: list[object] = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda _url: False)
+    monkeypatch.setattr(QProcess, "startDetached", lambda *_args: (False, 0))
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.critical",
+        lambda *_args, **_kwargs: errors.append(_args),
+    )
+    window = MainWindow()
+    window.source_edit.setText(str(directory) + "/")
+    window._open_location_directory("Source")
+    assert errors
+    assert "Could not open" in window.status_bar_label.text()
+    window.close()
+    application.processEvents()
+
+
+def test_startup_warns_about_missing_remembered_locations(tmp_path) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText(str(tmp_path / "missing-source") + "/")
+    window.destination_edit.setText(str(tmp_path / "missing-destination") + "/")
+    window._update_startup_status()
+    assert "does not exist" in window.status_bar_label.text()
     window.close()
     application.processEvents()

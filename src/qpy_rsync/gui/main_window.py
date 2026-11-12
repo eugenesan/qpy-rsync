@@ -811,8 +811,11 @@ class MainWindow(QMainWindow):
         started, _pid = QProcess.startDetached("xdg-open", [str(path)])
         if started:
             self._append_log(f"Opened {what}: {path}")
-        else:
-            self._set_status(f"Could not open {what}: {path}", "error")
+            return
+        message = f"Could not open {what}:\n{path}"
+        self._set_status(message, "error")
+        self._append_log(f"STATUS {message}")
+        QMessageBox.critical(self, "Could not open", message)
 
     def _open_location_directory(self, title: str) -> None:
         edit = self.source_edit if title == "Source" else self.destination_edit
@@ -857,12 +860,11 @@ class MainWindow(QMainWindow):
         text = self.log_file_edit.text().strip()
         path = (Path(text).expanduser() if text else self._log_file_path)
         if not path.exists():
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.touch()
-            except OSError as exc:
-                self._set_status(f"Could not create the log file: {exc}", "error")
-                return
+            message = f"Log file does not exist:\n{path}"
+            self._set_status(message, "warning")
+            self._append_log(f"STATUS {message}")
+            QMessageBox.warning(self, "Log file not found", message)
+            return
         self._open_path(path, "log file")
 
     @staticmethod
@@ -1112,6 +1114,7 @@ class MainWindow(QMainWindow):
             status_bar_label.setStyleSheet(style)
 
     def _set_status(self, text: str, severity: str = "info") -> None:
+        severity = severity.lower()
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         lines = [part.strip() for part in text.replace(". ", ".\n").splitlines() if part.strip()]
         tooltip = "\n".join(lines)
@@ -1120,8 +1123,14 @@ class MainWindow(QMainWindow):
         self.status_edit.setText(text.replace("\n", " "))
         status_bar_label = getattr(self, "status_bar_label", None)
         if status_bar_label is not None:
-            status_bar_label.setText(text.replace("\n", " "))
-            status_bar_label.setToolTip(tooltip)
+            # The status bar is reserved for problems; ordinary progress and
+            # success messages stay in the State field and the journal.
+            if severity in {"warning", "error"}:
+                status_bar_label.setText(text.replace("\n", " "))
+                status_bar_label.setToolTip(tooltip)
+            else:
+                status_bar_label.clear()
+                status_bar_label.setToolTip("")
         self._append_log(f"STATUS {text}")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
@@ -2223,7 +2232,17 @@ class MainWindow(QMainWindow):
 
     def _update_startup_status(self) -> None:
         if self.source_edit.text().strip() and self.destination_edit.text().strip():
-            self._set_status("Ready. Click Compare to refresh the remembered Source and Destination.")
+            missing: list[str] = []
+            try:
+                missing = self._missing_local_directories(self._profile())
+            except ValueError:
+                pass
+            if missing:
+                self._set_status("Missing: " + " ".join(missing), "warning")
+            else:
+                self._set_status(
+                    "Ready. Click Compare to refresh the remembered Source and Destination."
+                )
         else:
             self._set_status("Choose Source and Destination above the comparison panes.")
 

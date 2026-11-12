@@ -342,3 +342,8 @@
 ## milestone 1.15ad status bar restored
 
 - Status messages appear in a new window status bar as well as the compact State field and the journal. Long messages are clipped in the bar but fully available in its tooltip and in the journal.
+
+## milestone 1.15ae warning-only status bar
+
+- The status bar shows only warnings and errors; ordinary and success messages stay in the State field and journal.
+- Missing remembered Source and Destination paths are reported at startup, opening a missing log file warns instead of silently creating it, and a failed external-open attempt reports an error.
