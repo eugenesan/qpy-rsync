@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import shlex
+from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -10,12 +14,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHeaderView,
     QLabel,
+    QPlainTextEdit,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
 )
 
+from qpy_rsync.backend.rsync_command import build_sync_argv
 from qpy_rsync.core.backup_paths import backup_summary
+from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.units import format_size
 from qpy_rsync.core.execution_plan import ExecutionPlan
 from qpy_rsync.core.models import SyncProfile
@@ -77,7 +84,7 @@ class SyncConfirmationDialog(QDialog):
     def __init__(self, profile: SyncProfile, plan: ExecutionPlan, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Confirm synchronization")
-        self.resize(680, 500)
+        self.resize(720, 620)
         summary = confirmation_summary(profile, plan)
 
         layout = QVBoxLayout(self)
@@ -147,6 +154,38 @@ class SyncConfirmationDialog(QDialog):
             self.warning.setText("No destructive operations are selected.")
             self.warning.setStyleSheet("color: #15803D;")
         layout.addWidget(self.warning)
+
+        effective = deepcopy(profile)
+        effective.transfer.delete = any(
+            item.included and item.action is ChangeAction.DELETE
+            for item in plan.items
+        )
+        try:
+            command = shlex.join(
+                build_sync_argv(
+                    effective,
+                    filter_file=Path("<temporary decision filter>"),
+                )
+            )
+        except ValueError as exc:
+            command = f"Command unavailable: {exc}"
+        command_label = QLabel("rsync command")
+        command_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(command_label)
+        self.command = QPlainTextEdit()
+        self.command.setObjectName("confirmation-command")
+        self.command.setReadOnly(True)
+        self.command.setPlainText(command)
+        self.command.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        self.command.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.command.setFixedHeight(82)
+        self.command.setToolTip(
+            "The full rsync command for this synchronization. The temporary "
+            "decision filter is created when the synchronization starts."
+        )
+        layout.addWidget(self.command)
 
         self.details = QLabel(
             "This confirmation is based on a verified second dry run. "

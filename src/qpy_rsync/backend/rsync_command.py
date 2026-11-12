@@ -154,10 +154,25 @@ def build_inventory_spec(profile: SyncProfile, endpoint: Endpoint) -> ProcessSpe
 
 
 def build_sync_spec(profile: SyncProfile, *, filter_file: Path | None = None) -> ProcessSpec:
+    args = _sync_arguments(profile, filter_file=filter_file)
+    return _process_spec(profile, args)
+
+
+def _sync_arguments(
+    profile: SyncProfile, *, filter_file: Path | None = None
+) -> list[str]:
     args = ["--itemize-changes", "--info=progress2", "--stats", f"--out-format={DEFAULT_OUT_FORMAT}"]
     remote_shell = _remote_shell_argument(profile)
     if remote_shell is not None:
         args.extend(("-e", remote_shell))
     args.extend(_common_arguments(profile, filter_file=filter_file))
     args.extend(("--", profile.source.rsync_operand(), profile.destination.rsync_operand()))
-    return _process_spec(profile, args)
+    return args
+
+
+def build_sync_argv(profile: SyncProfile, *, filter_file: Path | None = None) -> list[str]:
+    """Build the command line without requiring the runtime askpass session."""
+    args = _sync_arguments(profile, filter_file=filter_file)
+    if _has_remote_endpoint(profile):
+        return ["setsid", "--wait", "rsync", *args]
+    return ["rsync", *args]

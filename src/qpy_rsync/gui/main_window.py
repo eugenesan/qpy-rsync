@@ -307,8 +307,8 @@ class MainWindow(QMainWindow):
             self.cancel_button,
             self.pause_button,
             self.filters_button,
-            self.save_profile_button,
             self.load_profile_button,
+            self.save_profile_button,
         ):
             controls.addWidget(widget)
         controls.addWidget(vertical_separator())
@@ -987,8 +987,16 @@ class MainWindow(QMainWindow):
         self._append_log(f"Profile loaded: {path}")
 
     def _apply_profile(self, profile: SyncProfile) -> None:
-        self.source_edit.setText(profile.source.path)
-        self.destination_edit.setText(profile.destination.path)
+        self.source_edit.setText(
+            profile.source.rsync_operand()
+            if profile.source.kind is EndpointKind.SSH
+            else profile.source.path
+        )
+        self.destination_edit.setText(
+            profile.destination.rsync_operand()
+            if profile.destination.kind is EndpointKind.SSH
+            else profile.destination.path
+        )
         index = self.sync_mode.findData(profile.transfer.sync_mode)
         if index >= 0:
             self.sync_mode.setCurrentIndex(index)

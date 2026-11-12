@@ -58,7 +58,7 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
         "Review verified synchronization "
         f"(fingerprint: {summary.fingerprint})"
     )
-    assert dialog.findChild(QPlainTextEdit) is None
+    assert dialog.command is not None
     assert dialog.details.font().bold()
     # The stats are a table with two label/value pairs per row.
     assert dialog.stats.item(0, 0).text() == "Included"
@@ -67,5 +67,30 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     assert dialog.stats.item(0, 3).text() == "0"
     assert dialog.stats.item(1, 0).text() == "Total size"
     assert dialog.stats.item(5, 2).text() == "Nested protection"
+    command = dialog.command.toPlainText()
+    assert dialog.command.isReadOnly()
+    assert command.startswith("rsync ")
+    assert "--itemize-changes" in command
+    assert "--dry-run" not in command
+    assert "/src/" in command and "/dst/" in command
+    dialog.close()
+    application.processEvents()
+
+
+def test_confirmation_command_keeps_the_ssh_authority() -> None:
+    application = app()
+    item = SyncProfile(
+        "ssh",
+        Endpoint(EndpointKind.SSH, "/src/", host="example.org", user="alice"),
+        Endpoint(EndpointKind.LOCAL, "/dst/"),
+    )
+    plan = build_execution_plan(
+        item,
+        [Change("new", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")],
+        ChangeDecisions(),
+    )
+    dialog = SyncConfirmationDialog(item, plan)
+    command = dialog.command.toPlainText()
+    assert "alice@example.org:/src/" in command
     dialog.close()
     application.processEvents()

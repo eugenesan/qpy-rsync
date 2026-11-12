@@ -720,3 +720,22 @@ def test_restored_expansion_limit_defaults_to_256() -> None:
     assert window.comparison._expand_limit == 256
     window.close()
     application.processEvents()
+
+
+def test_loading_a_profile_restores_the_ssh_authority() -> None:
+    from qpy_rsync.core.enums import EndpointKind
+    from qpy_rsync.core.models import Endpoint, SyncProfile
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    profile = SyncProfile(
+        "ssh",
+        Endpoint(EndpointKind.SSH, "/srv/data/", host="example.org", user="alice"),
+        Endpoint(EndpointKind.LOCAL, "/backup/"),
+    )
+    window._apply_profile(profile)
+    assert window.source_edit.text() == "alice@example.org:/srv/data/"
+    assert window.destination_edit.text() == "/backup/"
+    window.close()
+    application.processEvents()

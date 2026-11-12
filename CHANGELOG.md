@@ -245,3 +245,9 @@
 - Adding a large unchanged set shows a wait cursor and a population message instead of appearing frozen.
 - Unchanged-item tooltips no longer end with the raw `=:` itemized code.
 - Settings gained an auto-expand limit (default 256 items per folder). Folders above the limit stay collapsed with an amber marker and a tooltip explaining why; opening one by hand clears the marker.
+
+## milestone 1.15j profile and command review
+
+- The synchronization dialog shows the full rsync command in a read-only monospaced box; the temporary decision-filter path is shown as a placeholder.
+- Loading a profile with SSH endpoints now restores the complete `[user@]host:path` location instead of only the remote path.
+- The Save and Load profile buttons swapped places, so Load comes first like the File menu.
