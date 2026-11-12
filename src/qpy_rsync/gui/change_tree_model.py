@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 
 from qpy_rsync.core.changes import (
     Change,
@@ -15,7 +15,14 @@ from qpy_rsync.core.changes import (
     ObjectKind,
 )
 
-from .icons import ACTION_LABELS, action_icon
+from .icons import (
+    ACTION_LABELS,
+    action_icon,
+    file_type_icon,
+    folder_icon,
+    folder_sync_icon,
+    unchanged_icon,
+)
 
 ACTION_HEADER_ACCENT = "#0891B2"
 
@@ -375,8 +382,20 @@ class ChangeTreeModel(QAbstractItemModel):
                     return change.destination_time
                 _size, time = self._destination_info(node.path)
                 return time or ""
-        if role == Qt.ItemDataRole.DecorationRole and index.column() == self.ACTION:
-            return self._decoration_for(node)
+        if role == Qt.ItemDataRole.DecorationRole:
+            if index.column() == self.ACTION:
+                return self._decoration_for(node)
+            if index.column() in (self.SOURCE_NAME, self.DESTINATION_NAME):
+                return self._item_icon(node)
+        if (
+            role == Qt.ItemDataRole.FontRole
+            and change is not None
+            and change.action is not ChangeAction.NO_CHANGE
+            and index.column() != self.ACTION
+        ):
+            font = QFont()
+            font.setBold(True)
+            return font
         if role == Qt.ItemDataRole.ToolTipRole:
             return self._tooltip_for(node, index.column())
         if (
@@ -492,10 +511,26 @@ class ChangeTreeModel(QAbstractItemModel):
         change = node.change
         action = self.effective_action(node)
         overridden = (not self.stale) and node.path in self._override_paths
-        if change is None:
-            # A directory present on both sides carries no own action.
-            return action_icon(ChangeAction.NO_CHANGE)
+        if node.children or (change is not None and change.kind is ObjectKind.DIRECTORY):
+            if action is ChangeAction.NO_CHANGE:
+                # A directory present on both sides.
+                return folder_sync_icon()
+            return action_icon(action, accent=overridden)
+        if action is ChangeAction.NO_CHANGE:
+            # An unchanged item carries the tribar, not the equals of a folder.
+            return unchanged_icon()
         return action_icon(action, accent=overridden)
+
+    @staticmethod
+    def _item_icon(node: TreeNode) -> Any:
+        """Icon of the name columns: a folder or the type of the file."""
+        if node.children or (
+            node.change is not None and node.change.kind is ObjectKind.DIRECTORY
+        ):
+            return folder_icon()
+        if node.change is not None and node.change.kind is ObjectKind.SYMLINK:
+            return file_type_icon("link")
+        return file_type_icon(node.name)
 
     def _node_selectable(self, node: TreeNode) -> bool:
         if node.change is None:

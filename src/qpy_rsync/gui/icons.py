@@ -125,7 +125,9 @@ def _draw_message(painter: QPainter, color: QColor) -> None:
     painter.drawEllipse(QRectF(7.0, 11.0, 2.0, 2.0))
 
 
-def _draw_folder(painter: QPainter, color: QColor, direction: str) -> None:
+def _draw_folder(
+    painter: QPainter, color: QColor, direction: str | None = None
+) -> None:
     painter.setPen(_pen(QColor("#334155")))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     path = QPainterPath()
@@ -137,6 +139,8 @@ def _draw_folder(painter: QPainter, color: QColor, direction: str) -> None:
     path.lineTo(13.5, 13.0)
     path.closeSubpath()
     painter.drawPath(path)
+    if direction is None:
+        return
     painter.setPen(_pen(color))
     painter.drawLine(QPointF(5.5, 9.5), QPointF(10.5, 9.5))
     _arrow_head(painter, QPointF(11.5, 9.5), direction, color)
@@ -169,12 +173,6 @@ def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
 
 
 @lru_cache(maxsize=None)
-def unchanged_icon() -> QIcon:
-    """Icon used for unchanged objects and for directories present on both sides."""
-    return action_icon(ChangeAction.NO_CHANGE)
-
-
-@lru_cache(maxsize=None)
 def swap_icon() -> QIcon:
     """Icon used for the Source/Destination swap button."""
     pixmap, painter = _pixmap()
@@ -199,5 +197,113 @@ def source_icon() -> QIcon:
 def destination_icon() -> QIcon:
     pixmap, painter = _pixmap()
     _draw_folder(painter, QColor("#15803d"), "left")
+    painter.end()
+    return QIcon(pixmap)
+
+
+# --- item icons -----------------------------------------------------------
+
+FILE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Picture",
+        ("jpg", "jpeg", "png", "gif", "bmp", "svg", "webp", "tif", "tiff", "heic", "avif"),
+    ),
+    (
+        "Document",
+        ("txt", "md", "pdf", "doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "ppt", "pptx", "odp"),
+    ),
+    (
+        "Archive",
+        ("zip", "tar", "gz", "bz2", "xz", "zst", "7z", "rar", "iso", "tgz", "deb", "rpm"),
+    ),
+    (
+        "Database",
+        ("db", "sqlite", "sqlite3", "sql", "xml", "json", "yaml", "yml", "toml", "ini", "csv", "tsv"),
+    ),
+    (
+        "Executable",
+        ("sh", "bash", "py", "pl", "rb", "js", "exe", "bin", "appimage", "so", "run"),
+    ),
+)
+
+GROUP_COLORS: dict[str, QColor] = {
+    "Picture": QColor("#0ea5e9"),
+    "Document": QColor("#eab308"),
+    "Archive": QColor("#a855f7"),
+    "Database": QColor("#14b8a6"),
+    "Executable": QColor("#ef4444"),
+    "Regular": QColor("#94a3b8"),
+    "Folder": QColor("#94a3b8"),
+}
+
+
+def file_group(name: str) -> str:
+    """Return the group of a file, based on its extension."""
+    extension = name.rsplit(".", 1)[-1].casefold() if "." in name else ""
+    for group, extensions in FILE_GROUPS:
+        if extension in extensions:
+            return group
+    return "Regular"
+
+
+def _draw_page(painter: QPainter, color: QColor) -> None:
+    """A page with a folded corner, used as the base of every file icon."""
+    pen = _pen(color, 1.4)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    path = QPainterPath(QPointF(4.0, 2.0))
+    path.lineTo(9.5, 2.0)
+    path.lineTo(12.5, 5.0)
+    path.lineTo(12.5, 14.0)
+    path.lineTo(4.0, 14.0)
+    path.closeSubpath()
+    painter.drawPath(path)
+    painter.drawLine(QPointF(9.5, 2.0), QPointF(9.5, 5.0))
+    painter.drawLine(QPointF(9.5, 5.0), QPointF(12.5, 5.0))
+
+
+@lru_cache(maxsize=None)
+def file_type_icon(name: str) -> QIcon:
+    """Icon for a file, coloured by its type group."""
+    group = file_group(name)
+    color = GROUP_COLORS.get(group, GROUP_COLORS["Regular"])
+    pixmap, painter = _pixmap()
+    _draw_page(painter, QColor("#94a3b8"))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(color))
+    painter.drawRect(QRectF(5.5, 9.0, 5.5, 2.5))
+    painter.end()
+    icon = QIcon(pixmap)
+    return icon
+
+
+@lru_cache(maxsize=None)
+def folder_icon() -> QIcon:
+    """Icon for a folder that exists on one side only."""
+    pixmap, painter = _pixmap()
+    _draw_folder(painter, QColor("#94a3b8"))
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
+def folder_sync_icon() -> QIcon:
+    """Faded equals icon for a folder that exists on both sides."""
+    color = QColor("#94a3b8")
+    color.setAlpha(150)
+    pixmap, painter = _pixmap()
+    _draw_unchanged(painter, color)
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
+def unchanged_icon() -> QIcon:
+    """Tribar icon for an unchanged item (also the inventory button)."""
+    color = ACTION_COLORS[ChangeAction.NO_CHANGE]
+    pixmap, painter = _pixmap()
+    painter.setPen(_pen(color))
+    for y in (5.0, 8.0, 11.0):
+        painter.drawLine(QPointF(4.0, y), QPointF(12.0, y))
     painter.end()
     return QIcon(pixmap)
