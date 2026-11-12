@@ -731,9 +731,9 @@ class ComparisonView(QWidget):
 
     def _expansion_indexes(
         self, limited: set[str], mode: str
-    ) -> list[QModelIndex]:
+    ) -> list[str]:
         """Collect the folders to open, in parent-before-child order."""
-        indexes: list[QModelIndex] = []
+        indexes: list[str] = []
 
         def visit(source_index: QModelIndex, depth: int) -> None:
             node = source_index.internalPointer()
@@ -743,7 +743,7 @@ class ComparisonView(QWidget):
                 return
             if node.path in limited:
                 return
-            indexes.append(source_index)
+            indexes.append(node.path)
             if mode == "first":
                 return
             for row in range(self.model.rowCount(source_index)):
@@ -753,8 +753,9 @@ class ComparisonView(QWidget):
             visit(self.model.index(row, 0), 0)
         return indexes
 
-    def _expand_indexes(self, indexes: list[QModelIndex]) -> None:
-        for source_index in indexes:
+    def _expand_indexes(self, indexes: list[str]) -> None:
+        for path in indexes:
+            source_index = self.model.index_for_path(path)
             proxy_index = self.proxy.mapFromSource(source_index)
             if not proxy_index.isValid():
                 continue
@@ -763,7 +764,7 @@ class ComparisonView(QWidget):
                     tree.expand(proxy_index)
 
     def _run_expansion(
-        self, indexes: list[QModelIndex], generation: int, start: int
+        self, indexes: list[str], generation: int, start: int
     ) -> None:
         if generation != self._expand_generation or self._closing:
             return
