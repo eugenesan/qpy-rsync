@@ -524,6 +524,8 @@ def test_tree_headers_are_resizable() -> None:
     application = app()
     view = ComparisonView()
     for tree in (view.source, view.destination):
+        # The last visible column fills the pane, leaving no empty strip.
+        assert tree.header().stretchLastSection()
         header = tree.header()
         for section in range(header.count()):
             assert (

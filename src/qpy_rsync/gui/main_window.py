@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QSizePolicy,
+    QToolButton,
     QToolTip,
     QPushButton,
     QSplitter,
@@ -111,8 +112,18 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
-from .comparison_view import CONTROL_SIZE, ComparisonView
-from .icons import destination_icon, source_icon
+from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE, ComparisonView
+from .icons import (
+    cancel_icon,
+    destination_icon,
+    filters_icon,
+    inventory_mode_icon,
+    open_icon,
+    pause_icon,
+    save_icon,
+    source_icon,
+    swap_icon,
+)
 from .overview import OverviewPane
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
@@ -234,7 +245,8 @@ class MainWindow(QMainWindow):
             "New Only: copy missing items; do not update or delete existing items."
         )
         controls.addWidget(self.sync_mode)
-        self.swap_button = QPushButton("Swap")
+        self.swap_button = QToolButton()
+        self.swap_button.setIcon(swap_icon())
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
         controls.addWidget(self.swap_button)
@@ -246,14 +258,19 @@ class MainWindow(QMainWindow):
             "For SSH endpoints this connects to the remote host, so the remote "
             "host must be reachable and credentials must be available."
         )
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QToolButton()
+        self.cancel_button.setIcon(cancel_icon())
+        self.cancel_button.setToolTip("Cancel the running operation")
+        self.cancel_button.setAccessibleName("Cancel the running operation")
         self.cancel_button.setEnabled(False)
-        self.pause_button = QPushButton("Pause")
+        self.pause_button = QToolButton()
+        self.pause_button.setIcon(pause_icon())
         self.pause_button.setEnabled(False)
         self.pause_button.setCheckable(True)
         self.pause_button.setToolTip(_PAUSE_TOOLTIP)
         self.pause_button.setAccessibleName("Pause the running operation")
-        self.inventory_after_compare_button = QPushButton("Inventory")
+        self.inventory_after_compare_button = QToolButton()
+        self.inventory_after_compare_button.setIcon(inventory_mode_icon())
         self.inventory_after_compare_button.setCheckable(True)
         self.inventory_after_compare_button.setToolTip(
             "Run an inventory after every comparison.\n"
@@ -291,9 +308,29 @@ class MainWindow(QMainWindow):
             + 28
         )
         self.validate_plan_button.setEnabled(False)
-        self.filters_button = QPushButton("Filters")
-        self.save_profile_button = QPushButton("Save Profile...")
-        self.load_profile_button = QPushButton("Load Profile...")
+        self.filters_button = QToolButton()
+        self.filters_button.setIcon(filters_icon())
+        self.filters_button.setToolTip("Edit the persistent filter rules")
+        self.filters_button.setAccessibleName("Filters")
+        self.load_profile_button = QToolButton()
+        self.load_profile_button.setIcon(open_icon())
+        self.load_profile_button.setToolTip("Load Profile...")
+        self.load_profile_button.setAccessibleName("Load Profile")
+        self.save_profile_button = QToolButton()
+        self.save_profile_button.setIcon(save_icon())
+        self.save_profile_button.setToolTip("Save Profile...")
+        self.save_profile_button.setAccessibleName("Save Profile")
+        for button in (
+            self.swap_button,
+            self.inventory_after_compare_button,
+            self.cancel_button,
+            self.pause_button,
+            self.filters_button,
+            self.load_profile_button,
+            self.save_profile_button,
+        ):
+            button.setFixedSize(CONTROL_ICON_SIZE + 8, 28)
+            button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         self.show_unchanged = self.comparison.inventory_button
         self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         self.inventory_after_compare_button.toggled.connect(
@@ -1015,11 +1052,9 @@ class MainWindow(QMainWindow):
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
         total = len(self._filters)
-        if total:
-            self.filters_button.setText(f"Filters [{enabled}/{total}]")
-        else:
-            self.filters_button.setText("Filters")
+        self.filters_button.setAccessibleName(f"Filters [{enabled}/{total}]")
         tooltip = (
+            f"Filters [{enabled}/{total}]\n"
             f"{enabled} of {total} persistent filter rules are enabled.\n"
             "The first matching rsync rule wins."
         )
@@ -1028,8 +1063,7 @@ class MainWindow(QMainWindow):
                 "\n\nSTALE: the comparison is out of date because filter rules changed. "
                 "Compare again to refresh results."
             )
-        self.filters_button.setToolTip(tooltip)
-        self.filters_button.setStyleSheet("color: #0891B2;" if stale else "")
+        self.filters_button.setToolTip(with_shortcut(tooltip, "F7"))
 
     def _backup_changed(self) -> None:
         updated = BackupOptions(

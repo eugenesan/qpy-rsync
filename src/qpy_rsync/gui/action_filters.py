@@ -33,9 +33,9 @@ class ActionFilterBar(QWidget):
         for action in FILTERABLE_ACTIONS:
             box = QCheckBox(self)
             box.setIcon(action_icon(action))
-            # The glyph matches the size of the buttons in the same row.
-            box.setIconSize(QSize(CONTROL_SIZE, CONTROL_SIZE))
-            box.setFixedHeight(CONTROL_SIZE + 8)
+            # The checkbox indicator and the glyph fit into a compact square.
+            box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+            box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE + 8)
             box.setToolTip(self._tooltip(action))
             box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} items")
             box.setChecked(True)

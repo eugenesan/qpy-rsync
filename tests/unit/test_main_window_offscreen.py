@@ -21,7 +21,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     app_settings().clear()
     window = MainWindow()
     assert window.validate_plan_button.text() == "Verify Actions"
-    assert window.swap_button.text() == "Swap"
+    assert window.swap_button.accessibleName() == "Swap Source and Destination"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.filter_edit.minimumWidth() == 180
     assert window.comparison.filter_edit.maximumWidth() > 1000
@@ -31,8 +31,9 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert not window.comparison.expand_button.icon().isNull()
     assert not window.comparison.collapse_button.icon().isNull()
     assert not window.comparison.inventory_button.icon().isNull()
-    # The swap button is a plain text button like the other controls.
-    assert window.swap_button.sizeHint().height() == window.compare_button.sizeHint().height()
+    # The secondary actions are compact icon buttons.
+    assert window.swap_button.icon().isNull() is False
+    assert window.swap_button.size().width() < window.compare_button.sizeHint().width()
     for button in (
         window.comparison.inventory_button,
         window.comparison.expand_button,
@@ -637,7 +638,10 @@ def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
     )
     window._last_changed_changes = [changed]
 
-    assert window.inventory_after_compare_button.text() == "Inventory"
+    assert (
+        window.inventory_after_compare_button.accessibleName()
+        == "Inventory after comparison"
+    )
     assert "inventory" in window.inventory_after_compare_button.toolTip().lower()
 
     # Without the toggle the comparison does not gather the unchanged objects.
@@ -739,5 +743,17 @@ def test_loading_a_profile_restores_the_ssh_authority() -> None:
     window._apply_profile(profile)
     assert window.source_edit.text() == "alice@example.org:/srv/data/"
     assert window.destination_edit.text() == "/backup/"
+    window.close()
+    application.processEvents()
+
+
+def test_window_can_shrink_to_1280() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window.minimumSizeHint().width() <= 1280
+    window.resize(1280, 800)
+    application.processEvents()
+    assert window.width() == 1280
     window.close()
     application.processEvents()

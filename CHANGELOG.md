@@ -280,3 +280,8 @@
 
 - Saved header states carry a column-layout version. A state from an older layout is ignored, and pane column visibility is re-applied after every restore, so stale states cannot reveal duplicate Actions or other panes' columns.
 - The legacy `~/.config/qpy-rsync/qpy-rsync.conf` settings file is deleted after it has been migrated, leaving profiles in `~/.config/qpy-rsync/profiles` and runtime state in `~/.local/state/qpy-rsyncstaterc`.
+
+## milestone 1.15q compact compare toolbar
+
+- The last visible column of each comparison pane stretches to the pane edge, so no empty column appears after Modified.
+- Secondary toolbar actions use compact icon buttons with tooltips and menu shortcuts. The action-filter checkboxes are smaller. The window can now shrink to 1280 px and has a minimum width of about 966 px in the default theme.

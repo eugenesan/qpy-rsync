@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QStyle,
@@ -28,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from .change_filter_proxy import ChangeTreeFilterProxyModel
 from .change_tree_model import ChangeTreeModel, full_path
-from .icons import app_menu_icon, folder_limited_icon, unchanged_icon
+from .icons import app_menu_icon, folder_limited_icon, search_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
@@ -188,8 +187,12 @@ class ComparisonView(QWidget):
         self.controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls = QHBoxLayout(self.controls)
         controls.setContentsMargins(0, 0, 0, 0)
-        self.filter_button = QPushButton("Filter/Find")
-        self.filter_button.setToolTip("Focus the comparison path filter")
+        self.filter_button = QToolButton()
+        self.filter_button.setIcon(search_icon())
+        self.filter_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.filter_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.filter_button.setToolTip("Filter/Find (Ctrl+F)")
+        self.filter_button.setAccessibleName("Filter/Find")
         self.filter_button.clicked.connect(self.focus_path_filter)
         controls.addWidget(self.filter_button)
         controls.addWidget(self.filter_edit, 1)
@@ -264,7 +267,9 @@ class ComparisonView(QWidget):
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tree.setSortingEnabled(True)
-        tree.header().setStretchLastSection(False)
+        # The last visible column absorbs the remaining pane width; otherwise
+        # the header leaves an empty strip after Modified.
+        tree.header().setStretchLastSection(True)
         tree.header().setSortIndicatorShown(True)
         # Without clickable sections the header never reports a click.
         tree.header().setSectionsClickable(True)

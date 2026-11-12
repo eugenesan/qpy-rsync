@@ -215,6 +215,51 @@ def destination_icon() -> QIcon:
     )
 
 
+def open_icon() -> QIcon:
+    """The system icon for loading a profile."""
+    return _theme_icon(
+        "document-open", "folder-open", fallback=QStyle.StandardPixmap.SP_DialogOpenButton
+    )
+
+
+def save_icon() -> QIcon:
+    """The system icon for saving a profile."""
+    return _theme_icon(
+        "document-save", fallback=QStyle.StandardPixmap.SP_DialogSaveButton
+    )
+
+
+def search_icon() -> QIcon:
+    """The system icon for the filter field."""
+    return _theme_icon("edit-find", fallback=QStyle.StandardPixmap.SP_FileDialogContentsView)
+
+
+def cancel_icon() -> QIcon:
+    """The system icon for cancelling an operation."""
+    return _theme_icon(
+        "process-stop", "dialog-cancel", fallback=QStyle.StandardPixmap.SP_DialogCancelButton
+    )
+
+
+def pause_icon() -> QIcon:
+    """The system icon for pausing an operation."""
+    return _theme_icon("media-playback-pause", fallback=QStyle.StandardPixmap.SP_MediaPause)
+
+
+def filters_icon() -> QIcon:
+    """The system icon for the filter rules."""
+    return _theme_icon(
+        "view-filter", "view-list-details", fallback=QStyle.StandardPixmap.SP_FileDialogDetailedView
+    )
+
+
+def inventory_mode_icon() -> QIcon:
+    """The system icon for the inventory-after-compare toggle."""
+    return _theme_icon(
+        "view-list-details", "view-list-tree", fallback=QStyle.StandardPixmap.SP_FileDialogListView
+    )
+
+
 # --- item icons -----------------------------------------------------------
 
 FILE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
