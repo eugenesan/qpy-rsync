@@ -321,3 +321,7 @@
 ## milestone 1.15y backup settings commit
 
 - Backup settings are read directly from the fields when a profile is built, loaded profiles initialize the backup state, and verification/synchronization commit pending edits first. A backup directory typed without pressing Enter is no longer ignored.
+
+## milestone 1.15z decision-rules label
+
+- The Decision rules box names the temporary filter filename in its label, with the full path in the label and box tooltips.

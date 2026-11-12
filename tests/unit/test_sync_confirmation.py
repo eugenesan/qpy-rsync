@@ -61,6 +61,7 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
         f"(fingerprint: {summary.fingerprint})"
     )
     assert dialog.command is not None
+    assert dialog.rules_label.text() == "Decision rules"
     assert dialog.details.font().bold()
     # The stats are a table with two label/value pairs per row.
     assert dialog.stats.item(0, 0).text() == "Included"
@@ -124,6 +125,8 @@ def test_confirmation_command_uses_the_real_filter_path() -> None:
     command = dialog.command.toPlainText()
     assert str(filter_path) in command
     assert "<temporary decision filter>" not in command
+    assert dialog.rules_label.text() == f"Decision rules ({filter_path.name})"
+    assert str(filter_path) in dialog.rules_label.toolTip()
     dialog.close()
     application.processEvents()
 

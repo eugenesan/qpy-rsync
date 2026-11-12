@@ -243,9 +243,14 @@ class SyncConfirmationDialog(QDialog):
         rules_layout = QVBoxLayout(rules_panel)
         rules_layout.setContentsMargins(0, 0, 0, 0)
         rules_layout.setSpacing(2)
-        rules_label = QLabel("Decision rules")
-        rules_label.setStyleSheet("font-weight: bold;")
-        rules_layout.addWidget(rules_label)
+        rules_title = "Decision rules"
+        if filter_path is not None:
+            rules_title = f"Decision rules ({filter_path.name})"
+        self.rules_label = QLabel(rules_title)
+        self.rules_label.setStyleSheet("font-weight: bold;")
+        if filter_path is not None:
+            self.rules_label.setToolTip(str(filter_path))
+        rules_layout.addWidget(self.rules_label)
         self.rules = QPlainTextEdit()
         self.rules.setObjectName("confirmation-rules")
         self.rules.setReadOnly(True)
@@ -259,10 +264,13 @@ class SyncConfirmationDialog(QDialog):
             QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
         )
         self.rules.setMinimumHeight(82)
-        self.rules.setToolTip(
+        rules_tooltip = (
             "The temporary rsync filter rules that implement the selected "
             "decisions for this synchronization."
         )
+        if filter_path is not None:
+            rules_tooltip += f"\n{filter_path}"
+        self.rules.setToolTip(rules_tooltip)
         rules_layout.addWidget(self.rules, 1)
 
         self.preview_splitter = QSplitter(Qt.Orientation.Vertical)
