@@ -120,3 +120,23 @@ def test_confirmation_command_uses_the_real_filter_path() -> None:
     assert "<temporary decision filter>" not in command
     dialog.close()
     application.processEvents()
+
+
+def test_command_box_grows_with_the_dialog() -> None:
+    application = app()
+    item = profile()
+    plan = build_execution_plan(
+        item,
+        [Change("new", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")],
+        ChangeDecisions(),
+    )
+    dialog = SyncConfirmationDialog(item, plan)
+    dialog.resize(720, 450)
+    dialog.layout().activate()
+    short = dialog.command.height()
+    dialog.resize(720, 700)
+    dialog.layout().activate()
+    tall = dialog.command.height()
+    assert tall > short
+    dialog.close()
+    application.processEvents()

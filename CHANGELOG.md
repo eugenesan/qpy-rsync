@@ -299,3 +299,7 @@
 ## milestone 1.15t real decision-filter path
 
 - The synchronization dialog creates the private decision filter before it opens and shows its real path in the command preview. The same file is used by the synchronization and removed when it finishes, fails or is cancelled.
+
+## milestone 1.15u resizable command preview
+
+- The rsync command box in the synchronization dialog now grows and shrinks with the dialog instead of keeping a fixed height.

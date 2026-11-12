@@ -191,13 +191,13 @@ class SyncConfirmationDialog(QDialog):
         self.command.setWordWrapMode(
             QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
         )
-        self.command.setFixedHeight(92)
+        self.command.setMinimumHeight(82)
         self.command.setToolTip(
             "The full rsync command for this synchronization. The temporary "
             "decision filter is created for this confirmation and removed "
             "after the synchronization."
         )
-        layout.addWidget(self.command)
+        layout.addWidget(self.command, 1)
 
         self.details = QLabel(
             "This confirmation is based on a verified second dry run. "
@@ -211,7 +211,6 @@ class SyncConfirmationDialog(QDialog):
         details_font.setBold(True)
         self.details.setFont(details_font)
         layout.addWidget(self.details)
-        layout.addStretch(1)
 
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
