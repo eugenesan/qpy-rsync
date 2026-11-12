@@ -104,10 +104,12 @@ def migrate_legacy_settings() -> None:
         "main-window/",
         "command-preview/",
     )
+    legacy = QSettings()
+    legacy_path = Path(legacy.fileName())
     if any(key.startswith(known_prefixes) for key in target.allKeys()):
         _rewrite_byte_arrays(target)
+        _remove_legacy_settings(legacy, legacy_path)
         return
-    legacy = QSettings()
     keys = legacy.allKeys()
     if not keys:
         return
@@ -119,6 +121,20 @@ def migrate_legacy_settings() -> None:
             value = encode_text(str(value))
         target.setValue(key, value)
     target.sync()
+    _remove_legacy_settings(legacy, legacy_path)
+
+
+def _remove_legacy_settings(settings: QSettings, path: Path) -> None:
+    """Drop the old config file once its values live in the state file."""
+    try:
+        target = settings_path()
+        if path.resolve() == target.resolve():
+            return
+        settings.clear()
+        settings.sync()
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _rewrite_byte_arrays(settings: QSettings) -> None:

@@ -32,6 +32,10 @@ from .icons import app_menu_icon, folder_limited_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
+# Bump this whenever the comparison column layout changes, so a saved header
+# state from an older layout is not restored into the new columns.
+HEADER_STATE_VERSION = "2"
+
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
 # The action column only carries a checkbox, a glyph and the short "Actions"
@@ -400,7 +404,8 @@ class ComparisonView(QWidget):
             return None
         return self.proxy.data(index, Qt.ItemDataRole.UserRole)
 
-    def _configure_columns(self) -> None:
+    def _apply_column_visibility(self) -> None:
+        """Show only the columns that belong to each comparison pane."""
         source_columns = {
             self.model.SOURCE_NAME,
             self.model.SOURCE_ITEMS,
@@ -418,6 +423,9 @@ class ComparisonView(QWidget):
             self.source.setColumnHidden(column, column not in source_columns)
             self.action.setColumnHidden(column, column not in action_columns)
             self.destination.setColumnHidden(column, column not in destination_columns)
+
+    def _configure_columns(self) -> None:
+        self._apply_column_visibility()
         self.source.setTreePosition(self.model.SOURCE_NAME)
         self.destination.setTreePosition(self.model.DESTINATION_NAME)
         self.action.setRootIsDecorated(False)
@@ -931,6 +939,7 @@ class ComparisonView(QWidget):
             "comparison/destination-header",
             encode_binary(self.destination.header().saveState()),
         )
+        settings.setValue("comparison/header-layout-version", HEADER_STATE_VERSION)
         settings.sync()
 
     def _restore_view_state(self) -> None:
@@ -940,12 +949,19 @@ class ComparisonView(QWidget):
             self.splitter.restoreState(state)
         else:
             self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
-        source = decode_binary(settings.value("comparison/source-header"))
-        destination = decode_binary(settings.value("comparison/destination-header"))
-        if source is not None:
-            self.source.header().restoreState(source)
-        if destination is not None:
-            self.destination.header().restoreState(destination)
+        version = str(settings.value("comparison/header-layout-version", ""))
+        if version == HEADER_STATE_VERSION:
+            source = decode_binary(settings.value("comparison/source-header"))
+            destination = decode_binary(
+                settings.value("comparison/destination-header")
+            )
+            if source is not None:
+                self.source.header().restoreState(source)
+            if destination is not None:
+                self.destination.header().restoreState(destination)
+        # A saved state can carry stale hidden-section flags from an older
+        # column layout, so visibility is applied again after the restore.
+        self._apply_column_visibility()
         # A header state written by an older version also restores whether the
         # sections are clickable. The panes must stay sortable, so the flags
         # are applied again after the sizes and the hidden columns.

@@ -100,3 +100,36 @@ def test_legacy_escaped_json_values_are_rewritten(tmp_path, monkeypatch) -> None
     assert decode_text(text) == "[]"
     contents = settings_path().read_text(encoding="utf-8")
     assert '"' not in contents.split("[profile]")[0] or "\\\"" not in contents
+
+
+def test_legacy_settings_file_is_removed_after_migration(tmp_path, monkeypatch) -> None:
+    from pathlib import Path
+
+    from PySide6.QtCore import QCoreApplication, QSettings
+
+    from qpy_rsync.storage.settings import (
+        migrate_legacy_settings,
+        settings_path,
+    )
+
+    organization = QCoreApplication.organizationName()
+    application_name = QCoreApplication.applicationName()
+    QCoreApplication.setOrganizationName("qpy-rsync-tests")
+    QCoreApplication.setApplicationName("migration-cleanup")
+    try:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        legacy = QSettings()
+        legacy.setValue("comparison/source", "/legacy/")
+        legacy.sync()
+        legacy_path = Path(legacy.fileName())
+        assert legacy_path.exists()
+
+        migrate_legacy_settings()
+
+        assert not legacy_path.exists()
+        stored = QSettings(str(settings_path()), QSettings.Format.IniFormat)
+        assert stored.value("comparison/source") == "/legacy/"
+    finally:
+        QCoreApplication.setOrganizationName(organization)
+        QCoreApplication.setApplicationName(application_name)

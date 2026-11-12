@@ -275,3 +275,8 @@
 
 - The overview's first header is called Item.
 - Turning the limited-folder finder off restores the expansion state that was active before it was turned on. Folders expanded or collapsed by hand while the finder was open are kept, so it no longer leaves the whole tree expanded.
+
+## milestone 1.15p saved header compatibility
+
+- Saved header states carry a column-layout version. A state from an older layout is ignored, and pane column visibility is re-applied after every restore, so stale states cannot reveal duplicate Actions or other panes' columns.
+- The legacy `~/.config/qpy-rsync/qpy-rsync.conf` settings file is deleted after it has been migrated, leaving profiles in `~/.config/qpy-rsync/profiles` and runtime state in `~/.local/state/qpy-rsyncstaterc`.

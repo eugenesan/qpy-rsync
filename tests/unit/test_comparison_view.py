@@ -8,6 +8,7 @@ from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.gui.comparison_view import (
     CONTROL_ICON_SIZE,
     CONTROL_SIZE,
+    HEADER_STATE_VERSION,
     ROW_HEIGHT,
     ComparisonView,
 )
@@ -366,6 +367,9 @@ def test_saved_header_state_keeps_the_headers_clickable() -> None:
     state = header.saveState()
     view.close()
     app_settings().setValue("comparison/source-header", encode_binary(state))
+    app_settings().setValue(
+        "comparison/header-layout-version", HEADER_STATE_VERSION
+    )
     app_settings().sync()
 
     restored = ComparisonView()
@@ -588,4 +592,44 @@ def test_limited_finder_restores_the_previous_expansion() -> None:
     assert view.source.isExpanded(proxy_a_big)  # manually opened while filtering
     assert not view.source.isExpanded(proxy_b_big)  # still as before
     view.close()
+    application.processEvents()
+
+
+def test_saved_header_state_cannot_reveal_foreign_columns() -> None:
+    from qpy_rsync.storage.settings import app_settings, encode_binary
+
+    application = app()
+    app_settings().clear()
+    view = ComparisonView()
+    header = view.source.header()
+    # Simulate a state from an older column layout that hides a required
+    # column and reveals a column belonging to another pane.
+    header.setSectionHidden(view.model.SOURCE_SIZE, True)
+    header.setSectionHidden(view.model.DESTINATION_SIZE, False)
+    state = header.saveState()
+    view.close()
+    app_settings().setValue("comparison/source-header", encode_binary(state))
+    app_settings().setValue(
+        "comparison/header-layout-version", HEADER_STATE_VERSION
+    )
+    app_settings().sync()
+
+    restored = ComparisonView()
+    application.processEvents()
+    for column in (
+        restored.model.SOURCE_NAME,
+        restored.model.SOURCE_ITEMS,
+        restored.model.SOURCE_SIZE,
+        restored.model.SOURCE_TIME,
+    ):
+        assert not restored.source.isColumnHidden(column)
+    for column in (
+        restored.model.ACTION,
+        restored.model.DESTINATION_NAME,
+        restored.model.DESTINATION_ITEMS,
+        restored.model.DESTINATION_SIZE,
+        restored.model.DESTINATION_TIME,
+    ):
+        assert restored.source.isColumnHidden(column)
+    restored.close()
     application.processEvents()
