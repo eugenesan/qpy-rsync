@@ -32,8 +32,6 @@ from .icons import app_menu_icon, unchanged_icon
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
 
-EXPAND_BATCH_SIZE = 120
-
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
 # The action column only carries a checkbox, a glyph and the short "Actions"
@@ -103,8 +101,6 @@ class ComparisonView(QWidget):
         self._syncing_expansion = False
         self._expand_mode = "all"
         self._expand_limit = 256
-        self._expand_generation = 0
-        self._closing = False
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
@@ -539,7 +535,6 @@ class ComparisonView(QWidget):
             tree.setUpdatesEnabled(False)
             tree.setCurrentIndex(QModelIndex())
             tree.selectionModel().clear()
-        self._expand_generation += 1
         self.model.set_changes(changes)  # type: ignore[arg-type]
         if self._destination_metadata:
             # The metadata belongs to the comparison, not to the rows.
@@ -599,7 +594,6 @@ class ComparisonView(QWidget):
         return paths
 
     def _expand_paths(self, paths: set[str]) -> None:
-        self._expand_generation += 1
         with self._synced_expansion():
             stack = [
                 self.proxy.index(row, 0) for row in range(self.proxy.rowCount())
@@ -698,125 +692,50 @@ class ComparisonView(QWidget):
         self._expand_mode = mode
 
     def set_expand_limit(self, limit: int) -> None:
-        """Limit how many items a folder may hold to open automatically."""
+        """Limit how many changes may be opened automatically."""
         self._expand_limit = max(1, int(limit))
 
     def expand_initial(self, limit: int | None = None) -> None:
         """Open the folders the way the settings ask for.
 
-        A folder with more direct items than the configured limit stays
-        collapsed and carries a marker, so a huge comparison cannot freeze
-        the view by expanding everything at once. Each folder is mapped to
-        the proxy once and opened in all three panes.
+        A comparison with more items than the configured limit stays
+        collapsed and its top-level folders carry a marker, so a large
+        comparison cannot freeze the view by expanding everything at once.
         """
         mode = self._expand_mode
         maximum = self._expand_limit if limit is None else max(1, int(limit))
         if mode == "none":
             self.model.set_expand_limited_paths(set(), maximum)
             return
-        limited = self._limited_paths(maximum, mode)
-        self.model.set_expand_limited_paths(limited, maximum)
-        self._expand_generation += 1
-        generation = self._expand_generation
-        indexes = self._expansion_indexes(limited, mode)
-        if len(indexes) <= EXPAND_BATCH_SIZE:
-            with self._frozen_updates(), self._synced_expansion():
-                self._expand_indexes(indexes)
+        if len(self.model.changes) > maximum:
+            limited = {
+                self.model.index(row, 0).internalPointer().path
+                for row in range(self.model.rowCount())
+                if self.model.index(row, 0).internalPointer().children
+            }
+            self.model.set_expand_limited_paths(limited, maximum)
             return
-        # Large trees are opened in small batches so the window can paint the
-        # journal and the new rows between them instead of freezing.
-        QTimer.singleShot(
-            0, lambda: self._run_expansion(indexes, generation, 0)
-        )
-
-    def _expansion_indexes(
-        self, limited: set[str], mode: str
-    ) -> list[str]:
-        """Collect the folders to open, in parent-before-child order."""
-        indexes: list[str] = []
-
-        def visit(source_index: QModelIndex, depth: int) -> None:
-            node = source_index.internalPointer()
-            if node is None or not node.children:
-                return
-            if mode == "first" and depth >= 1:
-                return
-            if node.path in limited:
-                return
-            indexes.append(node.path)
-            if mode == "first":
-                return
-            for row in range(self.model.rowCount(source_index)):
-                visit(self.model.index(row, 0, source_index), depth + 1)
-
-        for row in range(self.model.rowCount()):
-            visit(self.model.index(row, 0), 0)
-        return indexes
-
-    def _expand_indexes(self, indexes: list[str]) -> None:
-        for path in indexes:
-            source_index = self.model.index_for_path(path)
-            proxy_index = self.proxy.mapFromSource(source_index)
-            if not proxy_index.isValid():
-                continue
-            for tree in (self.source, self.action, self.destination):
-                if not tree.isExpanded(proxy_index):
-                    tree.expand(proxy_index)
-
-    def _run_expansion(
-        self, indexes: list[str], generation: int, start: int
-    ) -> None:
-        if generation != self._expand_generation or self._closing:
-            return
-        batch = indexes[start : start + EXPAND_BATCH_SIZE]
+        self.model.set_expand_limited_paths(set(), maximum)
         with self._frozen_updates(), self._synced_expansion():
-            self._expand_indexes(batch)
-        if start + EXPAND_BATCH_SIZE < len(indexes):
-            QTimer.singleShot(
-                0,
-                lambda: self._run_expansion(
-                    indexes, generation, start + EXPAND_BATCH_SIZE
-                ),
-            )
-
-    def _limited_paths(self, maximum: int, mode: str) -> set[str]:
-        """Collect the folders that have more direct items than allowed."""
-        limited: set[str] = set()
-
-        def visit(source_index: QModelIndex, depth: int) -> None:
-            node = source_index.internalPointer()
-            if node is None or not node.children:
-                return
-            if mode == "first" and depth >= 1:
-                return
-            if len(node.children) > maximum:
-                limited.add(node.path)
-                return
-            if mode == "first":
-                return
-            for row in range(self.model.rowCount(source_index)):
-                visit(self.model.index(row, 0, source_index), depth + 1)
-
-        for row in range(self.model.rowCount()):
-            visit(self.model.index(row, 0), 0)
-        return limited
+            for tree in (self.source, self.action, self.destination):
+                if mode == "first":
+                    for row in range(tree.model().rowCount()):
+                        index = tree.model().index(row, 0)
+                        if tree.model().rowCount(index):
+                            tree.expand(index)
+                else:
+                    tree.expandAll()
 
     def expand_all(self) -> None:
-        self._expand_generation += 1
         self.model.set_expand_limited_paths(set(), self._expand_limit)
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.expandAll()
 
     def collapse_all(self) -> None:
-        self._expand_generation += 1
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.collapseAll()
-
-    def closeEvent(self, event: object) -> None:  # noqa: N802
-        self._closing = True
-        super().closeEvent(event)  # type: ignore[arg-type]
 
     def save_view_state(self) -> None:
         settings = app_settings()

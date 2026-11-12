@@ -459,7 +459,7 @@ def test_all_folders_are_expanded_after_a_comparison() -> None:
     application.processEvents()
 
 
-def test_expand_limit_marks_large_folders_and_keeps_them_collapsed() -> None:
+def test_expand_limit_keeps_a_large_comparison_collapsed() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -477,19 +477,18 @@ def test_expand_limit_marks_large_folders_and_keeps_them_collapsed() -> None:
     application.processEvents()
 
     directory = view.model.index(0, 0)
-    big = view.model.index(0, 0, directory)
-    assert big.internalPointer().name == "big"
-    assert "limit 2" in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
-    assert not view.model.data(big, Qt.ItemDataRole.DecorationRole).isNull()
     proxy_dir = view.proxy.mapFromSource(directory)
-    proxy_big = view.proxy.mapFromSource(big)
-    assert view.source.isExpanded(proxy_dir)
-    assert not view.source.isExpanded(proxy_big)
+    assert not view.source.isExpanded(proxy_dir)
+    tooltip = view.model.data(directory, Qt.ItemDataRole.ToolTipRole)
+    assert "limit 2" in tooltip
+    assert not view.model.data(directory, Qt.ItemDataRole.DecorationRole).isNull()
 
-    # Opening the folder by hand removes the warning marker.
-    view.source.expand(proxy_big)
+    # Raising the limit opens the comparison.
+    view.set_expand_limit(10)
+    view.expand_initial()
     application.processEvents()
-    assert "limit 2" not in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
+    assert view.source.isExpanded(proxy_dir)
+    assert "limit 2" not in view.model.data(directory, Qt.ItemDataRole.ToolTipRole)
     view.close()
     application.processEvents()
 

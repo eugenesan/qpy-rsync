@@ -162,13 +162,6 @@ class ChangeTreeModel(QAbstractItemModel):
             [Qt.ItemDataRole.DecorationRole, Qt.ItemDataRole.ToolTipRole],
         )
 
-    def index_for_path(self, path: str) -> QModelIndex:
-        """Return the current index of a node, resolving its row after sorts."""
-        node = self._nodes.get(path.rstrip("/"))
-        if node is None:
-            return QModelIndex()
-        return self.createIndex(node.row_index, 0, node)
-
     def _compute_changed(self, node: TreeNode) -> int:
         """Count the changed items below a folder."""
         total = 0
@@ -502,8 +495,8 @@ class ChangeTreeModel(QAbstractItemModel):
         limited_note = ""
         if node.path in self._expand_limited_paths and node.children:
             limited_note = (
-                f"\n\nLeft collapsed automatically: this folder has "
-                f"{len(node.children)} items (limit {self.expand_limit}).\n"
+                f"\n\nLeft collapsed automatically: the comparison has "
+                f"{len(self.changes)} items (limit {self.expand_limit}).\n"
                 "Expand it manually or raise the limit in Settings."
             )
         if column == self.ACTION:

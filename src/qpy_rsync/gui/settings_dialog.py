@@ -50,10 +50,11 @@ class SettingsDialog(QDialog):
         self.limit_spin.setValue(max(1, int(expand_limit)))
         self.limit_spin.setSuffix(" items")
         self.limit_spin.setToolTip(
-            "A folder with more direct items than this stays collapsed after "
-            "a comparison. The tree marks it, and you can open it manually."
+            "A comparison with more changes than this stays collapsed after "
+            "a comparison. The top-level folders are marked, and you can open "
+            "them manually."
         )
-        form.addRow("Auto-expand folders up to", self.limit_spin)
+        form.addRow("Auto-expand comparisons up to", self.limit_spin)
 
         hint = QLabel(
             "Folders left collapsed by the limit carry an amber marker; their "

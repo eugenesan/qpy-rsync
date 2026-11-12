@@ -244,7 +244,7 @@
 - Inventory reports the number of objects listed for the Source, the Destination and the matching phase; the progress bar runs while it works and the journal reports the result.
 - Adding a large unchanged set shows a wait cursor and a population message instead of appearing frozen.
 - Unchanged-item tooltips no longer end with the raw `=:` itemized code.
-- Settings gained an auto-expand limit (default 256 items per folder). Folders above the limit stay collapsed with an amber marker and a tooltip explaining why; opening one by hand clears the marker.
+- Settings gained an auto-expand limit (default 256 changes per comparison). Larger comparisons stay collapsed, with amber markers on the top-level folders and a tooltip explaining why; opening one by hand clears its marker.
 
 ## milestone 1.15j profile and command review
 
@@ -255,4 +255,4 @@
 ## milestone 1.15k command wrapping and expansion speed
 
 - The command box in the synchronization dialog wraps long options and scrolls vertically.
-- Automatic folder expansion maps each folder to the proxy once and opens it in all three panes instead of repeating the lookup per pane; large trees are opened in small event-loop batches so the window stays responsive while a comparison is prepared.
+- The auto-expand limit now measures the whole comparison rather than each folder, so a large comparison stays collapsed instead of opening thousands of small directories. Below the limit, Qt's native expansion opens the whole tree in one pass.
