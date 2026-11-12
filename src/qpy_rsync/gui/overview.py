@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPalette
+from PySide6.QtGui import QColor, QFont, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
@@ -38,6 +38,7 @@ class OverviewNode:
     count: int = 0
     size: int = 0
     is_files: bool = False
+    is_total: bool = False
 
     @property
     def total_count(self) -> int:
@@ -119,17 +120,22 @@ class OverviewModel(QAbstractItemModel):
                 )
             )
         # The folders of the compared folder are the rows of the overview.
-        self.root.children = base.children
-        for child in self.root.children:
-            child.parent = self.root
+        # A single Total root carries the size and the item count of all of
+        # them, so the overview can be read as one tree.
+        total = OverviewNode("Total", "", self.root, is_total=True)
+        total.children = base.children
+        for child in total.children:
+            child.parent = total
+        self.root.children = [total] if total.children else []
         self._level_totals = {}
         for node in folders.values():
             self._level_totals[id(node)] = sum(
                 child.total_size for child in node.children
             )
-        self._level_totals[id(self.root)] = sum(
-            child.total_size for child in self.root.children
+        self._level_totals[id(total)] = sum(
+            child.total_size for child in total.children
         )
+        self._level_totals[id(self.root)] = total.total_size
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
         parent_node = parent.internalPointer() if parent.isValid() else self.root
@@ -174,7 +180,16 @@ class OverviewModel(QAbstractItemModel):
             return format_size(node.total_size)
         if role == self.ShareRole:
             return self._share(index)
+        if role == Qt.ItemDataRole.FontRole and node.is_total:
+            font = QFont()
+            font.setBold(True)
+            return font
         if role == Qt.ItemDataRole.ToolTipRole:
+            if node.is_total:
+                return (
+                    f"All items in this comparison\n"
+                    f"{node.total_count} item(s), {format_size(node.total_size)}"
+                )
             return (
                 f"{node.path or '/'}\n{node.total_count} item(s), "
                 f"{format_size(node.total_size)}"
@@ -277,14 +292,6 @@ class OverviewPane(QWidget):
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
 
-        self.summary_label = QLabel()
-        self.summary_label.setObjectName("overview-summary")
-        self.summary_label.setWordWrap(True)
-        self.summary_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.summary_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        layout.addWidget(self.summary_label)
         # The size of a folder is the interesting number, like in FreeFileSync.
         self.tree.sortByColumn(3, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
@@ -293,12 +300,8 @@ class OverviewPane(QWidget):
         if not index.isValid():
             return
         node: OverviewNode = index.internalPointer()
-        if node.path:
+        if node.path and not node.is_total:
             self.folder_activated.emit(node.path)
-
-    def set_summary(self, text: str) -> None:
-        """Show the summary of the proposed synchronization."""
-        self.summary_label.setText(text)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         header = self.tree.header()

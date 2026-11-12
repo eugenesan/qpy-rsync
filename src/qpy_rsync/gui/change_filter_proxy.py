@@ -174,7 +174,7 @@ class ChangeTreeFilterProxyModel(QSortFilterProxyModel):
             action_ok = action_self or action_child
             visible = path_ok and action_ok
             path = getattr(node, "path", None)
-            if visible and (path or getattr(node, "is_total", False)):
+            if visible and path:
                 self._visible_paths.add(path)
             return path_ok, action_ok, visible
 

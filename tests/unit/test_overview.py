@@ -35,25 +35,56 @@ def test_overview_reports_the_size_and_the_count_of_every_folder() -> None:
     model = OverviewModel()
     model.set_changes(_changes(), "source")
 
-    # The rows are the folders of the compared root and the files in it.
-    assert model.rowCount() == 2
-    names = [model.data(model.index(row, 1), Qt.ItemDataRole.DisplayRole) for row in range(2)]
+    # A single Total root carries every row of the overview.
+    assert model.rowCount() == 1
+    total = model.index(0, 0)
+    assert model.data(total, Qt.ItemDataRole.DisplayRole) == "100%"
+    assert (
+        model.data(total.siblingAtColumn(1), Qt.ItemDataRole.DisplayRole)
+        == "Total"
+    )
+    assert (
+        model.data(total.siblingAtColumn(2), Qt.ItemDataRole.DisplayRole) == "5"
+    )
+    assert (
+        model.data(total.siblingAtColumn(3), Qt.ItemDataRole.DisplayRole)
+        == "350 B"
+    )
+    assert model.rowCount(total) == 2
+    names = [
+        model.data(model.index(row, 1, total), Qt.ItemDataRole.DisplayRole)
+        for row in range(2)
+    ]
     assert names == ["docs", "Files"]
 
-    docs_index = model.index(0, 1)
+    docs_index = model.index(0, 1, total)
     assert model.data(docs_index, Qt.ItemDataRole.DisplayRole) == "docs"
-    assert model.data(model.index(0, 2), Qt.ItemDataRole.DisplayRole) == "3"
-    assert model.data(model.index(0, 3), Qt.ItemDataRole.DisplayRole) == "300 B"
+    assert (
+        model.data(model.index(0, 2, total), Qt.ItemDataRole.DisplayRole) == "3"
+    )
+    assert (
+        model.data(model.index(0, 3, total), Qt.ItemDataRole.DisplayRole)
+        == "300 B"
+    )
 
     # The objects of the compared folder itself are listed in the Files row.
-    files_index = model.index(1, 1)
+    files_index = model.index(1, 1, total)
     assert model.data(files_index, Qt.ItemDataRole.DisplayRole) == "Files"
-    assert model.data(model.index(1, 2), Qt.ItemDataRole.DisplayRole) == "2"
-    assert model.data(model.index(1, 3), Qt.ItemDataRole.DisplayRole) == "50 B"
+    assert (
+        model.data(model.index(1, 2, total), Qt.ItemDataRole.DisplayRole) == "2"
+    )
+    assert (
+        model.data(model.index(1, 3, total), Qt.ItemDataRole.DisplayRole)
+        == "50 B"
+    )
 
     # The first column shows the share of the folder.
-    assert model.data(model.index(0, 0), Qt.ItemDataRole.DisplayRole) == "86%"
-    assert model.data(model.index(1, 0), Qt.ItemDataRole.DisplayRole) == "14%"
+    assert (
+        model.data(model.index(0, 0, total), Qt.ItemDataRole.DisplayRole) == "86%"
+    )
+    assert (
+        model.data(model.index(1, 0, total), Qt.ItemDataRole.DisplayRole) == "14%"
+    )
 
 
 def test_overview_sorts_the_folders_by_size_or_by_count() -> None:
@@ -63,13 +94,16 @@ def test_overview_sorts_the_folders_by_size_or_by_count() -> None:
 
     # The size is the default order, the biggest folder first.
     model.sort(3, Qt.SortOrder.DescendingOrder)
-    assert model.index(0, 1).data() == "docs"
+    total = model.index(0, 0)
+    assert model.index(0, 1, total).data() == "docs"
 
     # The Files row has fewer objects, so it comes first by the count.
     model.sort(2, Qt.SortOrder.DescendingOrder)
-    assert model.index(0, 1).data() == "docs"
+    total = model.index(0, 0)
+    assert model.index(0, 1, total).data() == "docs"
     model.sort(2, Qt.SortOrder.AscendingOrder)
-    assert model.index(0, 1).data() == "Files"
+    total = model.index(0, 0)
+    assert model.index(0, 1, total).data() == "Files"
 
 
 def test_overview_pane_reports_the_activated_folder() -> None:
@@ -79,7 +113,10 @@ def test_overview_pane_reports_the_activated_folder() -> None:
     application.processEvents()
     activated: list[str] = []
     pane.folder_activated.connect(activated.append)
-    pane._folder_activated(pane.model.index(0, 1))
+    total = pane.model.index(0, 0)
+    pane._folder_activated(total)
+    assert activated == []
+    pane._folder_activated(pane.model.index(0, 1, total))
     assert activated == ["docs"]
     pane.close()
     application.processEvents()
@@ -106,3 +143,18 @@ def test_overview_follows_the_action_filters() -> None:
     assert [change.path for change in visible] == ["a.txt"]
     view.close()
     application.processEvents()
+
+
+def test_overview_total_tracks_the_changes_it_receives() -> None:
+    app()
+    model = OverviewModel()
+    model.set_changes(_changes(), "source")
+    total = model.index(0, 0)
+    assert model.data(total.siblingAtColumn(2)) == "5"
+    assert model.data(total.siblingAtColumn(3)) == "350 B"
+
+    # The Total follows a filtered change list, so it reports the visible set.
+    model.set_changes(_changes()[:1], "source")
+    total = model.index(0, 0)
+    assert model.data(total.siblingAtColumn(2)) == "1"
+    assert model.data(total.siblingAtColumn(3)) == "100 B"

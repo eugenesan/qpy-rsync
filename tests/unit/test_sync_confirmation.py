@@ -1,7 +1,7 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
 from qpy_rsync.core.enums import EndpointKind
@@ -50,7 +50,22 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
         ChangeDecisions(),
     )
     dialog = SyncConfirmationDialog(item, plan)
+    summary = confirmation_summary(item, plan)
     assert dialog.confirm_button.isEnabled()
     assert dialog.confirm_button.text() == "Synchronize Now"
+    # The fingerprint moved into the header; the old text box is gone.
+    assert dialog.heading.text() == (
+        "Review verified synchronization "
+        f"(fingerprint: {summary.fingerprint})"
+    )
+    assert dialog.findChild(QPlainTextEdit) is None
+    assert dialog.details.font().bold()
+    # The stats are a table with two label/value pairs per row.
+    assert dialog.stats.item(0, 0).text() == "Included"
+    assert dialog.stats.item(0, 1).text() == "1"
+    assert dialog.stats.item(0, 2).text() == "Update"
+    assert dialog.stats.item(0, 3).text() == "0"
+    assert dialog.stats.item(1, 0).text() == "Total size"
+    assert dialog.stats.item(5, 2).text() == "Nested protection"
     dialog.close()
     application.processEvents()

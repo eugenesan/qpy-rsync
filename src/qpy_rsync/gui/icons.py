@@ -205,7 +205,7 @@ def source_icon() -> QIcon:
 def destination_icon() -> QIcon:
     """The system icon of the destination side."""
     return _theme_icon(
-        "folder-sync", "folder", fallback=QStyle.StandardPixmap.SP_DirIcon
+        "folder-add", "folder", fallback=QStyle.StandardPixmap.SP_DirIcon
     )
 
 

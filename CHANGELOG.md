@@ -230,9 +230,9 @@
 
 ## milestone 1.15h verification and help
 
-- The verification result is logged as a summary line with the selected new, updated, metadata, replaced and deleted items plus the item count and size.
-- A bold Total root row in the comparison tree aggregates every displayed item and its size; it cannot be included or excluded itself.
-- Source and Destination use the system folder icons (with a style fallback), so they follow the icon theme and scale cleanly.
+- The actions summary is written to the journal whenever the selection changes, and a successful verification adds its own summary line with the selected new, updated, metadata, replaced and deleted items plus the item count and size. The overview pane no longer carries summary text.
+- A bold Total root row in the overview tree aggregates every item the overview displays and its size, so it follows the action filters.
+- Source and Destination use the `folder-open` and `folder-add` system icons (with a style fallback), so they follow the icon theme and scale cleanly.
 - Help -> How-To (F1) opens a scrollable explanation of the workflow, the actions and the verification step; About no longer takes a shortcut.
 - The Synchronize tooltip explains the confirmation dialog and the dependency on Verify Actions.
-- The synchronization dialog no longer requires an extra acknowledgement checkbox; the reviewed dialog itself is the confirmation.
+- The synchronization dialog no longer requires an extra acknowledgement checkbox; the reviewed dialog itself is the confirmation. Its fingerprint moved into the header, the explanatory paragraph is bold text instead of a text box, and the statistics are a two-column table.

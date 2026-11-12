@@ -590,12 +590,9 @@ class ComparisonView(QWidget):
                 index = stack.pop()
                 if not index.isValid():
                     continue
-                source_index = self.proxy.mapToSource(index.siblingAtColumn(0))
-                node = source_index.internalPointer() if source_index.isValid() else None
-                if not getattr(node, "is_total", False):
-                    path = self._source_path_for_proxy_index(index)
-                    if path not in paths:
-                        continue
+                path = self._source_path_for_proxy_index(index)
+                if path not in paths:
+                    continue
                 for tree in (self.source, self.action, self.destination):
                     tree.expand(index)
                 stack.extend(
@@ -685,26 +682,20 @@ class ComparisonView(QWidget):
         """Open the folders the way the settings ask for.
 
         Very large comparisons stay collapsed: expanding ten thousand rows
-        once is fast, but the view would no longer be overviewable. The
-        synthetic Total row stays open either way, so the first level of the
-        comparison is always visible.
+        once is fast, but the view would no longer be overviewable.
         """
         mode = self._expand_mode
-        if len(self.model.changes) > limit:
-            mode = "none"
+        if mode == "none" or len(self.model.changes) > limit:
+            return
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
-                total = self.proxy.mapFromSource(self.model.total_index())
-                if not total.isValid():
-                    continue
-                tree.expand(total)
-                if mode == "all":
-                    tree.expandAll()
-                elif mode == "first":
-                    for row in range(tree.model().rowCount(total)):
-                        index = tree.model().index(row, 0, total)
+                if mode == "first":
+                    for row in range(tree.model().rowCount()):
+                        index = tree.model().index(row, 0)
                         if tree.model().rowCount(index):
                             tree.expand(index)
+                else:
+                    tree.expandAll()
 
     def expand_all(self) -> None:
         with self._frozen_updates(), self._synced_expansion():
@@ -715,9 +706,6 @@ class ComparisonView(QWidget):
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 tree.collapseAll()
-                total = self.proxy.mapFromSource(self.model.total_index())
-                if total.isValid():
-                    tree.expand(total)
 
     def save_view_state(self) -> None:
         settings = app_settings()

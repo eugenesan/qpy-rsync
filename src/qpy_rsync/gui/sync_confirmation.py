@@ -4,11 +4,14 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHeaderView,
     QLabel,
-    QPlainTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
 )
 
@@ -74,31 +77,64 @@ class SyncConfirmationDialog(QDialog):
     def __init__(self, profile: SyncProfile, plan: ExecutionPlan, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Confirm synchronization")
-        self.resize(620, 520)
+        self.resize(680, 500)
         summary = confirmation_summary(profile, plan)
 
         layout = QVBoxLayout(self)
-        heading = QLabel("Review verified synchronization")
-        heading.setStyleSheet("font-weight: bold; font-size: 115%;")
-        layout.addWidget(heading)
+        self.heading = QLabel(
+            "Review verified synchronization "
+            f"(fingerprint: {summary.fingerprint})"
+        )
+        self.heading.setObjectName("confirmation-heading")
+        self.heading.setWordWrap(True)
+        self.heading.setStyleSheet("font-weight: bold; font-size: 115%;")
+        layout.addWidget(self.heading)
 
         form = QFormLayout()
         form.addRow("Source", QLabel(summary.source))
         form.addRow("Destination", QLabel(summary.destination))
-        form.addRow("Included", QLabel(str(summary.included)))
-        form.addRow("Total size", QLabel(format_size(summary.total_size)))
-        form.addRow("Unchecked", QLabel(str(summary.excluded)))
-        form.addRow("Retained in Destination", QLabel(str(summary.retained_destination_only)))
-        form.addRow("Destructive", QLabel(str(summary.destructive)))
-        form.addRow("Create", QLabel(str(summary.creates)))
-        form.addRow("Update", QLabel(str(summary.updates)))
-        form.addRow("Metadata", QLabel(str(summary.metadata)))
-        form.addRow("Replace", QLabel(str(summary.replacements)))
-        form.addRow("Delete", QLabel(str(summary.deletions)))
-        form.addRow("Backup", QLabel(summary.backup))
-        form.addRow("Nested protection", QLabel(summary.nested_protection))
-        form.addRow("Verification fingerprint", QLabel(summary.fingerprint))
         layout.addLayout(form)
+
+        stats = [
+            ("Included", str(summary.included)),
+            ("Total size", format_size(summary.total_size)),
+            ("Unchecked", str(summary.excluded)),
+            ("Retained in Destination", str(summary.retained_destination_only)),
+            ("Destructive", str(summary.destructive)),
+            ("Create", str(summary.creates)),
+            ("Update", str(summary.updates)),
+            ("Metadata", str(summary.metadata)),
+            ("Replace", str(summary.replacements)),
+            ("Delete", str(summary.deletions)),
+            ("Backup", summary.backup),
+            ("Nested protection", summary.nested_protection),
+        ]
+        half = (len(stats) + 1) // 2
+        left, right = stats[:half], stats[half:]
+        self.stats = QTableWidget(max(len(left), len(right)), 4)
+        self.stats.setObjectName("confirmation-stats")
+        self.stats.horizontalHeader().hide()
+        self.stats.verticalHeader().hide()
+        self.stats.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.stats.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.stats.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stats.setWordWrap(True)
+        for row, pairs in enumerate(zip(left, right)):
+            for pair_index, (label, value) in enumerate(pairs):
+                self.stats.setItem(row, pair_index * 2, QTableWidgetItem(label))
+                self.stats.setItem(row, pair_index * 2 + 1, QTableWidgetItem(value))
+        header = self.stats.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.stats.resizeRowsToContents()
+        self.stats.setFixedHeight(
+            sum(self.stats.rowHeight(row) for row in range(self.stats.rowCount()))
+            + 2 * self.stats.frameWidth()
+        )
+        self.stats.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        layout.addWidget(self.stats)
 
         self.warning = QLabel()
         self.warning.setWordWrap(True)
@@ -112,16 +148,19 @@ class SyncConfirmationDialog(QDialog):
             self.warning.setStyleSheet("color: #15803D;")
         layout.addWidget(self.warning)
 
-        details = QPlainTextEdit()
-        details.setReadOnly(True)
-        details.setPlainText(
-            "This confirmation is based on a verified second dry run.\n"
+        self.details = QLabel(
+            "This confirmation is based on a verified second dry run. "
             "Confirming will launch write-capable rsync for the reviewed "
-            "Source and Destination.\n"
-            "The private decision filter is recreated and removed after execution."
+            "Source and Destination. The private decision filter is recreated "
+            "and removed after execution."
         )
-        details.setMaximumHeight(90)
-        layout.addWidget(details)
+        self.details.setObjectName("confirmation-details")
+        self.details.setWordWrap(True)
+        details_font = self.details.font()
+        details_font.setBold(True)
+        self.details.setFont(details_font)
+        layout.addWidget(self.details)
+        layout.addStretch(1)
 
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

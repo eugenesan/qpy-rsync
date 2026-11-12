@@ -166,6 +166,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
         self._expand_mode = "all"
+        self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._hovered_action = "compare"
@@ -1091,9 +1092,9 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self._current_plan = None
         self._validated_plan = None
+        self._last_plan_summary = None
         self.validate_plan_button.setEnabled(False)
         self.validate_plan_button.setText("Verify Actions")
-        self.overview.set_summary("")
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
@@ -1105,7 +1106,7 @@ class MainWindow(QMainWindow):
     def _refresh_plan_summary(self) -> None:
         if self._active_profile is None:
             self._current_plan = None
-            self.overview.set_summary("")
+            self._last_plan_summary = None
             self.validate_plan_button.setEnabled(False)
             return
         self._current_plan = build_execution_plan(
@@ -1114,17 +1115,20 @@ class MainWindow(QMainWindow):
             self.comparison.model.decisions,
         )
         summary = self._current_plan.summary
-        self.overview.set_summary(
-            f"Selected: {summary.included} items, "
-            f"{format_size(summary.total_size)}\n"
-            f"new {summary.creates}  ·  updated {summary.updates}  ·  "
-            f"metadata {summary.metadata}  ·  replaced {summary.replacements}  ·  "
-            f"deleted {summary.deletions}\n"
-            f"kept {summary.retained_destination_only}  ·  "
-            f"unchecked {summary.excluded}  ·  modified {summary.modified}  ·  "
-            f"destructive {summary.destructive}  ·  "
+        noun = "item" if summary.included == 1 else "items"
+        text = (
+            f"Selected: {summary.included} {noun}, "
+            f"{format_size(summary.total_size)}; "
+            f"new {summary.creates}, updated {summary.updates}, "
+            f"metadata {summary.metadata}, replaced {summary.replacements}, "
+            f"deleted {summary.deletions}; "
+            f"kept {summary.retained_destination_only}, unchecked {summary.excluded}, "
+            f"modified {summary.modified}, destructive {summary.destructive}; "
             f"backup {'on' if summary.backup_enabled else 'off'}"
         )
+        if text != self._last_plan_summary:
+            self._last_plan_summary = text
+            self._append_log(text)
         self.validate_plan_button.setEnabled(summary.included > 0)
         self.synchronize_button.setEnabled(False)
         self._execution_gate.selection_changed(included=summary.included)
@@ -1394,7 +1398,7 @@ class MainWindow(QMainWindow):
         self._set_busy_controls(False)
         self._validated_plan = None
         self._current_plan = None
-        self.overview.set_summary("")
+        self._last_plan_summary = None
         self._set_status(
             f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
             "success",
@@ -1441,6 +1445,7 @@ class MainWindow(QMainWindow):
             return
         self._flush_log()
         self.log.clear()
+        self._last_plan_summary = None
         self._active_profile = profile
         self._comparison_profile = profile
         self._append_log("$ " + shlex.join(spec.argv()))

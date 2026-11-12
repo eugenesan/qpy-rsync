@@ -53,7 +53,8 @@ def test_startup_hides_selected_actions() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    assert window.overview.summary_label.text() == ""
+    assert not hasattr(window.overview, "summary_label")
+    assert "Selected:" not in window.log.toPlainText()
     assert "Choose Source and Destination" in window.status_edit.text()
     window.close()
     application.processEvents()
@@ -164,15 +165,10 @@ def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> N
     window.comparison.set_changes(
         [Change("docs/file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
     )
-    source_action = window.comparison.model.index(
-        0,
-        window.comparison.model.ACTION,
-        window.comparison.model.total_index(),
-    )
-    proxy_action = window.comparison.proxy.mapFromSource(source_action)
-    window.comparison.action.setCurrentIndex(proxy_action)
+    directory = window.comparison.proxy.index(0, window.comparison.model.ACTION)
+    window.comparison.action.setCurrentIndex(directory)
     window.comparison.model.setData(
-        source_action,
+        window.comparison.model.index(0, window.comparison.model.ACTION),
         Qt.CheckState.Unchecked,
         Qt.ItemDataRole.CheckStateRole,
     )
@@ -195,12 +191,7 @@ def test_proxy_index_path_is_mapped_to_source_safely() -> None:
         [Change("docs/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
     application.processEvents()
-    source_index = window.comparison.model.index(
-        0,
-        window.comparison.model.ACTION,
-        window.comparison.model.total_index(),
-    )
-    proxy_index = window.comparison.proxy.mapFromSource(source_index)
+    proxy_index = window.comparison.proxy.index(0, window.comparison.model.ACTION)
     assert window.comparison._source_path_for_proxy_index(proxy_index) == "docs"
     window.close()
     application.processEvents()
@@ -337,19 +328,19 @@ def test_unchanged_inventory_is_async_and_cached() -> None:
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
     # The compared objects are shown while the inventory is still running.
-    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 1
+    assert window.comparison.model.rowCount() == 1
 
     extra = Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
     window._inventory_finished(7, [extra])
-    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 2
+    assert window.comparison.model.rowCount() == 2
     # The unchanged object appears without another comparison.
-    assert window.comparison.proxy.rowCount(window.comparison.proxy.index(0, 0)) == 2
+    assert window.comparison.proxy.rowCount() == 2
     assert "unchanged=1" in window.log.toPlainText()
 
     window.show_unchanged.setChecked(False)
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
-    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 2
+    assert window.comparison.model.rowCount() == 2
     window.close()
     application.processEvents()
 
@@ -469,10 +460,12 @@ def test_verification_reuses_fresh_comparison() -> None:
     assert window.validate_plan_button.text() == "Actions Verified"
     assert window._validated_plan is window._current_plan
     assert "STATE verification-reused-comparison" in window.log.toPlainText()
+    log = window.log.toPlainText()
+    assert "Selected: 1 item, 0 B; new 0, updated 1" in log
     assert (
         "Actions verified, selected: new 0, updated 1, metadata 0, "
         "replaced 0, deleted 0; 1 item, 0 B"
-    ) in window.log.toPlainText()
+    ) in log
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()
