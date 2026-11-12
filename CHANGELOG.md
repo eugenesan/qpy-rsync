@@ -317,3 +317,7 @@
 ## milestone 1.15x static summary table
 
 - The synchronization summary table ignores wheel and scroll requests, so hovering over it can no longer shift its contents by a few pixels.
+
+## milestone 1.15y backup settings commit
+
+- Backup settings are read directly from the fields when a profile is built, loaded profiles initialize the backup state, and verification/synchronization commit pending edits first. A backup directory typed without pressing Enter is no longer ignored.

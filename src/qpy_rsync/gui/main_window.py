@@ -970,7 +970,10 @@ class MainWindow(QMainWindow):
             source=parse_endpoint(self.source_edit.text()),
             destination=parse_endpoint(self.destination_edit.text()),
             filters=list(self._filters),
-            backup=self._backup,
+            backup=BackupOptions(
+                directory=self.backup_edit.text().strip(),
+                protect_nested=self.protect_backup.isChecked(),
+            ),
             transfer=TransferOptions(sync_mode=SyncMode(self.sync_mode.currentData())),
         )
 
@@ -1049,6 +1052,10 @@ class MainWindow(QMainWindow):
             self.sync_mode.setCurrentIndex(index)
         self.backup_edit.setText(profile.backup.directory)
         self.protect_backup.setChecked(profile.backup.protect_nested)
+        self._backup = BackupOptions(
+            directory=profile.backup.directory,
+            protect_nested=profile.backup.protect_nested,
+        )
         self._filters = list(profile.filters)
         self._save_filters()
         self._update_filter_summary(stale=False)
@@ -1226,6 +1233,7 @@ class MainWindow(QMainWindow):
         self._execution_gate.selection_changed(included=summary.included)
 
     def _validate_selected_plan(self) -> None:
+        self._backup_changed()
         if self._current_plan is None or self._active_profile is None:
             return
         freshness = check_plan_freshness(
@@ -1350,6 +1358,7 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Plan validation failed", message)
 
     def _show_sync_confirmation(self) -> None:
+        self._backup_changed()
         if (
             self._validated_plan is None
             or self._active_profile is None

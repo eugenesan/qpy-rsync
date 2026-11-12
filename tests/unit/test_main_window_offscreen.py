@@ -773,3 +773,35 @@ def test_window_can_shrink_to_1280() -> None:
     assert window.width() == 1280
     window.close()
     application.processEvents()
+
+
+def test_loaded_profile_keeps_its_backup_settings() -> None:
+    from qpy_rsync.core.enums import EndpointKind
+    from qpy_rsync.core.models import BackupOptions, Endpoint, SyncProfile
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    profile = SyncProfile(
+        "backup",
+        Endpoint(EndpointKind.LOCAL, "/src/"),
+        Endpoint(EndpointKind.LOCAL, "/dst/"),
+        backup=BackupOptions(directory="/recovery", protect_nested=True),
+    )
+    window._apply_profile(profile)
+    assert window._backup.directory == "/recovery"
+    assert window._profile().backup.directory == "/recovery"
+    window.close()
+    application.processEvents()
+
+
+def test_typed_backup_path_is_used_without_leaving_the_field() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window.backup_edit.setText("/typed-backup")
+    assert window._profile().backup.directory == "/typed-backup"
+    window.close()
+    application.processEvents()
