@@ -483,6 +483,7 @@ def test_verification_reuses_fresh_comparison() -> None:
         "Actions verified, selected: new 0, updated 1, metadata 0, "
         "replaced 0, deleted 0; 1 item, 0 B"
     ) in log
+    assert window.progress_label.text() == "Selected actions verified"
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()
@@ -508,6 +509,7 @@ def test_verification_can_be_cancelled() -> None:
     window._plan_validation_cancelled()
     assert not window.cancel_button.isEnabled()
     assert window.validate_plan_button.accessibleName() == "Verify Actions"
+    assert window.progress_label.text() == "Action verification cancelled"
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
     application.processEvents()

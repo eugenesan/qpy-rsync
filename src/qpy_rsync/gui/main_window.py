@@ -1293,6 +1293,8 @@ class MainWindow(QMainWindow):
                     f"deleted {summary.deletions}; "
                     f"{summary.included} {noun}, {format_size(summary.total_size)}"
                 )
+            self.progress_bar.setValue(100)
+            self.progress_label.setText("Selected actions verified")
             self.status_edit.setText("Selected actions verified. No files were changed.")
             self._append_log("STATE actions-verified")
             self._end_bulk_logging()
@@ -1309,6 +1311,7 @@ class MainWindow(QMainWindow):
             for path, action, kind in result.mismatch.unexpected
         )
         detail = "\n".join(part for part in (missing, unexpected) if part)
+        self.progress_label.setText("Plan validation failed")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
         self.status_edit.setText("Plan validation failed; synchronization remains blocked.")
@@ -1325,6 +1328,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
+        self.progress_label.setText("Action verification cancelled")
         self.status_edit.setText("Action verification was cancelled.")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
@@ -1337,6 +1341,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
+        self.progress_label.setText("Plan validation failed")
         self.status_edit.setText("Plan validation failed.")
         self._append_log(message)
         self._end_bulk_logging()

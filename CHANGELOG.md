@@ -291,3 +291,7 @@
 - Compare, Verify Actions and Synchronize use theme icons (`kr_comparedirs`, `answer`, `media-playback-start-symbolic`); Swap uses `swap-panels-symbolic` and the Source icon uses `inode-directory-symbolic`.
 - All toolbar icon buttons use the common 40 px control size.
 - The Item column in each compare tree absorbs the extra pane width; Items, Size and Modified keep their widths.
+
+## milestone 1.15s verification progress cleanup
+
+- The progress pane now leaves “Verifying selected actions...” when verification finishes, fails or is cancelled, and reports the final verification state instead.
