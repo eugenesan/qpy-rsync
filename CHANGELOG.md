@@ -232,7 +232,7 @@
 
 - The actions summary is written to the journal whenever the selection changes, and a successful verification adds its own summary line with the selected new, updated, metadata, replaced and deleted items plus the item count and size. The overview pane no longer carries summary text.
 - A bold Total root row in the overview tree aggregates every item the overview displays and its size, so it follows the action filters.
-- Source and Destination use the `folder-open` and `folder-add` system icons (with a style fallback), so they follow the icon theme and scale cleanly.
+- Source and Destination use the `folder-open-symbolic` and `folder-add-symbolic` system icons (with color and style fallbacks), so they follow the icon theme and scale cleanly.
 - Help -> How-To (F1) opens a scrollable explanation of the workflow, the actions and the verification step; About no longer takes a shortcut.
 - The Synchronize tooltip explains the confirmation dialog and the dependency on Verify Actions.
 - The synchronization dialog no longer requires an extra acknowledgement checkbox; the reviewed dialog itself is the confirmation. Its fingerprint moved into the header, the explanatory paragraph is bold text instead of a text box, and the statistics are a two-column table.

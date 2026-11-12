@@ -198,14 +198,20 @@ def _theme_icon(*names: str, fallback: QStyle.StandardPixmap) -> QIcon:
 def source_icon() -> QIcon:
     """The system folder icon of the source side."""
     return _theme_icon(
-        "folder-open", "folder", fallback=QStyle.StandardPixmap.SP_DirOpenIcon
+        "folder-open-symbolic",
+        "folder-open",
+        "folder",
+        fallback=QStyle.StandardPixmap.SP_DirOpenIcon,
     )
 
 
 def destination_icon() -> QIcon:
     """The system icon of the destination side."""
     return _theme_icon(
-        "folder-add", "folder", fallback=QStyle.StandardPixmap.SP_DirIcon
+        "folder-add-symbolic",
+        "folder-add",
+        "folder",
+        fallback=QStyle.StandardPixmap.SP_DirIcon,
     )
 
 
