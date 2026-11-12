@@ -467,13 +467,13 @@ class ComparisonView(QWidget):
             # Programmatic expansion updates every pane at once. Mirroring it
             # row by row would relayout each tree once per row.
             return
+        tree.expand(self._column_zero(index))
         path = self._source_path_for_proxy_index(index)
         if path:
             # The user opened a folder that the automatic limit left closed.
             self.model.clear_expand_limited(path)
             if self.limited_button.isChecked():
                 self._refresh_limited_button(self.model.limited_paths())
-        tree.expand(self._column_zero(index))
 
     def _collapse_in(self, tree: QTreeView, index: QModelIndex) -> None:
         """Mirror a user collapse into the other panes."""
