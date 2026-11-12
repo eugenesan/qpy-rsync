@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import QApplication, QStyle
 
 from qpy_rsync.core.changes import ChangeAction
 
@@ -185,20 +186,27 @@ def swap_icon() -> QIcon:
     return QIcon(pixmap)
 
 
-@lru_cache(maxsize=None)
+def _theme_icon(*names: str, fallback: QStyle.StandardPixmap) -> QIcon:
+    """Return the first icon the system theme provides, else a style icon."""
+    for name in names:
+        icon = QIcon.fromTheme(name)
+        if not icon.isNull():
+            return icon
+    return QApplication.style().standardIcon(fallback)
+
+
 def source_icon() -> QIcon:
-    pixmap, painter = _pixmap()
-    _draw_folder(painter, QColor("#1d4ed8"), "right")
-    painter.end()
-    return QIcon(pixmap)
+    """The system folder icon of the source side."""
+    return _theme_icon(
+        "folder-open", "folder", fallback=QStyle.StandardPixmap.SP_DirOpenIcon
+    )
 
 
-@lru_cache(maxsize=None)
 def destination_icon() -> QIcon:
-    pixmap, painter = _pixmap()
-    _draw_folder(painter, QColor("#15803d"), "left")
-    painter.end()
-    return QIcon(pixmap)
+    """The system icon of the destination side."""
+    return _theme_icon(
+        "folder-sync", "folder", fallback=QStyle.StandardPixmap.SP_DirIcon
+    )
 
 
 # --- item icons -----------------------------------------------------------

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -124,16 +123,11 @@ class SyncConfirmationDialog(QDialog):
         details.setMaximumHeight(90)
         layout.addWidget(details)
 
-        self.acknowledge = QCheckBox("I reviewed Source, Destination, selected actions, and backup settings")
-        layout.addWidget(self.acknowledge)
-
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.confirm_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.confirm_button.setText("Synchronize Now")
-        self.confirm_button.setEnabled(False)
-        self.acknowledge.toggled.connect(self.confirm_button.setEnabled)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)

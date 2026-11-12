@@ -164,10 +164,15 @@ def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> N
     window.comparison.set_changes(
         [Change("docs/file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
     )
-    directory = window.comparison.proxy.index(0, window.comparison.model.ACTION)
-    window.comparison.action.setCurrentIndex(directory)
+    source_action = window.comparison.model.index(
+        0,
+        window.comparison.model.ACTION,
+        window.comparison.model.total_index(),
+    )
+    proxy_action = window.comparison.proxy.mapFromSource(source_action)
+    window.comparison.action.setCurrentIndex(proxy_action)
     window.comparison.model.setData(
-        window.comparison.model.index(0, window.comparison.model.ACTION),
+        source_action,
         Qt.CheckState.Unchecked,
         Qt.ItemDataRole.CheckStateRole,
     )
@@ -190,7 +195,12 @@ def test_proxy_index_path_is_mapped_to_source_safely() -> None:
         [Change("docs/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     )
     application.processEvents()
-    proxy_index = window.comparison.proxy.index(0, window.comparison.model.ACTION)
+    source_index = window.comparison.model.index(
+        0,
+        window.comparison.model.ACTION,
+        window.comparison.model.total_index(),
+    )
+    proxy_index = window.comparison.proxy.mapFromSource(source_index)
     assert window.comparison._source_path_for_proxy_index(proxy_index) == "docs"
     window.close()
     application.processEvents()
@@ -327,19 +337,19 @@ def test_unchanged_inventory_is_async_and_cached() -> None:
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
     # The compared objects are shown while the inventory is still running.
-    assert window.comparison.model.rowCount() == 1
+    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 1
 
     extra = Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
     window._inventory_finished(7, [extra])
-    assert window.comparison.model.rowCount() == 2
+    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 2
     # The unchanged object appears without another comparison.
-    assert window.comparison.proxy.rowCount() == 2
+    assert window.comparison.proxy.rowCount(window.comparison.proxy.index(0, 0)) == 2
     assert "unchanged=1" in window.log.toPlainText()
 
     window.show_unchanged.setChecked(False)
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
-    assert window.comparison.model.rowCount() == 2
+    assert window.comparison.model.rowCount(window.comparison.model.total_index()) == 2
     window.close()
     application.processEvents()
 
@@ -459,6 +469,10 @@ def test_verification_reuses_fresh_comparison() -> None:
     assert window.validate_plan_button.text() == "Actions Verified"
     assert window._validated_plan is window._current_plan
     assert "STATE verification-reused-comparison" in window.log.toPlainText()
+    assert (
+        "Actions verified, selected: new 0, updated 1, metadata 0, "
+        "replaced 0, deleted 0; 1 items, 0 B"
+    ) in window.log.toPlainText()
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()
@@ -647,5 +661,27 @@ def test_inventory_toggle_runs_the_inventory_after_a_comparison() -> None:
     window.show_unchanged.setChecked(False)
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
+    window.close()
+    application.processEvents()
+
+
+def test_help_menu_and_synchronize_tooltip() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    help_menu = None
+    for menu_action in window.menuBar().actions():
+        menu = menu_action.menu()
+        if menu is not None and menu.title() == "&Help":
+            help_menu = menu
+            break
+    assert help_menu is not None
+    entries = {action.text(): action.shortcut().toString() for action in help_menu.actions()}
+    assert entries["How-To"] == "F1"
+    assert entries["About qpy-rsync"] == ""
+    tooltip = window.synchronize_button.toolTip()
+    assert "confirmation dialog" in tooltip
+    assert "Verify Actions" in tooltip
+    assert "Shortcut: F9" in tooltip
     window.close()
     application.processEvents()

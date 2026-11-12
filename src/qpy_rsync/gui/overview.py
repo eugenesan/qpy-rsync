@@ -65,10 +65,6 @@ class OverviewModel(QAbstractItemModel):
         self.root = OverviewNode("", "")
         self._level_totals: dict[int, int] = {}
 
-    def set_summary(self, text: str) -> None:
-        """Show the summary of the proposed synchronization."""
-        self.summary_label.setText(text)
-
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         self.beginResetModel()
         self.root = OverviewNode("", "")

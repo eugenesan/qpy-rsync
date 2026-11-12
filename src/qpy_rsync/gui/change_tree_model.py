@@ -55,6 +55,9 @@ class TreeNode:
     subtree_size: int = 0
     subtree_destination_size: int = 0
     subtree_changed: int = 0
+    subtree_items: int = 0
+    # The synthetic "Total" row that holds every item of the comparison.
+    is_total: bool = False
 
     def child(self, row: int) -> "TreeNode":
         return self.children[row]
@@ -78,6 +81,7 @@ class ChangeTreeModel(QAbstractItemModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.root = TreeNode("", "")
+        self.total: TreeNode | None = None
         self.decisions = ChangeDecisions()
         self.changes: list[Change] = []
         self.source_root = ""
@@ -99,12 +103,21 @@ class ChangeTreeModel(QAbstractItemModel):
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(self.changes)
         self.root = TreeNode("", "")
+        self.total = None
+        base = self.root
         nodes: dict[str, TreeNode] = {"": self.root}
+        if self.changes:
+            # A single root row reports the size and the item count of the
+            # whole comparison, with every top-level item nested below it.
+            self.total = TreeNode("Total", "", self.root, is_total=True)
+            self.root.children.append(self.total)
+            base = self.total
+            nodes = {"": self.total}
         for change in sorted(changes, key=lambda item: (item.path.count("/"), item.path)):
             clean_path = change.path.rstrip("/")
             parts = PurePosixPath(clean_path).parts
             current_path = ""
-            parent = self.root
+            parent = base
             for part in parts:
                 current_path = f"{current_path}/{part}".lstrip("/")
                 node = nodes.get(current_path)
@@ -117,11 +130,18 @@ class ChangeTreeModel(QAbstractItemModel):
         self._compute_subtree_flags(self.root)
         self._compute_sizes(self.root)
         self._compute_changed(self.root)
+        self._compute_items(self.root)
         self._sort(self.root)
         self._assign_rows(self.root)
         self._override_paths = self.decisions.override_paths(self.changes)
         self.endResetModel()
         self._refresh_action_header()
+
+    def total_index(self) -> QModelIndex:
+        """Return the synthetic Total row, or an invalid index when empty."""
+        if self.total is None:
+            return QModelIndex()
+        return self.createIndex(self.total.row_index, 0, self.total)
 
     def _compute_changed(self, node: TreeNode) -> int:
         """Count the changed items below a folder."""
@@ -131,6 +151,18 @@ class ChangeTreeModel(QAbstractItemModel):
         for child in node.children:
             total += self._compute_changed(child)
         node.subtree_changed = total
+        return total
+
+    def _compute_items(self, node: TreeNode) -> int:
+        """Count every displayed object below a folder, unchanged ones too."""
+        total = 0
+        if node.change is not None and (
+            self._visible_paths is None or node.path in self._visible_paths
+        ):
+            total += 1
+        for child in node.children:
+            total += self._compute_items(child)
+        node.subtree_items = total
         return total
 
     def _compute_sizes(self, node: TreeNode) -> tuple[int, int]:
@@ -334,13 +366,24 @@ class ChangeTreeModel(QAbstractItemModel):
         """
         self._visible_paths = None if paths is None else set(paths)
         self._compute_sizes(self.root)
+        self._compute_items(self.root)
         if not self.root.children:
             return
-        self.dataChanged.emit(
-            self.index(0, 0),
-            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
-            [Qt.ItemDataRole.DisplayRole],
-        )
+        self._emit_sizes_changed(self.root)
+
+    def _emit_sizes_changed(self, node: TreeNode) -> None:
+        """Repaint the rows whose aggregated size may have changed."""
+        if node.children:
+            parent = (
+                QModelIndex()
+                if node is self.root
+                else self.createIndex(node.row_index, 0, node)
+            )
+            first = self.index(0, 0, parent)
+            last = self.index(len(node.children) - 1, self.COLUMN_COUNT - 1, parent)
+            self.dataChanged.emit(first, last, [Qt.ItemDataRole.DisplayRole])
+            for child in node.children:
+                self._emit_sizes_changed(child)
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
@@ -350,14 +393,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._compute_sizes(self.root)
         if not self.root.children:
             return
-        top = self.index(0, 0)
-        if not top.isValid():
-            return
-        self.dataChanged.emit(
-            top,
-            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
-            [Qt.ItemDataRole.DisplayRole],
-        )
+        self._emit_sizes_changed(self.root)
 
     def _destination_info(self, path: str) -> tuple[int | None, str | None]:
         return self._destination_metadata.get(path, (None, None))
@@ -381,6 +417,10 @@ class ChangeTreeModel(QAbstractItemModel):
             if index.column() == self.SOURCE_SIZE:
                 if not source_present:
                     return ""
+                if node.is_total:
+                    # The Total row carries the size and the item count of the
+                    # whole comparison in one place.
+                    return f"{self._items_label(node.subtree_items)}, {self._size(node.subtree_size)}"
                 return self._size(self._size_value(node, self.SOURCE_SIZE))
             if index.column() == self.DESTINATION_SIZE:
                 if not destination_present:
@@ -445,6 +485,12 @@ class ChangeTreeModel(QAbstractItemModel):
         return None
 
     def _tooltip_for(self, node: TreeNode, column: int) -> str:
+        if node.is_total:
+            return (
+                f"All items in this comparison\n"
+                f"{self._items_label(node.subtree_items)}, "
+                f"{format_size(node.subtree_size)}"
+            )
         change = node.change
         source_full = full_path(self.source_root, node.path)
         destination_full = full_path(self.destination_root, node.path)
@@ -563,6 +609,10 @@ class ChangeTreeModel(QAbstractItemModel):
         return file_type_icon(node.name)
 
     def _node_selectable(self, node: TreeNode) -> bool:
+        if node.is_total:
+            # The Total row summarizes the tree; it is not an object that can
+            # be included or excluded itself.
+            return False
         if node.change is None:
             return bool(node.children)
         return self.decisions.selectable(node.change)
@@ -602,3 +652,7 @@ class ChangeTreeModel(QAbstractItemModel):
     @staticmethod
     def _size(size: int | None) -> str:
         return format_size(size)
+
+    @staticmethod
+    def _items_label(count: int) -> str:
+        return f"{count} item" if count == 1 else f"{count} items"

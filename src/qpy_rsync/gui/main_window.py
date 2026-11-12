@@ -272,6 +272,12 @@ class MainWindow(QMainWindow):
             "remote host must be reachable and credentials must be available."
         )
         self.synchronize_button = QPushButton("Synchronize...")
+        self.synchronize_button.setToolTip(
+            "Open the confirmation dialog and write the verified plan.\n"
+            "The button stays disabled until Verify Actions (F8) succeeds for\n"
+            "the current selection; changed filters or decisions invalidate\n"
+            "the verification."
+        )
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setMinimumWidth(
             max(
@@ -590,7 +596,8 @@ class MainWindow(QMainWindow):
         self._add_action(actions_menu, "Pause", "F11", self._toggle_pause)
 
         help_menu = menu_bar.addMenu("&Help")
-        self._add_action(help_menu, "About qpy-rsync", "F1", self._show_about)
+        self._add_action(help_menu, "How-To", "F1", self._show_how_to)
+        self._add_action(help_menu, "About qpy-rsync", "", self._show_about)
 
     def _add_action(self, menu: object, text: str, shortcut: str, slot: object) -> object:
         from PySide6.QtGui import QAction, QKeySequence
@@ -641,6 +648,11 @@ class MainWindow(QMainWindow):
                 else:
                     mirror.addAction(item)
         self.comparison.menu_button.setMenu(menu)
+
+    def _show_how_to(self) -> None:
+        from .help_dialog import show_how_to
+
+        show_how_to(self)
 
     def _show_about(self) -> None:
         from .about import show_about
@@ -1177,6 +1189,15 @@ class MainWindow(QMainWindow):
             self._execution_gate.verification_succeeded()
             self.synchronize_button.setEnabled(True)
             self.validate_plan_button.setText("Actions Verified")
+            if self._current_plan is not None:
+                summary = self._current_plan.summary
+                self._append_log(
+                    "Actions verified, selected: "
+                    f"new {summary.creates}, updated {summary.updates}, "
+                    f"metadata {summary.metadata}, replaced {summary.replacements}, "
+                    f"deleted {summary.deletions}; "
+                    f"{summary.included} items, {format_size(summary.total_size)}"
+                )
             self.status_edit.setText("Selected actions verified. No files were changed.")
             self._append_log("STATE actions-verified")
             self._end_bulk_logging()

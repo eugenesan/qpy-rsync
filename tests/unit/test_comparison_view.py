@@ -50,16 +50,20 @@ def test_action_filter_keeps_expanded_paths() -> None:
             ),
         ]
     )
-    index = view.proxy.index(0, 0)
+    total = view.proxy.index(0, 0)
+    index = view.proxy.index(0, 0, total)
     for tree in (view.source, view.action, view.destination):
+        tree.expand(total)
         tree.expand(index)
     view.set_action_filter({ChangeAction.CREATE})
-    filtered = view.proxy.index(0, 0)
+    total = view.proxy.index(0, 0)
+    filtered = view.proxy.index(0, 0, total)
     assert view.proxy.rowCount(filtered) == 1
     for tree in (view.source, view.action, view.destination):
         assert tree.isExpanded(filtered)
     view.set_action_filter(None)
-    restored = view.proxy.index(0, 0)
+    total = view.proxy.index(0, 0)
+    restored = view.proxy.index(0, 0, total)
     assert view.proxy.rowCount(restored) == 2
     for tree in (view.source, view.action, view.destination):
         assert tree.isExpanded(restored)
@@ -123,8 +127,10 @@ def test_inventory_update_preserves_expanded_folders() -> None:
         [Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")]
     )
     application.processEvents()
-    directory = view.proxy.index(0, 0)
+    total = view.proxy.index(0, 0)
+    directory = view.proxy.index(0, 0, total)
     for tree in (view.source, view.action, view.destination):
+        tree.expand(total)
         tree.expand(directory)
     view.set_changes(
         [
@@ -134,7 +140,8 @@ def test_inventory_update_preserves_expanded_folders() -> None:
         preserve_expansion=True,
     )
     application.processEvents()
-    restored = view.proxy.index(0, 0)
+    total = view.proxy.index(0, 0)
+    restored = view.proxy.index(0, 0, total)
     assert view.proxy.rowCount(restored) == 2
     for tree in (view.source, view.action, view.destination):
         assert tree.isExpanded(restored)
@@ -152,12 +159,12 @@ def test_updated_objects_appear_without_a_new_comparison() -> None:
     changed = Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
     view.set_changes([changed])
     application.processEvents()
-    assert view.proxy.rowCount() == 1
+    assert view.proxy.rowCount(view.proxy.index(0, 0)) == 1
 
     unchanged = Change("b.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
     view.set_changes([changed, unchanged], preserve_expansion=True)
     application.processEvents()
-    assert view.proxy.rowCount() == 2
+    assert view.proxy.rowCount(view.proxy.index(0, 0)) == 2
     view.close()
     application.processEvents()
 
@@ -233,16 +240,16 @@ def test_destination_metadata_fills_the_destination_columns() -> None:
     view.set_changes([change])
     application.processEvents()
     model = view.model
-    assert model.data(model.index(0, model.DESTINATION_SIZE)) == ""
+    assert model.data(model.index(0, model.DESTINATION_SIZE, model.total_index())) == ""
 
     view.set_destination_metadata({"a.txt": (6, "2026/11/09-10:00:00")})
     application.processEvents()
-    assert model.data(model.index(0, model.DESTINATION_SIZE)) == "6 B"
+    assert model.data(model.index(0, model.DESTINATION_SIZE, model.total_index())) == "6 B"
     assert (
-        model.data(model.index(0, model.DESTINATION_TIME)) == "2026/11/09-10:00:00"
+        model.data(model.index(0, model.DESTINATION_TIME, model.total_index())) == "2026/11/09-10:00:00"
     )
     # The source columns still report the values of the comparison.
-    assert model.data(model.index(0, model.SOURCE_SIZE)) == "10 B"
+    assert model.data(model.index(0, model.SOURCE_SIZE, model.total_index())) == "10 B"
     view.close()
     application.processEvents()
 
@@ -262,15 +269,17 @@ def test_header_click_sorts_the_tree_panes() -> None:
 
     def paths() -> list[str]:
         model = view.model
+        total = model.total_index()
         return [
-            model.index(row, 0).internalPointer().path
-            for row in range(model.rowCount())
+            model.index(row, 0, total).internalPointer().path
+            for row in range(model.rowCount(total))
         ]
 
     def proxy_paths() -> list[str]:
+        total = view.proxy.index(0, 0)
         return [
-            view.proxy.index(row, 0).data()
-            for row in range(view.proxy.rowCount())
+            view.proxy.index(row, 0, total).data()
+            for row in range(view.proxy.rowCount(total))
         ]
 
     # The default order is by name.
@@ -387,15 +396,15 @@ def test_folder_size_follows_the_action_filters() -> None:
     application.processEvents()
     model = view.model
     # The folder reports the objects that are displayed below it.
-    assert model.data(model.index(0, model.SOURCE_SIZE)) == "6.8 KiB"
+    assert model.data(model.index(0, model.SOURCE_SIZE, model.total_index())) == "6.8 KiB"
 
     view.set_action_filter({ChangeAction.CREATE})
     application.processEvents()
-    assert model.data(model.index(0, model.SOURCE_SIZE)) == "1000 B"
+    assert model.data(model.index(0, model.SOURCE_SIZE, model.total_index())) == "1000 B"
 
     view.set_action_filter(None)
     application.processEvents()
-    assert model.data(model.index(0, model.SOURCE_SIZE)) == "6.8 KiB"
+    assert model.data(model.index(0, model.SOURCE_SIZE, model.total_index())) == "6.8 KiB"
     view.close()
     application.processEvents()
 
@@ -413,12 +422,12 @@ def test_folder_size_grows_with_the_unchanged_objects() -> None:
     )
     view.set_changes([changed])
     application.processEvents()
-    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE)) == "1000 B"
+    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE, view.model.total_index())) == "1000 B"
 
     # The inventory adds the unchanged objects to the comparison.
     view.set_changes([changed, unchanged], preserve_expansion=True)
     application.processEvents()
-    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE)) == "3.9 KiB"
+    assert view.model.data(view.model.index(0, view.model.SOURCE_SIZE, view.model.total_index())) == "3.9 KiB"
     view.close()
     application.processEvents()
 

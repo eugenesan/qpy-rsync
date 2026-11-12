@@ -37,9 +37,10 @@ def _proxy(model: ChangeTreeModel) -> ChangeTreeFilterProxyModel:
 
 def _names(proxy: ChangeTreeFilterProxyModel) -> set[str]:
     names: set[str] = set()
-    for row in range(proxy.rowCount()):
-        source = proxy.data(proxy.index(row, 0))
-        destination = proxy.data(proxy.index(row, 4))
+    total = proxy.index(0, 0)
+    for row in range(proxy.rowCount(total)):
+        source = proxy.data(proxy.index(row, 0, total))
+        destination = proxy.data(proxy.index(row, 4, total))
         names.add(source or destination)
     return names
 

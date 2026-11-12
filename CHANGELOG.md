@@ -227,3 +227,12 @@
 - A Menu button mirrors the application menu, for desktops whose global menu does not reach Qt applications.
 - Unchanged items use a checkmark, faded in the trees, so it differs from the active checkboxes and frees the tribar for the menu button.
 - Icons of rows without a checkbox line up with the icons of the selectable rows.
+
+## milestone 1.15h verification and help
+
+- The verification result is logged as a summary line with the selected new, updated, metadata, replaced and deleted items plus the item count and size.
+- A bold Total root row in the comparison tree aggregates every displayed item and its size; it cannot be included or excluded itself.
+- Source and Destination use the system folder icons (with a style fallback), so they follow the icon theme and scale cleanly.
+- Help -> How-To (F1) opens a scrollable explanation of the workflow, the actions and the verification step; About no longer takes a shortcut.
+- The Synchronize tooltip explains the confirmation dialog and the dependency on Verify Actions.
+- The synchronization dialog no longer requires an extra acknowledgement checkbox; the reviewed dialog itself is the confirmation.

@@ -24,15 +24,23 @@ def _proxy() -> ChangeTreeFilterProxyModel:
     return proxy
 
 
+def _top(proxy: ChangeTreeFilterProxyModel):
+    return proxy.index(0, 0)
+
+
 def _root_names(proxy: ChangeTreeFilterProxyModel) -> set[str]:
-    return {proxy.data(proxy.index(row, 0)) for row in range(proxy.rowCount())}
+    total = _top(proxy)
+    return {
+        proxy.data(proxy.index(row, 0, total))
+        for row in range(proxy.rowCount(total))
+    }
 
 
 def test_plain_text_matches_name_and_keeps_ancestor() -> None:
     proxy = _proxy()
     proxy.set_path_filter("guide")
     assert _root_names(proxy) == {"docs"}
-    docs = proxy.index(0, 0)
+    docs = proxy.index(0, 0, _top(proxy))
     assert proxy.rowCount(docs) == 1
     assert proxy.data(proxy.index(0, 0, docs)) == "guide.txt"
 
@@ -41,7 +49,7 @@ def test_shell_glob_matches_names() -> None:
     proxy = _proxy()
     proxy.set_path_filter("*.py")
     assert _root_names(proxy) == {"src"}
-    src = proxy.index(0, 0)
+    src = proxy.index(0, 0, _top(proxy))
     assert proxy.rowCount(src) == 1
     assert proxy.data(proxy.index(0, 0, src)) == "app.py"
 
@@ -60,7 +68,7 @@ def test_trailing_slash_includes_full_directory_contents() -> None:
     proxy = _proxy()
     proxy.set_path_filter("docs/")
     assert _root_names(proxy) == {"docs"}
-    docs = proxy.index(0, 0)
+    docs = proxy.index(0, 0, _top(proxy))
     assert {proxy.data(proxy.index(row, 0, docs)) for row in range(proxy.rowCount(docs))} == {
         "guide.txt",
         "notes.md",

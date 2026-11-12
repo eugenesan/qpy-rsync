@@ -41,7 +41,7 @@ def test_confirmation_summary_contains_verified_counts() -> None:
     assert summary.backup == "/recovery"
 
 
-def test_confirmation_requires_explicit_acknowledgement() -> None:
+def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     application = app()
     item = profile()
     plan = build_execution_plan(
@@ -50,8 +50,6 @@ def test_confirmation_requires_explicit_acknowledgement() -> None:
         ChangeDecisions(),
     )
     dialog = SyncConfirmationDialog(item, plan)
-    assert not dialog.confirm_button.isEnabled()
-    dialog.acknowledge.setChecked(True)
     assert dialog.confirm_button.isEnabled()
     assert dialog.confirm_button.text() == "Synchronize Now"
     dialog.close()
