@@ -144,7 +144,9 @@ def test_filter_find_focus_and_ui_labels() -> None:
     application.processEvents()
     assert window.comparison.filter_edit.selectedText() == "*.jpg"
     assert window.comparison.model.HEADERS[0] == "Item"
-    assert window.comparison.model.HEADERS[4] == "Item"
+    assert window.comparison.model.HEADERS[1] == "Items"
+    assert window.comparison.model.HEADERS[5] == "Item"
+    assert window.comparison.model.HEADERS[6] == "Items"
     assert window.log_header.text() == "Journal"
     source_label = window.findChild(QLabel, "source-location-label")
     destination_label = window.findChild(QLabel, "destination-location-label")

@@ -56,6 +56,7 @@ class TreeNode:
     subtree_size: int = 0
     subtree_destination_size: int = 0
     subtree_changed: int = 0
+    subtree_items: int = 0
 
     def child(self, row: int) -> "TreeNode":
         return self.children[row]
@@ -67,14 +68,26 @@ class TreeNode:
 class ChangeTreeModel(QAbstractItemModel):
     decision_changed = Signal()
     SOURCE_NAME = 0
-    SOURCE_SIZE = 1
-    SOURCE_TIME = 2
-    ACTION = 3
-    DESTINATION_NAME = 4
-    DESTINATION_SIZE = 5
-    DESTINATION_TIME = 6
-    COLUMN_COUNT = 7
-    HEADERS = ("Item", "Size", "Modified", "Action", "Item", "Size", "Modified")
+    SOURCE_ITEMS = 1
+    SOURCE_SIZE = 2
+    SOURCE_TIME = 3
+    ACTION = 4
+    DESTINATION_NAME = 5
+    DESTINATION_ITEMS = 6
+    DESTINATION_SIZE = 7
+    DESTINATION_TIME = 8
+    COLUMN_COUNT = 9
+    HEADERS = (
+        "Item",
+        "Items",
+        "Size",
+        "Modified",
+        "Action",
+        "Item",
+        "Items",
+        "Size",
+        "Modified",
+    )
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -123,6 +136,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._compute_subtree_flags(self.root)
         self._compute_sizes(self.root)
         self._compute_changed(self.root)
+        self._compute_items(self.root)
         self._sort(self.root)
         self._assign_rows(self.root)
         self._override_paths = self.decisions.override_paths(self.changes)
@@ -191,6 +205,18 @@ class ChangeTreeModel(QAbstractItemModel):
         node.subtree_size = source_total
         node.subtree_destination_size = destination_total
         return source_total, destination_total
+
+    def _compute_items(self, node: TreeNode) -> int:
+        """Count every displayed object below a folder, folders included."""
+        total = 0
+        for child in node.children:
+            total += self._compute_items(child)
+            if child.change is not None and (
+                self._visible_paths is None or child.path in self._visible_paths
+            ):
+                total += 1
+        node.subtree_items = total
+        return total
 
     def _destination_size(self, change: Change) -> int:
         if change.destination_size is not None:
@@ -264,6 +290,9 @@ class ChangeTreeModel(QAbstractItemModel):
         if column in (self.SOURCE_NAME, self.DESTINATION_NAME):
             # Directories come first, the way the tree is built.
             return (0 if self._is_directory(node) else 1, name)
+        if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
+            count = node.subtree_items if self._is_directory(node) else -1
+            return (count, name)
         if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
             size = self._size_value(node, column)
             return (size if size is not None else -1, name)
@@ -373,13 +402,25 @@ class ChangeTreeModel(QAbstractItemModel):
         """
         self._visible_paths = None if paths is None else set(paths)
         self._compute_sizes(self.root)
+        self._compute_items(self.root)
         if not self.root.children:
             return
-        self.dataChanged.emit(
-            self.index(0, 0),
-            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
-            [Qt.ItemDataRole.DisplayRole],
-        )
+        self._emit_aggregate_changed(self.root)
+
+    def _emit_aggregate_changed(self, node: TreeNode) -> None:
+        if node.children:
+            parent = (
+                QModelIndex()
+                if node is self.root
+                else self.createIndex(node.row_index, 0, node)
+            )
+            self.dataChanged.emit(
+                self.index(0, 0, parent),
+                self.index(len(node.children) - 1, self.COLUMN_COUNT - 1, parent),
+                [Qt.ItemDataRole.DisplayRole],
+            )
+            for child in node.children:
+                self._emit_aggregate_changed(child)
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
@@ -389,14 +430,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._compute_sizes(self.root)
         if not self.root.children:
             return
-        top = self.index(0, 0)
-        if not top.isValid():
-            return
-        self.dataChanged.emit(
-            top,
-            self.index(len(self.root.children) - 1, self.COLUMN_COUNT - 1),
-            [Qt.ItemDataRole.DisplayRole],
-        )
+        self._emit_aggregate_changed(self.root)
 
     def _destination_info(self, path: str) -> tuple[int | None, str | None]:
         return self._destination_metadata.get(path, (None, None))
@@ -417,6 +451,14 @@ class ChangeTreeModel(QAbstractItemModel):
                 # Icons carry the action. Keeping the cell text empty leaves
                 # maximum room for object names in the tree panes.
                 return ""
+            if index.column() == self.SOURCE_ITEMS:
+                if not source_present or not self._is_directory(node):
+                    return ""
+                return str(node.subtree_items)
+            if index.column() == self.DESTINATION_ITEMS:
+                if not destination_present or not self._is_directory(node):
+                    return ""
+                return str(node.subtree_items)
             if index.column() == self.SOURCE_SIZE:
                 if not source_present:
                     return ""
@@ -487,6 +529,7 @@ class ChangeTreeModel(QAbstractItemModel):
         destination_full = full_path(self.destination_root, node.path)
         destination_column = column in {
             self.DESTINATION_NAME,
+            self.DESTINATION_ITEMS,
             self.DESTINATION_SIZE,
             self.DESTINATION_TIME,
         }

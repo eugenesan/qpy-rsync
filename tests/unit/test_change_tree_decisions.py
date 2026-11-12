@@ -224,3 +224,22 @@ def test_unchanged_rows_are_italic_and_changed_rows_are_not_bold() -> None:
     assert font is not None
     assert font.italic()
     assert not font.bold()
+
+
+def test_folder_rows_report_all_items_in_their_hierarchy() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [
+            Change("dir/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/sub/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/sub/c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        ]
+    )
+    directory = model.index(0, model.SOURCE_NAME)
+    sub = model.index(0, model.SOURCE_NAME, directory)
+    assert model.data(directory) == "dir"
+    assert model.data(directory.siblingAtColumn(model.SOURCE_ITEMS)) == "3"
+    assert model.data(sub) == "sub"
+    assert model.data(sub.siblingAtColumn(model.SOURCE_ITEMS)) == "2"
+    leaf = model.index(0, model.SOURCE_NAME, sub)
+    assert model.data(leaf.siblingAtColumn(model.SOURCE_ITEMS)) == ""

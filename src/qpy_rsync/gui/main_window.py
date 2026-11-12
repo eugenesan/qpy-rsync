@@ -1483,13 +1483,15 @@ class MainWindow(QMainWindow):
     def _comparison_sorted(self, column: int, order: object) -> None:
         """Report the new order of the comparison."""
         labels = {
-            0: "File/Directory",
-            1: "Size",
-            2: "Modified",
-            3: "Actions",
-            4: "File/Directory",
-            5: "Size",
-            6: "Modified",
+            0: "Item",
+            1: "Items",
+            2: "Size",
+            3: "Modified",
+            4: "Actions",
+            5: "Item",
+            6: "Items",
+            7: "Size",
+            8: "Modified",
         }
         label = labels.get(int(column), "the selected column")
         direction = (

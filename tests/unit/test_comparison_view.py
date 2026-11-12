@@ -276,13 +276,13 @@ def test_header_click_sorts_the_tree_panes() -> None:
     # The default order is by name.
     assert paths() == ["a.txt", "b.txt", "c.txt"]
 
-    view._sort_by_section(view.source.header(), 1)
+    view._sort_by_section(view.source.header(), view.model.SOURCE_SIZE)
     application.processEvents()
     assert paths() == ["a.txt", "c.txt", "b.txt"]
     assert proxy_paths() == ["a.txt", "c.txt", "b.txt"]
 
     # A second click reverses the order.
-    view._sort_by_section(view.source.header(), 1)
+    view._sort_by_section(view.source.header(), view.model.SOURCE_SIZE)
     application.processEvents()
     assert paths() == ["b.txt", "c.txt", "a.txt"]
 
@@ -307,18 +307,23 @@ def test_sort_indicator_marks_the_sorted_column() -> None:
     )
     application.processEvents()
 
-    view._sort_by_section(view.source.header(), 1)
+    view._sort_by_section(view.source.header(), view.model.SOURCE_SIZE)
     application.processEvents()
-    assert view.source.header().sortIndicatorSection() == 1
-    assert view.model.sort_column() == 1
+    assert view.source.header().sortIndicatorSection() == view.model.SOURCE_SIZE
+    assert view.model.sort_column() == view.model.SOURCE_SIZE
     # The other panes do not show the column, so they carry no indicator.
     assert view.action.header().sortIndicatorSection() == -1
     assert view.destination.header().sortIndicatorSection() == -1
 
     # The destination column marks its own header.
-    view._sort_by_section(view.destination.header(), 5)
+    view._sort_by_section(
+        view.destination.header(), view.model.DESTINATION_SIZE
+    )
     application.processEvents()
-    assert view.destination.header().sortIndicatorSection() == 5
+    assert (
+        view.destination.header().sortIndicatorSection()
+        == view.model.DESTINATION_SIZE
+    )
     assert view.source.header().sortIndicatorSection() == -1
     view.close()
     application.processEvents()
@@ -459,7 +464,7 @@ def test_all_folders_are_expanded_after_a_comparison() -> None:
     application.processEvents()
 
 
-def test_expand_limit_keeps_a_large_comparison_collapsed() -> None:
+def test_expand_limit_marks_limited_folders_at_every_depth() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -477,18 +482,21 @@ def test_expand_limit_keeps_a_large_comparison_collapsed() -> None:
     application.processEvents()
 
     directory = view.model.index(0, 0)
+    big = view.model.index(0, 0, directory)
+    assert directory.internalPointer().name == "dir"
+    assert big.internalPointer().name == "big"
     proxy_dir = view.proxy.mapFromSource(directory)
-    assert not view.source.isExpanded(proxy_dir)
-    tooltip = view.model.data(directory, Qt.ItemDataRole.ToolTipRole)
-    assert "limit 2" in tooltip
-    assert not view.model.data(directory, Qt.ItemDataRole.DecorationRole).isNull()
-
-    # Raising the limit opens the comparison.
-    view.set_expand_limit(10)
-    view.expand_initial()
-    application.processEvents()
+    proxy_big = view.proxy.mapFromSource(big)
     assert view.source.isExpanded(proxy_dir)
-    assert "limit 2" not in view.model.data(directory, Qt.ItemDataRole.ToolTipRole)
+    assert not view.source.isExpanded(proxy_big)
+    tooltip = view.model.data(big, Qt.ItemDataRole.ToolTipRole)
+    assert "limit 2" in tooltip
+    assert not view.model.data(big, Qt.ItemDataRole.DecorationRole).isNull()
+
+    # Opening the folder by hand removes its marker.
+    view.source.expand(proxy_big)
+    application.processEvents()
+    assert "limit 2" not in view.model.data(big, Qt.ItemDataRole.ToolTipRole)
     view.close()
     application.processEvents()
 

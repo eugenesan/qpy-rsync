@@ -384,9 +384,19 @@ class ComparisonView(QWidget):
         return self.proxy.data(index, Qt.ItemDataRole.UserRole)
 
     def _configure_columns(self) -> None:
-        source_columns = {0, 1, 2}
-        action_columns = {3}
-        destination_columns = {4, 5, 6}
+        source_columns = {
+            self.model.SOURCE_NAME,
+            self.model.SOURCE_ITEMS,
+            self.model.SOURCE_SIZE,
+            self.model.SOURCE_TIME,
+        }
+        action_columns = {self.model.ACTION}
+        destination_columns = {
+            self.model.DESTINATION_NAME,
+            self.model.DESTINATION_ITEMS,
+            self.model.DESTINATION_SIZE,
+            self.model.DESTINATION_TIME,
+        }
         for column in range(self.model.COLUMN_COUNT):
             self.source.setColumnHidden(column, column not in source_columns)
             self.action.setColumnHidden(column, column not in action_columns)
@@ -396,9 +406,11 @@ class ComparisonView(QWidget):
         self.action.setRootIsDecorated(False)
         self.action.setIndentation(0)
         self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
+        self.source.header().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
         self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
-        self.source.header().resizeSection(self.model.SOURCE_NAME, 260)
+        self.source.header().resizeSection(self.model.SOURCE_NAME, 240)
+        self.source.header().resizeSection(self.model.SOURCE_ITEMS, 60)
         self.source.header().resizeSection(self.model.SOURCE_SIZE, 90)
         self.source.header().resizeSection(self.model.SOURCE_TIME, 150)
         self.action.header().setSectionResizeMode(
@@ -409,12 +421,16 @@ class ComparisonView(QWidget):
             self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Interactive
         )
         self.destination.header().setSectionResizeMode(
+            self.model.DESTINATION_ITEMS, QHeaderView.ResizeMode.Interactive
+        )
+        self.destination.header().setSectionResizeMode(
             self.model.DESTINATION_SIZE, QHeaderView.ResizeMode.Interactive
         )
         self.destination.header().setSectionResizeMode(
             self.model.DESTINATION_TIME, QHeaderView.ResizeMode.Interactive
         )
-        self.destination.header().resizeSection(self.model.DESTINATION_NAME, 260)
+        self.destination.header().resizeSection(self.model.DESTINATION_NAME, 240)
+        self.destination.header().resizeSection(self.model.DESTINATION_ITEMS, 60)
         self.destination.header().resizeSection(self.model.DESTINATION_SIZE, 90)
         self.destination.header().resizeSection(self.model.DESTINATION_TIME, 150)
 
@@ -692,39 +708,100 @@ class ComparisonView(QWidget):
         self._expand_mode = mode
 
     def set_expand_limit(self, limit: int) -> None:
-        """Limit how many changes may be opened automatically."""
+        """Limit how many items a folder may hold to open automatically."""
         self._expand_limit = max(1, int(limit))
 
     def expand_initial(self, limit: int | None = None) -> None:
         """Open the folders the way the settings ask for.
 
-        A comparison with more items than the configured limit stays
-        collapsed and its top-level folders carry a marker, so a large
-        comparison cannot freeze the view by expanding everything at once.
+        A folder with more direct items than the configured limit stays
+        collapsed and carries a marker. Branches without such a folder are
+        opened with Qt's native recursive expansion, so a high limit stays
+        fast while every limited folder remains discoverable.
         """
         mode = self._expand_mode
         maximum = self._expand_limit if limit is None else max(1, int(limit))
         if mode == "none":
             self.model.set_expand_limited_paths(set(), maximum)
             return
-        if len(self.model.changes) > maximum:
-            limited = {
-                self.model.index(row, 0).internalPointer().path
-                for row in range(self.model.rowCount())
-                if self.model.index(row, 0).internalPointer().children
-            }
-            self.model.set_expand_limited_paths(limited, maximum)
-            return
-        self.model.set_expand_limited_paths(set(), maximum)
+        limited, ancestors = self._limited_paths(maximum)
+        self.model.set_expand_limited_paths(limited, maximum)
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 if mode == "first":
-                    for row in range(tree.model().rowCount()):
-                        index = tree.model().index(row, 0)
-                        if tree.model().rowCount(index):
-                            tree.expand(index)
-                else:
+                    self._expand_first_level(tree, limited)
+                elif not limited:
                     tree.expandAll()
+                else:
+                    for row in range(self.model.rowCount()):
+                        self._expand_branch(
+                            tree, self.model.index(row, 0), limited, ancestors
+                        )
+
+    def _expand_first_level(self, tree: QTreeView, limited: set[str]) -> None:
+        for row in range(self.model.rowCount()):
+            source_index = self.model.index(row, 0)
+            node = source_index.internalPointer()
+            if node is None or not node.children or node.path in limited:
+                continue
+            proxy_index = self.proxy.mapFromSource(source_index)
+            if proxy_index.isValid():
+                tree.expand(proxy_index)
+
+    def _expand_branch(
+        self,
+        tree: QTreeView,
+        source_index: QModelIndex,
+        limited: set[str],
+        ancestors: set[str],
+    ) -> None:
+        node = source_index.internalPointer()
+        if node is None or not node.children or node.path in limited:
+            return
+        proxy_index = self.proxy.mapFromSource(source_index)
+        if not proxy_index.isValid():
+            return
+        if node.path not in ancestors:
+            # No limited folder below this one: native recursion opens the
+            # whole branch in one pass without freezing the event loop.
+            expand_recursively = getattr(tree, "expandRecursively", None)
+            if expand_recursively is not None:
+                expand_recursively(proxy_index)
+            elif not tree.isExpanded(proxy_index):
+                tree.expand(proxy_index)
+            return
+        if not tree.isExpanded(proxy_index):
+            tree.expand(proxy_index)
+        for row in range(self.model.rowCount(source_index)):
+            self._expand_branch(
+                tree,
+                self.model.index(row, 0, source_index),
+                limited,
+                ancestors,
+            )
+
+    def _limited_paths(self, maximum: int) -> tuple[set[str], set[str]]:
+        """Find every folder above the limit and their ancestor folders."""
+        limited: set[str] = set()
+
+        def visit(source_index: QModelIndex) -> None:
+            node = source_index.internalPointer()
+            if node is None or not node.children:
+                return
+            if len(node.children) > maximum:
+                limited.add(node.path)
+            for row in range(self.model.rowCount(source_index)):
+                visit(self.model.index(row, 0, source_index))
+
+        for row in range(self.model.rowCount()):
+            visit(self.model.index(row, 0))
+        ancestors: set[str] = set()
+        for path in limited:
+            current = path.rpartition("/")[0]
+            while current:
+                ancestors.add(current)
+                current = current.rpartition("/")[0]
+        return limited, ancestors
 
     def expand_all(self) -> None:
         self.model.set_expand_limited_paths(set(), self._expand_limit)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
@@ -63,11 +63,10 @@ class OverviewModel(QAbstractItemModel):
 
     FOLDER = 0
     SHARE = 1
-    PERCENT = 2
-    ITEMS = 3
-    SIZE = 4
-    COLUMN_COUNT = 5
-    HEADERS = ("Folder", "Share", "%", "Items", "Size")
+    ITEMS = 2
+    SIZE = 3
+    COLUMN_COUNT = 4
+    HEADERS = ("Folder", "Share", "Items", "Size")
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -182,10 +181,9 @@ class OverviewModel(QAbstractItemModel):
             if index.column() == self.FOLDER:
                 return node.name
             if index.column() == self.SHARE:
-                # The bar delegate paints the share; the text has its own
-                # column so deep folder indentation cannot cut it off.
-                return ""
-            if index.column() == self.PERCENT:
+                # The bar delegate paints the bar and this percentage. The
+                # folder tree lives in its own column, so indentation cannot
+                # cut the text off.
                 return self._percentage(index)
             if index.column() == self.ITEMS:
                 return str(node.total_count)
@@ -238,7 +236,7 @@ class OverviewModel(QAbstractItemModel):
 
 
 class OverviewBarDelegate(QStyledItemDelegate):
-    """Draw the share of a folder as a bar without text."""
+    """Draw the share of a folder as a bar with the percentage inside it."""
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         styled = QStyleOptionViewItem(option)
@@ -249,7 +247,8 @@ class OverviewBarDelegate(QStyledItemDelegate):
             QStyle.PrimitiveElement.PE_PanelItemViewItem, styled, painter, widget
         )
         share = index.data(OverviewModel.ShareRole)
-        if share is None:
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        if share is None or not text:
             return
         painter.save()
         painter.setClipRect(option.rect)
@@ -259,6 +258,12 @@ class OverviewBarDelegate(QStyledItemDelegate):
         width = int(option.rect.width() * float(share))
         painter.fillRect(
             option.rect.left(), option.rect.top(), width, option.rect.height(), bar
+        )
+        painter.setPen(option.palette.color(QPalette.ColorRole.Text))
+        painter.drawText(
+            option.rect,
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            text,
         )
         painter.restore()
 
@@ -299,8 +304,7 @@ class OverviewPane(QWidget):
                 section, QHeaderView.ResizeMode.Interactive
             )
         self.tree.header().resizeSection(OverviewModel.FOLDER, 200)
-        self.tree.header().resizeSection(OverviewModel.SHARE, 72)
-        self.tree.header().resizeSection(OverviewModel.PERCENT, 44)
+        self.tree.header().resizeSection(OverviewModel.SHARE, 96)
         self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
         self.tree.header().resizeSection(OverviewModel.SIZE, 84)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)

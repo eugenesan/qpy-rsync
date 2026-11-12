@@ -244,7 +244,7 @@
 - Inventory reports the number of objects listed for the Source, the Destination and the matching phase; the progress bar runs while it works and the journal reports the result.
 - Adding a large unchanged set shows a wait cursor and a population message instead of appearing frozen.
 - Unchanged-item tooltips no longer end with the raw `=:` itemized code.
-- Settings gained an auto-expand limit (default 256 changes per comparison). Larger comparisons stay collapsed, with amber markers on the top-level folders and a tooltip explaining why; opening one by hand clears its marker.
+- Settings gained an auto-expand limit (default 256 items per folder). Folders above the limit stay collapsed with an amber marker and a tooltip explaining why; opening one by hand clears its marker.
 
 ## milestone 1.15j profile and command review
 
@@ -255,8 +255,14 @@
 ## milestone 1.15k command wrapping and expansion speed
 
 - The command box in the synchronization dialog wraps long options and scrolls vertically.
-- The auto-expand limit now measures the whole comparison rather than each folder, so a large comparison stays collapsed instead of opening thousands of small directories. Below the limit, Qt's native expansion opens the whole tree in one pass.
+- The auto-expand limit measures each directory. Branches without an oversized folder open with Qt's native recursive expansion, while every oversized folder stays collapsed and marked, at any depth.
 
 ## milestone 1.15l tree fonts
 
 - Changed items use the normal font again; unchanged items are drawn in italic.
+
+## milestone 1.15m overview columns and directory item counts
+
+- The overview combines the share bar and its percentage in one column.
+- The comparison trees gain an Items column on each side, reporting all objects below a folder, including nested folders.
+- The auto-expand limit applies per directory again, and every directory above the limit is marked at any depth, not only the top level. Branches without an oversized directory expand natively in one pass.
