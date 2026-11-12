@@ -71,3 +71,32 @@ def test_profiles_directory_is_created(tmp_path, monkeypatch) -> None:
     assert directory.is_dir()
     # Asking again keeps the same place and does not fail when it exists.
     assert profiles_directory() == directory
+
+
+def test_legacy_escaped_json_values_are_rewritten(tmp_path, monkeypatch) -> None:
+    from PySide6.QtCore import QCoreApplication, QSettings
+
+    from qpy_rsync.storage.settings import (
+        app_settings,
+        decode_text,
+        migrate_legacy_settings,
+        settings_path,
+    )
+
+    QCoreApplication.setOrganizationName("qpy-rsync-tests")
+    QCoreApplication.setApplicationName("rewrite")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    settings = app_settings()
+    # A value written by an older version: plain JSON with escapes.
+    settings.setValue("comparison/filters", '[]')
+    settings.setValue("main-window/state", b"\x00\x01")
+    settings.sync()
+
+    migrate_legacy_settings()
+
+    stored = QSettings(str(settings_path()), QSettings.Format.IniFormat)
+    text = str(stored.value("comparison/filters"))
+    assert text.startswith("b64:")
+    assert decode_text(text) == "[]"
+    contents = settings_path().read_text(encoding="utf-8")
+    assert '"' not in contents.split("[profile]")[0] or "\\\"" not in contents
