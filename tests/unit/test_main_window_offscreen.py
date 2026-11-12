@@ -828,3 +828,81 @@ def test_filters_button_shows_an_active_and_stale_indicator() -> None:
     assert stale != active
     window.close()
     application.processEvents()
+
+
+def test_external_open_buttons_use_desktop_services(tmp_path, monkeypatch) -> None:
+    from PySide6.QtGui import QDesktopServices
+
+    application = app()
+    app_settings().clear()
+    opened = []
+    monkeypatch.setattr(
+        QDesktopServices,
+        "openUrl",
+        lambda url: opened.append(url.toLocalFile()) or True,
+    )
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    backup = tmp_path / "backup"
+    for directory in (source, destination, backup):
+        directory.mkdir()
+    log_file = tmp_path / "session.log"
+    log_file.write_text("log\n", encoding="utf-8")
+
+    window = MainWindow()
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
+    window.backup_edit.setText(str(backup))
+    window.log_file_edit.setText(str(log_file))
+    application.processEvents()
+
+    for button in (
+        window.source_open_button,
+        window.destination_open_button,
+        window.backup_open,
+        window.log_file_open,
+    ):
+        assert not button.icon().isNull()
+        assert button.width() == CONTROL_SIZE
+
+    window._open_location_directory("Source")
+    window._open_location_directory("Destination")
+    window._open_backup_directory()
+    window._open_log_file()
+    assert opened == [
+        str(source),
+        str(destination),
+        str(backup),
+        str(log_file),
+    ]
+    window.close()
+    application.processEvents()
+
+
+def test_open_buttons_follow_remote_and_missing_log_file(tmp_path, monkeypatch) -> None:
+    from PySide6.QtGui import QDesktopServices
+
+    application = app()
+    app_settings().clear()
+    opened = []
+    monkeypatch.setattr(
+        QDesktopServices,
+        "openUrl",
+        lambda url: opened.append(url.toLocalFile()) or True,
+    )
+    window = MainWindow()
+    window.source_edit.setText("alice@example.org:/srv/data/")
+    window.destination_edit.setText(str(tmp_path / "destination") + "/")
+    application.processEvents()
+    assert not window.source_open_button.isEnabled()
+    window._open_location_directory("Source")
+    assert not opened
+    assert "remote" in window.status_edit.text().lower()
+
+    log_file = tmp_path / "new-session.log"
+    window.log_file_edit.setText(str(log_file))
+    window._open_log_file()
+    assert log_file.exists()
+    assert opened == [str(log_file)]
+    window.close()
+    application.processEvents()

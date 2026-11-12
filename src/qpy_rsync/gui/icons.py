@@ -276,6 +276,27 @@ def save_icon() -> QIcon:
     )
 
 
+def folder_open_icon() -> QIcon:
+    """The system icon for opening a directory externally."""
+    return _theme_icon(
+        "folder-open-symbolic",
+        "folder-open",
+        "inode-directory-symbolic",
+        "folder",
+        fallback=QStyle.StandardPixmap.SP_DirOpenIcon,
+    )
+
+
+def log_file_icon() -> QIcon:
+    """The system icon for opening the log file externally."""
+    return _theme_icon(
+        "text-x-generic-symbolic",
+        "text-x-generic",
+        "text-plain",
+        fallback=QStyle.StandardPixmap.SP_FileIcon,
+    )
+
+
 def search_icon() -> QIcon:
     """The system icon for the filter field."""
     return _theme_icon("edit-find", fallback=QStyle.StandardPixmap.SP_FileDialogContentsView)

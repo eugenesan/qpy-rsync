@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QSize, QTimer, Qt
+from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -130,6 +131,8 @@ from .icons import (
     destination_icon,
     filters_icon,
     inventory_mode_icon,
+    folder_open_icon,
+    log_file_icon,
     open_icon,
     pause_icon,
     save_icon,
@@ -486,6 +489,13 @@ class MainWindow(QMainWindow):
         self.protect_backup = QCheckBox("Protect nested")
         self.protect_backup.setChecked(True)
         backup_group_layout.addWidget(QLabel("Backup"))
+        self.backup_open = self._external_open_button(
+            "backup-open-button",
+            folder_open_icon(),
+            "Open the backup directory",
+            self._open_backup_directory,
+        )
+        backup_group_layout.addWidget(self.backup_open)
         backup_group_layout.addWidget(self.backup_edit, 1)
         backup_group_layout.addWidget(self.backup_browse)
         backup_group_layout.addWidget(self.protect_backup)
@@ -498,6 +508,13 @@ class MainWindow(QMainWindow):
         self.log_file_edit = QLineEdit(str(self._log_file_path))
         self.log_file_browse = QPushButton("Browse...")
         log_group_layout.addWidget(QLabel("Log"))
+        self.log_file_open = self._external_open_button(
+            "log-open-button",
+            log_file_icon(),
+            "Open the log file",
+            self._open_log_file,
+        )
+        log_group_layout.addWidget(self.log_file_open)
         log_group_layout.addWidget(self.log_file_edit, 1)
         log_group_layout.addWidget(self.log_file_browse)
         log_group_layout.addWidget(self.log_file_checkbox)
@@ -553,6 +570,9 @@ class MainWindow(QMainWindow):
         self.log_file_checkbox.toggled.connect(self._logging_settings_changed)
         self.log_file_edit.editingFinished.connect(self._logging_settings_changed)
         self.log_file_browse.clicked.connect(self._browse_log_file)
+        self.backup_edit.textChanged.connect(self._update_external_open_states)
+        self.log_file_edit.textChanged.connect(self._update_external_open_states)
+        self._update_external_open_states()
 
     def apply_startup_options(self, options: "StartupOptions") -> None:
         """Apply one-launch command-line overrides after stored settings load."""
@@ -732,6 +752,108 @@ class MainWindow(QMainWindow):
         """Show or hide the unchanged items."""
         self.show_unchanged.setChecked(not self.show_unchanged.isChecked())
 
+    def _external_open_button(
+        self, name: str, icon: object, tooltip: str, slot: object
+    ) -> QToolButton:
+        button = QToolButton()
+        button.setObjectName(name)
+        button.setIcon(icon)  # type: ignore[arg-type]
+        button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.clicked.connect(slot)  # type: ignore[arg-type]
+        return button
+
+    def _update_external_open_states(self) -> None:
+        for edit, button in (
+            (self.source_edit, getattr(self, "source_open_button", None)),
+            (self.destination_edit, getattr(self, "destination_open_button", None)),
+        ):
+            if button is None:
+                continue
+            try:
+                endpoint = parse_endpoint(edit.text())
+                button.setEnabled(endpoint.kind is EndpointKind.LOCAL)
+            except ValueError:
+                button.setEnabled(False)
+        backup = getattr(self, "backup_open", None)
+        if backup is not None:
+            try:
+                destination = parse_endpoint(self.destination_edit.text())
+                local = destination.kind is EndpointKind.LOCAL
+            except ValueError:
+                local = False
+            backup.setEnabled(local and bool(self.backup_edit.text().strip()))
+        log_button = getattr(self, "log_file_open", None)
+        if log_button is not None:
+            log_button.setEnabled(bool(self.log_file_edit.text().strip()))
+
+    def _open_path(self, path: Path, what: str) -> None:
+        if not path.exists():
+            self._set_status(f"{what} does not exist: {path}", "warning")
+            return
+        url = QUrl.fromLocalFile(str(path))
+        if QDesktopServices.openUrl(url):
+            self._append_log(f"Opened {what}: {path}")
+            return
+        started, _pid = QProcess.startDetached("xdg-open", [str(path)])
+        if started:
+            self._append_log(f"Opened {what}: {path}")
+        else:
+            self._set_status(f"Could not open {what}: {path}", "error")
+
+    def _open_location_directory(self, title: str) -> None:
+        edit = self.source_edit if title == "Source" else self.destination_edit
+        try:
+            endpoint = parse_endpoint(edit.text())
+        except ValueError as exc:
+            self._set_status(str(exc), "error")
+            return
+        if endpoint.kind is not EndpointKind.LOCAL:
+            self._set_status(
+                f"The {title} directory is remote and cannot be opened locally.",
+                "warning",
+            )
+            return
+        self._open_path(Path(endpoint.path).expanduser(), f"{title} directory")
+
+    def _open_backup_directory(self) -> None:
+        if not self.backup_edit.text().strip():
+            self._set_status("No backup directory is configured.", "warning")
+            return
+        try:
+            profile = self._profile()
+        except ValueError as exc:
+            self._set_status(str(exc), "error")
+            return
+        if profile.destination.kind is not EndpointKind.LOCAL:
+            self._set_status(
+                "The backup directory is on a remote Destination and cannot "
+                "be opened locally.",
+                "warning",
+            )
+            return
+        resolved = resolve_backup(profile)
+        if resolved is None:
+            self._set_status("No backup directory is configured.", "warning")
+            return
+        self._open_path(
+            Path(resolved.directory).expanduser(), "backup directory"
+        )
+
+    def _open_log_file(self) -> None:
+        text = self.log_file_edit.text().strip()
+        path = (Path(text).expanduser() if text else self._log_file_path)
+        if not path.exists():
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            except OSError as exc:
+                self._set_status(f"Could not create the log file: {exc}", "error")
+                return
+        self._open_path(path, "log file")
+
     def _location_panel(
         self, title: str, edit: QLineEdit, *, trailing: bool = False
     ) -> QWidget:
@@ -752,6 +874,17 @@ class MainWindow(QMainWindow):
         icon.setToolTip(f"{title} directory")
         icon.setAccessibleName(f"{title} directory")
         row.addWidget(icon)
+        open_button = self._external_open_button(
+            f"{title.lower()}-open-button",
+            folder_open_icon(),
+            f"Open the {title} directory",
+            lambda: self._open_location_directory(title),
+        )
+        if title == "Source":
+            self.source_open_button = open_button
+        else:
+            self.destination_open_button = open_button
+        row.addWidget(open_button)
         browse = QPushButton("Browse...")
         browse.setToolTip(f"Select the {title} directory")
         browse.clicked.connect(lambda: self._browse(edit))
@@ -809,6 +942,7 @@ class MainWindow(QMainWindow):
         enabled = self.log_file_checkbox.isChecked()
         self.log_file_edit.setEnabled(enabled)
         self.log_file_browse.setEnabled(enabled)
+        self._update_external_open_states()
 
     def _browse_log_file(self) -> None:
         selected, _filter = QFileDialog.getSaveFileName(
@@ -892,6 +1026,7 @@ class MainWindow(QMainWindow):
 
     def _endpoint_text_changed(self) -> None:
         self._update_backup_browse_state()
+        self._update_external_open_states()
         if self.comparison.model.changes:
             self.comparison.set_stale(True)
             self._invalidate_plan_context()
@@ -1060,6 +1195,7 @@ class MainWindow(QMainWindow):
         self._save_filters()
         self._update_filter_summary(stale=False)
         self._update_backup_status()
+        self._update_external_open_states()
         self._update_command_preview()
         try:
             self._baseline_profile = self._profile()
@@ -1094,6 +1230,7 @@ class MainWindow(QMainWindow):
             self._update_backup_status()
             return
         self._backup = updated
+        self._update_external_open_states()
         self._save_recent_profile()
         self._update_backup_status()
         self._validated_plan = None

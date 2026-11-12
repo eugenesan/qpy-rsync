@@ -329,3 +329,7 @@
 ## milestone 1.15aa filter indicator
 
 - The icon-only Filters button shows a cyan badge when at least one rule is enabled and an amber badge when the comparison is stale after a rule change.
+
+## milestone 1.15ab external open buttons
+
+- Source, Destination and Backup gained folder buttons, and Log gained a file button. They open the location with Qt's `QDesktopServices`, falling back to `xdg-open`, and report remote or missing paths in the status line.
