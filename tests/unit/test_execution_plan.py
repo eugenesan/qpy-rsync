@@ -84,3 +84,23 @@ def test_selected_destination_only_becomes_destructive_delete() -> None:
     assert plan.summary.destructive == 1
     assert plan.items[0].action is ChangeAction.DELETE
     assert plan.items[0].comparison_action is ChangeAction.DESTINATION_ONLY
+
+
+def test_plan_summary_reports_the_included_size() -> None:
+    profile = SyncProfile(
+        "plan",
+        Endpoint(EndpointKind.LOCAL, "/src/"),
+        Endpoint(EndpointKind.LOCAL, "/dst/"),
+    )
+    changes = [
+        Change("a.bin", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=1000),
+        Change("b.bin", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......", size=2000),
+        Change("c.bin", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+    ]
+    decisions = ChangeDecisions()
+    decisions.reconcile(changes)
+    decisions.set("b.bin", ChangeDecision.EXCLUDE)
+    plan = build_execution_plan(profile, changes, decisions)
+    assert plan.summary.included == 2
+    # Only the data that is transferred counts; the deletion frees space.
+    assert plan.summary.total_size == 1000

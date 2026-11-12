@@ -17,6 +17,7 @@ class PlanItem:
     kind: ObjectKind
     included: bool
     destructive: bool
+    size: int | None = None
 
     @property
     def identity(self) -> tuple[str, ChangeAction, ObjectKind]:
@@ -36,6 +37,7 @@ class PlanSummary:
     replacements: int
     deletions: int
     backup_enabled: bool
+    total_size: int = 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,6 +73,7 @@ def build_execution_plan(
     items: list[PlanItem] = []
     creates = updates = metadata = replacements = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
+    total_size = 0
     modified = decisions.modified_count(changes_list)
     for change in changes_list:
         if not decisions.selectable(change):
@@ -89,11 +92,18 @@ def build_execution_plan(
             kind=change.kind,
             included=selected,
             destructive=is_destructive,
+            size=change.size,
         )
         items.append(item)
         if selected:
             included += 1
             destructive += int(is_destructive)
+            if effective_action in {
+                ChangeAction.CREATE,
+                ChangeAction.UPDATE_CONTENT,
+                ChangeAction.REPLACE,
+            }:
+                total_size += int(change.size or 0)
             if effective_action is ChangeAction.CREATE:
                 creates += 1
             elif effective_action is ChangeAction.UPDATE_CONTENT:
@@ -121,6 +131,7 @@ def build_execution_plan(
         replacements=replacements,
         deletions=deletions,
         backup_enabled=profile.backup.enabled,
+        total_size=total_size,
     )
     return ExecutionPlan(
         profile_fingerprint=profile_fingerprint(profile),

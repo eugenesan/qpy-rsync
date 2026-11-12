@@ -79,6 +79,7 @@ def _inventory_result(payload: object) -> InventoryResult:
 from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
+from qpy_rsync.core.units import format_size
 from qpy_rsync.core.execution_plan import (
     ExecutionPlan,
     build_execution_plan,
@@ -971,8 +972,9 @@ class MainWindow(QMainWindow):
         )
         summary = self._current_plan.summary
         self.plan_summary_label.setText(
-            "Selected actions: "
-            f"{summary.included} included, {summary.excluded} unchecked, "
+            "Selected: "
+            f"{summary.included} items, {format_size(summary.total_size)}; "
+            f"{summary.excluded} unchecked, "
             f"{summary.modified} modified, "
             f"{summary.retained_destination_only} retained in Destination, "
             f"{summary.destructive} destructive; "

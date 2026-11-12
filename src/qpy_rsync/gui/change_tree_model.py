@@ -7,6 +7,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
+from qpy_rsync.core.units import format_size
 from qpy_rsync.core.changes import (
     Change,
     ChangeAction,
@@ -571,12 +572,4 @@ class ChangeTreeModel(QAbstractItemModel):
 
     @staticmethod
     def _size(size: int | None) -> str:
-        if size is None:
-            return ""
-        units = ("B", "KiB", "MiB", "GiB", "TiB")
-        value = float(size)
-        for unit in units:
-            if value < 1024 or unit == units[-1]:
-                return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-            value /= 1024
-        return ""
+        return format_size(size)

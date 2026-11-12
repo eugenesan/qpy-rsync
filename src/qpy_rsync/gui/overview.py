@@ -18,23 +18,13 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.core.changes import Change
+from qpy_rsync.core.units import format_size
 
 from .icons import ACCENT
 
 # The name FreeFileSync gives to the objects that live in the compared
 # folder itself.
 FILES_LABEL = "Files"
-
-
-def format_size(size: int) -> str:
-    """Format a number of bytes the way the tree panes do."""
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-        value /= 1024
-    return ""
 
 
 @dataclass(slots=True)

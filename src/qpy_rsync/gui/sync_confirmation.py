@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.core.backup_paths import backup_summary
+from qpy_rsync.core.units import format_size
 from qpy_rsync.core.execution_plan import ExecutionPlan
 from qpy_rsync.core.models import SyncProfile
 
@@ -31,6 +32,7 @@ class ConfirmationSummary:
     metadata: int
     replacements: int
     deletions: int
+    total_size: int
     backup: str
     nested_protection: str
     fingerprint: str
@@ -60,6 +62,7 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
         metadata=summary.metadata,
         replacements=summary.replacements,
         deletions=summary.deletions,
+        total_size=summary.total_size,
         backup=backup_text,
         nested_protection=protection,
         fingerprint=plan.profile_fingerprint[:12],
@@ -84,6 +87,7 @@ class SyncConfirmationDialog(QDialog):
         form.addRow("Source", QLabel(summary.source))
         form.addRow("Destination", QLabel(summary.destination))
         form.addRow("Included", QLabel(str(summary.included)))
+        form.addRow("Total size", QLabel(format_size(summary.total_size)))
         form.addRow("Unchecked", QLabel(str(summary.excluded)))
         form.addRow("Retained in Destination", QLabel(str(summary.retained_destination_only)))
         form.addRow("Destructive", QLabel(str(summary.destructive)))
