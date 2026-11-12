@@ -3,7 +3,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_PROGRESS_RE = re.compile(r"\(xfr#(?P<completed>\d+),\s*to-chk=(?P<remaining>\d+)/(?P<total>\d+)\)")
+# Rsync reports the counter as "to-chk" or, while it walks the trees
+# incrementally, as "ir-chk". A dry run may not transfer anything, so the
+# "xfr#" part is optional.
+_PROGRESS_RE = re.compile(
+    r"(?:xfr#(?P<completed>\d+),\s*)?(?:ir-chk|to-chk)=(?P<remaining>\d+)/(?P<total>\d+)"
+)
+_PERCENT_RE = re.compile(r"(?P<percent>\d{1,3})%")
 
 
 @dataclass(slots=True, frozen=True)
@@ -18,16 +24,18 @@ def parse_sync_progress(text: str) -> SyncProgress | None:
     match = _PROGRESS_RE.search(text)
     if match is None:
         return None
-    completed = int(match.group("completed"))
+    completed = int(match.group("completed") or 0)
     remaining = int(match.group("remaining"))
     total = int(match.group("total"))
-    denominator = completed + remaining
-    if denominator <= 0:
-        percent = 0
+    # The counter covers the scan as well as the transfer, so a dry run
+    # shows progress too. Rsync's own percentage counts transferred bytes and
+    # stays at zero while it only lists the trees.
+    if total > 0:
+        percent = round(100 * (total - remaining) / total)
     else:
-        percent = round(100 * completed / denominator)
-    if total > 0 and percent > 100:
-        percent = 100
+        denominator = completed + remaining
+        percent = round(100 * completed / denominator) if denominator > 0 else 0
+    percent = max(0, min(100, percent))
     return SyncProgress(
         files_completed=completed,
         files_remaining=remaining,

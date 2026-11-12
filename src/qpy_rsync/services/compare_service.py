@@ -35,6 +35,7 @@ class CompareService:
         self.on_cancelled: Callable[[], None] = lambda: None
         self.on_log: Callable[[str], None] = lambda _message: None
         self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
+        self.on_transient: Callable[[str], None] = lambda _text: None
         # Indirection is intentional: GUI callbacks are assigned after this service is constructed.
         self._runner.on_stdout = self._stdout_chunk
         self._runner.on_stderr = lambda text: self.on_log(text)
@@ -95,7 +96,10 @@ class CompareService:
             return
         progress = parse_sync_progress(cleaned)
         if progress is not None:
+            # Progress and speed belong in the session log only; the journal
+            # keeps the itemized records and application states.
             self.on_progress(progress)
+            self.on_transient(cleaned)
             return
         self.on_log(cleaned)
 

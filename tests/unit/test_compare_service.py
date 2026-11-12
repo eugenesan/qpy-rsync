@@ -65,3 +65,26 @@ def test_plan_validation_service_streams_stdout() -> None:
     service._stdout_chunk(">f.st......|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt\n")
     service._stdout_chunk("             8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)\n")
     assert logs == [">f.st......|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt"]
+
+
+def test_transfer_progress_stays_out_of_the_journal() -> None:
+    from qpy_rsync.backend.rsync_command import ProcessSpec
+    from qpy_rsync.services.sync_service import SyncService
+
+    app()
+    service = SyncService()
+    logged: list[str] = []
+    transient: list[str] = []
+    progress: list[object] = []
+    service.on_stdout = logged.append
+    service.on_transient = transient.append
+    service.on_progress = progress.append
+
+    service._handle_stdout(
+        ">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt\n\r"
+        "             8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)\r"
+    )
+    assert logged == [">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt"]
+    assert transient == ["8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)"]
+    assert len(progress) == 1
+    assert progress[0].percent == 100

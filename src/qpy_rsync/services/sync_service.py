@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,12 +57,14 @@ class SyncService:
         self._filter_context = None
         self._filter_path: Path | None = None
         self._cancel_requested = False
+        self._buffer = ""
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[SyncResult], None] = lambda _result: None
         self.on_error: Callable[[str, bool], None] = lambda _message, _cancelled=False: None
         self.on_stdout: Callable[[str], None] = lambda _text: None
         self.on_stderr: Callable[[str], None] = lambda _text: None
         self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
+        self.on_transient: Callable[[str], None] = lambda _text: None
         self.on_spec: Callable[[object], None] = lambda _spec: None
         self._runner.on_started = lambda: self.on_started()
         self._runner.on_stdout = self._handle_stdout
@@ -70,10 +73,23 @@ class SyncService:
         self._runner.on_error = self._error
 
     def _handle_stdout(self, text: str) -> None:
-        progress = parse_sync_progress(text)
-        if progress is not None:
-            self.on_progress(progress)
-        self.on_stdout(text)
+        if not text:
+            return
+        self._buffer += text
+        parts = re.split(r"[\r\n]", self._buffer)
+        self._buffer = parts.pop()
+        for line in parts:
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            progress = parse_sync_progress(cleaned)
+            if progress is not None:
+                # Progress and speed belong in the session log only; the
+                # journal keeps the itemized records and application states.
+                self.on_progress(progress)
+                self.on_transient(cleaned)
+                continue
+            self.on_stdout(cleaned)
 
     def synchronize(self, profile: SyncProfile, plan: ExecutionPlan) -> ProcessSpec:
         enforce_execution_boundary(profile)
@@ -87,6 +103,7 @@ class SyncService:
             for item in plan.items
         )
         self._cancel_requested = False
+        self._buffer = ""
         self._filter_context = temporary_decision_filter(plan)
         self._filter_path = self._filter_context.__enter__()
         spec = build_sync_spec(effective_profile, filter_file=self._filter_path)
@@ -131,6 +148,14 @@ class SyncService:
         self.on_error(message, cancelled)
 
     def _finish(self, process: ProcessResult) -> None:
+        if self._buffer:
+            cleaned = self._buffer.strip()
+            self._buffer = ""
+            if cleaned:
+                if parse_sync_progress(cleaned) is not None:
+                    self.on_transient(cleaned)
+                else:
+                    self.on_stdout(cleaned)
         try:
             if self._cancel_requested or process.crashed:
                 self.on_error("Synchronization was cancelled or terminated.", True)

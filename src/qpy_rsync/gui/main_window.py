@@ -48,6 +48,15 @@ from qpy_rsync.storage.settings import (
 )
 
 
+_PAUSE_TOOLTIP = (
+    "Pause the running rsync operation.\n"
+    "The transfer is suspended and continues with the same button.\n"
+    "For a remote endpoint the connection stays open and the transfer\n"
+    "resumes where it stopped."
+)
+_RESUME_TOOLTIP = "Continue the paused rsync operation."
+
+
 def vertical_separator() -> QFrame:
     """A thin line that groups the controls of a row."""
     line = QFrame()
@@ -115,6 +124,7 @@ class MainWindow(QMainWindow):
         self._service.on_cancelled = self._comparison_cancelled
         self._service.on_log = self._append_log
         self._service.on_progress = self._comparison_progress
+        self._service.on_transient = self._append_transient_log
         self._active_profile: SyncProfile | None = None
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
@@ -127,6 +137,7 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_cancelled = self._plan_validation_cancelled
         self._plan_validation.on_log = self._append_log
         self._plan_validation.on_spec = self._log_spec
+        self._plan_validation.on_transient = self._append_transient_log
         self._inventory_service = InventoryService(self)
         self._inventory_service.finished.connect(self._inventory_finished)
         self._inventory_service.failed.connect(self._inventory_failed)
@@ -143,6 +154,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_stderr = self._append_log
         self._sync_service.on_progress = self._sync_progress
         self._sync_service.on_spec = self._log_spec
+        self._sync_service.on_transient = self._append_transient_log
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
         self._hovered_action = "compare"
@@ -222,12 +234,7 @@ class MainWindow(QMainWindow):
         self.pause_button = QPushButton("Pause")
         self.pause_button.setEnabled(False)
         self.pause_button.setCheckable(True)
-        self.pause_button.setToolTip(
-            "Pause the running rsync operation.\n"
-            "The transfer is suspended and continues with the same button.\n"
-            "For a remote endpoint the connection stays open and the transfer\n"
-            "resumes where it stopped."
-        )
+        self.pause_button.setToolTip(_PAUSE_TOOLTIP)
         self.pause_button.setAccessibleName("Pause the running operation")
         self.inventory_after_compare_button = QPushButton("Inventory")
         self.inventory_after_compare_button.setCheckable(True)
@@ -348,6 +355,9 @@ class MainWindow(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setVisible(False)
         self.command_preview_label = CommandPreview("")
         self.command_preview_label.setObjectName("command-preview-label")
         log_container = QWidget(self)
@@ -1016,7 +1026,10 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setText("Verifying...")
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Verifying selected actions...")
         self.status_edit.setText("Verifying selected actions...")
         self._append_log("STATE verifying-selected-actions")
 
@@ -1025,7 +1038,7 @@ class MainWindow(QMainWindow):
             return
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
         self.validate_plan_button.setEnabled(True)
         self.validate_plan_button.setText("Verify Actions")
         if result.valid:
@@ -1058,7 +1071,7 @@ class MainWindow(QMainWindow):
             return
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
         self._validated_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
             self._execution_gate.verification_failed()
@@ -1139,6 +1152,11 @@ class MainWindow(QMainWindow):
             return self._service
         return None
 
+    def _reset_pause_button(self) -> None:
+        self.pause_button.setChecked(False)
+        self.pause_button.setText("Pause")
+        self.pause_button.setToolTip(_PAUSE_TOOLTIP)
+
     def _toggle_pause(self) -> None:
         """Suspend or continue the running rsync operation."""
         service = self._running_service()
@@ -1150,6 +1168,8 @@ class MainWindow(QMainWindow):
                 self.pause_button.setChecked(False)
                 self._set_status("The operation could not be paused.", "warning")
                 return
+            self.pause_button.setText("Resume")
+            self.pause_button.setToolTip(_RESUME_TOOLTIP)
             self.progress_label.setText("Paused")
             self._set_status(
                 "The rsync operation is paused. Continue it with the Pause button.",
@@ -1160,6 +1180,8 @@ class MainWindow(QMainWindow):
         if not service.resume():  # type: ignore[attr-defined]
             self._set_status("The operation could not be continued.", "warning")
             return
+        self.pause_button.setText("Pause")
+        self.pause_button.setToolTip(_PAUSE_TOOLTIP)
         self.progress_label.setText("Continuing...")
         self._set_status("The rsync operation continues.", "info")
         self._append_log("STATE operation-resumed")
@@ -1180,7 +1202,7 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(busy)
         self.pause_button.setEnabled(busy)
         if not busy:
-            self.pause_button.setChecked(False)
+            self._reset_pause_button()
 
     def _sync_started(self) -> None:
         self._begin_bulk_logging()
@@ -1188,6 +1210,7 @@ class MainWindow(QMainWindow):
         self._execution_gate.execution_started()
         self._set_busy_controls(True)
         self.comparison.set_stale(True)
+        self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Synchronizing...")
         self._set_status("Synchronization is running. The selected actions are applied now.", "warning")
@@ -1201,11 +1224,8 @@ class MainWindow(QMainWindow):
         remaining = getattr(progress, "files_remaining", 0)
         self.progress_bar.setValue(int(percent))
         self.progress_label.setText(
-            f"Synchronizing... {int(percent)}% ({completed} files completed, {remaining} remaining)"
-        )
-        self._append_log(
-            f"STATE synchronization-progress percent={int(percent)} "
-            f"files_completed={completed} files_remaining={remaining}"
+            f"Synchronizing... {int(percent)}% ({completed} items transferred, "
+            f"{remaining} remaining)"
         )
 
     def _sync_finished(self, result: SyncResult) -> None:
@@ -1334,7 +1354,8 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
+        self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Comparing...")
         self.status_edit.setText("Comparing...")
@@ -1355,7 +1376,7 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
         self.progress_bar.setValue(0)
         self.progress_label.setText("Comparison cancelled")
         self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")
@@ -1369,7 +1390,7 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
-        self.pause_button.setChecked(False)
+        self._reset_pause_button()
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
@@ -1561,6 +1582,12 @@ class MainWindow(QMainWindow):
         self._log_buffer.clear()
         self.log.appendPlainText(text)
         self._write_session_log(text)
+
+    def _append_transient_log(self, text: str) -> None:
+        """Keep rsync progress in the session log, not in the journal."""
+        normalized = text.rstrip("\r\n")
+        if normalized:
+            self._write_session_log(normalized)
 
     def _begin_bulk_logging(self) -> None:
         self._bulk_logging = True
