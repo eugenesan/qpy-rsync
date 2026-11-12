@@ -471,7 +471,7 @@ def test_verification_reuses_fresh_comparison() -> None:
     assert "STATE verification-reused-comparison" in window.log.toPlainText()
     assert (
         "Actions verified, selected: new 0, updated 1, metadata 0, "
-        "replaced 0, deleted 0; 1 items, 0 B"
+        "replaced 0, deleted 0; 1 item, 0 B"
     ) in window.log.toPlainText()
     assert not window.cancel_button.isEnabled()
     window.close()

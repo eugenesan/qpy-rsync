@@ -1191,12 +1191,13 @@ class MainWindow(QMainWindow):
             self.validate_plan_button.setText("Actions Verified")
             if self._current_plan is not None:
                 summary = self._current_plan.summary
+                noun = "item" if summary.included == 1 else "items"
                 self._append_log(
                     "Actions verified, selected: "
                     f"new {summary.creates}, updated {summary.updates}, "
                     f"metadata {summary.metadata}, replaced {summary.replacements}, "
                     f"deleted {summary.deletions}; "
-                    f"{summary.included} items, {format_size(summary.total_size)}"
+                    f"{summary.included} {noun}, {format_size(summary.total_size)}"
                 )
             self.status_edit.setText("Selected actions verified. No files were changed.")
             self._append_log("STATE actions-verified")
