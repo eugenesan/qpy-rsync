@@ -11,13 +11,15 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
+    QGridLayout,
     QHeaderView,
     QLabel,
     QPlainTextEdit,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from qpy_rsync.backend.decision_filters import decision_filter_lines
@@ -105,10 +107,28 @@ class SyncConfirmationDialog(QDialog):
         self.heading.setStyleSheet("font-weight: bold; font-size: 115%;")
         layout.addWidget(self.heading)
 
-        form = QFormLayout()
-        form.addRow("Source", QLabel(summary.source))
-        form.addRow("Destination", QLabel(summary.destination))
-        layout.addLayout(form)
+        endpoints = QGridLayout()
+        endpoints.setHorizontalSpacing(12)
+        endpoints.setVerticalSpacing(4)
+        endpoints.setColumnStretch(1, 1)
+        endpoint_rows = (
+            ("Source", summary.source),
+            ("Destination", summary.destination),
+        )
+        for row, (title, value) in enumerate(endpoint_rows):
+            name = QLabel(title)
+            name.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            path = QLabel(value)
+            path.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            path.setWordWrap(True)
+            endpoints.addWidget(name, row, 0)
+            endpoints.addWidget(path, row, 1)
+        layout.addLayout(endpoints)
 
         stats = [
             ("Included", str(summary.included)),
@@ -145,10 +165,12 @@ class SyncConfirmationDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.stats.resizeRowsToContents()
         self.stats.setFixedHeight(
-            sum(self.stats.rowHeight(row) for row in range(self.stats.rowCount()))
+            self.stats.verticalHeader().length()
             + 2 * self.stats.frameWidth()
+            + 2
         )
         self.stats.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.stats.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self.stats)
 
         self.warning = QLabel()
@@ -178,9 +200,13 @@ class SyncConfirmationDialog(QDialog):
             )
         except ValueError as exc:
             command = f"Command unavailable: {exc}"
+        command_panel = QWidget(self)
+        command_layout = QVBoxLayout(command_panel)
+        command_layout.setContentsMargins(0, 0, 0, 0)
+        command_layout.setSpacing(2)
         command_label = QLabel("rsync command")
         command_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(command_label)
+        command_layout.addWidget(command_label)
         self.command = QPlainTextEdit()
         self.command.setObjectName("confirmation-command")
         self.command.setReadOnly(True)
@@ -198,11 +224,15 @@ class SyncConfirmationDialog(QDialog):
             "decision filter is created for this confirmation and removed "
             "after the synchronization."
         )
-        layout.addWidget(self.command, 1)
+        command_layout.addWidget(self.command, 1)
 
+        rules_panel = QWidget(self)
+        rules_layout = QVBoxLayout(rules_panel)
+        rules_layout.setContentsMargins(0, 0, 0, 0)
+        rules_layout.setSpacing(2)
         rules_label = QLabel("Decision rules")
         rules_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(rules_label)
+        rules_layout.addWidget(rules_label)
         self.rules = QPlainTextEdit()
         self.rules.setObjectName("confirmation-rules")
         self.rules.setReadOnly(True)
@@ -220,7 +250,17 @@ class SyncConfirmationDialog(QDialog):
             "The temporary rsync filter rules that implement the selected "
             "decisions for this synchronization."
         )
-        layout.addWidget(self.rules, 1)
+        rules_layout.addWidget(self.rules, 1)
+
+        self.preview_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.preview_splitter.setChildrenCollapsible(False)
+        self.preview_splitter.setHandleWidth(6)
+        self.preview_splitter.addWidget(command_panel)
+        self.preview_splitter.addWidget(rules_panel)
+        self.preview_splitter.setStretchFactor(0, 1)
+        self.preview_splitter.setStretchFactor(1, 1)
+        self.preview_splitter.setSizes([220, 220])
+        layout.addWidget(self.preview_splitter, 1)
 
         self.details = QLabel(
             "This confirmation is based on a verified second dry run. "

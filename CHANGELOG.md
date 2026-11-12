@@ -307,3 +307,9 @@
 ## milestone 1.15v decision rule preview
 
 - The synchronization dialog shows the generated decision-filter rules in a read-only, wrapping, resizable text box next to the command preview.
+
+## milestone 1.15w sync dialog alignment and preview splitter
+
+- Source and Destination are laid out in an explicit two-column grid, so their labels and values always align.
+- The command and decision-rule boxes sit in a draggable vertical splitter; both wrap and resize with the dialog or with the splitter handle.
+- The statistics table height includes a small guard band, so its content no longer scrolls by a few pixels without a scrollbar.

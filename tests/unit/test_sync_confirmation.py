@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
@@ -127,7 +128,9 @@ def test_confirmation_command_uses_the_real_filter_path() -> None:
     application.processEvents()
 
 
-def test_command_box_grows_with_the_dialog() -> None:
+def test_command_and_rule_boxes_are_resizable_and_wrap() -> None:
+    from PySide6.QtWidgets import QSizePolicy, QSplitter
+
     application = app()
     item = profile()
     plan = build_execution_plan(
@@ -136,14 +139,21 @@ def test_command_box_grows_with_the_dialog() -> None:
         ChangeDecisions(),
     )
     dialog = SyncConfirmationDialog(item, plan)
-    dialog.resize(720, 450)
-    dialog.layout().activate()
-    short_command = dialog.command.height()
-    short_rules = dialog.rules.height()
-    dialog.resize(720, 850)
-    dialog.layout().activate()
-    assert dialog.command.height() > short_command
-    assert dialog.rules.height() > short_rules
+    assert isinstance(dialog.preview_splitter, QSplitter)
+    assert dialog.preview_splitter.orientation() == Qt.Orientation.Vertical
+    assert dialog.preview_splitter.count() == 2
+    assert dialog.preview_splitter.widget(0).isAncestorOf(dialog.command)
+    assert dialog.preview_splitter.widget(1).isAncestorOf(dialog.rules)
+    for box in (dialog.command, dialog.rules):
+        assert box.lineWrapMode() == box.LineWrapMode.WidgetWidth
+        assert (
+            box.sizePolicy().verticalPolicy()
+            == QSizePolicy.Policy.Expanding
+        )
+    assert (
+        dialog.stats.verticalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
     dialog.close()
     application.processEvents()
 
