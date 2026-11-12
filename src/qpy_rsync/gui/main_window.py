@@ -42,6 +42,7 @@ from qpy_rsync.storage.profile_store import (
 from qpy_rsync.storage.settings import (
     app_settings,
     decode_binary,
+    profiles_directory,
     decode_text,
     encode_binary,
     encode_text,
@@ -444,6 +445,7 @@ class MainWindow(QMainWindow):
         self.plan_summary_label.hide()
         layout.addWidget(self.plan_summary_label)
         self.setCentralWidget(root)
+        self._build_menus()
 
         self.compare_button.clicked.connect(self._compare)
         self.sync_mode.currentIndexChanged.connect(self._sync_mode_changed)
@@ -520,6 +522,71 @@ class MainWindow(QMainWindow):
             )
         if options.compare:
             QTimer.singleShot(0, self._compare)
+
+    def _build_menus(self) -> None:
+        """Create the application menu with its shortcuts."""
+        menu_bar = self.menuBar()
+
+        file_menu = menu_bar.addMenu("&File")
+        self._add_action(
+            file_menu, "Load Profile...", "F3", self._load_profile
+        )
+        self._add_action(
+            file_menu, "Save Profile...", "F2", self._save_profile
+        )
+        file_menu.addSeparator()
+        self._add_action(file_menu, "Quit", "Ctrl+Q", self.close)
+
+        edit_menu = menu_bar.addMenu("&Edit")
+        self._add_action(
+            edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
+        )
+
+        actions_menu = menu_bar.addMenu("&Actions")
+        self._add_action(
+            actions_menu,
+            "Reset All Decisions",
+            "Ctrl+Z",
+            self.comparison.reset_all_decisions,
+        )
+        self._add_action(
+            actions_menu, "Method", "F4", lambda: self.sync_mode.setFocus()
+        )
+        actions_menu.addSeparator()
+        self._add_action(actions_menu, "Compare", "F5", self._compare)
+        self._add_action(actions_menu, "Inventory", "F6", self._toggle_inventory)
+        self._add_action(actions_menu, "Filters", "F7", self._edit_filters)
+        self._add_action(
+            actions_menu, "Validate Actions", "F8", self._validate_selected_plan
+        )
+        self._add_action(
+            actions_menu, "Synchronize", "F9", self._show_sync_confirmation
+        )
+        self._add_action(
+            actions_menu, "Cancel", "F10", self._cancel_active_operation
+        )
+        self._add_action(actions_menu, "Pause", "F11", self._toggle_pause)
+
+        help_menu = menu_bar.addMenu("&Help")
+        self._add_action(help_menu, "About qpy-rsync", "F1", self._show_about)
+
+    def _add_action(self, menu: object, text: str, shortcut: str, slot: object) -> object:
+        from PySide6.QtGui import QAction, QKeySequence
+
+        action = QAction(text, self)
+        action.setShortcut(QKeySequence(shortcut))
+        action.triggered.connect(slot)  # type: ignore[arg-type]
+        menu.addAction(action)  # type: ignore[attr-defined]
+        return action
+
+    def _show_about(self) -> None:
+        from .about import show_about
+
+        show_about(self)
+
+    def _toggle_inventory(self) -> None:
+        """Show or hide the unchanged items."""
+        self.show_unchanged.setChecked(not self.show_unchanged.isChecked())
 
     def _location_panel(
         self, title: str, edit: QLineEdit, *, trailing: bool = False
@@ -796,8 +863,9 @@ class MainWindow(QMainWindow):
         )
 
     def _save_profile(self) -> None:
+        default_path = profiles_directory() / "qpy-rsync-profile.json"
         path, _selected = QFileDialog.getSaveFileName(
-            self, "Save Profile", str(Path.home() / "qpy-rsync-profile.json"), "JSON (*.json)"
+            self, "Save Profile", str(default_path), "JSON (*.json)"
         )
         if not path:
             return
@@ -811,7 +879,7 @@ class MainWindow(QMainWindow):
 
     def _load_profile(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
-            self, "Load Profile", str(Path.home()), "JSON (*.json)"
+            self, "Load Profile", str(profiles_directory()), "JSON (*.json)"
         )
         if not path:
             return
@@ -903,14 +971,14 @@ class MainWindow(QMainWindow):
         action = self._hovered_action
         profile = self._profile()
         if action == "verify":
-            return build_compare_spec(profile, filter_file=Path("<decision filter>"))
+            return build_compare_spec(profile, filter_file=Path("<temporary decision filter>"))
         if action == "synchronize":
             effective = deepcopy(profile)
             effective.transfer.delete = any(
                 item.included and item.action is ChangeAction.DELETE
                 for item in (self._current_plan.items if self._current_plan else ())
             )
-            return build_sync_spec(effective, filter_file=Path("<decision filter>"))
+            return build_sync_spec(effective, filter_file=Path("<temporary decision filter>"))
         return build_compare_spec(profile)
 
     def _set_hovered_action(self, action: str) -> None:
@@ -1431,8 +1499,8 @@ class MainWindow(QMainWindow):
         """Gather the unchanged items when the inventory runs automatically.
 
         The result is cached for the comparison, so the unchanged button only
-        shows the cached objects instead of running the inventory again. The
-        unchanged objects stay hidden until the user asks for them.
+        shows the cached items instead of running the inventory again. The
+        unchanged items stay hidden until the user asks for them.
         """
         if not self.inventory_after_compare_button.isChecked():
             self._apply_inventory_mode()
@@ -1445,7 +1513,7 @@ class MainWindow(QMainWindow):
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
-        # The compared objects are shown right away, the unchanged objects
+        # The compared items are shown right away, the unchanged items
         # stay hidden until the user asks for them.
         self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
@@ -1473,7 +1541,7 @@ class MainWindow(QMainWindow):
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
-        # Show the compared objects right away. The unchanged objects are
+        # Show the compared items right away. The unchanged items are
         # merged in when the inventory completes, so the tree never stays
         # empty and no second comparison is needed.
         self.comparison.set_changes(changed)
@@ -1791,7 +1859,10 @@ class MainWindow(QMainWindow):
                 )
                 if answer == QMessageBox.StandardButton.Yes:
                     path, _selected = QFileDialog.getSaveFileName(
-                        self, "Save Profile", str(Path.home() / "qpy-rsync-profile.json"), "JSON (*.json)"
+                        self,
+                        "Save Profile",
+                        str(profiles_directory() / "qpy-rsync-profile.json"),
+                        "JSON (*.json)",
                     )
                     if path:
                         save_profile(Path(path), self._profile())

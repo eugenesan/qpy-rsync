@@ -60,3 +60,14 @@ def test_text_settings_are_stored_in_a_parseable_form() -> None:
     assert decode_text(encoded) == value
     # A value written by an older version is still readable.
     assert decode_text(value) == value
+
+
+def test_profiles_directory_is_created(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.storage.settings import profiles_directory
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    directory = profiles_directory()
+    assert directory == tmp_path / "config" / "qpy-rsync" / "profiles"
+    assert directory.is_dir()
+    # Asking again keeps the same place and does not fail when it exists.
+    assert profiles_directory() == directory

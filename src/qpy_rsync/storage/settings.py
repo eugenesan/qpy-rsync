@@ -20,6 +20,19 @@ def settings_path() -> Path:
     return root / "qpy-rsyncstaterc"
 
 
+def profiles_directory() -> Path:
+    """Return the profile folder and create it when it is missing."""
+    config_home = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = (
+        Path(config_home).expanduser()
+        if config_home
+        else Path.home() / ".config"
+    )
+    directory = root / "qpy-rsync" / "profiles"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def app_settings() -> QSettings:
     return QSettings(str(settings_path()), QSettings.Format.IniFormat)
 

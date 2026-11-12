@@ -174,7 +174,7 @@ class ChangeTreeModel(QAbstractItemModel):
 
     def _size_value(self, node: TreeNode, column: int) -> int | None:
         if node.children:
-            # A folder reports the objects it contains, not the size of its
+            # A folder reports the items it contains, not the size of its
             # own directory record.
             return (
                 node.subtree_size
@@ -315,8 +315,8 @@ class ChangeTreeModel(QAbstractItemModel):
         """Restrict the folder sizes to the rows that the filters show.
 
         A folder row must not claim more bytes than the rows below it. The
-        objects that a display filter hides no longer add to the total, and
-        the unchanged objects add to it as soon as the inventory lists them.
+        items that a display filter hides no longer add to the total, and
+        the unchanged items add to it as soon as the inventory lists them.
         """
         self._visible_paths = None if paths is None else set(paths)
         self._compute_sizes(self.root)

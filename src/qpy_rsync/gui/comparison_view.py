@@ -209,7 +209,7 @@ class ComparisonView(QWidget):
     def _sort_by_section(self, tree: QTreeView, section: int) -> None:
         """Sort the tree panes by the given column, like a header click.
 
-        All three panes show the same objects, so they share the order. The
+        All three panes show the same items, so they share the order. The
         section of a header is the column of the model, because every pane
         shows a subset of the same columns.
         """
@@ -271,15 +271,21 @@ class ComparisonView(QWidget):
         elif selected is reset_subtree and path is not None:
             self.model.reset_subtree_decisions(path)
         elif selected is reset_all:
-            answer = QMessageBox.question(
-                self,
-                "Reset all decisions",
-                "Reset every manual checkbox decision to its inherited default?",
-                QMessageBox.StandardButton.Reset | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-            if answer == QMessageBox.StandardButton.Reset:
-                self.model.reset_all_decisions()
+            self.reset_all_decisions()
+
+    def reset_all_decisions(self) -> None:
+        """Reset every explicit decision after asking the user."""
+        if not self.model.decisions.has_explicit():
+            return
+        answer = QMessageBox.question(
+            self,
+            "Reset all decisions",
+            "Reset every manual checkbox decision to its inherited default?",
+            QMessageBox.StandardButton.Reset | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Reset:
+            self.model.reset_all_decisions()
 
     def _absolute_path(self, tree: QTreeView, path: str | None) -> str:
         if path is None:
@@ -477,7 +483,7 @@ class ComparisonView(QWidget):
             # The metadata belongs to the comparison, not to the rows.
             self.model.set_destination_metadata(self._destination_metadata)
         # A model reset alone leaves the proxy with the previous row mapping.
-        # Without this the new objects, for example the unchanged ones of an
+        # Without this the new items, for example the unchanged ones of an
         # inventory, would only appear after the next comparison.
         self.proxy.refresh_filters(force=True)
         self._sync_visible_sizes()
@@ -557,7 +563,7 @@ class ComparisonView(QWidget):
         """Show only the given actions and refresh the overview."""
         self.proxy.set_visible_actions(actions)
         self._sync_visible_sizes()
-        # The overview counts the objects that the filters show.
+        # The overview counts the items that the filters show.
         self.changes_updated.emit(list(self.model.changes))
 
     def _refresh_action_filter(self) -> None:
@@ -569,7 +575,7 @@ class ComparisonView(QWidget):
         else:
             self.proxy.refresh_filters(force=False)
         self._sync_visible_sizes()
-        # The overview counts the objects that the filters show.
+        # The overview counts the items that the filters show.
         self.changes_updated.emit(list(self.model.changes))
 
     def set_stale(self, stale: bool) -> None:
