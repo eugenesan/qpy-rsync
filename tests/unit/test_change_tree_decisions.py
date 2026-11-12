@@ -201,3 +201,26 @@ def test_unchanged_tooltip_has_no_raw_itemized_separator() -> None:
     assert "Unchanged" in tooltip
     assert ":=" not in tooltip
     assert not tooltip.rstrip().endswith("=")
+
+
+def test_unchanged_rows_are_italic_and_changed_rows_are_not_bold() -> None:
+    model = ChangeTreeModel()
+    model.set_changes(
+        [
+            Change("dir/changed.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+            Change("dir/same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
+            Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        ]
+    )
+    directory = model.index(0, 0)
+    assert directory.internalPointer().name == "dir"
+    # A folder that holds changes is no longer bold.
+    assert model.data(directory, Qt.ItemDataRole.FontRole) is None
+    changed = model.index(1, 0)
+    assert changed.internalPointer().name == "new.txt"
+    assert model.data(changed, Qt.ItemDataRole.FontRole) is None
+    same = model.index(1, 0, directory)
+    font = model.data(same, Qt.ItemDataRole.FontRole)
+    assert font is not None
+    assert font.italic()
+    assert not font.bold()

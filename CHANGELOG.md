@@ -256,3 +256,7 @@
 
 - The command box in the synchronization dialog wraps long options and scrolls vertically.
 - The auto-expand limit now measures the whole comparison rather than each folder, so a large comparison stays collapsed instead of opening thousands of small directories. Below the limit, Qt's native expansion opens the whole tree in one pass.
+
+## milestone 1.15l tree fonts
+
+- Changed items use the normal font again; unchanged items are drawn in italic.

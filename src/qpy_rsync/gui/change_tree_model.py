@@ -447,14 +447,12 @@ class ChangeTreeModel(QAbstractItemModel):
                 if not destination_present:
                     return None
                 return self._item_icon(node)
-        if role == Qt.ItemDataRole.FontRole and index.column() != self.ACTION:
-            # Changed items and folders that hold changes are set in bold.
-            changed = (
-                change is not None and change.action is not ChangeAction.NO_CHANGE
-            ) or (bool(node.children) and node.subtree_changed > 0)
-            if changed:
+        if role == Qt.ItemDataRole.FontRole and change is not None:
+            # Unchanged rows are set in italic; changed rows keep the normal
+            # font, so the tree reads quietly instead of shouting.
+            if change.action is ChangeAction.NO_CHANGE:
                 font = QFont()
-                font.setBold(True)
+                font.setItalic(True)
                 return font
         if role == Qt.ItemDataRole.ToolTipRole:
             return self._tooltip_for(node, index.column())
