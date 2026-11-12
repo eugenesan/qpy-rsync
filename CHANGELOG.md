@@ -338,3 +338,7 @@
 
 - Opening a missing directory now shows a warning dialog instead of failing silently.
 - Compare and inventory refuse to start when a local Source or Destination is missing or is not a directory, and explain the problem in a dialog, the status field and the journal.
+
+## milestone 1.15ad status bar restored
+
+- Status messages appear in a new window status bar as well as the compact State field and the journal. Long messages are clipped in the bar but fully available in its tooltip and in the journal.

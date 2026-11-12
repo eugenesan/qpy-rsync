@@ -527,6 +527,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(backup_panel)
 
         self.setCentralWidget(root)
+        self.status_bar_label = QLabel()
+        self.status_bar_label.setObjectName("status-bar-label")
+        self.status_bar_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.status_bar_label.setMinimumWidth(0)
+        self.statusBar().setSizeGripEnabled(False)
+        self.statusBar().addWidget(self.status_bar_label, 1)
         self._build_menus()
         self._build_menu_button()
 
@@ -1099,13 +1107,21 @@ class MainWindow(QMainWindow):
         if color:
             style += f" color: {color};"
         self.status_edit.setStyleSheet(style)
+        status_bar_label = getattr(self, "status_bar_label", None)
+        if status_bar_label is not None:
+            status_bar_label.setStyleSheet(style)
 
     def _set_status(self, text: str, severity: str = "info") -> None:
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         lines = [part.strip() for part in text.replace(". ", ".\n").splitlines() if part.strip()]
-        self.status_edit.setToolTip("\n".join(lines))
+        tooltip = "\n".join(lines)
+        self.status_edit.setToolTip(tooltip)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
+        status_bar_label = getattr(self, "status_bar_label", None)
+        if status_bar_label is not None:
+            status_bar_label.setText(text.replace("\n", " "))
+            status_bar_label.setToolTip(tooltip)
         self._append_log(f"STATUS {text}")
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:

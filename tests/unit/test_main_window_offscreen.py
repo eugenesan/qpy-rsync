@@ -780,6 +780,8 @@ def test_window_can_shrink_to_1280() -> None:
     app_settings().clear()
     window = MainWindow()
     assert window.minimumSizeHint().width() <= 1280
+    window._set_status("A long status message: " + "x" * 500)
+    assert window.minimumSizeHint().width() <= 1280
     window.resize(1280, 800)
     application.processEvents()
     assert window.width() == 1280
@@ -986,5 +988,17 @@ def test_open_missing_directory_shows_a_warning(tmp_path, monkeypatch) -> None:
     window._open_location_directory("Source")
     assert warnings
     assert "does not exist" in window.status_edit.text()
+    window.close()
+    application.processEvents()
+
+
+def test_status_messages_are_also_shown_in_the_status_bar() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._set_status("Source is missing.", "warning")
+    assert window.status_bar_label.text() == "Source is missing."
+    assert window.status_bar_label.toolTip() == "Source is missing."
+    assert "STATUS Source is missing." in window.log.toPlainText()
     window.close()
     application.processEvents()
