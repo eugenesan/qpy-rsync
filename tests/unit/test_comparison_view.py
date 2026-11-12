@@ -528,3 +528,64 @@ def test_tree_headers_are_resizable() -> None:
             )
     view.close()
     application.processEvents()
+
+
+def test_limited_finder_restores_the_previous_expansion() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    view = ComparisonView()
+    view.set_expand_mode("all")
+    view.set_expand_limit(2)
+    view.set_changes(
+        [
+            Change("a/big/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("a/big/2.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("a/big/3.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("a/small/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("b/big/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("b/big/2.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("b/big/3.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("b/small/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        ]
+    )
+    application.processEvents()
+
+    a = view.model.index(0, 0)
+    b = view.model.index(1, 0)
+    a_big = view.model.index(0, 0, a)
+    b_big = view.model.index(0, 0, b)
+    a_small = view.model.index(1, 0, a)
+    proxy_a = view.proxy.mapFromSource(a)
+    proxy_b = view.proxy.mapFromSource(b)
+    proxy_a_big = view.proxy.mapFromSource(a_big)
+    proxy_b_big = view.proxy.mapFromSource(b_big)
+    proxy_a_small = view.proxy.mapFromSource(a_small)
+    assert view.source.isExpanded(proxy_a)
+    assert view.source.isExpanded(proxy_b)
+    assert view.source.isExpanded(proxy_a_small)
+    assert not view.source.isExpanded(proxy_a_big)
+    assert not view.source.isExpanded(proxy_b_big)
+
+    view.limited_button.setChecked(True)
+    application.processEvents()
+    assert view.proxy.rowCount() == 2
+    # Expand one marked folder manually; the other marker keeps the filter on.
+    view.source.expand(proxy_a_big)
+    application.processEvents()
+    assert view.limited_button.isChecked()
+
+    view.limited_button.setChecked(False)
+    application.processEvents()
+    proxy_a = view.proxy.mapFromSource(a)
+    proxy_b = view.proxy.mapFromSource(b)
+    proxy_a_big = view.proxy.mapFromSource(a_big)
+    proxy_b_big = view.proxy.mapFromSource(b_big)
+    proxy_a_small = view.proxy.mapFromSource(a_small)
+    assert view.source.isExpanded(proxy_a)
+    assert view.source.isExpanded(proxy_b)
+    assert view.source.isExpanded(proxy_a_small)
+    assert view.source.isExpanded(proxy_a_big)  # manually opened while filtering
+    assert not view.source.isExpanded(proxy_b_big)  # still as before
+    view.close()
+    application.processEvents()

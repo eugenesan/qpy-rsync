@@ -143,6 +143,7 @@ def test_overview_headers_are_resizable_and_separate_the_share() -> None:
     header = pane.tree.header()
     for section in range(pane.model.columnCount()):
         assert header.sectionResizeMode(section) == header.ResizeMode.Interactive
+    assert pane.model.headerData(OverviewModel.FOLDER, Qt.Orientation.Horizontal) == "Item"
     assert pane.model.headerData(OverviewModel.SHARE, Qt.Orientation.Horizontal) == "Share"
     assert pane.model.headerData(OverviewModel.ITEMS, Qt.Orientation.Horizontal) == "Items"
     pane.close()

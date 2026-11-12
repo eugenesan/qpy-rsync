@@ -270,3 +270,8 @@
 ## milestone 1.15n limited-folder finder
 
 - The comparison controls gained a checkable button, left of Unchanged, that filters the trees to the folders left collapsed by the auto-expand limit and opens their ancestors. Expanding the last marked folder restores the full tree automatically.
+
+## milestone 1.15o limited-folder finder restore
+
+- The overview's first header is called Item.
+- Turning the limited-folder finder off restores the expansion state that was active before it was turned on. Folders expanded or collapsed by hand while the finder was open are kept, so it no longer leaves the whole tree expanded.

@@ -101,6 +101,9 @@ class ComparisonView(QWidget):
         self._syncing_expansion = False
         self._expand_mode = "all"
         self._expand_limit = 256
+        self._limited_previous_expansion: set[str] | None = None
+        self._limited_manual_expanded: set[str] = set()
+        self._limited_manual_collapsed: set[str] = set()
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self.model.decision_changed.connect(self.decision_changed)
         self.model.decision_changed.connect(self._refresh_action_filter)
@@ -470,16 +473,26 @@ class ComparisonView(QWidget):
         tree.expand(self._column_zero(index))
         path = self._source_path_for_proxy_index(index)
         if path:
+            if self.limited_button.isChecked():
+                self._limited_manual_expanded.add(path)
+                self._limited_manual_collapsed.discard(path)
             # The user opened a folder that the automatic limit left closed.
             self.model.clear_expand_limited(path)
             if self.limited_button.isChecked():
-                self._refresh_limited_button(self.model.limited_paths())
+                # Refresh after the expansion signals have reached all three
+                # trees; changing the filter synchronously would invalidate
+                # the proxy index still being delivered to the other panes.
+                QTimer.singleShot(0, self._refresh_limited_paths)
 
     def _collapse_in(self, tree: QTreeView, index: QModelIndex) -> None:
         """Mirror a user collapse into the other panes."""
         if self._syncing_expansion:
             return
         tree.collapse(self._column_zero(index))
+        path = self._source_path_for_proxy_index(index)
+        if path and self.limited_button.isChecked():
+            self._limited_manual_collapsed.add(path)
+            self._limited_manual_expanded.discard(path)
 
     @contextmanager
     def _synced_expansion(self) -> Iterator[None]:
@@ -561,6 +574,10 @@ class ComparisonView(QWidget):
     def set_changes(
         self, changes: list[object], *, preserve_expansion: bool = False
     ) -> None:
+        if not preserve_expansion and self.limited_button.isChecked():
+            self._limited_previous_expansion = None
+            self._limited_manual_expanded.clear()
+            self._limited_manual_collapsed.clear()
         expanded_paths = self._expanded_paths() if preserve_expansion else set()
         trees = (self.source, self.action, self.destination)
         for tree in trees:
@@ -758,9 +775,37 @@ class ComparisonView(QWidget):
 
     def _set_limited_only(self, checked: bool) -> None:
         paths = self.model.limited_paths()
+        if checked:
+            self._limited_previous_expansion = self._expanded_paths()
+            self._limited_manual_expanded.clear()
+            self._limited_manual_collapsed.clear()
         self.proxy.set_limited_only(checked, paths)
         if checked and paths:
             self._expand_limited_ancestors(paths)
+        elif not checked:
+            self._restore_expansion_after_limited()
+
+    def _restore_expansion_after_limited(self) -> None:
+        previous = self._limited_previous_expansion
+        manual_expanded = self._limited_manual_expanded
+        manual_collapsed = self._limited_manual_collapsed
+        self._limited_previous_expansion = None
+        self._limited_manual_expanded = set()
+        self._limited_manual_collapsed = set()
+        if previous is None:
+            # The model changed while the finder was open; fall back to the
+            # configured auto-expansion instead of guessing.
+            self.expand_initial()
+            return
+        desired = (previous | manual_expanded) - manual_collapsed
+        with self._frozen_updates(), self._synced_expansion():
+            for tree in (self.source, self.action, self.destination):
+                tree.collapseAll()
+        self._expand_paths(desired)
+
+    def _refresh_limited_paths(self) -> None:
+        if self.limited_button.isChecked():
+            self._refresh_limited_button(self.model.limited_paths())
 
     def _refresh_limited_button(self, limited: set[str]) -> None:
         has_limited = bool(limited)

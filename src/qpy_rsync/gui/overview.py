@@ -66,7 +66,7 @@ class OverviewModel(QAbstractItemModel):
     ITEMS = 2
     SIZE = 3
     COLUMN_COUNT = 4
-    HEADERS = ("Folder", "Share", "Items", "Size")
+    HEADERS = ("Item", "Share", "Items", "Size")
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
