@@ -60,3 +60,17 @@ def test_execution_completion_failure_and_cancel_paths() -> None:
     gate.verification_started(); gate.verification_succeeded(); gate.confirmation_opened()
     gate.execution_started(); gate.execution_cancelled()
     assert gate.state is ExecutionGateState.CANCELLED
+
+
+def test_verification_can_run_again_after_a_success() -> None:
+    gate = ExecutionGate()
+    gate.comparison_ready(included=1)
+    gate.verification_started()
+    gate.verification_succeeded()
+    assert gate.state is ExecutionGateState.VERIFIED
+
+    # Clicking Verify Actions a second time must not raise.
+    gate.verification_started()
+    assert gate.state is ExecutionGateState.VERIFYING
+    gate.verification_succeeded()
+    assert gate.state is ExecutionGateState.VERIFIED

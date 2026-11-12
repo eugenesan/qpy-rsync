@@ -39,7 +39,13 @@ from qpy_rsync.storage.profile_store import (
     profile_to_json,
     save_profile,
 )
-from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binary
+from qpy_rsync.storage.settings import (
+    app_settings,
+    decode_binary,
+    decode_text,
+    encode_binary,
+    encode_text,
+)
 
 
 def vertical_separator() -> QFrame:
@@ -1575,13 +1581,13 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             return
         settings = app_settings()
-        settings.setValue("profile/recent", payload)
+        settings.setValue("profile/recent", encode_text(payload))
         settings.remove("profile/recent_path")
         settings.sync()
 
     def _restore_recent_profile(self) -> bool:
         settings = app_settings()
-        payload = str(settings.value("profile/recent", ""))
+        payload = decode_text(settings.value("profile/recent", "")) or ""
         if payload:
             try:
                 self._apply_profile(profile_from_json(payload))
@@ -1607,7 +1613,9 @@ class MainWindow(QMainWindow):
             profile = load_profile(path)
         except (OSError, ValueError, KeyError, TypeError):
             return False
-        settings.setValue("profile/recent", profile_to_json(profile))
+        settings.setValue(
+            "profile/recent", encode_text(profile_to_json(profile))
+        )
         settings.remove("profile/recent_path")
         settings.sync()
         if path == self._legacy_recent_profile_path():
@@ -1623,12 +1631,14 @@ class MainWindow(QMainWindow):
 
     def _save_filters(self) -> None:
         settings = app_settings()
-        settings.setValue("comparison/filters", encode_filters(self._filters))
+        settings.setValue(
+            "comparison/filters", encode_text(encode_filters(self._filters))
+        )
         settings.sync()
 
     def _restore_filters(self) -> None:
         settings = app_settings()
-        payload = str(settings.value("comparison/filters", ""))
+        payload = decode_text(settings.value("comparison/filters", "")) or ""
         try:
             self._filters = decode_filters(payload)
         except (TypeError, ValueError):

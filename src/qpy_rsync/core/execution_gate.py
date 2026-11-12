@@ -56,7 +56,11 @@ class ExecutionGate:
         self.comparison_ready(included=included)
 
     def verification_started(self) -> None:
-        self._require(ExecutionGateState.SELECTION_READY)
+        # Verifying again after a successful verification is allowed.
+        self._require_any(
+            ExecutionGateState.SELECTION_READY,
+            ExecutionGateState.VERIFIED,
+        )
         self._state = ExecutionGateState.VERIFYING
 
     def verification_succeeded(self) -> None:
@@ -108,7 +112,8 @@ class ExecutionGate:
         return ExecutionGateView(
             state=state,
             can_compare=state not in {ExecutionGateState.VERIFYING, ExecutionGateState.EXECUTING},
-            can_verify=state is ExecutionGateState.SELECTION_READY,
+            can_verify=state
+            in {ExecutionGateState.SELECTION_READY, ExecutionGateState.VERIFIED},
             can_confirm=state is ExecutionGateState.VERIFIED,
             can_execute=state is ExecutionGateState.CONFIRMING,
             can_swap=state not in {ExecutionGateState.VERIFYING, ExecutionGateState.EXECUTING},
@@ -116,7 +121,11 @@ class ExecutionGate:
         )
 
     def _require(self, expected: ExecutionGateState) -> None:
-        if self._state is not expected:
+        self._require_any(expected)
+
+    def _require_any(self, *expected: ExecutionGateState) -> None:
+        if self._state not in expected:
+            wanted = " or ".join(state.value for state in expected)
             raise InvalidGateTransition(
-                f"Cannot transition from {self._state.value}; expected {expected.value}."
+                f"Cannot transition from {self._state.value}; expected {wanted}."
             )

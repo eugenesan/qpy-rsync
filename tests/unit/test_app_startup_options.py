@@ -47,3 +47,16 @@ def test_parse_log_file_and_disable_logging() -> None:
     assert options.log_file == "/tmp/run.log"
     disabled, _ = parse_startup_options(["--dir-pair", "/src/", "/dst/", "--no-log-file"])
     assert disabled.logging_enabled is False
+
+
+def test_text_settings_are_stored_in_a_parseable_form() -> None:
+    from qpy_rsync.storage.settings import decode_text, encode_text
+
+    value = '{"filters": [], "name": "ad-hoc"}'
+    encoded = encode_text(value)
+    # Plain text with a prefix, no quotes or backslash escapes.
+    assert encoded.startswith("b64:")
+    assert '"' not in encoded and "\\" not in encoded
+    assert decode_text(encoded) == value
+    # A value written by an older version is still readable.
+    assert decode_text(value) == value
