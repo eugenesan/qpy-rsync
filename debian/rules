@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME = qpy-rsync
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+# The test suite starts Qt applications; it runs in the repository, not
+# during a package build.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	dh_auto_install
+	install -D -m 0644 qpy-rsync.svg \
+		debian/qpy-rsync/usr/share/icons/hicolor/scalable/apps/qpy-rsync.svg
+	install -D -m 0644 debian/qpy-rsync.desktop \
+		debian/qpy-rsync/usr/share/applications/qpy-rsync.desktop

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=qpy-rsync
+GenericName=File Synchronization
+Comment=Compare and synchronize two folders with rsync
+Exec=qpy-rsync
+Icon=qpy-rsync
+Terminal=false
+Categories=Utility;FileTools;
+Keywords=rsync;sync;backup;mirror;compare;
+StartupNotify=true

@@ -1,0 +1,33 @@
+Source: qpy-rsync
+Section: utils
+Priority: optional
+Maintainer: qpy-rsync contributors <qpy-rsync@localhost>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-python,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-hatchling,
+ python3-pyside6.qtwidgets,
+Rules-Requires-Root: no
+Standards-Version: 4.6.2
+Homepage: https://github.com/qpy-rsync/qpy-rsync
+
+Package: qpy-rsync
+Architecture: all
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3-pyside6.qtwidgets,
+ rsync,
+Recommends:
+ openssh-client,
+Suggests:
+ kdiff3 | meld | diffuse,
+Description: preview-driven frontend for rsync
+ qpy-rsync compares a source and a destination with an rsync dry run,
+ shows the differences in three synchronized tree panes and only writes
+ after the selected actions have been verified with a second dry run.
+ .
+ Every command is written to the journal before it runs, the transfer can
+ be paused and continued, and profiles can be stored for recurring jobs.

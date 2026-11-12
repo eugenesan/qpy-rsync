@@ -1,0 +1,7 @@
+qpy-rsync (0.1.0.dev0) unstable; urgency=low
+
+  * Initial Debian packaging.
+  * Preview-driven comparison, verification and synchronization with rsync.
+  * Overview pane, journal with session log and pausable transfers.
+
+ -- qpy-rsync contributors <qpy-rsync@localhost>  Thu, 12 Nov 2026 12:00:00 +0000
