@@ -179,3 +179,34 @@ def test_confirmation_shows_the_decision_rule_contents() -> None:
     assert "- /extra" in text
     dialog.close()
     application.processEvents()
+
+
+def test_summary_table_ignores_wheel_scrolling() -> None:
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QWheelEvent
+
+    application = app()
+    item = profile()
+    plan = build_execution_plan(
+        item,
+        [Change("new", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")],
+        ChangeDecisions(),
+    )
+    dialog = SyncConfirmationDialog(item, plan)
+    bar = dialog.stats.verticalScrollBar()
+    bar.setRange(0, 100)
+    bar.setValue(0)
+    event = QWheelEvent(
+        QPointF(5, 5),
+        QPointF(5, 5),
+        QPoint(0, 0),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(dialog.stats.viewport(), event)
+    assert bar.value() == 0
+    dialog.close()
+    application.processEvents()

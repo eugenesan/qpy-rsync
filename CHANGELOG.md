@@ -313,3 +313,7 @@
 - Source and Destination are laid out in an explicit two-column grid, so their labels and values always align.
 - The command and decision-rule boxes sit in a draggable vertical splitter; both wrap and resize with the dialog or with the splitter handle.
 - The statistics table height includes a small guard band, so its content no longer scrolls by a few pixels without a scrollbar.
+
+## milestone 1.15x static summary table
+
+- The synchronization summary table ignores wheel and scroll requests, so hovering over it can no longer shift its contents by a few pixels.

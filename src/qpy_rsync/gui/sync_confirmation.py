@@ -81,6 +81,19 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
     )
 
 
+class _StaticTableWidget(QTableWidget):
+    """A summary table that never scrolls away from its content."""
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        # The table is sized to its rows. Ignore the wheel so hovering over
+        # it cannot shift the text by a few pixels.
+        event.ignore()
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:  # noqa: N802
+        # Even a programmatic scroll must not move the summary contents.
+        return None
+
+
 class SyncConfirmationDialog(QDialog):
     """Final review required before write-capable synchronization."""
 
@@ -146,7 +159,7 @@ class SyncConfirmationDialog(QDialog):
         ]
         half = (len(stats) + 1) // 2
         left, right = stats[:half], stats[half:]
-        self.stats = QTableWidget(max(len(left), len(right)), 4)
+        self.stats = _StaticTableWidget(max(len(left), len(right)), 4)
         self.stats.setObjectName("confirmation-stats")
         self.stats.horizontalHeader().hide()
         self.stats.verticalHeader().hide()
