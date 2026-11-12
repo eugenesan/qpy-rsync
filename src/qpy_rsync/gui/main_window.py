@@ -1070,6 +1070,9 @@ class MainWindow(QMainWindow):
         enabled = sum(1 for item in self._filters if item.enabled)
         total = len(self._filters)
         self.filters_button.setAccessibleName(f"Filters [{enabled}/{total}]")
+        self.filters_button.setIcon(
+            filters_icon(active=enabled > 0, stale=stale)
+        )
         tooltip = (
             f"Filters [{enabled}/{total}]\n"
             f"{enabled} of {total} persistent filter rules are enabled.\n"

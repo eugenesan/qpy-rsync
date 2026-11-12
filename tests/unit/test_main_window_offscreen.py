@@ -805,3 +805,26 @@ def test_typed_backup_path_is_used_without_leaving_the_field() -> None:
     assert window._profile().backup.directory == "/typed-backup"
     window.close()
     application.processEvents()
+
+
+def test_filters_button_shows_an_active_and_stale_indicator() -> None:
+    from qpy_rsync.core.models import FilterRule
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._filters = []
+    window._update_filter_summary()
+    inactive = window.filters_button.icon().cacheKey()
+
+    window._filters = [FilterRule("*.tmp", enabled=True)]
+    window._update_filter_summary()
+    active = window.filters_button.icon().cacheKey()
+    assert active != inactive
+    assert "Filters [1/1]" in window.filters_button.toolTip()
+
+    window._update_filter_summary(stale=True)
+    stale = window.filters_button.icon().cacheKey()
+    assert stale != active
+    window.close()
+    application.processEvents()

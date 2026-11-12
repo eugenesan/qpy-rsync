@@ -325,3 +325,7 @@
 ## milestone 1.15z decision-rules label
 
 - The Decision rules box names the temporary filter filename in its label, with the full path in the label and box tooltips.
+
+## milestone 1.15aa filter indicator
+
+- The icon-only Filters button shows a cyan badge when at least one rule is enabled and an amber badge when the comparison is stale after a rule change.

@@ -293,11 +293,24 @@ def pause_icon() -> QIcon:
     return _theme_icon("media-playback-pause", fallback=QStyle.StandardPixmap.SP_MediaPause)
 
 
-def filters_icon() -> QIcon:
-    """The system icon for the filter rules."""
-    return _theme_icon(
-        "view-filter", "view-list-details", fallback=QStyle.StandardPixmap.SP_FileDialogDetailedView
+def filters_icon(*, active: bool = False, stale: bool = False) -> QIcon:
+    """The filter icon, with a badge when rules are active or stale."""
+    base = _theme_icon(
+        "view-filter",
+        "view-list-details",
+        fallback=QStyle.StandardPixmap.SP_FileDialogDetailedView,
     )
+    if not active and not stale:
+        return base
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    base.paint(painter, 0, 0, ICON_SIZE, ICON_SIZE)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#f59e0b") if stale else ACCENT))
+    painter.drawEllipse(QPointF(50.0, 50.0), 11.0, 11.0)
+    painter.end()
+    return QIcon(pixmap)
 
 
 def inventory_mode_icon() -> QIcon:
