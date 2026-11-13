@@ -93,6 +93,10 @@ class ActionColumnDelegate(UniformRowDelegate):
 class ComparisonView(QWidget):
     """Synchronized source/action/destination tree panes."""
 
+    # The tree expands folders, so a large inventory needs the expansion
+    # limits and the warning that goes with them.
+    supports_expansion = True
+
     diff_requested = Signal(object)
     decision_changed = Signal()
     inventory_toggled = Signal(bool)

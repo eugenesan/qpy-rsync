@@ -158,6 +158,10 @@ class FlatPathDelegate(UniformRowDelegate):
 class FlatComparisonView(QWidget):
     """Synchronized source/action/destination panes over a flat list."""
 
+    # The flat list has nothing to expand, so the expansion limits and the
+    # warning about a large inventory do not apply.
+    supports_expansion = False
+
     diff_requested = Signal(object)
     decision_changed = Signal()
     inventory_toggled = Signal(bool)

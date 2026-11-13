@@ -53,6 +53,13 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Comparison list", self.layout_combo)
 
+        self.expansion_hint = QLabel(
+            "The flat list shows every item at once, so the expansion "
+            "settings below do not apply to it."
+        )
+        self.expansion_hint.setWordWrap(True)
+        form.addRow("", self.expansion_hint)
+
         self.expand_combo = QComboBox()
         for value, label in EXPAND_MODES:
             self.expand_combo.addItem(label, value)
@@ -73,7 +80,8 @@ class SettingsDialog(QDialog):
             "a comparison. The tree marks every such folder, and you can open "
             "it manually."
         )
-        form.addRow("Auto-expand folders up to", self.limit_spin)
+        self.limit_label = QLabel("Auto-expand folders up to")
+        form.addRow(self.limit_label, self.limit_spin)
 
         self.total_limit_spin = QSpinBox()
         self.total_limit_spin.setRange(1, 10_000_000)
@@ -85,15 +93,16 @@ class SettingsDialog(QDialog):
             "comparison, even when each folder is below the per-folder limit. "
             "You are offered a choice before a large inventory is added."
         )
-        form.addRow("Auto-expand comparison up to", self.total_limit_spin)
+        self.total_limit_label = QLabel("Auto-expand comparison up to")
+        form.addRow(self.total_limit_label, self.total_limit_spin)
 
-        hint = QLabel(
+        self.expansion_hint_2 = QLabel(
             "Folders left collapsed by the limit carry an amber marker; their "
             "tooltip explains why. Collapsed folders with changes keep a "
             "marker in the Actions column as well."
         )
-        hint.setWordWrap(True)
-        form.addRow("", hint)
+        self.expansion_hint_2.setWordWrap(True)
+        form.addRow("", self.expansion_hint_2)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -102,6 +111,24 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        self._expansion_widgets = (
+            self.expand_combo,
+            self.limit_spin,
+            self.total_limit_spin,
+            self.expansion_hint_2,
+        )
+        self.layout_combo.currentIndexChanged.connect(self._layout_changed)
+        self._layout_changed()
+
+    def _layout_changed(self) -> None:
+        """The expansion settings only apply to the tree."""
+        tree = self.list_layout() == "tree"
+        for widget in self._expansion_widgets:
+            widget.setEnabled(tree)
+        self.expansion_hint.setVisible(not tree)
+        self.limit_label.setEnabled(tree)
+        self.total_limit_label.setEnabled(tree)
 
     def expand_mode(self) -> str:
         return str(self.expand_combo.currentData())

@@ -1277,3 +1277,171 @@ def test_changed_expansion_summary_counts_changed_paths() -> None:
     assert window._changed_expansion_summary() == (2, 2)
     window.close()
     application.processEvents()
+
+
+def _inventory_changes(count: int, action):
+    from qpy_rsync.core.changes import Change, ObjectKind
+
+    return [
+        Change(
+            f"dir{i % 20}/file{i}.txt",
+            action,
+            ObjectKind.FILE,
+            "=" if action.value == "no_change" else ">f",
+            size=i,
+        )
+        for i in range(count)
+    ]
+
+
+def test_the_flat_list_adds_a_large_inventory_without_a_warning(monkeypatch) -> None:
+    from qpy_rsync.core.changes import ChangeAction
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._list_layout = "flat"
+    window._switch_list_layout()
+    window._expand_total_limit = 5
+    window.comparison.set_expand_total_limit(5)
+
+    changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
+    unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
+    window._last_changed_changes = list(changed)
+
+    calls: list[int] = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_large_inventory",
+        lambda total, count: calls.append(total) or None,
+    )
+    assert window._populate_unchanged(changed + unchanged, len(unchanged))
+    application.processEvents()
+    # The flat list has nothing to expand, so it never asks.
+    assert calls == []
+    assert window.comparison.model.rowCount() == 64
+    window.close()
+    application.processEvents()
+
+
+def test_the_tree_list_still_warns_about_a_large_inventory(monkeypatch) -> None:
+    from qpy_rsync.core.changes import ChangeAction
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._list_layout = "tree"
+    window._switch_list_layout()
+    window._expand_total_limit = 5
+    window.comparison.set_expand_total_limit(5)
+
+    changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
+    unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
+    window._last_changed_changes = list(changed)
+
+    calls: list[int] = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_large_inventory",
+        lambda total, count: calls.append(total) or "collapsed",
+    )
+    assert window._populate_unchanged(changed + unchanged, len(unchanged))
+    application.processEvents()
+    assert calls == [44]
+    window.close()
+    application.processEvents()
+
+
+def test_cancelling_a_large_inventory_leaves_a_settled_progress_bar(monkeypatch) -> None:
+    from qpy_rsync.core.changes import ChangeAction
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._list_layout = "tree"
+    window._switch_list_layout()
+    window._expand_total_limit = 5
+    window.comparison.set_expand_total_limit(5)
+
+    changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
+    unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
+    window._last_changed_changes = list(changed)
+    window.comparison.set_changes(changed)
+
+    # The inventory ran in the background, so the bar is indeterminate.
+    window.progress_bar.setRange(0, 0)
+    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_a: None)
+
+    assert not window._populate_unchanged(changed + unchanged, len(unchanged))
+    application.processEvents()
+
+    # No animation is left behind.
+    assert window.progress_bar.minimum() == 0
+    assert window.progress_bar.maximum() == 100
+    assert window.progress_bar.value() == 0
+    assert not window.progress_label.text().startswith("Gathering")
+    # The list keeps the changed items only.
+    assert window.comparison.model.rowCount() == 4
+    window.close()
+    application.processEvents()
+
+
+def test_cancelling_the_inventory_keeps_its_message(tmp_path, monkeypatch) -> None:
+    """The completion handler must not overwrite the cancelled state."""
+    from qpy_rsync.backend.inventory import InventoryResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.core.endpoints import parse_endpoint
+    from qpy_rsync.core.models import SyncProfile
+
+    application = app()
+    app_settings().clear()
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
+    (source / "file.txt").write_text("x", encoding="utf-8")
+
+    window = MainWindow()
+    window._list_layout = "tree"
+    window._switch_list_layout()
+    window._expand_total_limit = 5
+    window.comparison.set_expand_total_limit(5)
+
+    profile = SyncProfile(
+        name="t",
+        source=parse_endpoint(str(source)),
+        destination=parse_endpoint(str(destination)),
+    )
+    window._active_profile = profile
+    changed = [
+        Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=1)
+    ]
+    unchanged = [
+        Change(f"u{i}.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=i)
+        for i in range(40)
+    ]
+    window._last_changed_changes = list(changed)
+    # Check the toggle without starting a real inventory run.
+    window.show_unchanged.blockSignals(True)
+    window.show_unchanged.setChecked(True)
+    window.show_unchanged.blockSignals(False)
+    window._inventory_pending_key = window._inventory_key(profile, changed)
+    window._inventory_token = 7
+    window.progress_bar.setRange(0, 0)
+
+    result = InventoryResult(unchanged=list(unchanged), destination_metadata={})
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window._inventory_result", lambda _extra: result
+    )
+    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_a: None)
+
+    window._inventory_finished(7, object())
+    application.processEvents()
+
+    assert window.progress_bar.maximum() == 100
+    assert window.progress_bar.value() == 0
+    assert window.progress_label.text() == "Unchanged items were not added"
+    assert not window.show_unchanged.isChecked()
+    assert window.comparison.model.rowCount() == 1
+    window.close()
+    application.processEvents()

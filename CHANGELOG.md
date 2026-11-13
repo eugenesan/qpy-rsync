@@ -397,3 +397,10 @@
 - The Actions filter bar carries a hidden-items toggle with a count, so what was hidden can be seen and restored. FreeFileSync has no such indication.
 - The context menu filters the selected item the way FreeFileSync does, with the rules written as rsync patterns: by extension (`*.jpg`), by name (`*/name`) or by relative path (`/path/name`). A filter added from the menu is an ordinary exclude rule and marks the comparison stale.
 - The same hiding and filtering works in the Overview pane.
+
+## milestone 1.15ao the inventory follows the list layout
+
+- The flat list no longer shows the large-inventory warning. It has nothing to expand, so the expansion limits and the tree-only choices ("Add Collapsed", "Expand Changed Only", "Expand Normally") do not apply, and the unchanged items are simply added.
+- Settings disables the three expansion settings while the flat list is selected, with a note explaining why.
+- Cancelling the warning now resets the progress bar and keeps its own message instead of leaving the bar animating and the "Inventory complete" text behind, and the unchanged toggle returns to its off state.
+- The inventory message says "expand folders to view nested items" only for the tree.

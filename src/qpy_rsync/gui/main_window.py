@@ -2195,7 +2195,7 @@ class MainWindow(QMainWindow):
                 changed + list(self._inventory_cache),
                 len(self._inventory_cache),
             ):
-                self._hide_unchanged(changed)
+                self._hide_unchanged(changed, keep_status=True)
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
@@ -2272,23 +2272,42 @@ class MainWindow(QMainWindow):
             return "normal"
         return None
 
-    def _hide_unchanged(self, changed: list[object]) -> None:
+    def _hide_unchanged(self, changed: list[object], *, keep_status: bool = False) -> None:
         self.show_unchanged.blockSignals(True)
         self.show_unchanged.setChecked(False)
         self.show_unchanged.blockSignals(False)
-        self.progress_label.setText("Unchanged items hidden")
+        if not keep_status:
+            self.progress_label.setText("Unchanged items hidden")
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
         self.comparison.set_changes(changed)
 
+    def _view_supports_expansion(self) -> bool:
+        """Whether the current comparison view expands folders."""
+        return bool(getattr(self.comparison, "supports_expansion", True))
+
+    def _cancel_inventory_addition(self) -> None:
+        """Leave a settled state after the user declined a large inventory."""
+        self._append_log("Inventory addition cancelled.", severity="warning")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.progress_label.setText("Unchanged items were not added")
+        self._set_state("Unchanged items were not added", "warning")
+
     def _populate_unchanged(self, changes: list[object], unchanged: int) -> bool:
-        """Rebuild the trees and report that the big list is on its way."""
+        """Add the unchanged items to the comparison."""
         total = len(changes)
         expand_over_limit = False
         expand_changed_only = False
         preserve_expansion = True
-        if total > self._expand_total_limit:
+        # The expansion limits and the warning exist because expanding a tree
+        # is slow. The flat list has nothing to expand, so it adds the items
+        # right away and never asks.
+        if self._view_supports_expansion() and total > self._expand_total_limit:
             choice = self._confirm_large_inventory(total, unchanged)
             if choice is None:
-                self._append_log("Inventory addition cancelled.", severity="warning")
+                self._cancel_inventory_addition()
                 return False
             expand_over_limit = choice == "normal"
             expand_changed_only = choice == "changed"
@@ -2320,11 +2339,17 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        self.progress_label.setText(
-            f"Showing {unchanged:,} unchanged item(s); "
-            "expand folders to view nested items."
-        )
+        self.progress_label.setText(self._inventory_summary(unchanged))
         return True
+
+    def _inventory_summary(self, unchanged: int) -> str:
+        """Describe the inventory in a way that matches the current view."""
+        if self._view_supports_expansion():
+            return (
+                f"Showing {unchanged:,} unchanged item(s); "
+                "expand folders to view nested items."
+            )
+        return f"Showing {unchanged:,} unchanged item(s)."
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
@@ -2381,14 +2406,17 @@ class MainWindow(QMainWindow):
             if not self._populate_unchanged(
                 changed + list(result.unchanged), len(result.unchanged)
             ):
-                self._hide_unchanged(changed)
+                # The user declined the large inventory. Put the toggle back
+                # and keep the message that _populate_unchanged reported.
+                self._hide_unchanged(changed, keep_status=True)
+                self._append_log(
+                    f"STATE inventory-complete unchanged={len(result.unchanged)}"
+                )
+                return
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)
-        self.progress_label.setText(
-            f"Inventory complete: {len(result.unchanged)} unchanged item(s); "
-            "expand folders to view nested items."
-        )
+        self.progress_label.setText(self._inventory_summary(len(result.unchanged)))
         self._append_log(
             f"STATE inventory-complete unchanged={len(result.unchanged)}"
         )
