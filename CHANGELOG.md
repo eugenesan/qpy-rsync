@@ -492,3 +492,7 @@
 - A path filter temporarily overrides the folds so a search never loses its matches; clearing the filter restores the folds.
 - Selecting a path from the overview or the filter expands its ancestors first.
 - Folds live in memory, survive sorting and inventory toggles, and are cleared when a new comparison starts.
+
+## milestone 1.15ba pointer focus on the action filters
+
+- The action filter checkboxes take focus only from the keyboard (`TabFocus`). A pointer click no longer leaves Breeze's focus underline behind, while Tab and Space still reach and toggle the filters.

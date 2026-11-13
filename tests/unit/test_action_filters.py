@@ -115,3 +115,14 @@ def test_the_stashed_toggle_mentions_restore_all_in_its_tooltip() -> None:
     bar.set_stashed_count(3)
     assert "3 stashed item(s)" in bar.stashed_box.toolTip()
     assert "Right-click to restore all stashed items" in bar.stashed_box.toolTip()
+
+
+def test_the_action_toggles_only_take_focus_from_the_keyboard() -> None:
+    app()
+    bar = ActionFilterBar()
+    # A pointer click must not focus the toggle (Breeze draws a focus
+    # underline under an icon-only checkbox), but TabFocus still includes
+    # the keyboard.
+    for box in (*bar._boxes.values(), bar.unchanged_box, bar.stashed_box):
+        assert box.focusPolicy() == Qt.FocusPolicy.TabFocus
+        assert box.focusPolicy() & Qt.FocusPolicy.TabFocus

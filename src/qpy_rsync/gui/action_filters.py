@@ -87,6 +87,12 @@ class ActionFilterBar(QWidget):
         self.stashed_box.toggled.connect(self.stashed_toggled.emit)
         layout.addWidget(self.stashed_box)
 
+        # Breeze marks a focused icon-only checkbox with an underline. A
+        # pointer click should not leave that marker behind, but Tab must
+        # still reach the control, so focus follows the keyboard only.
+        for box in (*self._boxes.values(), self.unchanged_box, self.stashed_box):
+            box.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
     @staticmethod
     def _tooltip(action: ChangeAction) -> str:
         label = ACTION_LABELS.get(action, action.value)
