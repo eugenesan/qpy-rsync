@@ -556,9 +556,6 @@ class FlatComparisonView(QWidget):
     def set_expand_mode(self, mode: str) -> None:
         """Ignored: the flat list has no collapsed folders."""
 
-    def set_expand_limit(self, limit: int) -> None:
-        """Ignored: the flat list has no collapsed folders."""
-
     def set_expand_total_limit(self, limit: int) -> None:
         """Ignored: the flat list has no collapsed folders."""
 

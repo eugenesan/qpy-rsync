@@ -108,8 +108,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self._sort_order = Qt.SortOrder.AscendingOrder
         self._override_paths: set[str] = set()
         self._expand_limited_paths: set[str] = set()
-        self.expand_limit = 256
-        self.expand_limit_is_total = False
+        # The comparison-wide limit that left the marked folders collapsed.
+        self.expand_total_limit = 256
         self._nodes: dict[str, TreeNode] = {}
 
     def set_changes(self, changes: list[Change]) -> None:
@@ -144,22 +144,15 @@ class ChangeTreeModel(QAbstractItemModel):
         self.endResetModel()
         self._refresh_action_header()
 
-    def set_expand_limited_paths(
-        self, paths: set[str], limit: int, *, total: bool = False
-    ) -> None:
-        """Remember the folders that were left collapsed by the auto limit."""
+    def set_expand_limited_paths(self, paths: set[str], limit: int) -> None:
+        """Remember the folders that were left collapsed by the limit."""
         new_paths = {path for path in paths if path}
         new_limit = max(1, int(limit))
         changed = self._expand_limited_paths ^ new_paths
-        if (
-            not changed
-            and new_limit == self.expand_limit
-            and total == self.expand_limit_is_total
-        ):
+        if not changed and new_limit == self.expand_total_limit:
             return
         self._expand_limited_paths = new_paths
-        self.expand_limit = new_limit
-        self.expand_limit_is_total = total
+        self.expand_total_limit = new_limit
         if len(changed) > 32:
             # Marking thousands of rows one dataChanged at a time makes the
             # proxy rebuild its filter cache repeatedly.
@@ -556,19 +549,12 @@ class ChangeTreeModel(QAbstractItemModel):
         }
         limited_note = ""
         if node.path in self._expand_limited_paths and node.children:
-            if self.expand_limit_is_total:
-                limited_note = (
-                    f"\n\nLeft collapsed automatically: the comparison has "
-                    f"{len(self.changes)} items, above the "
-                    f"{self.expand_limit:,}-item safety limit.\n"
-                    "Expand folders manually."
-                )
-            else:
-                limited_note = (
-                    f"\n\nLeft collapsed automatically: this folder has "
-                    f"{len(node.children)} items (limit {self.expand_limit}).\n"
-                    "Expand it manually or raise the limit in Settings."
-                )
+            limited_note = (
+                f"\n\nLeft collapsed automatically: the comparison has "
+                f"{len(self.changes):,} items, above the "
+                f"{self.expand_total_limit:,}-item limit in Settings.\n"
+                "Expand folders manually."
+            )
         if column == self.ACTION:
             if change is None:
                 extra = (

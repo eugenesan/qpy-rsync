@@ -113,10 +113,8 @@ class ComparisonView(QWidget):
         self._update_freeze = 0
         self._syncing_expansion = False
         self._expand_mode = "all"
-        self._expand_limit = 256
         self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
-        self._expand_over_limit_once = False
-        self._expand_changed_only_once = False
+
         self._last_cap_notice: tuple[int, int] | None = None
         self._limited_previous_expansion: set[str] | None = None
         self._limited_manual_expanded: set[str] = set()
@@ -603,11 +601,7 @@ class ComparisonView(QWidget):
         changes: list[object],
         *,
         preserve_expansion: bool = False,
-        expand_over_limit: bool = False,
-        expand_changed_only: bool = False,
     ) -> None:
-        self._expand_over_limit_once = expand_over_limit
-        self._expand_changed_only_once = expand_changed_only
         if not preserve_expansion and self.limited_button.isChecked():
             self._limited_previous_expansion = None
             self._limited_manual_expanded.clear()
@@ -630,22 +624,15 @@ class ComparisonView(QWidget):
         self.changes_updated.emit(list(self.model.changes))
 
         def restore_views() -> None:
-            changed_only = self._expand_changed_only_once
-            self._expand_changed_only_once = False
-            force = self._expand_over_limit_once
-            self._expand_over_limit_once = False
-            if changed_only:
-                self.expand_changed_only()
-                return
             over_limit = len(self.model.changes) > self._expand_total_limit
             with self._frozen_updates():
-                if expanded_paths and (not over_limit or force):
+                if expanded_paths and not over_limit:
                     self._expand_paths(expanded_paths)
                 else:
                     # Expanding tens of thousands of rows keeps the UI busy for
                     # a long time. Apply the configured cap and let the user
                     # open folders manually.
-                    self.expand_initial(force_total=force)
+                    self.expand_initial()
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
         QTimer.singleShot(0, restore_views)
@@ -783,40 +770,29 @@ class ComparisonView(QWidget):
         """Choose how the folders are opened after a comparison."""
         self._expand_mode = mode
 
-    def set_expand_limit(self, limit: int) -> None:
-        """Limit how many items a folder may hold to open automatically."""
-        self._expand_limit = max(1, int(limit))
-
     def set_expand_total_limit(self, limit: int) -> None:
         """Limit the total comparison size that opens automatically."""
         self._expand_total_limit = max(1, int(limit))
 
-    def expand_initial(
-        self, limit: int | None = None, *, force_total: bool = False
-    ) -> None:
+    def expand_initial(self) -> None:
         """Open the folders the way the settings ask for.
 
-        A folder with more direct items than the configured limit stays
-        collapsed and carries a marker. Branches without such a folder are
-        opened with Qt's native recursive expansion, so a high limit stays
-        fast while every limited folder remains discoverable.
+        A comparison above the configured limit stays collapsed and marks
+        its top-level folders; the user opens the folders they care about.
         """
         mode = self._expand_mode
-        maximum = self._expand_limit if limit is None else max(1, int(limit))
         if mode == "none":
-            self.model.set_expand_limited_paths(set(), maximum)
+            self.model.set_expand_limited_paths(set(), self._expand_total_limit)
             self._refresh_limited_button(set())
             return
         total = len(self.model.changes)
-        if total > self._expand_total_limit and not force_total:
+        if total > self._expand_total_limit:
             limited = {
                 self.model.index(row, 0).internalPointer().path
                 for row in range(self.model.rowCount())
                 if self.model.index(row, 0).internalPointer().children
             }
-            self.model.set_expand_limited_paths(
-                limited, self._expand_total_limit, total=True
-            )
+            self.model.set_expand_limited_paths(limited, self._expand_total_limit)
             self._refresh_limited_button(limited)
             notice = (total, self._expand_total_limit)
             if self._last_cap_notice != notice:
@@ -824,51 +800,14 @@ class ComparisonView(QWidget):
                 self.expansion_limited.emit(total, self._expand_total_limit)
             return
         self._last_cap_notice = None
-        limited, ancestors = self._limited_paths(maximum)
-        self.model.set_expand_limited_paths(limited, maximum)
-        self._refresh_limited_button(limited)
+        self.model.set_expand_limited_paths(set(), self._expand_total_limit)
+        self._refresh_limited_button(set())
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):
                 if mode == "first":
-                    self._expand_first_level(tree, limited)
-                elif not limited:
-                    tree.expandAll()
+                    self._expand_first_level(tree, set())
                 else:
-                    for row in range(self.model.rowCount()):
-                        self._expand_branch(
-                            tree, self.model.index(row, 0), limited, ancestors
-                        )
-
-    def expand_changed_only(self) -> None:
-        """Open ancestors of changed items, leaving unchanged branches closed."""
-        limited, _ancestors = self._limited_paths(self._expand_limit)
-        self.model.set_expand_limited_paths(limited, self._expand_limit)
-        self._refresh_limited_button(limited)
-        with self._frozen_updates(), self._synced_expansion():
-            for tree in (self.source, self.action, self.destination):
-                for row in range(self.model.rowCount()):
-                    self._expand_changed_branch(
-                        tree, self.model.index(row, 0), limited
-                    )
-
-    def _expand_changed_branch(
-        self,
-        tree: QTreeView,
-        source_index: QModelIndex,
-        limited: set[str],
-    ) -> None:
-        node = source_index.internalPointer()
-        if node is None or not node.children or node.subtree_changed == 0:
-            return
-        if node.path in limited:
-            return
-        proxy_index = self.proxy.mapFromSource(source_index)
-        if proxy_index.isValid() and not tree.isExpanded(proxy_index):
-            tree.expand(proxy_index)
-        for row in range(self.model.rowCount(source_index)):
-            self._expand_changed_branch(
-                tree, self.model.index(row, 0, source_index), limited
-            )
+                    tree.expandAll()
 
     def _set_limited_only(self, checked: bool) -> None:
         paths = self.model.limited_paths()
@@ -948,63 +887,8 @@ class ComparisonView(QWidget):
             if proxy_index.isValid():
                 tree.expand(proxy_index)
 
-    def _expand_branch(
-        self,
-        tree: QTreeView,
-        source_index: QModelIndex,
-        limited: set[str],
-        ancestors: set[str],
-    ) -> None:
-        node = source_index.internalPointer()
-        if node is None or not node.children or node.path in limited:
-            return
-        proxy_index = self.proxy.mapFromSource(source_index)
-        if not proxy_index.isValid():
-            return
-        if node.path not in ancestors:
-            # No limited folder below this one: native recursion opens the
-            # whole branch in one pass without freezing the event loop.
-            expand_recursively = getattr(tree, "expandRecursively", None)
-            if expand_recursively is not None:
-                expand_recursively(proxy_index)
-            elif not tree.isExpanded(proxy_index):
-                tree.expand(proxy_index)
-            return
-        if not tree.isExpanded(proxy_index):
-            tree.expand(proxy_index)
-        for row in range(self.model.rowCount(source_index)):
-            self._expand_branch(
-                tree,
-                self.model.index(row, 0, source_index),
-                limited,
-                ancestors,
-            )
-
-    def _limited_paths(self, maximum: int) -> tuple[set[str], set[str]]:
-        """Find every folder above the limit and their ancestor folders."""
-        limited: set[str] = set()
-
-        def visit(source_index: QModelIndex) -> None:
-            node = source_index.internalPointer()
-            if node is None or not node.children:
-                return
-            if len(node.children) > maximum:
-                limited.add(node.path)
-            for row in range(self.model.rowCount(source_index)):
-                visit(self.model.index(row, 0, source_index))
-
-        for row in range(self.model.rowCount()):
-            visit(self.model.index(row, 0))
-        ancestors: set[str] = set()
-        for path in limited:
-            current = path.rpartition("/")[0]
-            while current:
-                ancestors.add(current)
-                current = current.rpartition("/")[0]
-        return limited, ancestors
-
     def expand_all(self) -> None:
-        self.model.set_expand_limited_paths(set(), self._expand_limit)
+        self.model.set_expand_limited_paths(set(), self._expand_total_limit)
         self._refresh_limited_button(set())
         with self._frozen_updates(), self._synced_expansion():
             for tree in (self.source, self.action, self.destination):

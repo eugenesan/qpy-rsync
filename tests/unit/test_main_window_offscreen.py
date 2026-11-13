@@ -744,12 +744,10 @@ def test_turning_inventory_on_runs_it_for_the_current_comparison(tmp_path) -> No
     application.processEvents()
 
 
-def test_restored_expansion_limits_have_defaults() -> None:
+def test_restored_expansion_limit_has_a_default() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    assert window._expand_limit == 256
-    assert window.comparison._expand_limit == 256
     assert window._expand_total_limit == 10000
     assert window.comparison._expand_total_limit == 10000
     window.close()
@@ -1179,106 +1177,6 @@ def test_diff_preparation_shows_progress_before_staging(monkeypatch) -> None:
     application.processEvents()
 
 
-def test_large_inventory_can_be_added_collapsed(monkeypatch) -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._expand_total_limit = 2
-    window.comparison.set_expand_total_limit(2)
-    calls: list[tuple[int, int]] = []
-    monkeypatch.setattr(
-        window,
-        "_confirm_large_inventory",
-        lambda total, unchanged: calls.append((total, unchanged)) or "collapsed",
-    )
-    changes = [
-        Change(f"dir{i}/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=1)
-        for i in range(4)
-    ]
-    assert window._populate_unchanged(changes, 4)
-    application.processEvents()
-    assert calls == [(4, 4)]
-    assert window.comparison.model.expand_limit_is_total
-    assert window.comparison.model.limited_paths() == {f"dir{i}" for i in range(4)}
-    assert not window.comparison.source.isExpanded(
-        window.comparison.source.model().index(0, 0)
-    )
-    window.close()
-    application.processEvents()
-
-
-def test_large_inventory_can_be_cancelled(monkeypatch) -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._expand_total_limit = 2
-    window.comparison.set_expand_total_limit(2)
-    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_args: None)
-    changes = [
-        Change(f"dir{i}/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=1)
-        for i in range(4)
-    ]
-    assert not window._populate_unchanged(changes, 4)
-    application.processEvents()
-    window.close()
-    application.processEvents()
-
-
-def test_large_inventory_can_expand_changed_paths_only(monkeypatch) -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._expand_total_limit = 1
-    window.comparison.set_expand_total_limit(1)
-    changed = Change(
-        "changed/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
-    )
-    unchanged = Change(
-        "unchanged/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="
-    )
-    window._last_changed_changes = [changed]
-    monkeypatch.setattr(
-        window, "_confirm_large_inventory", lambda *_args: "changed"
-    )
-    assert window._populate_unchanged([changed, unchanged], 1)
-    application.processEvents()
-
-    model = window.comparison.model
-    proxy = window.comparison.proxy
-    expanded = {}
-    for row in range(model.rowCount()):
-        index = model.index(row, 0)
-        expanded[index.internalPointer().name] = (
-            window.comparison.source.isExpanded(proxy.mapFromSource(index))
-        )
-    assert expanded["changed"]
-    assert not expanded["unchanged"]
-    window.close()
-    application.processEvents()
-
-
-def test_changed_expansion_summary_counts_changed_paths() -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._last_changed_changes = [
-        Change("a/b/c.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
-        Change("a/d.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
-        Change("e.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-    ]
-    assert window._changed_expansion_summary() == (2, 2)
-    window.close()
-    application.processEvents()
-
-
 def _inventory_changes(count: int, action):
     from qpy_rsync.core.changes import Change, ObjectKind
 
@@ -1294,7 +1192,7 @@ def _inventory_changes(count: int, action):
     ]
 
 
-def test_the_flat_list_adds_a_large_inventory_without_a_warning(monkeypatch) -> None:
+def test_the_flat_list_adds_a_large_inventory_without_a_warning() -> None:
     from qpy_rsync.core.changes import ChangeAction
 
     application = app()
@@ -1309,22 +1207,16 @@ def test_the_flat_list_adds_a_large_inventory_without_a_warning(monkeypatch) -> 
     unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
     window._last_changed_changes = list(changed)
 
-    calls: list[int] = []
-    monkeypatch.setattr(
-        window,
-        "_confirm_large_inventory",
-        lambda total, count: calls.append(total) or None,
-    )
-    assert window._populate_unchanged(changed + unchanged, len(unchanged))
+    # There is no dialog left to show: the list simply grows.
+    assert not hasattr(window, "_confirm_large_inventory")
+    window._populate_unchanged(changed + unchanged, len(unchanged))
     application.processEvents()
-    # The flat list has nothing to expand, so it never asks.
-    assert calls == []
     assert window.comparison.model.rowCount() == 64
     window.close()
     application.processEvents()
 
 
-def test_the_tree_list_still_warns_about_a_large_inventory(monkeypatch) -> None:
+def test_the_tree_keeps_its_folders_collapsed_above_the_limit() -> None:
     from qpy_rsync.core.changes import ChangeAction
 
     application = app()
@@ -1339,109 +1231,12 @@ def test_the_tree_list_still_warns_about_a_large_inventory(monkeypatch) -> None:
     unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
     window._last_changed_changes = list(changed)
 
-    calls: list[int] = []
-    monkeypatch.setattr(
-        window,
-        "_confirm_large_inventory",
-        lambda total, count: calls.append(total) or "collapsed",
+    # No question is asked; the tree just stays collapsed.
+    window._populate_unchanged(changed + unchanged, len(unchanged))
+    application.processEvents()
+    assert window.comparison.model.limited_paths()
+    assert not window.comparison.source.isExpanded(
+        window.comparison.source.model().index(0, 0)
     )
-    assert window._populate_unchanged(changed + unchanged, len(unchanged))
-    application.processEvents()
-    assert calls == [44]
-    window.close()
-    application.processEvents()
-
-
-def test_cancelling_a_large_inventory_leaves_a_settled_progress_bar(monkeypatch) -> None:
-    from qpy_rsync.core.changes import ChangeAction
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._list_layout = "tree"
-    window._switch_list_layout()
-    window._expand_total_limit = 5
-    window.comparison.set_expand_total_limit(5)
-
-    changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
-    unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
-    window._last_changed_changes = list(changed)
-    window.comparison.set_changes(changed)
-
-    # The inventory ran in the background, so the bar is indeterminate.
-    window.progress_bar.setRange(0, 0)
-    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_a: None)
-
-    assert not window._populate_unchanged(changed + unchanged, len(unchanged))
-    application.processEvents()
-
-    # No animation is left behind.
-    assert window.progress_bar.minimum() == 0
-    assert window.progress_bar.maximum() == 100
-    assert window.progress_bar.value() == 0
-    assert not window.progress_label.text().startswith("Gathering")
-    # The list keeps the changed items only.
-    assert window.comparison.model.rowCount() == 4
-    window.close()
-    application.processEvents()
-
-
-def test_cancelling_the_inventory_keeps_its_message(tmp_path, monkeypatch) -> None:
-    """The completion handler must not overwrite the cancelled state."""
-    from qpy_rsync.backend.inventory import InventoryResult
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-    from qpy_rsync.core.endpoints import parse_endpoint
-    from qpy_rsync.core.models import SyncProfile
-
-    application = app()
-    app_settings().clear()
-    source = tmp_path / "src"
-    destination = tmp_path / "dst"
-    source.mkdir()
-    destination.mkdir()
-    (source / "file.txt").write_text("x", encoding="utf-8")
-
-    window = MainWindow()
-    window._list_layout = "tree"
-    window._switch_list_layout()
-    window._expand_total_limit = 5
-    window.comparison.set_expand_total_limit(5)
-
-    profile = SyncProfile(
-        name="t",
-        source=parse_endpoint(str(source)),
-        destination=parse_endpoint(str(destination)),
-    )
-    window._active_profile = profile
-    changed = [
-        Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=1)
-    ]
-    unchanged = [
-        Change(f"u{i}.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=i)
-        for i in range(40)
-    ]
-    window._last_changed_changes = list(changed)
-    # Check the toggle without starting a real inventory run.
-    window.show_unchanged.blockSignals(True)
-    window.show_unchanged.setChecked(True)
-    window.show_unchanged.blockSignals(False)
-    window._inventory_pending_key = window._inventory_key(profile, changed)
-    window._inventory_token = 7
-    window.progress_bar.setRange(0, 0)
-
-    result = InventoryResult(unchanged=list(unchanged), destination_metadata={})
-    monkeypatch.setattr(
-        "qpy_rsync.gui.main_window._inventory_result", lambda _extra: result
-    )
-    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_a: None)
-
-    window._inventory_finished(7, object())
-    application.processEvents()
-
-    assert window.progress_bar.maximum() == 100
-    assert window.progress_bar.value() == 0
-    assert window.progress_label.text() == "Unchanged items were not added"
-    assert not window.show_unchanged.isChecked()
-    assert window.comparison.model.rowCount() == 1
     window.close()
     application.processEvents()

@@ -404,3 +404,9 @@
 - Settings disables the three expansion settings while the flat list is selected, with a note explaining why.
 - Cancelling the warning now resets the progress bar and keeps its own message instead of leaving the bar animating and the "Inventory complete" text behind, and the unchanged toggle returns to its off state.
 - The inventory message says "expand folders to view nested items" only for the tree.
+
+## milestone 1.15ap drop the tree-only expansion machinery
+
+- The large-inventory warning is gone. It existed only to avoid freezing the tree while expanding tens of thousands of rows; the flat list adds 80,000 unchanged items in about three seconds and needs no question. A tree above the comparison limit now simply stays collapsed and marks its top-level folders, with a note in the journal.
+- The per-folder expansion limit ("Auto-expand folders up to") is removed. Only the comparison-wide limit remains, and only for the tree.
+- "Expand Changed Only" and the forcing of an over-limit expansion are removed with the dialog; the marker button still finds the folders the limit left collapsed.

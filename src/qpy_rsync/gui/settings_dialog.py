@@ -31,7 +31,6 @@ class SettingsDialog(QDialog):
         parent: QWidget | None = None,
         *,
         expand_mode: str = "all",
-        expand_limit: int = 256,
         expand_total_limit: int = 10000,
         list_layout: str = "tree",
     ) -> None:
@@ -71,27 +70,15 @@ class SettingsDialog(QDialog):
         )
         form.addRow("After a comparison", self.expand_combo)
 
-        self.limit_spin = QSpinBox()
-        self.limit_spin.setRange(1, 1_000_000)
-        self.limit_spin.setValue(max(1, int(expand_limit)))
-        self.limit_spin.setSuffix(" items")
-        self.limit_spin.setToolTip(
-            "A folder with more direct items than this stays collapsed after "
-            "a comparison. The tree marks every such folder, and you can open "
-            "it manually."
-        )
-        self.limit_label = QLabel("Auto-expand folders up to")
-        form.addRow(self.limit_label, self.limit_spin)
-
         self.total_limit_spin = QSpinBox()
         self.total_limit_spin.setRange(1, 10_000_000)
         self.total_limit_spin.setSingleStep(1000)
         self.total_limit_spin.setValue(max(1, int(expand_total_limit)))
         self.total_limit_spin.setSuffix(" items")
         self.total_limit_spin.setToolTip(
-            "A comparison with more items than this stays collapsed after a "
-            "comparison, even when each folder is below the per-folder limit. "
-            "You are offered a choice before a large inventory is added."
+            "A tree with more items than this stays collapsed after a "
+            "comparison and marks the top-level folders. The flat list shows "
+            "everything anyway, so the limit only applies to the tree."
         )
         self.total_limit_label = QLabel("Auto-expand comparison up to")
         form.addRow(self.total_limit_label, self.total_limit_spin)
@@ -114,7 +101,6 @@ class SettingsDialog(QDialog):
 
         self._expansion_widgets = (
             self.expand_combo,
-            self.limit_spin,
             self.total_limit_spin,
             self.expansion_hint_2,
         )
@@ -127,7 +113,6 @@ class SettingsDialog(QDialog):
         for widget in self._expansion_widgets:
             widget.setEnabled(tree)
         self.expansion_hint.setVisible(not tree)
-        self.limit_label.setEnabled(tree)
         self.total_limit_label.setEnabled(tree)
 
     def expand_mode(self) -> str:
@@ -135,9 +120,6 @@ class SettingsDialog(QDialog):
 
     def list_layout(self) -> str:
         return str(self.layout_combo.currentData())
-
-    def expand_limit(self) -> int:
-        return int(self.limit_spin.value())
 
     def expand_total_limit(self) -> int:
         return int(self.total_limit_spin.value())

@@ -212,7 +212,6 @@ class MainWindow(QMainWindow):
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
         self._expand_mode = "all"
-        self._expand_limit = 256
         self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
         # The layout decides which comparison view is built, so it is read
         # before the user interface is created.
@@ -709,39 +708,32 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(
             self,
             expand_mode=self._expand_mode,
-            expand_limit=self._expand_limit,
             expand_total_limit=self._expand_total_limit,
             list_layout=self._list_layout,
         )
         if not dialog.exec():
             return
         mode = dialog.expand_mode()
-        limit = dialog.expand_limit()
         total_limit = dialog.expand_total_limit()
         layout = dialog.list_layout()
         if (
             mode == self._expand_mode
-            and limit == self._expand_limit
             and total_limit == self._expand_total_limit
             and layout == self._list_layout
         ):
             return
         self._expand_mode = mode
-        self._expand_limit = limit
         self._expand_total_limit = total_limit
         settings = app_settings()
         settings.setValue("view/expand-after-compare", mode)
-        settings.setValue("view/expand-limit", limit)
         settings.setValue("view/expand-total-limit", total_limit)
         settings.setValue("view/list-layout", layout)
         settings.sync()
         self.comparison.set_expand_mode(mode)
-        self.comparison.set_expand_limit(limit)
         self.comparison.set_expand_total_limit(total_limit)
         self._append_log(
             "Settings: folders after a comparison = "
-            f"{mode}; per-folder limit = {limit} items; "
-            f"comparison limit = {total_limit} items"
+            f"{mode}; comparison limit = {total_limit} items"
         )
         if layout != self._list_layout:
             # The layout changes the widget, so the window is rebuilt.
@@ -757,11 +749,6 @@ class MainWindow(QMainWindow):
         if mode not in {"all", "first", "none"}:
             mode = "all"
         try:
-            limit = int(settings.value("view/expand-limit", 256))
-        except (TypeError, ValueError):
-            limit = 256
-        limit = max(1, min(limit, 1_000_000))
-        try:
             total_limit = int(
                 settings.value(
                     "view/expand-total-limit", DEFAULT_EXPAND_TOTAL_LIMIT
@@ -774,11 +761,9 @@ class MainWindow(QMainWindow):
         if layout not in {"tree", "flat"}:
             layout = "tree"
         self._expand_mode = mode
-        self._expand_limit = limit
         self._expand_total_limit = total_limit
         self._list_layout = layout
         self.comparison.set_expand_mode(mode)
-        self.comparison.set_expand_limit(limit)
         self.comparison.set_expand_total_limit(total_limit)
 
     def _stored_list_layout(self) -> str:
@@ -810,7 +795,6 @@ class MainWindow(QMainWindow):
         new.expansion_limited.connect(self._expansion_limited)
         new.sort_changed.connect(self._comparison_sorted)
         new.set_expand_mode(self._expand_mode)
-        new.set_expand_limit(self._expand_limit)
         new.set_expand_total_limit(self._expand_total_limit)
         new.source_root = old.source_root
         new.destination_root = old.destination_root
@@ -2191,11 +2175,10 @@ class MainWindow(QMainWindow):
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
-            if not self._populate_unchanged(
+            self._populate_unchanged(
                 changed + list(self._inventory_cache),
                 len(self._inventory_cache),
-            ):
-                self._hide_unchanged(changed, keep_status=True)
+            )
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
@@ -2205,123 +2188,35 @@ class MainWindow(QMainWindow):
         self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
 
-    def _changed_expansion_summary(self) -> tuple[int, int]:
-        """Count changed items and the folders that contain them."""
-        changed = [
-            item
-            for item in self._last_changed_changes
-            if item.action is not ChangeAction.NO_CHANGE
-        ]
-        folders: set[str] = set()
-        for item in changed:
-            current = str(item.path).rstrip("/").rpartition("/")[0]
-            while current:
-                folders.add(current)
-                current = current.rpartition("/")[0]
-        return len(changed), len(folders)
-
-    def _confirm_large_inventory(
-        self, total: int, unchanged: int
-    ) -> str | None:
-        changed_count, changed_folders = self._changed_expansion_summary()
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Large inventory")
-        box.setText(
-            f"Adding {unchanged:,} unchanged items makes the comparison "
-            f"contain {total:,} items."
-        )
-        changed_text = ""
-        if changed_count:
-            changed_text = (
-                f"Expand Changed Only opens the {changed_folders:,} folder(s) "
-                f"containing {changed_count:,} changed item(s) and leaves "
-                "unchanged-only folders collapsed.\n\n"
-            )
-        box.setInformativeText(
-            f"Automatic expansion stops at {self._expand_total_limit:,} items "
-            "(Settings → Auto-expand comparison up to).\n\n"
-            f"{changed_text}"
-            "Add Collapsed keeps the tree collapsed and marks the top-level "
-            "folders. Expand Normally may freeze the window for a long time."
-        )
-        changed_button = None
-        if changed_count:
-            changed_button = box.addButton(
-                f"Expand Changed Only ({changed_count:,} items)",
-                QMessageBox.ButtonRole.AcceptRole,
-            )
-        collapsed = box.addButton(
-            "Add Collapsed", QMessageBox.ButtonRole.AcceptRole
-        )
-        normal = box.addButton(
-            "Expand Normally", QMessageBox.ButtonRole.DestructiveRole
-        )
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        if changed_button is not None and changed_count <= self._expand_total_limit:
-            box.setDefaultButton(changed_button)
-        else:
-            box.setDefaultButton(collapsed)
-        box.exec()
-        clicked = box.clickedButton()
-        if changed_button is not None and clicked is changed_button:
-            return "changed"
-        if clicked is collapsed:
-            return "collapsed"
-        if clicked is normal:
-            return "normal"
-        return None
-
-    def _hide_unchanged(self, changed: list[object], *, keep_status: bool = False) -> None:
+    def _hide_unchanged(self, changed: list[object]) -> None:
         self.show_unchanged.blockSignals(True)
         self.show_unchanged.setChecked(False)
         self.show_unchanged.blockSignals(False)
-        if not keep_status:
-            self.progress_label.setText("Unchanged items hidden")
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(0)
+        self.progress_label.setText("Unchanged items hidden")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
         self.comparison.set_changes(changed)
 
     def _view_supports_expansion(self) -> bool:
         """Whether the current comparison view expands folders."""
         return bool(getattr(self.comparison, "supports_expansion", True))
 
-    def _cancel_inventory_addition(self) -> None:
-        """Leave a settled state after the user declined a large inventory."""
-        self._append_log("Inventory addition cancelled.", severity="warning")
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(True)
-        self.progress_label.setText("Unchanged items were not added")
-        self._set_state("Unchanged items were not added", "warning")
+    def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
+        """Add the unchanged items to the comparison.
 
-    def _populate_unchanged(self, changes: list[object], unchanged: int) -> bool:
-        """Add the unchanged items to the comparison."""
-        total = len(changes)
-        expand_over_limit = False
-        expand_changed_only = False
+        The flat list has nothing to expand, so it simply adds the rows. A
+        tree that would grow beyond the configured limit keeps its folders
+        collapsed instead of expanding them, which is what used to need a
+        warning dialog.
+        """
         preserve_expansion = True
-        # The expansion limits and the warning exist because expanding a tree
-        # is slow. The flat list has nothing to expand, so it adds the items
-        # right away and never asks.
-        if self._view_supports_expansion() and total > self._expand_total_limit:
-            choice = self._confirm_large_inventory(total, unchanged)
-            if choice is None:
-                self._cancel_inventory_addition()
-                return False
-            expand_over_limit = choice == "normal"
-            expand_changed_only = choice == "changed"
-            preserve_expansion = expand_over_limit
-            if expand_changed_only:
-                mode = "changed paths only"
-            elif expand_over_limit:
-                mode = "with normal expansion"
-            else:
-                mode = "collapsed"
+        if self._view_supports_expansion() and len(changes) > self._expand_total_limit:
+            preserve_expansion = False
             self._append_log(
-                f"Inventory: adding {unchanged:,} unchanged items {mode} "
-                f"({total:,} total, limit {self._expand_total_limit:,}).",
-                severity="info" if expand_over_limit else "warning",
+                f"Inventory: showing {unchanged:,} unchanged items with the "
+                f"folders left collapsed ({len(changes):,} items, limit "
+                f"{self._expand_total_limit:,}).",
+                severity="info",
             )
         self.progress_label.setText(
             f"Adding {unchanged:,} unchanged item(s) to the comparison..."
@@ -2332,15 +2227,12 @@ class MainWindow(QMainWindow):
             self.comparison.set_changes(
                 changes,
                 preserve_expansion=preserve_expansion,
-                expand_over_limit=expand_over_limit,
-                expand_changed_only=expand_changed_only,
             )
         finally:
             QApplication.restoreOverrideCursor()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText(self._inventory_summary(unchanged))
-        return True
 
     def _inventory_summary(self, unchanged: int) -> str:
         """Describe the inventory in a way that matches the current view."""
@@ -2403,16 +2295,9 @@ class MainWindow(QMainWindow):
         # show its size and date.
         self.comparison.set_destination_metadata(result.destination_metadata)
         if self.show_unchanged.isChecked():
-            if not self._populate_unchanged(
+            self._populate_unchanged(
                 changed + list(result.unchanged), len(result.unchanged)
-            ):
-                # The user declined the large inventory. Put the toggle back
-                # and keep the message that _populate_unchanged reported.
-                self._hide_unchanged(changed, keep_status=True)
-                self._append_log(
-                    f"STATE inventory-complete unchanged={len(result.unchanged)}"
-                )
-                return
+            )
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)

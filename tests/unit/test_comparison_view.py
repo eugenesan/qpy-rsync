@@ -469,53 +469,39 @@ def test_all_folders_are_expanded_after_a_comparison() -> None:
     application.processEvents()
 
 
-def test_expand_limit_marks_limited_folders_at_every_depth() -> None:
+def test_the_total_cap_marks_the_top_level_folders() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
     view = ComparisonView()
     view.set_expand_mode("all")
-    view.set_expand_limit(2)
+    view.set_expand_total_limit(3)
     view.set_changes(
         [
-            Change("dir/big/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("dir/big/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("dir/big/c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("dir/small/x.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("dir/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("other/c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+            Change("third/d.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
         ]
     )
     application.processEvents()
 
     directory = view.model.index(0, 0)
-    big = view.model.index(0, 0, directory)
     assert directory.internalPointer().name == "dir"
-    assert big.internalPointer().name == "big"
     proxy_dir = view.proxy.mapFromSource(directory)
-    proxy_big = view.proxy.mapFromSource(big)
-    assert view.source.isExpanded(proxy_dir)
-    assert not view.source.isExpanded(proxy_big)
-    tooltip = view.model.data(big, Qt.ItemDataRole.ToolTipRole)
-    assert "limit 2" in tooltip
-    assert not view.model.data(big, Qt.ItemDataRole.DecorationRole).isNull()
+    # Nothing expands on its own.
+    assert not view.source.isExpanded(proxy_dir)
+    # Every top-level folder carries the marker.
+    assert view.model.limited_paths() == {"dir", "other", "third"}
+    tooltip = view.model.data(directory, Qt.ItemDataRole.ToolTipRole)
+    assert "above the 3-item limit" in tooltip
+    assert not view.model.data(directory, Qt.ItemDataRole.DecorationRole).isNull()
 
-    # The marker button filters the tree down to the marked folder and its
-    # ancestors, and opens the ancestor so the folder is reachable.
+    # The marker button filters the tree down to the marked folders.
     assert view.limited_button.isEnabled()
     view.limited_button.setChecked(True)
     application.processEvents()
-    assert view.proxy.rowCount() == 1
-    filtered_dir = view.proxy.index(0, 0)
-    assert view.proxy.data(filtered_dir) == "dir"
-    assert view.proxy.rowCount(filtered_dir) == 1
-    assert view.proxy.data(view.proxy.index(0, 0, filtered_dir)) == "big"
-    assert view.source.isExpanded(filtered_dir)
-
-    # Expanding the last marked folder clears the marker and shows the full
-    # tree again.
-    view.source.expand(view.proxy.index(0, 0, filtered_dir))
-    application.processEvents()
-    assert not view.limited_button.isChecked()
-    assert view.proxy.rowCount(filtered_dir) == 2
+    assert view.proxy.rowCount() == 3
     view.close()
     application.processEvents()
 
@@ -549,17 +535,13 @@ def test_limited_finder_restores_the_previous_expansion() -> None:
     application = app()
     view = ComparisonView()
     view.set_expand_mode("all")
-    view.set_expand_limit(2)
+    view.set_expand_total_limit(1)
     view.set_changes(
         [
             Change("a/big/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
             Change("a/big/2.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("a/big/3.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
             Change("a/small/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
             Change("b/big/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("b/big/2.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("b/big/3.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
-            Change("b/small/1.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
         ]
     )
     application.processEvents()
@@ -574,32 +556,25 @@ def test_limited_finder_restores_the_previous_expansion() -> None:
     proxy_a_big = view.proxy.mapFromSource(a_big)
     proxy_b_big = view.proxy.mapFromSource(b_big)
     proxy_a_small = view.proxy.mapFromSource(a_small)
-    assert view.source.isExpanded(proxy_a)
-    assert view.source.isExpanded(proxy_b)
-    assert view.source.isExpanded(proxy_a_small)
-    assert not view.source.isExpanded(proxy_a_big)
-    assert not view.source.isExpanded(proxy_b_big)
+    # The cap keeps everything collapsed and marks both top-level folders.
+    assert not view.source.isExpanded(proxy_a)
+    assert not view.source.isExpanded(proxy_b)
 
     view.limited_button.setChecked(True)
     application.processEvents()
+    # The finder shows the marked folders only.
     assert view.proxy.rowCount() == 2
-    # Expand one marked folder manually; the other marker keeps the filter on.
-    view.source.expand(proxy_a_big)
+    # Opening a marked folder clears its marker while the other one keeps
+    # the finder switched on.
+    view.source.expand(view.proxy.mapFromSource(a))
     application.processEvents()
     assert view.limited_button.isChecked()
 
     view.limited_button.setChecked(False)
     application.processEvents()
-    proxy_a = view.proxy.mapFromSource(a)
-    proxy_b = view.proxy.mapFromSource(b)
-    proxy_a_big = view.proxy.mapFromSource(a_big)
-    proxy_b_big = view.proxy.mapFromSource(b_big)
-    proxy_a_small = view.proxy.mapFromSource(a_small)
-    assert view.source.isExpanded(proxy_a)
-    assert view.source.isExpanded(proxy_b)
-    assert view.source.isExpanded(proxy_a_small)
-    assert view.source.isExpanded(proxy_a_big)  # manually opened while filtering
-    assert not view.source.isExpanded(proxy_b_big)  # still as before
+    # The folder the user opened stays open, the other one stays closed.
+    assert view.source.isExpanded(view.proxy.mapFromSource(a))
+    assert not view.source.isExpanded(view.proxy.mapFromSource(b))
     view.close()
     application.processEvents()
 
@@ -650,7 +625,6 @@ def test_total_safety_cap_keeps_a_huge_comparison_collapsed() -> None:
     application = app()
     view = ComparisonView()
     view.set_expand_mode("all")
-    view.set_expand_limit(256)
     view.set_expand_total_limit(3)
     limited_events: list[tuple[int, int]] = []
     view.expansion_limited.connect(
@@ -664,7 +638,6 @@ def test_total_safety_cap_keeps_a_huge_comparison_collapsed() -> None:
     )
     application.processEvents()
     assert not view.source.isExpanded(view.source.model().index(0, 0))
-    assert view.model.expand_limit_is_total
     assert view.model.limited_paths() == {f"dir{i}" for i in range(4)}
     assert limited_events == [(4, 3)]
     view.close()
