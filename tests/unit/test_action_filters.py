@@ -80,7 +80,9 @@ def test_action_filter_none_shows_everything() -> None:
 def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     app()
     bar = ActionFilterBar()
-    boxes = bar.findChildren(QCheckBox)
+    boxes = [
+        box for box in bar.findChildren(QCheckBox) if box is not bar.hidden_box
+    ]
     tooltips = [child.toolTip() for child in boxes]
     assert tooltips
     for tooltip in tooltips:
@@ -91,6 +93,15 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
         # The glyph matches the size of the buttons in the same row.
         assert box.height() >= CONTROL_SIZE
         assert box.iconSize().width() == CONTROL_ICON_SIZE
+
+
+def test_the_hidden_toggle_says_it_affects_the_sync() -> None:
+    app()
+    bar = ActionFilterBar()
+    bar.set_hidden_count(3)
+    assert "3 hidden item(s)" in bar.hidden_box.toolTip()
+    assert "not part of the sync" in bar.hidden_box.toolTip()
+    assert bar.hidden_box.text() == "3"
 
 
 def test_action_filter_survives_model_reset() -> None:

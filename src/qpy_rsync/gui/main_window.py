@@ -269,6 +269,8 @@ class MainWindow(QMainWindow):
         self.comparison.expansion_limited.connect(self._expansion_limited)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
+        if hasattr(self.comparison, "filter_requested"):
+            self.comparison.filter_requested.connect(self._add_filter_phrase)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -389,6 +391,7 @@ class MainWindow(QMainWindow):
         source_panel = self._location_panel("Source", self.source_edit, trailing=True)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
+        self.action_filters.hidden_toggled.connect(self._apply_show_hidden)
         destination_panel = self._location_panel("Destination", self.destination_edit)
         locations.addWidget(source_panel, 40)
         locations.addWidget(self.action_filters, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -1292,6 +1295,39 @@ class MainWindow(QMainWindow):
             "warning",
         )
 
+    def _add_filter_phrase(self, label: str, path: object) -> None:
+        """Add an rsync exclude rule produced by the context menu."""
+        from qpy_rsync.core.enums import FilterRuleType
+        from qpy_rsync.core.models import FilterRule
+
+        if not isinstance(path, str):
+            return
+        pattern = label.strip()
+        if not pattern:
+            return
+        rule = FilterRule(
+            pattern,
+            rule_type=FilterRuleType.EXCLUDE,
+            comment=f"Added from {path}",
+        )
+        if any(
+            item.rule == rule.rule and item.rule_type is rule.rule_type
+            for item in self._filters
+        ):
+            self._append_log(f"Filter already present: {pattern}", severity="warning")
+            return
+        self._filters.append(rule)
+        self._save_filters()
+        self._update_filter_summary(stale=True)
+        self.comparison.set_stale(True)
+        self._invalidate_plan_context()
+        self._set_state(
+            f"Stale comparison: added the filter {pattern}. "
+            "Compare again to refresh the results.",
+            "warning",
+        )
+        self._append_log(f"Added rsync filter: {pattern}", severity="info")
+
     def _save_profile(self) -> None:
         default_path = profiles_directory() / "qpy-rsync-profile.json"
         path, _selected = QFileDialog.getSaveFileName(
@@ -1496,10 +1532,12 @@ class MainWindow(QMainWindow):
             self._last_plan_summary = None
             self.validate_plan_button.setEnabled(False)
             return
+        self._update_hidden_count()
         self._current_plan = build_execution_plan(
             self._active_profile,
             self.comparison.model.changes,
             self.comparison.model.decisions,
+            getattr(self.comparison.model, "hidden", None),
         )
         summary = self._current_plan.summary
         noun = "item" if summary.included == 1 else "items"
@@ -1924,6 +1962,8 @@ class MainWindow(QMainWindow):
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
         visible = self.comparison.visible_changes()
         self.overview.set_changes(list(visible), root_name)
+        self._update_hidden_count()
+        self._refresh_plan_summary()
 
     def _overview_folder_activated(self, path: str) -> None:
         """Select a folder of the overview in the tree panes."""
@@ -1994,6 +2034,12 @@ class MainWindow(QMainWindow):
         # The metadata of the previous comparison no longer describes the
         # destination.
         self.comparison.set_destination_metadata({})
+        # Hidden items only live in memory, so a new comparison starts with
+        # nothing hidden.
+        hidden = getattr(self.comparison.model, "hidden", None)
+        if hidden is not None:
+            hidden.clear()
+        self.action_filters.set_hidden_count(0)
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
@@ -2070,6 +2116,18 @@ class MainWindow(QMainWindow):
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None
         self.comparison.set_action_filter(selected)
+
+    def _apply_show_hidden(self, show: bool) -> None:
+        """Show the hidden items, or put them aside again."""
+        if hasattr(self.comparison, "set_show_hidden"):
+            self.comparison.set_show_hidden(show)
+        self._refresh_plan_summary()
+
+    def _update_hidden_count(self) -> None:
+        """Keep the hidden item count next to the toggle up to date."""
+        hidden = getattr(self.comparison.model, "hidden", None)
+        count = hidden.count() if hidden is not None else 0
+        self.action_filters.set_hidden_count(count)
 
     def _apply_inventory_after_compare(self) -> None:
         """Gather the unchanged items when the inventory runs automatically.

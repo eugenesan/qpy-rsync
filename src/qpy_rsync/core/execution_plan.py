@@ -5,8 +5,25 @@ from hashlib import sha256
 import json
 from typing import Iterable
 
-from .changes import Change, ChangeAction, ChangeDecision, ChangeDecisions, ObjectKind
+from .changes import (
+    Change,
+    ChangeAction,
+    ChangeDecision,
+    ChangeDecisions,
+    HiddenItems,
+    ObjectKind,
+)
 from .models import SyncProfile
+
+
+def _is_hidden(path: str, hidden_paths: set[str]) -> bool:
+    """Return whether a path is hidden, directly or by a parent directory."""
+    current = path.rstrip("/")
+    while current:
+        if current in hidden_paths:
+            return True
+        current = current.rpartition("/")[0]
+    return False
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,6 +85,7 @@ def build_execution_plan(
     profile: SyncProfile,
     changes: Iterable[Change],
     decisions: ChangeDecisions,
+    hidden: HiddenItems | None = None,
 ) -> ExecutionPlan:
     changes_list = list(changes)
     items: list[PlanItem] = []
@@ -75,8 +93,27 @@ def build_execution_plan(
     included = excluded = retained_destination_only = destructive = 0
     total_size = 0
     modified = decisions.modified_count(changes_list)
+    hidden_paths = (
+        {path.strip("/") for path in hidden.paths()} if hidden else set()
+    )
     for change in changes_list:
         if not decisions.selectable(change):
+            continue
+        if hidden_paths and _is_hidden(str(change.path), hidden_paths):
+            # A hidden item is not part of the sync. The state only lives in
+            # memory, so it is gone after the next comparison.
+            excluded += 1
+            items.append(
+                PlanItem(
+                    path=change.path.rstrip("/"),
+                    action=change.action,
+                    comparison_action=change.action,
+                    kind=change.kind,
+                    included=False,
+                    destructive=False,
+                    size=change.size,
+                )
+            )
             continue
         selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
         effective_action = (

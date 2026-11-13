@@ -34,10 +34,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
 
 from .flat_change_model import FlatChangeModel
-from .icons import app_menu_icon, search_icon, unchanged_icon
+from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
 from .change_tree_model import full_path
 
 CONTROL_SIZE = 40
@@ -118,6 +119,7 @@ class FlatPathDelegate(UniformRowDelegate):
         text = str(model.data(index, Qt.ItemDataRole.DisplayRole) or "")
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         depth = row.depth if row.is_directory else row.depth - 1
+        is_hidden = model.hidden.is_hidden(row.path)
 
         painter.save()
         painter.translate(option.rect.left(), option.rect.top())
@@ -129,7 +131,11 @@ class FlatPathDelegate(UniformRowDelegate):
             painter.setPen(QPen(RULE_COLOR, 1))
             painter.drawLine(rule_x, 0, rule_x, option.rect.height())
             x += 6
-        painter.setPen(option.palette.color(option.palette.ColorRole.Text))
+        color = option.palette.color(option.palette.ColorRole.Text)
+        if is_hidden:
+            # A hidden row stays readable but is clearly marked.
+            color = QColor("#9ca3af")
+        painter.setPen(color)
         if icon is not None:
             icon.paint(
                 painter,
@@ -149,6 +155,8 @@ class FlatComparisonView(QWidget):
     changes_updated = Signal(object)
     sort_changed = Signal(int, object)
     expansion_limited = Signal(int, int)
+    # A filter rule for the selected item, as an rsync pattern.
+    filter_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -335,6 +343,72 @@ class FlatComparisonView(QWidget):
                     lambda current, _previous, t=target: self._set_current(t, current)
                 )
 
+    # ------------------------------------------------------------------
+    # Hiding items, the way FreeFileSync does it with the space bar
+    # ------------------------------------------------------------------
+    def keyPressEvent(self, event: object) -> None:  # noqa: N802
+        """Hide the selected items with the space bar."""
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Space):
+            if self._toggle_hidden():
+                event.accept()
+                return
+        super().keyPressEvent(event)  # type: ignore[arg-type]
+
+    def _toggle_hidden(self) -> bool:
+        """Hide or show the selected items. Returns True when it handled it."""
+        paths = self._selected_paths()
+        if not paths:
+            return False
+        hidden = self.model.hidden
+        for path in paths:
+            hidden.toggle(path)
+        self.model.refresh_hidden()
+        self.changes_updated.emit(list(self.model.changes))
+        return True
+
+    def _selected_paths(self) -> list[str]:
+        """The paths of the selected rows, without their parents."""
+        paths: list[str] = []
+        for tree in (self.source, self.action, self.destination):
+            selection = tree.selectionModel().selectedRows()
+            if not selection:
+                continue
+            for index in selection:
+                path = self.model.row_path(index.row())
+                if path:
+                    paths.append(path)
+            break
+        return paths
+
+    def hide_path(self, path: str) -> None:
+        """Hide a path and everything below it."""
+        self.model.hidden.hide(path)
+        self._refresh_hidden()
+
+    def show_path(self, path: str) -> None:
+        """Show a path again."""
+        self.model.hidden.show(path)
+        self._refresh_hidden()
+
+    def show_all_hidden(self) -> None:
+        """Show every hidden item again."""
+        self.model.hidden.clear()
+        self._refresh_hidden()
+
+    def hidden_paths(self) -> set[str]:
+        """The paths that the user hid."""
+        return self.model.hidden.paths()
+
+    def set_show_hidden(self, show: bool) -> None:
+        """Show or hide the items the user hid."""
+        self.model.show_hidden = show
+        self._refresh_hidden()
+
+    def _refresh_hidden(self) -> None:
+        """Update the list after the hidden items changed."""
+        self.model.refresh_hidden()
+        self.changes_updated.emit(list(self.model.changes))
+
     @staticmethod
     def _set_current(tree: QTreeView, index: QModelIndex) -> None:
         if not index.isValid():
@@ -518,20 +592,27 @@ class FlatComparisonView(QWidget):
             return
         path = self.model.row_path(index.row())
         change = index.data(Qt.ItemDataRole.UserRole)
-        menu, copy_path_action, diff_action, reset_one, reset_subtree, reset_all = (
-            self._build_context_menu(tree, path, change)
-        )
+        row = self.model.row_data(index.row())
+        menu, actions = self._build_context_menu(tree, path, change, row)
         selected = menu.exec(tree.viewport().mapToGlobal(point))
-        if selected is diff_action:
+        if selected is actions["diff"]:
             self._request_diff(index)
-        elif selected is copy_path_action and path is not None:
+        elif selected is actions["copy"] and path is not None:
             self._copy_path(tree, path)
-        elif selected is reset_one and path is not None:
+        elif selected is actions["reset_one"] and path is not None:
             self.model.reset_decision(path)
-        elif selected is reset_subtree and path is not None:
+        elif selected is actions["reset_subtree"] and path is not None:
             self.model.reset_subtree_decisions(path)
-        elif selected is reset_all:
+        elif selected is actions["reset_all"]:
             self.reset_all_decisions()
+        elif selected is actions["hide"] and path is not None:
+            self.hide_path(path)
+        elif selected is actions["show"] and path is not None:
+            self.show_path(path)
+        elif selected is actions["show_all_hidden"]:
+            self.show_all_hidden()
+        elif selected in actions["filters"]:
+            self.filter_requested.emit(selected.text(), path)
 
     def _absolute_path(self, tree: QTreeView, path: str | None) -> str:
         if not path:
@@ -543,33 +624,78 @@ class FlatComparisonView(QWidget):
         QApplication.clipboard().setText(self._absolute_path(tree, path))
 
     def _build_context_menu(
-        self, tree: QTreeView, path: str | None, change: object | None
-    ) -> tuple[QMenu, object | None, object | None, object | None, object | None, object | None]:
+        self,
+        tree: QTreeView,
+        path: str | None,
+        change: object | None,
+        row: object | None = None,
+    ) -> tuple[QMenu, dict[str, object]]:
+        """Build the context menu of a row.
+
+        The filter entries follow FreeFileSync: the selected item can be
+        filtered by extension, by name or by its relative path. The rules
+        are ordinary rsync patterns.
+        """
         is_unchanged = (
             change is not None
             and getattr(change, "action", None) is ChangeAction.NO_CHANGE
         )
         absolute_path = self._absolute_path(tree, path)
         menu = QMenu(tree)
+        actions: dict[str, object] = {
+            "copy": None,
+            "diff": None,
+            "reset_one": None,
+            "reset_subtree": None,
+            "reset_all": None,
+            "hide": None,
+            "show": None,
+            "show_all_hidden": None,
+            "filters": [],
+        }
         if absolute_path:
             heading = menu.addAction(absolute_path)
             heading.setEnabled(False)
             menu.addSeparator()
-        copy_path_action = menu.addAction("Copy Path")
-        copy_path_action.setEnabled(path is not None)
-        diff_action = None
-        reset_one = reset_subtree = reset_all = None
+        actions["copy"] = menu.addAction("Copy Path")
+        actions["copy"].setEnabled(path is not None)  # type: ignore[union-attr]
         if not is_unchanged:
             menu.addSeparator()
-            diff_action = menu.addAction("Open in Diff Tool")
-            diff_action.setEnabled(change is not None)
+            actions["diff"] = menu.addAction("Open in Diff Tool")
+            actions["diff"].setEnabled(change is not None)  # type: ignore[union-attr]
             if tree is self.action and path is not None:
                 menu.addSeparator()
-                reset_one = menu.addAction("Reset This Decision")
-                reset_subtree = menu.addAction("Reset Subtree Decisions")
-                reset_all = menu.addAction("Reset All Decisions")
-                reset_all.setEnabled(self.model.decisions.has_explicit())
-        return menu, copy_path_action, diff_action, reset_one, reset_subtree, reset_all
+                actions["reset_one"] = menu.addAction("Reset This Decision")
+                actions["reset_subtree"] = menu.addAction("Reset Subtree Decisions")
+                actions["reset_all"] = menu.addAction("Reset All Decisions")
+                actions["reset_all"].setEnabled(  # type: ignore[union-attr]
+                    self.model.decisions.has_explicit()
+                )
+
+        # The filter entries of FreeFileSync, with rsync patterns.
+        if path:
+            menu.addSeparator()
+            is_directory = bool(getattr(row, "is_directory", False))
+            phrases = phrases_for(path, is_directory=is_directory)
+            if phrases:
+                filter_menu = menu.addMenu("Exclude via Filter")
+                for phrase in phrases:
+                    action = filter_menu.addAction(phrase.label)
+                    action.setData(phrase.pattern)
+                    actions["filters"].append(action)  # type: ignore[union-attr]
+
+        # Hiding items from the comparison.
+        menu.addSeparator()
+        hidden = self.model.hidden
+        if path and hidden.is_hidden(path):
+            actions["show"] = menu.addAction("Show Item")
+        elif path:
+            actions["hide"] = menu.addAction("Hide Item\tSpace")
+        if hidden:
+            actions["show_all_hidden"] = menu.addAction(
+                f"Show All Hidden Items ({hidden.count()})"
+            )
+        return menu, actions
 
     def _request_diff(self, index: QModelIndex) -> None:
         change = index.data(Qt.ItemDataRole.UserRole)

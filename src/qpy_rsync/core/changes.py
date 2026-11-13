@@ -163,6 +163,11 @@ class ChangeDecisions:
         return ChangeDecision.INCLUDE
 
     def inherited(self, path: str) -> ChangeDecision | None:
+        # Most comparisons have no explicit decision at all, and the walk
+        # below is repeated for every item. The empty case is common enough
+        # to be worth a shortcut.
+        if not self._decisions:
+            return None
         current = path.rstrip("/")
         while current:
             decision = self._decisions.get(current)
@@ -245,3 +250,87 @@ class ChangeDecisions:
         return DecisionSummary(
             included, excluded, self.modified_count(changes), destructive
         )
+
+
+class HiddenItems:
+    """The items the user hid from the comparison.
+
+    FreeFileSync hides an item with the space bar and shows the hidden ones
+    with a toggle. The hidden items are not part of the sync, so this state
+    only affects what the comparison shows.
+
+    A hidden directory covers everything below it, the same way the
+    decisions of a directory cover its children.
+    """
+
+    def __init__(self) -> None:
+        self._paths: set[str] = set()
+
+    def __bool__(self) -> bool:
+        return bool(self._paths)
+
+    def paths(self) -> set[str]:
+        """The paths that are hidden."""
+        return set(self._paths)
+
+    def count(self) -> int:
+        return len(self._paths)
+
+    def hide(self, path: str) -> None:
+        """Hide a path and everything below it."""
+        clean = path.strip("/")
+        if clean:
+            self._paths.add(clean)
+
+    def show(self, path: str) -> None:
+        """Show a path again."""
+        clean = path.strip("/")
+        if not clean:
+            return
+        self._paths.discard(clean)
+        # A path below a hidden directory stays hidden, so the directory
+        # itself has to be shown as well.
+        for hidden in list(self._paths):
+            if hidden.startswith(clean + "/"):
+                self._paths.discard(hidden)
+
+    def toggle(self, path: str) -> bool:
+        """Hide a path or show it again.
+
+        Returns the new state: True when the path is hidden.
+        """
+        clean = path.strip("/")
+        if self.is_hidden(clean):
+            self.show(clean)
+            return False
+        self.hide(clean)
+        return True
+
+    def is_hidden(self, path: str) -> bool:
+        """Return whether a path is hidden, directly or by a parent."""
+        clean = path.strip("/")
+        if not clean:
+            return False
+        if clean in self._paths:
+            return True
+        parent = clean.rpartition("/")[0]
+        while parent:
+            if parent in self._paths:
+                return True
+            parent = parent.rpartition("/")[0]
+        return False
+
+    def clear(self) -> None:
+        """Show every hidden item again."""
+        self._paths.clear()
+
+    def reconcile(self, paths: set[str]) -> None:
+        """Drop the hidden paths that no longer exist."""
+        if not self._paths:
+            return
+        known = {path.strip("/") for path in paths}
+        self._paths = {
+            path
+            for path in self._paths
+            if path in known or any(item.startswith(path + "/") for item in known)
+        }

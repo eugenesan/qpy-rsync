@@ -28,6 +28,7 @@ from qpy_rsync.core.changes import (
     ChangeAction,
     ChangeDecision,
     ChangeDecisions,
+    HiddenItems,
     ObjectKind,
 )
 from qpy_rsync.core.units import format_size
@@ -131,6 +132,10 @@ class FlatChangeModel(QAbstractTableModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.decisions = ChangeDecisions()
+        # The items the user hid from the comparison with the space bar.
+        self.hidden = HiddenItems()
+        # When this is on, the hidden items stay in the list, dimmed.
+        self.show_hidden = False
         self.changes: list[Change] = []
         self.source_root = ""
         self.destination_root = ""
@@ -374,6 +379,12 @@ class FlatChangeModel(QAbstractTableModel):
         self._apply_filters()
         self.layoutChanged.emit()
 
+    def refresh_hidden(self) -> None:
+        """Show the rows again after the user hid or showed items."""
+        self.layoutAboutToBeChanged.emit()
+        self._apply_filters()
+        self.layoutChanged.emit()
+
     def _matches(self, name: str) -> bool:
         if not self._pattern:
             return True
@@ -457,10 +468,14 @@ class FlatChangeModel(QAbstractTableModel):
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
         visible_row_of_path: dict[str, int] = {}
+        hidden = self.hidden
+        show_hidden = self.show_hidden
         for index, row in enumerate(self._rows):
             if row.is_directory:
                 directory = directories.get(row.path)
                 if directory is None or not directory.visible:
+                    continue
+                if hidden.is_hidden(row.path) and not show_hidden:
                     continue
                 # A directory that the comparison reported is a change of its
                 # own, the same as in the tree.
@@ -468,6 +483,8 @@ class FlatChangeModel(QAbstractTableModel):
                     visible_change_indices.add(directory.own_change_index)
             else:
                 if not self._change_visible[row.change_index]:
+                    continue
+                if hidden.is_hidden(row.path) and not show_hidden:
                     continue
                 visible_change_indices.add(row.change_index)
             visible_row_of_path[row.path] = len(visible_rows)
@@ -497,6 +514,7 @@ class FlatChangeModel(QAbstractTableModel):
 
         # The directories from the deepest one upwards, so a directory knows
         # the totals of the directories below it.
+        hidden = self.hidden
         for path in self._ordered_directories():
             directory = self._directories[path]
             items = 0
@@ -506,12 +524,16 @@ class FlatChangeModel(QAbstractTableModel):
                 if not self._change_visible[index]:
                     continue
                 change = self.changes[index]
+                if hidden.is_hidden(self._change_paths[index]):
+                    continue
                 items += 1
                 size += int(change.size or 0)
                 destination_size += self._change_destination_sizes[index]
             for child_path in directory.child_directories:
                 child = self._directories[child_path]
                 if not child.visible:
+                    continue
+                if hidden.is_hidden(child_path):
                     continue
                 items += child.subtree_items
                 size += child.subtree_size
