@@ -453,3 +453,9 @@
 - The backup button stays enabled so its context menu reaches the backup settings even before a directory is configured.
 - The Overview pane starts wider, its Item column absorbs the extra width, and its footer fits on one row.
 - Verifying the actions no longer fails because an item is hidden: a hidden item is deliberately outside the sync, so the plan that leaves it out is correct.
+
+## milestone 1.15av table panes instead of tree panes
+
+- The three comparison panes are `QTableView` widgets. The list is flat, so a tree kept per-index tree state for rows that never have children, and that was the dominant cost of loading a large comparison.
+- A fixed vertical-header row height replaces `setUniformRowHeights`; the row numbers are hidden and the grid is off, so the panes look the same as before.
+- Measured on the real view with three panes: 300,000 items load in 3.4 s instead of 11.2 s and sort in 3.3 s instead of 11.1 s; 1,200,000 items load in 12.4 s instead of 44.5 s, sort in 9.4 s and filter in 2.2 s, using 1.5 GB.

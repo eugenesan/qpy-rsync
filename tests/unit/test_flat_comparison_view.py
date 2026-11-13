@@ -313,7 +313,7 @@ def test_a_narrow_saved_header_does_not_hide_the_names() -> None:
     application = app()
     app_settings().clear()
     view = FlatComparisonView()
-    header = view.source.header()
+    header = view.source.horizontalHeader()
     header.resizeSection(view.model.SOURCE_NAME, 20)
     app_settings().setValue(
         "comparison/flat-source-header", encode_binary(header.saveState())

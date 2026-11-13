@@ -37,8 +37,8 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyleOptionViewItem,
     QStyledItemDelegate,
+    QTableView,
     QToolButton,
-    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -337,18 +337,18 @@ class FlatComparisonView(QWidget):
         self.filter_edit.textChanged.connect(self._filter_changed)
         self.filter_edit.returnPressed.connect(self._apply_path_filter)
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
-        self.source.header().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
-        self.destination.header().sectionResized.connect(
+        self.source.horizontalHeader().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
+        self.destination.horizontalHeader().sectionResized.connect(
             lambda _logical, _old, _new: self.save_view_state()
         )
         for pane, tree in (
             ("source", self.source),
             ("destination", self.destination),
         ):
-            tree.header().setContextMenuPolicy(
+            tree.horizontalHeader().setContextMenuPolicy(
                 Qt.ContextMenuPolicy.CustomContextMenu
             )
-            tree.header().customContextMenuRequested.connect(
+            tree.horizontalHeader().customContextMenuRequested.connect(
                 lambda point, p=pane, t=tree: self._show_column_menu(p, t, point)
             )
         self._restore_view_state()
@@ -360,31 +360,42 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Construction helpers
     # ------------------------------------------------------------------
-    def _tree(self, label: str) -> QTreeView:
-        tree = QTreeView()
-        tree.setModel(self.model)
-        tree.setObjectName(label.lower())
-        # The list is flat, so the tree must not draw any branches.
-        tree.setRootIsDecorated(False)
-        tree.setIndentation(0)
-        tree.setUniformRowHeights(True)
-        tree.setItemDelegate(FlatPathDelegate(tree))
-        tree.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        tree.setSortingEnabled(True)
-        tree.header().setStretchLastSection(False)
-        tree.header().setSortIndicatorShown(True)
-        tree.header().setSectionsClickable(True)
-        tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        tree.customContextMenuRequested.connect(
-            lambda point, t=tree: self._show_context_menu(t, point)
+    def _tree(self, label: str) -> QTableView:
+        """Build one comparison pane.
+
+        The list is flat, so a table is the honest widget. A tree would keep
+        per-index tree state for rows that have no children, which is the
+        dominant cost of loading a comparison with hundreds of thousands of
+        items.
+        """
+        pane = QTableView()
+        pane.setModel(self.model)
+        pane.setObjectName(label.lower())
+        # A fixed row height replaces the tree's uniform row heights; the row
+        # numbers of the vertical header are not wanted.
+        row_header = pane.verticalHeader()
+        row_header.hide()
+        row_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        row_header.setDefaultSectionSize(ROW_HEIGHT)
+        pane.setShowGrid(False)
+        pane.setWordWrap(False)
+        pane.setItemDelegate(FlatPathDelegate(pane))
+        pane.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        pane.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        pane.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        pane.setSortingEnabled(True)
+        pane.horizontalHeader().setStretchLastSection(False)
+        pane.horizontalHeader().setSortIndicatorShown(True)
+        pane.horizontalHeader().setSectionsClickable(True)
+        pane.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        pane.customContextMenuRequested.connect(
+            lambda point, t=pane: self._show_context_menu(t, point)
         )
-        tree.doubleClicked.connect(self._request_diff)
+        pane.doubleClicked.connect(self._request_diff)
         # The space bar hides the selected items; the key event goes to the
         # focused pane, so the panes are watched.
-        tree.installEventFilter(self)
-        return tree
+        pane.installEventFilter(self)
+        return pane
 
     # The optional columns of each pane, in the order they are offered.
     OPTIONAL_COLUMNS = {
@@ -440,7 +451,7 @@ class FlatComparisonView(QWidget):
                 self.model.DESTINATION_TIME,
             } or column in destination_hidden)
 
-    def _show_column_menu(self, pane: str, tree: QTreeView, point: object) -> None:
+    def _show_column_menu(self, pane: str, tree: QTableView, point: object) -> None:
         """Offer the optional columns of a pane as a checkable menu."""
         menu = QMenu(tree)
         hidden = self._hidden_columns(pane)
@@ -450,7 +461,7 @@ class FlatComparisonView(QWidget):
             action.setCheckable(True)
             action.setChecked(column not in hidden)
             actions[action] = column
-        selected = menu.exec(tree.header().mapToGlobal(point))
+        selected = menu.exec(tree.horizontalHeader().mapToGlobal(point))
         if selected is None:
             return
         column = actions.get(selected)
@@ -468,37 +479,37 @@ class FlatComparisonView(QWidget):
         # The header only needs the height of its text, so the list starts a
         # little higher.
         for tree in (self.source, self.action, self.destination):
-            tree.header().setFixedHeight(
+            tree.horizontalHeader().setFixedHeight(
                 max(16, tree.fontMetrics().height() + 2)
             )
-        self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
-        self.source.header().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
-        self.source.header().resizeSection(self.model.SOURCE_NAME, 240)
-        self.source.header().resizeSection(self.model.SOURCE_ITEMS, 60)
-        self.source.header().resizeSection(self.model.SOURCE_SIZE, 90)
-        self.source.header().resizeSection(self.model.SOURCE_TIME, 150)
-        self.action.header().setSectionResizeMode(
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_NAME, 240)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_ITEMS, 60)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_SIZE, 90)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_TIME, 150)
+        self.action.horizontalHeader().setSectionResizeMode(
             self.model.ACTION, QHeaderView.ResizeMode.Interactive
         )
-        self.action.header().resizeSection(self.model.ACTION, ACTION_PANE_WIDTH)
-        self.destination.header().setSectionResizeMode(
+        self.action.horizontalHeader().resizeSection(self.model.ACTION, ACTION_PANE_WIDTH)
+        self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch
         )
-        self.destination.header().setSectionResizeMode(
+        self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_ITEMS, QHeaderView.ResizeMode.Interactive
         )
-        self.destination.header().setSectionResizeMode(
+        self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_SIZE, QHeaderView.ResizeMode.Interactive
         )
-        self.destination.header().setSectionResizeMode(
+        self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_TIME, QHeaderView.ResizeMode.Interactive
         )
-        self.destination.header().resizeSection(self.model.DESTINATION_NAME, 240)
-        self.destination.header().resizeSection(self.model.DESTINATION_ITEMS, 60)
-        self.destination.header().resizeSection(self.model.DESTINATION_SIZE, 90)
-        self.destination.header().resizeSection(self.model.DESTINATION_TIME, 150)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_NAME, 240)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_ITEMS, 60)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE, 90)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_TIME, 150)
 
     def _synchronize(self) -> None:
         trees = (self.source, self.action, self.destination)
@@ -618,7 +629,7 @@ class FlatComparisonView(QWidget):
         self.changes_updated.emit(list(self.model.changes))
 
     @staticmethod
-    def _set_current(tree: QTreeView, index: QModelIndex) -> None:
+    def _set_current(tree: QTableView, index: QModelIndex) -> None:
         if not index.isValid():
             return
         visible = next(
@@ -733,7 +744,7 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Sorting
     # ------------------------------------------------------------------
-    def _sort_by_section(self, tree: QTreeView, section: int) -> None:
+    def _sort_by_section(self, tree: QTableView, section: int) -> None:
         """Sort the panes by the given column, like a header click."""
         column = section
         order = Qt.SortOrder.AscendingOrder
@@ -749,7 +760,7 @@ class FlatComparisonView(QWidget):
 
     def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
         for tree in (self.source, self.action, self.destination):
-            header = tree.header()
+            header = tree.horizontalHeader()
             visible = [
                 section
                 for section in range(header.count())
@@ -780,7 +791,7 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Context menu
     # ------------------------------------------------------------------
-    def _show_context_menu(self, tree: QTreeView, point: object) -> None:
+    def _show_context_menu(self, tree: QTableView, point: object) -> None:
         index = tree.indexAt(point)
         if not index.isValid():
             return
@@ -812,24 +823,24 @@ class FlatComparisonView(QWidget):
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
 
-    def _side_is_local(self, tree: QTreeView) -> bool:
+    def _side_is_local(self, tree: QTableView) -> bool:
         """Whether the pane's endpoint lives on this machine."""
         if tree is self.destination:
             return self.destination_is_local
         return self.source_is_local
 
-    def _local_path(self, tree: QTreeView, path: str) -> str:
+    def _local_path(self, tree: QTableView, path: str) -> str:
         root = self.destination_root if tree is self.destination else self.source_root
         return full_path(root, path)
 
-    def _open_local(self, tree: QTreeView, path: str) -> None:
+    def _open_local(self, tree: QTableView, path: str) -> None:
         """Open a file with the desktop handler."""
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(self._local_path(tree, path)))
 
-    def _open_local_directory(self, tree: QTreeView, path: str) -> None:
+    def _open_local_directory(self, tree: QTableView, path: str) -> None:
         """Open the file manager at the item or at the directory that holds it."""
         from pathlib import Path as _Path
 
@@ -841,18 +852,18 @@ class FlatComparisonView(QWidget):
             target = target.parent
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
-    def _absolute_path(self, tree: QTreeView, path: str | None) -> str:
+    def _absolute_path(self, tree: QTableView, path: str | None) -> str:
         if not path:
             return ""
         root = self.destination_root if tree is self.destination else self.source_root
         return full_path(root, path)
 
-    def _copy_path(self, tree: QTreeView, path: str) -> None:
+    def _copy_path(self, tree: QTableView, path: str) -> None:
         QApplication.clipboard().setText(self._absolute_path(tree, path))
 
     def _build_context_menu(
         self,
-        tree: QTreeView,
+        tree: QTableView,
         path: str | None,
         change: object | None,
         row: object | None = None,
@@ -951,11 +962,11 @@ class FlatComparisonView(QWidget):
         )
         settings.setValue(
             "comparison/flat-source-header",
-            encode_binary(self.source.header().saveState()),
+            encode_binary(self.source.horizontalHeader().saveState()),
         )
         settings.setValue(
             "comparison/flat-destination-header",
-            encode_binary(self.destination.header().saveState()),
+            encode_binary(self.destination.horizontalHeader().saveState()),
         )
         settings.sync()
 
@@ -971,9 +982,9 @@ class FlatComparisonView(QWidget):
         source = decode_binary(settings.value("comparison/flat-source-header"))
         destination = decode_binary(settings.value("comparison/flat-destination-header"))
         if source is not None:
-            self.source.header().restoreState(source)
+            self.source.horizontalHeader().restoreState(source)
         if destination is not None:
-            self.destination.header().restoreState(destination)
+            self.destination.horizontalHeader().restoreState(destination)
         # A saved state can carry a width from an older layout, so the name
         # columns are kept wide enough to stay readable.
         for tree, name_column in (
