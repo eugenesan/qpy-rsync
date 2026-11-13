@@ -125,6 +125,41 @@ def test_the_hidden_items_can_be_shown_again_in_the_list() -> None:
     application.processEvents()
 
 
+def test_the_space_bar_hides_the_selected_item() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    application.processEvents()
+    index = view.model.index_for_path("a.txt")
+    view.source.setCurrentIndex(index)
+    view.source.selectionModel().select(
+        index,
+        view.source.selectionModel().SelectionFlag.ClearAndSelect
+        | view.source.selectionModel().SelectionFlag.Rows,
+    )
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier
+    )
+    assert view.eventFilter(view.source, event) is True
+    application.processEvents()
+    assert view.hidden_paths() == {"a.txt"}
+    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    assert paths == {"b.txt"}
+    view.close()
+    application.processEvents()
+
+
 def test_hiding_an_item_excludes_it_from_the_sync() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
     from qpy_rsync.core.enums import EndpointKind

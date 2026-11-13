@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractItemModel, QEvent, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
     QLabel,
+    QMenu,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -272,6 +273,10 @@ class OverviewPane(QWidget):
     """A compact overview of the comparison, in the style of FreeFileSync."""
 
     folder_activated = Signal(str)
+    # A folder the user hid or showed, and the rsync rule they picked.
+    hide_requested = Signal(str)
+    show_requested = Signal(str)
+    filter_requested = Signal(str, str)
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -313,6 +318,59 @@ class OverviewPane(QWidget):
         # The size of a folder is the interesting number, like in FreeFileSync.
         self.tree.sortByColumn(OverviewModel.SIZE, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
+        # The same filtering as in the comparison list: the space bar hides
+        # the selected folder, the context menu filters it with an rsync
+        # pattern.
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
+        self.tree.installEventFilter(self)
+
+    # ------------------------------------------------------------------
+    # Hiding and filtering, the way the comparison list does it
+    # ------------------------------------------------------------------
+    def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
+        if (
+            watched is self.tree
+            and getattr(event, "type", lambda: None)() == QEvent.Type.KeyPress
+            and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
+        ):
+            index = self.tree.currentIndex()
+            if index.isValid():
+                node: OverviewNode = index.internalPointer()
+                if node.path and not node.is_total:
+                    self.hide_requested.emit(node.path)
+                    return True
+        return super().eventFilter(watched, event)  # type: ignore[arg-type]
+
+    def _show_context_menu(self, point: object) -> None:
+        index = self.tree.indexAt(point)
+        if not index.isValid():
+            return
+        node: OverviewNode = index.internalPointer()
+        if not node.path or node.is_total:
+            return
+        from qpy_rsync.backend.rsync_patterns import phrases_for
+
+        menu = QMenu(self.tree)
+        heading = menu.addAction(node.path)
+        heading.setEnabled(False)
+        menu.addSeparator()
+        hide_action = menu.addAction("Hide Folder\tSpace")
+        show_action = menu.addAction("Show Folder")
+        menu.addSeparator()
+        filter_menu = menu.addMenu("Exclude via Filter")
+        filter_actions = []
+        for phrase in phrases_for(node.path, is_directory=True):
+            action = filter_menu.addAction(phrase.label)
+            action.setData(phrase.pattern)
+            filter_actions.append(action)
+        selected = menu.exec(self.tree.viewport().mapToGlobal(point))
+        if selected is hide_action:
+            self.hide_requested.emit(node.path)
+        elif selected is show_action:
+            self.show_requested.emit(node.path)
+        elif selected in filter_actions:
+            self.filter_requested.emit(selected.text(), node.path)
 
     def _folder_activated(self, index: QModelIndex) -> None:
         if not index.isValid():

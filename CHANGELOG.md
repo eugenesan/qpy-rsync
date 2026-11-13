@@ -390,3 +390,10 @@
 - The flat list has nothing to expand, so a comparison with 80,000 items opens in about 0.6 seconds instead of freezing for 17 seconds while every folder is expanded.
 - Every directory is a row of its own, so a directory can be pointed at and decided like an item. The decisions are keyed by path, so the sync semantics are unchanged.
 - The path filter, the action filter and the unchanged items work the same as in the tree; a test compares both models side by side.
+
+## milestone 1.15an hide and filter items
+
+- The comparison list can hide the selected item or folder with the space bar, the way FreeFileSync does it. A hidden item is not part of the sync; the list only lives in memory, so it is gone after the next comparison.
+- The Actions filter bar carries a hidden-items toggle with a count, so what was hidden can be seen and restored. FreeFileSync has no such indication.
+- The context menu filters the selected item the way FreeFileSync does, with the rules written as rsync patterns: by extension (`*.jpg`), by name (`*/name`) or by relative path (`/path/name`). A filter added from the menu is an ordinary exclude rule and marks the comparison stale.
+- The same hiding and filtering works in the Overview pane.

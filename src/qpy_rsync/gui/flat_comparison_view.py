@@ -13,7 +13,15 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator
 
-from PySide6.QtCore import QItemSelectionModel, QModelIndex, QRect, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QItemSelectionModel,
+    QModelIndex,
+    QRect,
+    QSize,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -277,6 +285,9 @@ class FlatComparisonView(QWidget):
             lambda point, t=tree: self._show_context_menu(t, point)
         )
         tree.doubleClicked.connect(self._request_diff)
+        # The space bar hides the selected items; the key event goes to the
+        # focused pane, so the panes are watched.
+        tree.installEventFilter(self)
         return tree
 
     def _apply_column_visibility(self) -> None:
@@ -346,13 +357,32 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Hiding items, the way FreeFileSync does it with the space bar
     # ------------------------------------------------------------------
-    def keyPressEvent(self, event: object) -> None:  # noqa: N802
-        """Hide the selected items with the space bar."""
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Space):
+    def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
+        """Hide the selected items when the space bar is pressed in a pane.
+
+        The key events go to the focused tree, not to this widget, so the
+        panes are watched instead.
+        """
+        # The filter is installed while the panes are still being built, so
+        # it must not assume that all of them exist yet.
+        panes = [
+            pane
+            for pane in (
+                getattr(self, "source", None),
+                getattr(self, "action", None),
+                getattr(self, "destination", None),
+            )
+            if pane is not None
+        ]
+        if (
+            watched in panes
+            and getattr(event, "type", lambda: None)()
+            == QEvent.Type.KeyPress
+            and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
+        ):
             if self._toggle_hidden():
-                event.accept()
-                return
-        super().keyPressEvent(event)  # type: ignore[arg-type]
+                return True
+        return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
     def _toggle_hidden(self) -> bool:
         """Hide or show the selected items. Returns True when it handled it."""

@@ -485,6 +485,9 @@ class MainWindow(QMainWindow):
         # The overview summarises the comparison next to the journal.
         self.overview = OverviewPane(self)
         self.overview.folder_activated.connect(self._overview_folder_activated)
+        self.overview.hide_requested.connect(self._hide_path)
+        self.overview.show_requested.connect(self._show_path)
+        self.overview.filter_requested.connect(self._add_filter_phrase)
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
         log_splitter.setStretchFactor(1, 0)
@@ -2121,6 +2124,26 @@ class MainWindow(QMainWindow):
         """Show the hidden items, or put them aside again."""
         if hasattr(self.comparison, "set_show_hidden"):
             self.comparison.set_show_hidden(show)
+        self._refresh_plan_summary()
+
+    def _hide_path(self, path: str) -> None:
+        """Hide a folder or an item from the comparison."""
+        if not hasattr(self.comparison, "hide_path"):
+            return
+        self.comparison.hide_path(path)
+        self.action_filters.set_hidden_count(
+            self.comparison.model.hidden.count()
+        )
+        self._refresh_plan_summary()
+
+    def _show_path(self, path: str) -> None:
+        """Show a hidden folder or item again."""
+        if not hasattr(self.comparison, "show_path"):
+            return
+        self.comparison.show_path(path)
+        self.action_filters.set_hidden_count(
+            self.comparison.model.hidden.count()
+        )
         self._refresh_plan_summary()
 
     def _update_hidden_count(self) -> None:
