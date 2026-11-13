@@ -214,6 +214,9 @@ class MainWindow(QMainWindow):
         self._expand_mode = "all"
         self._expand_limit = 256
         self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
+        # The layout decides which comparison view is built, so it is read
+        # before the user interface is created.
+        self._list_layout = self._stored_list_layout()
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
@@ -259,7 +262,7 @@ class MainWindow(QMainWindow):
         self.source_edit.setToolTip(endpoint_help)
         self.destination_edit.setToolTip(endpoint_help)
 
-        self.comparison = ComparisonView()
+        self.comparison = self._build_comparison_view()
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
@@ -380,6 +383,7 @@ class MainWindow(QMainWindow):
         controls.addWidget(vertical_separator())
         controls.addWidget(self.comparison.controls, 1)
         layout.addLayout(controls)
+        self._controls_layout = controls
 
         locations = QHBoxLayout()
         source_panel = self._location_panel("Source", self.source_edit, trailing=True)
@@ -393,6 +397,7 @@ class MainWindow(QMainWindow):
         locations.addWidget(vertical_separator())
         locations.addWidget(destination_panel, 40)
         layout.addLayout(locations)
+        self._locations_layout = locations
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.main_splitter = splitter
@@ -700,16 +705,19 @@ class MainWindow(QMainWindow):
             expand_mode=self._expand_mode,
             expand_limit=self._expand_limit,
             expand_total_limit=self._expand_total_limit,
+            list_layout=self._list_layout,
         )
         if not dialog.exec():
             return
         mode = dialog.expand_mode()
         limit = dialog.expand_limit()
         total_limit = dialog.expand_total_limit()
+        layout = dialog.list_layout()
         if (
             mode == self._expand_mode
             and limit == self._expand_limit
             and total_limit == self._expand_total_limit
+            and layout == self._list_layout
         ):
             return
         self._expand_mode = mode
@@ -719,6 +727,7 @@ class MainWindow(QMainWindow):
         settings.setValue("view/expand-after-compare", mode)
         settings.setValue("view/expand-limit", limit)
         settings.setValue("view/expand-total-limit", total_limit)
+        settings.setValue("view/list-layout", layout)
         settings.sync()
         self.comparison.set_expand_mode(mode)
         self.comparison.set_expand_limit(limit)
@@ -728,6 +737,11 @@ class MainWindow(QMainWindow):
             f"{mode}; per-folder limit = {limit} items; "
             f"comparison limit = {total_limit} items"
         )
+        if layout != self._list_layout:
+            # The layout changes the widget, so the window is rebuilt.
+            self._list_layout = layout
+            self._switch_list_layout()
+            return
         if self.comparison.model.changes:
             self.comparison.expand_initial()
 
@@ -750,12 +764,68 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
         total_limit = max(1, min(total_limit, 1_000_000))
+        layout = str(settings.value("view/list-layout", "tree")).strip()
+        if layout not in {"tree", "flat"}:
+            layout = "tree"
         self._expand_mode = mode
         self._expand_limit = limit
         self._expand_total_limit = total_limit
+        self._list_layout = layout
         self.comparison.set_expand_mode(mode)
         self.comparison.set_expand_limit(limit)
         self.comparison.set_expand_total_limit(total_limit)
+
+    def _stored_list_layout(self) -> str:
+        """Read the comparison list layout from the settings."""
+        layout = str(app_settings().value("view/list-layout", "tree")).strip()
+        return layout if layout in {"tree", "flat"} else "tree"
+
+    def _build_comparison_view(self) -> object:
+        """Build the comparison view that the settings ask for.
+
+        The flat list is the FreeFileSync style: no folders to expand, so a
+        large comparison never freezes. The tree is still available for
+        comparison.
+        """
+        if self._list_layout == "flat":
+            from .flat_comparison_view import FlatComparisonView
+
+            return FlatComparisonView()
+        return ComparisonView()
+
+    def _switch_list_layout(self) -> None:
+        """Replace the comparison view after the layout setting changed."""
+        old = self.comparison
+        changes = list(old.model.changes)
+        new = self._build_comparison_view()
+        new.diff_requested.connect(self._open_diff_tool)
+        new.decision_changed.connect(self._invalidate_validated_plan)
+        new.changes_updated.connect(self._overview_updated)
+        new.expansion_limited.connect(self._expansion_limited)
+        new.sort_changed.connect(self._comparison_sorted)
+        new.set_expand_mode(self._expand_mode)
+        new.set_expand_limit(self._expand_limit)
+        new.set_expand_total_limit(self._expand_total_limit)
+        new.source_root = old.source_root
+        new.destination_root = old.destination_root
+        self.comparison = new
+
+        # The filter field and the buttons live in the view, so they move
+        # over to the new one.
+        new.controls.setParent(self.centralWidget())
+        self._controls_layout.replaceWidget(old.controls, new.controls)
+        self._locations_layout.replaceWidget(old.view_controls, new.view_controls)
+        self.main_splitter.replaceWidget(
+            self.main_splitter.indexOf(old), new
+        )
+        old.setParent(None)
+        old.deleteLater()
+
+        self.show_unchanged = self.comparison.inventory_button
+        self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
+        if changes:
+            self.comparison.set_changes(changes)
+        self._append_log(f"Comparison list: {self._list_layout}", severity="info")
 
     def _build_menu_button(self) -> None:
         """Mirror the menu bar in a button, for desktops without a global menu."""

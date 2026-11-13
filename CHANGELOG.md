@@ -383,3 +383,10 @@
 
 - The large-inventory warning now offers Expand Changed Only, with the number of changed items and the folders that would open. It is the default when that set is within the configured comparison limit.
 - Expand Changed Only opens only ancestors of changed items; unchanged-only folders stay collapsed.
+
+## milestone 1.15am flat comparison list
+
+- The comparison can now be listed flat, in the style of FreeFileSync: a flat list of rows where the directory hierarchy is painted instead of modelled. Settings → Comparison list switches between "Tree with expandable folders" and "Flat list (FreeFileSync style)".
+- The flat list has nothing to expand, so a comparison with 80,000 items opens in about 0.6 seconds instead of freezing for 17 seconds while every folder is expanded.
+- Every directory is a row of its own, so a directory can be pointed at and decided like an item. The decisions are keyed by path, so the sync semantics are unchanged.
+- The path filter, the action filter and the unchanged items work the same as in the tree; a test compares both models side by side.

@@ -17,6 +17,11 @@ EXPAND_MODES: tuple[tuple[str, str], ...] = (
     ("none", "Keep every folder collapsed"),
 )
 
+LIST_LAYOUTS: tuple[tuple[str, str], ...] = (
+    ("tree", "Tree with expandable folders"),
+    ("flat", "Flat list (FreeFileSync style)"),
+)
+
 
 class SettingsDialog(QDialog):
     """Application preferences that are not part of a sync profile."""
@@ -28,6 +33,7 @@ class SettingsDialog(QDialog):
         expand_mode: str = "all",
         expand_limit: int = 256,
         expand_total_limit: int = 10000,
+        list_layout: str = "tree",
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -35,6 +41,18 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
+        self.layout_combo = QComboBox()
+        for value, label in LIST_LAYOUTS:
+            self.layout_combo.addItem(label, value)
+        layout_index = self.layout_combo.findData(list_layout)
+        self.layout_combo.setCurrentIndex(max(0, layout_index))
+        self.layout_combo.setToolTip(
+            "How the comparison is listed.\n"
+            "The flat list has no folders to expand, so a comparison with "
+            "tens of thousands of items stays responsive."
+        )
+        form.addRow("Comparison list", self.layout_combo)
+
         self.expand_combo = QComboBox()
         for value, label in EXPAND_MODES:
             self.expand_combo.addItem(label, value)
@@ -87,6 +105,9 @@ class SettingsDialog(QDialog):
 
     def expand_mode(self) -> str:
         return str(self.expand_combo.currentData())
+
+    def list_layout(self) -> str:
+        return str(self.layout_combo.currentData())
 
     def expand_limit(self) -> int:
         return int(self.limit_spin.value())
