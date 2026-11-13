@@ -417,3 +417,14 @@
 - Removed `comparison_view.py`, `change_tree_model.py`, `change_filter_proxy.py` and the Settings dialog, which held nothing but the two view settings.
 - `full_path` and the shared control sizes moved to `paths.py` and `controls.py`.
 - The flat view now sizes its unchanged toggle like the other toolbar buttons.
+
+## milestone 1.15ar settings, statistics and list polish
+
+- Settings is back, with a gear button in the toolbar and `Ctrl+,`. Logging and backup configuration moved into its tabs; the toolbar keeps a button that opens each location, and a right-click on it offers "Configure...", which opens the matching tab.
+- A completion sound plays after a comparison and after a sync (success or failure). It uses the desktop sound when available and the terminal bell otherwise, and can be turned off in Settings.
+- The Overview pane shows the selected amounts like FreeFileSync's statistics panel: the item count and size plus a count per action. Its size column now takes the remaining width.
+- The compared folder is a row of its own, named after the location and totalling everything below it; its checkbox decides the whole comparison.
+- The list alternates the background per directory group, paints the selection in the item columns and no longer draws the dotted focus rectangle next to the hover highlight.
+- The path filter waits for a short pause or Enter before it runs, matches folders typed with a trailing slash and matches relative paths such as `docs/sub`. Filtering 80,000 items takes about 0.1 s.
+- Sorting by size, date, count or action orders the whole list like FreeFileSync, and a second click reverses it.
+- Removed the unused `change_model.py` and `elided_label.py`.

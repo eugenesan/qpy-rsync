@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
     QComboBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -127,6 +128,7 @@ from qpy_rsync.services.plan_validation_service import (
     PlanValidationService,
     compare_plan_to_changes,
 )
+from qpy_rsync.services.sounds import play_completion_sound
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
@@ -144,6 +146,7 @@ from .icons import (
     open_icon,
     pause_icon,
     save_icon,
+    settings_icon,
     source_icon,
     swap_icon,
     synchronize_icon,
@@ -209,6 +212,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_transient = self._append_transient_log
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
+        self._sound_enabled = True
         self._backup = BackupOptions()
         self._hovered_action = "compare"
         self._closing = False
@@ -228,11 +232,45 @@ class MainWindow(QMainWindow):
             self._restore_filters()
             self._restore_backup()
         self._restore_logging_settings()
+        self._sound_enabled = app_settings().value(
+            "sound/enabled", True, type=bool
+        )
         self._update_startup_status()
         try:
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
+
+    def _build_backup_panel(self) -> None:
+        """Build the backup settings shown in the Settings dialog."""
+        self._backup_panel = QWidget(self._config_holder)
+        layout = QFormLayout(self._backup_panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.addRow("Backup directory", self.backup_edit)
+        layout.addRow("", self.backup_browse)
+        layout.addRow("", self.protect_backup)
+        note = QLabel(
+            "An empty directory disables backups. The toolbar button opens the "
+            "configured directory."
+        )
+        note.setWordWrap(True)
+        layout.addRow("", note)
+        self._backup_panel.setVisible(False)
+
+    def _build_log_panel(self) -> None:
+        """Build the logging settings shown in the Settings dialog."""
+        self._log_panel = QWidget(self._config_holder)
+        layout = QFormLayout(self._log_panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.addRow("", self.log_file_checkbox)
+        layout.addRow("Log file", self.log_file_edit)
+        layout.addRow("", self.log_file_browse)
+        note = QLabel(
+            "The journal is written to this file. The toolbar button opens it."
+        )
+        note.setWordWrap(True)
+        layout.addRow("", note)
+        self._log_panel.setVisible(False)
 
     def _build_ui(self) -> None:
         root = QWidget(self)
@@ -339,6 +377,29 @@ class MainWindow(QMainWindow):
         self.save_profile_button.setIcon(save_icon())
         self.save_profile_button.setToolTip("Save Profile...")
         self.save_profile_button.setAccessibleName("Save Profile")
+        self.backup_open = self._external_open_button(
+            "backup-open-button",
+            folder_open_icon(),
+            "Open the backup directory",
+            self._open_backup_directory,
+        )
+        self.log_file_open = self._external_open_button(
+            "log-open-button",
+            log_file_icon(),
+            "Open the log file",
+            self._open_log_file,
+        )
+        for button, section in (
+            (self.backup_open, "backup"),
+            (self.log_file_open, "logging"),
+        ):
+            self._configure_open_button_menu(button, section)
+        self.settings_button = QToolButton()
+        self.settings_button.setIcon(settings_icon())
+        self.settings_button.setToolTip("Settings")
+        self.settings_button.setAccessibleName("Settings")
+        self.settings_button.clicked.connect(self._edit_settings)
+
         for button in (
             self.swap_button,
             self.compare_button,
@@ -350,6 +411,9 @@ class MainWindow(QMainWindow):
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
+            self.backup_open,
+            self.log_file_open,
+            self.settings_button,
         ):
             button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
             button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -368,6 +432,9 @@ class MainWindow(QMainWindow):
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
+            self.backup_open,
+            self.log_file_open,
+            self.settings_button,
         ):
             controls.addWidget(widget)
         controls.addWidget(vertical_separator())
@@ -485,55 +552,24 @@ class MainWindow(QMainWindow):
         splitter.setSizes([380, 250])
         layout.addWidget(splitter, 1)
 
-        backup_panel = QWidget(self)
-        backup_layout = QVBoxLayout(backup_panel)
-        backup_layout.setContentsMargins(0, 2, 0, 2)
-        backup_row = QHBoxLayout()
-        backup_group = QWidget(self)
-        backup_group_layout = QHBoxLayout(backup_group)
-        backup_group_layout.setContentsMargins(0, 0, 0, 0)
+        # The logging and backup settings are shown in the Settings dialog.
+        # The widgets live here so their state and signals stay with the
+        # window; the dialog only reparents them while it is open.
+        self._config_holder = QWidget(self)
+        self._config_holder.setVisible(False)
+
         self.backup_edit = QLineEdit()
         self.backup_edit.setPlaceholderText("Empty disables backups")
         self.backup_browse = QPushButton("Browse...")
-        self.protect_backup = QCheckBox("Protect nested")
+        self.protect_backup = QCheckBox("Protect nested backups")
         self.protect_backup.setChecked(True)
-        backup_group_layout.addWidget(QLabel("Backup"))
-        self.backup_open = self._external_open_button(
-            "backup-open-button",
-            folder_open_icon(),
-            "Open the backup directory",
-            self._open_backup_directory,
-        )
-        backup_group_layout.addWidget(self.backup_open)
-        backup_group_layout.addWidget(self.backup_edit, 1)
-        backup_group_layout.addWidget(self.backup_browse)
-        backup_group_layout.addWidget(self.protect_backup)
+        self._build_backup_panel()
 
-        log_group = QWidget(self)
-        log_group_layout = QHBoxLayout(log_group)
-        log_group_layout.setContentsMargins(0, 0, 0, 0)
-        self.log_file_checkbox = QCheckBox("")
+        self.log_file_checkbox = QCheckBox("Enable logging")
         self.log_file_checkbox.setChecked(True)
         self.log_file_edit = QLineEdit(str(self._log_file_path))
         self.log_file_browse = QPushButton("Browse...")
-        log_group_layout.addWidget(QLabel("Log"))
-        self.log_file_open = self._external_open_button(
-            "log-open-button",
-            log_file_icon(),
-            "Open the log file",
-            self._open_log_file,
-        )
-        log_group_layout.addWidget(self.log_file_open)
-        log_group_layout.addWidget(self.log_file_edit, 1)
-        log_group_layout.addWidget(self.log_file_browse)
-        log_group_layout.addWidget(self.log_file_checkbox)
-        log_group_layout.addWidget(QLabel("Enable logging"))
-
-        backup_row.addWidget(backup_group, 1)
-        backup_row.addWidget(vertical_separator())
-        backup_row.addWidget(log_group, 1)
-        backup_layout.addLayout(backup_row)
-        layout.addWidget(backup_panel)
+        self._build_log_panel()
 
         self.setCentralWidget(root)
         self.statusBar().setSizeGripEnabled(False)
@@ -651,6 +687,7 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
         )
+        self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 
         actions_menu = menu_bar.addMenu("&Actions")
         self._add_action(
@@ -1065,6 +1102,15 @@ class MainWindow(QMainWindow):
             style += f" color: {color};"
         self.status_edit.setStyleSheet(style)
 
+    def _play_completion_sound(self, kind: str) -> None:
+        """Play the completion sound when the user asked for it."""
+        if not getattr(self, "_sound_enabled", False):
+            return
+        try:
+            play_completion_sound(kind)
+        except Exception:  # noqa: BLE001 - a sound must never break the sync
+            pass
+
     def _set_state(self, text: str, severity: str = "info") -> None:
         """Update the current operation state shown in the status bar."""
         severity = severity.lower()
@@ -1154,6 +1200,51 @@ class MainWindow(QMainWindow):
             "Stale comparison: filter rules changed. Compare again to refresh results.",
             "warning",
         )
+
+    def _configure_open_button_menu(self, button: QToolButton, section: str) -> None:
+        """Give an open button a right-click menu that leads to its settings."""
+        button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        button.customContextMenuRequested.connect(
+            lambda point, b=button, s=section: self._open_button_menu(b, point, s)
+        )
+
+    def _open_button_menu(self, button: QToolButton, point: object, section: str) -> None:
+        menu = QMenu(button)
+        open_action = menu.addAction(button.toolTip())
+        configure = menu.addAction("Configure...")
+        selected = menu.exec(button.mapToGlobal(point))
+        if selected is open_action:
+            button.click()
+        elif selected is configure:
+            self._edit_settings(section)
+
+    def _edit_settings(self, section: str = "general") -> None:
+        """Open the settings dialog on the given section."""
+        from .settings_dialog import SettingsDialog
+
+        if isinstance(section, bool):
+            section = "general"
+        dialog = SettingsDialog(
+            self,
+            holder=self._config_holder,
+            log_panel=self._log_panel,
+            backup_panel=self._backup_panel,
+            sound_enabled=self._sound_enabled,
+            section=str(section),
+        )
+        # Apply the log and backup fields the dialog may have changed.
+        accepted = dialog.exec()
+        if accepted:
+            self._logging_settings_changed()
+            self._backup_changed()
+            enabled = dialog.sound_enabled()
+            if enabled != self._sound_enabled:
+                self._sound_enabled = enabled
+                settings = app_settings()
+                settings.setValue("sound/enabled", enabled)
+                settings.sync()
+        # The panels return to their holder in any case.
+        self._update_external_open_states()
 
     def _add_filter_phrase(self, label: str, path: object) -> None:
         """Add an rsync exclude rule produced by the context menu."""
@@ -1723,6 +1814,9 @@ class MainWindow(QMainWindow):
         self._current_plan = None
         self._last_plan_summary = None
         self._set_state("Synchronization complete", "success")
+        self._play_completion_sound(
+            "success" if result.exit_code == 0 else "error"
+        )
         self._set_status(
             f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
             "success",
@@ -1952,6 +2046,7 @@ class MainWindow(QMainWindow):
         self._set_state(
             f"Comparison complete: {count} changed item(s).", "success"
         )
+        self._play_completion_sound("success")
         self._append_log(f"STATE comparison-complete changes={count}")
         self._end_bulk_logging()
 

@@ -602,8 +602,9 @@ def test_rows_use_separators_between_the_control_groups() -> None:
         if frame.frameShape() == QFrame.Shape.VLine
     ]
     # Swap | Compare, Load Profile | Filter/Find, Source Browse | filters,
-    # filters | unchanged, unchanged | Destination, Protect nested | Log.
-    assert len(separators) == 6
+    # filters | unchanged, unchanged | Destination. The backup and log rows
+    # moved into the Settings dialog.
+    assert len(separators) == 5
     window.close()
     application.processEvents()
 
@@ -1176,5 +1177,59 @@ def test_the_flat_list_adds_a_large_inventory_without_a_warning() -> None:
     window._populate_unchanged(changed + unchanged, len(unchanged))
     application.processEvents()
     assert window.comparison.model.rowCount() == 65
+    window.close()
+    application.processEvents()
+
+def test_the_settings_dialog_opens_on_the_requested_section() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    from qpy_rsync.gui.settings_dialog import SettingsDialog, SECTIONS
+
+    dialog = SettingsDialog(
+        window,
+        holder=window._config_holder,
+        log_panel=window._log_panel,
+        backup_panel=window._backup_panel,
+        sound_enabled=True,
+        section="backup",
+    )
+    assert dialog.tabs.currentIndex() == SECTIONS.index("backup")
+    dialog.show_section("logging")
+    assert dialog.tabs.currentIndex() == SECTIONS.index("logging")
+    dialog.close()
+    application.processEvents()
+    window.close()
+    application.processEvents()
+
+
+def test_the_log_and_backup_settings_live_in_the_dialog() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    # The configuration rows are no longer laid out in the window itself.
+    assert window.backup_edit.isVisible() is False
+    assert window.log_file_edit.isVisible() is False
+    # The open buttons and the settings button are in the toolbar.
+    assert window.backup_open.isVisible() is False  # the window is not shown
+    assert window.settings_button.toolTip() == "Settings"
+    window.close()
+    application.processEvents()
+
+
+def test_a_finished_comparison_can_play_a_sound(monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    played: list[str] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.play_completion_sound", played.append
+    )
+    window._sound_enabled = True
+    window._play_completion_sound("success")
+    assert played == ["success"]
+    window._sound_enabled = False
+    window._play_completion_sound("error")
+    assert played == ["success"]
     window.close()
     application.processEvents()
