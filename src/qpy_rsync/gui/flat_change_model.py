@@ -455,7 +455,7 @@ class FlatChangeModel(QAbstractTableModel):
 
         # The rows of the visible directories.
         visible_rows: list[int] = []
-        visible_changes: list[Change] = []
+        visible_change_indices: set[int] = set()
         visible_row_of_path: dict[str, int] = {}
         for index, row in enumerate(self._rows):
             if row.is_directory:
@@ -464,16 +464,21 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 # A directory that the comparison reported is a change of its
                 # own, the same as in the tree.
-                if directory.own_change is not None:
-                    visible_changes.append(directory.own_change)
+                if directory.own_change_index >= 0:
+                    visible_change_indices.add(directory.own_change_index)
             else:
-                if not self._change_visible[self._change_index_of(row)]:
+                if not self._change_visible[row.change_index]:
                     continue
-                visible_changes.append(row.change)
+                visible_change_indices.add(row.change_index)
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows
-        self._visible_changes = visible_changes
+        # The changes keep the order of the comparison, the same as in the
+        # tree, so the overview counts them the same way.
+        self._visible_changes = [
+            self.changes[index]
+            for index in sorted(visible_change_indices)
+        ]
         self._visible_row_of_path = visible_row_of_path
         self._total_up_directories()
         self.layout_token += 1
@@ -620,10 +625,6 @@ class FlatChangeModel(QAbstractTableModel):
         if not 0 <= row < len(self._visible_rows):
             return None
         return self._rows[self._visible_rows[row]]
-
-    @staticmethod
-    def _change_index_of(row: FlatRow) -> int:
-        return row.change_index
 
     def row_data(self, row: int) -> FlatRow | None:
         """Return the data of a visible row, for the delegate."""

@@ -91,6 +91,33 @@ def test_both_models_apply_the_action_filter_the_same_way() -> None:
     application.processEvents()
 
 
+def test_the_visible_changes_match_the_tree() -> None:
+    application = app()
+    changes = sample_changes()
+    for pattern in ("", "docs", "docs/", ".jpg"):
+        tree = ChangeTreeModel()
+        proxy = ChangeTreeFilterProxyModel()
+        proxy.setSourceModel(tree)
+        tree.set_changes(changes)
+        if pattern:
+            proxy.set_path_filter(pattern)
+        visible = proxy.visible_paths()
+        tree_visible = [
+            change
+            for change in tree.changes
+            if str(change.path).rstrip("/") in visible
+        ]
+
+        flat = FlatChangeModel()
+        flat.set_changes(changes)
+        if pattern:
+            flat.set_path_filter(pattern)
+        assert flat.visible_changes() == tree_visible, pattern
+        tree.deleteLater()
+        flat.deleteLater()
+    application.processEvents()
+
+
 def test_the_directory_totals_match_the_tree() -> None:
     application = app()
     changes = sample_changes()
