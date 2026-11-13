@@ -160,18 +160,47 @@ def test_the_flat_view_shows_everything_without_expanding() -> None:
     application.processEvents()
 
 
-def test_the_flat_view_sorts_the_items_of_every_directory() -> None:
+def test_the_flat_view_sorts_the_whole_list_by_size() -> None:
     application = app()
     view = FlatComparisonView()
     view.set_changes(
         [
             file_change("docs/b.txt", size=10),
             file_change("docs/a.txt", size=20),
+            file_change("pics/c.jpg", size=5),
         ]
     )
+    # Size sorts the whole list, the way FreeFileSync does it; the directory
+    # rows sort by the size of everything below them.
     view._sort_by_section(view.source, view.model.SOURCE_SIZE)
     paths = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert paths == ["pics/c.jpg", "pics", "docs/b.txt", "docs/a.txt", "docs"]
+
+    # A second click reverses the order.
+    view._sort_by_section(view.source, view.model.SOURCE_SIZE)
+    paths = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert paths == ["docs", "docs/a.txt", "docs/b.txt", "pics", "pics/c.jpg"]
+    view.close()
+    application.processEvents()
+
+
+def test_sorting_by_name_keeps_the_hierarchy() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            file_change("docs/b.txt"),
+            file_change("docs/a.txt"),
+        ]
+    )
+    # The list starts sorted by name, so the first click reverses it.
+    view._sort_by_section(view.source, view.model.SOURCE_NAME)
+    paths = [view.model.row_path(row) for row in range(view.model.rowCount())]
     assert paths == ["docs", "docs/b.txt", "docs/a.txt"]
+
+    view._sort_by_section(view.source, view.model.SOURCE_NAME)
+    paths = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert paths == ["docs", "docs/a.txt", "docs/b.txt"]
     view.close()
     application.processEvents()
 

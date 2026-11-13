@@ -293,10 +293,16 @@ class FlatChangeModel(QAbstractTableModel):
                     )
                 )
             for child_path in sorted(
-                directory.child_directories, key=self._directory_key
+                directory.child_directories,
+                key=self._directory_key,
+                reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
             ):
                 walk(child_path)
-            for index in sorted(directory.files, key=self._file_key):
+            for index in sorted(
+                directory.files,
+                key=self._file_key,
+                reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
+            ):
                 change = self.changes[index]
                 item_path = self._change_paths[index]
                 add(
@@ -313,6 +319,15 @@ class FlatChangeModel(QAbstractTableModel):
                 )
 
         walk("")
+        # Sorting by size, date, count or action follows FreeFileSync: the
+        # whole list is ordered, not each directory on its own. Sorting by
+        # name keeps the hierarchy, because that is what makes a tree
+        # readable.
+        if self._sort_column not in (self.SOURCE_NAME, self.DESTINATION_NAME):
+            rows.sort(
+                key=self._row_sort_key,
+                reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
+            )
         # Shade every second group. A group is a directory and its own items,
         # so the shade follows the hierarchy instead of the row number.
         alternate = False
@@ -347,6 +362,31 @@ class FlatChangeModel(QAbstractTableModel):
         self._build_rows()
         self._apply_filters()
         self.layoutChanged.emit()
+
+    def _row_sort_key(self, row: FlatRow) -> tuple:
+        """The key of one row when the whole list is sorted."""
+        column = self._sort_column
+        name = row.name.casefold()
+        if row.is_directory:
+            directory = self._directories.get(row.path)
+            if directory is None:
+                return (0, name, row.path)
+            if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
+                return (directory.subtree_items, name, row.path)
+            if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
+                size = (
+                    directory.subtree_size
+                    if column == self.SOURCE_SIZE
+                    else directory.subtree_destination_size
+                )
+                return (size, name, row.path)
+            if column in (self.SOURCE_TIME, self.DESTINATION_TIME):
+                own = directory.own_change
+                return (str((own.modified_time if own else "") or ""), name, row.path)
+            if column == self.ACTION:
+                return ("", name, row.path)
+            return (name, row.path)
+        return self._item_sort_key(row.change_index, column) + (row.path,)
 
     def _file_key(self, index: int) -> tuple:
         return self._item_sort_key(index, self._sort_column)
