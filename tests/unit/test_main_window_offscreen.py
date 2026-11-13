@@ -70,7 +70,7 @@ def test_startup_hides_selected_actions() -> None:
     window = MainWindow()
     assert not hasattr(window.overview, "summary_label")
     assert "Selected:" not in window.log.toPlainText()
-    assert "Choose Source and Destination" in window.status_edit.text()
+    assert window.status_edit.text() == "Enter locations to compare"
     window.close()
     application.processEvents()
 
@@ -138,7 +138,7 @@ def test_swap_marks_existing_comparison_outdated() -> None:
     assert "#0891B2" in window.source_edit.styleSheet()
     assert window._current_plan is None
     assert not window.validate_plan_button.isEnabled()
-    assert "old direction" in window.status_edit.text()
+    assert "old direction" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -587,7 +587,7 @@ def test_state_field_lives_in_the_status_bar() -> None:
     assert window.state_label.text() == "State:"
     assert window.statusBar().isAncestorOf(window.status_edit)
     assert window.status_edit.isReadOnly()
-    window._set_status("Comparison failed.", "error")
+    window._set_state("Comparison failed.", "error")
     assert "Comparison failed." in window.status_edit.text()
     assert "Comparison failed." in window.status_edit.toolTip()
     window.close()
@@ -908,7 +908,7 @@ def test_open_buttons_follow_remote_and_missing_log_file(tmp_path, monkeypatch) 
     assert not window.source_open_button.isEnabled()
     window._open_location_directory("Source")
     assert not opened
-    assert "remote" in window.status_edit.text().lower()
+    assert "remote" in window.log.toPlainText().lower()
 
     warnings: list[object] = []
     monkeypatch.setattr(
@@ -921,7 +921,7 @@ def test_open_buttons_follow_remote_and_missing_log_file(tmp_path, monkeypatch) 
     assert warnings
     assert not log_file.exists()
     assert opened == []
-    assert "does not exist" in window.status_edit.text()
+    assert "does not exist" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -944,7 +944,7 @@ def test_compare_refuses_missing_local_directories(tmp_path, monkeypatch) -> Non
     window._compare()
     assert warnings
     assert not compared
-    assert "does not exist" in window.status_edit.text()
+    assert "does not exist" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -991,27 +991,29 @@ def test_open_missing_directory_shows_a_warning(tmp_path, monkeypatch) -> None:
     window.source_edit.setText(str(tmp_path / "missing-source") + "/")
     window._open_location_directory("Source")
     assert warnings
-    assert "does not exist" in window.status_edit.text()
+    assert "does not exist" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
 
-def test_state_field_shows_every_status_message() -> None:
+def test_state_field_only_shows_operation_states() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
+    window._set_state("Ready for compare")
+    assert window.status_edit.text() == "Ready for compare"
+
     window._set_status("Everything is fine.", "success")
-    assert "Everything is fine." in window.status_edit.text()
     window._set_status("Just information.", "info")
-    assert "Just information." in window.status_edit.text()
-
     window._set_status("Source is missing.", "warning")
-    assert "Source is missing." in window.status_edit.text()
-    assert "Source is missing." in window.status_edit.toolTip()
-
     window._set_status("Open failed.", "error")
-    assert "Open failed." in window.status_edit.text()
-    assert "STATUS Open failed." in window.log.toPlainText()
+    # Messages do not overwrite the state; they remain in the journal.
+    assert window.status_edit.text() == "Ready for compare"
+    log = window.log.toPlainText()
+    assert "Everything is fine." in log
+    assert "Source is missing." in log
+    assert "Open failed." in log
+    assert "STATUS " not in log
     window.close()
     application.processEvents()
 
@@ -1035,7 +1037,7 @@ def test_failed_external_open_shows_an_error(tmp_path, monkeypatch) -> None:
     window.source_edit.setText(str(directory) + "/")
     window._open_location_directory("Source")
     assert errors
-    assert "Could not open" in window.status_edit.text()
+    assert "Could not open" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -1047,7 +1049,8 @@ def test_startup_warns_about_missing_remembered_locations(tmp_path) -> None:
     window.source_edit.setText(str(tmp_path / "missing-source") + "/")
     window.destination_edit.setText(str(tmp_path / "missing-destination") + "/")
     window._update_startup_status()
-    assert "does not exist" in window.status_edit.text()
+    assert window.status_edit.text() == "Enter locations to compare"
+    assert "does not exist" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -1085,5 +1088,47 @@ def test_journal_lines_get_timestamps_and_severity_colors() -> None:
     assert colors(2)[-1] == "#b91c1c"
     assert colors(3)[-1] == "#9ca3af"
     assert colors(0)[-1] != "#9ca3af"
+    window.close()
+    application.processEvents()
+
+
+def test_backup_warning_is_logged_once_without_status_prefix(tmp_path) -> None:
+    application = app()
+    app_settings().clear()
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    window = MainWindow()
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
+    window.backup_edit.setText(str(destination / "backup"))
+    window._set_state("Ready for compare")
+    window.log.clear()
+
+    window._update_backup_status()
+    window._update_backup_status()
+
+    log = window.log.toPlainText()
+    assert log.count("Backup directory is inside the destination tree.") == 1
+    assert "STATUS " not in log
+    assert "Warning: Backup directory is inside" not in log
+    assert window.status_edit.text() == "Ready for compare"
+    window.close()
+    application.processEvents()
+
+
+def test_startup_state_is_ready_for_compare_when_locations_exist(tmp_path) -> None:
+    application = app()
+    app_settings().clear()
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    window = MainWindow()
+    window.source_edit.setText(str(source) + "/")
+    window.destination_edit.setText(str(destination) + "/")
+    window._update_startup_status()
+    assert window.status_edit.text() == "Ready for compare"
     window.close()
     application.processEvents()

@@ -193,6 +193,7 @@ class MainWindow(QMainWindow):
         self._inventory_cache_key: object | None = None
         self._inventory_cache: list[object] | None = None
         self._dialog_filter_context: object | None = None
+        self._last_backup_message: tuple[str, str] | None = None
         self._last_changed_changes: list[object] = []
         self._sync_service = SyncService(self)
         self._sync_service.on_started = self._sync_started
@@ -796,7 +797,6 @@ class MainWindow(QMainWindow):
         if not path.exists():
             message = f"{what} does not exist:\n{path}"
             self._set_status(f"{what} does not exist: {path}", "warning")
-            self._append_log(f"STATUS {message}")
             QMessageBox.warning(self, "Location not found", message)
             return
         url = QUrl.fromLocalFile(str(path))
@@ -809,7 +809,6 @@ class MainWindow(QMainWindow):
             return
         message = f"Could not open {what}:\n{path}"
         self._set_status(message, "error")
-        self._append_log(f"STATUS {message}")
         QMessageBox.critical(self, "Could not open", message)
 
     def _open_location_directory(self, title: str) -> None:
@@ -857,7 +856,6 @@ class MainWindow(QMainWindow):
         if not path.exists():
             message = f"Log file does not exist:\n{path}"
             self._set_status(message, "warning")
-            self._append_log(f"STATUS {message}")
             QMessageBox.warning(self, "Log file not found", message)
             return
         self._open_path(path, "log file")
@@ -883,7 +881,6 @@ class MainWindow(QMainWindow):
     ) -> None:
         detail = "\n".join(missing)
         self._set_status(f"{action} cancelled: {detail}", "warning")
-        self._append_log(f"{action} cancelled: {detail}")
         QMessageBox.warning(
             self,
             "Location not found",
@@ -1105,23 +1102,35 @@ class MainWindow(QMainWindow):
             style += f" color: {color};"
         self.status_edit.setStyleSheet(style)
 
-    def _set_status(self, text: str, severity: str = "info") -> None:
+    def _set_state(self, text: str, severity: str = "info") -> None:
+        """Update the current operation state shown in the status bar."""
         severity = severity.lower()
         colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
-        lines = [part.strip() for part in text.replace(". ", ".\n").splitlines() if part.strip()]
-        tooltip = "\n".join(lines)
-        self.status_edit.setToolTip(tooltip)
+        self.status_edit.setToolTip(text)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
-        self._append_log(f"STATUS {text}", severity=severity)
+
+    def _set_status(self, text: str, severity: str = "info") -> None:
+        """Write a message to the journal; warnings do not replace the state."""
+        severity = severity.lower()
+        journal_text = text
+        for prefix in ("Warning: ", "Error: "):
+            if journal_text.startswith(prefix):
+                journal_text = journal_text[len(prefix):]
+                break
+        self._append_log(journal_text, severity=severity)
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
         if severity == "info" and text.startswith("Backups are disabled"):
             return
-        colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
         shortened = text.replace("Backups are disabled.", "").strip()
-        if shortened:
-            self._set_status(shortened, severity if severity != "success" else "info")
+        if not shortened:
+            return
+        key = (shortened, severity)
+        if key == self._last_backup_message:
+            return
+        self._last_backup_message = key
+        self._set_status(shortened, severity if severity != "success" else "info")
 
     def _update_nested_protection_ui(self, profile: SyncProfile) -> None:
         resolved = resolve_backup(profile)
@@ -1178,8 +1187,9 @@ class MainWindow(QMainWindow):
         self._update_filter_summary(stale=True)
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
-        self.status_edit.setText(
-            "Stale comparison: filter rules changed. Compare again to refresh results."
+        self._set_state(
+            "Stale comparison: filter rules changed. Compare again to refresh results.",
+            "warning",
         )
 
     def _save_profile(self) -> None:
@@ -1455,7 +1465,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Verifying selected actions...")
-        self.status_edit.setText("Verifying selected actions...")
+        self._set_state("Verifying selected actions...")
         self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
@@ -1483,7 +1493,9 @@ class MainWindow(QMainWindow):
                 )
             self.progress_bar.setValue(100)
             self.progress_label.setText("Selected actions verified")
-            self.status_edit.setText("Selected actions verified. No files were changed.")
+            self._set_state(
+                "Selected actions verified. No files were changed.", "success"
+            )
             self._append_log("STATE actions-verified")
             self._end_bulk_logging()
             return
@@ -1502,7 +1514,9 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Plan validation failed")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
-        self.status_edit.setText("Plan validation failed; synchronization remains blocked.")
+        self._set_state(
+            "Plan validation failed; synchronization remains blocked.", "error"
+        )
 
     def _plan_validation_cancelled(self) -> None:
         if self._closing:
@@ -1517,7 +1531,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
         self.progress_label.setText("Action verification cancelled")
-        self.status_edit.setText("Action verification was cancelled.")
+        self._set_state("Action verification was cancelled.", "warning")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
 
@@ -1530,7 +1544,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
         self.progress_label.setText("Plan validation failed")
-        self._set_status("Plan validation failed.", "error")
+        self._set_state("Plan validation failed.", "error")
         self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation failed", message)
@@ -1679,6 +1693,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Synchronizing...")
+        self._set_state("Synchronizing...")
         self._set_status("Synchronization is running. The selected actions are applied now.", "warning")
         self._append_log("STATE synchronization-started")
 
@@ -1709,6 +1724,7 @@ class MainWindow(QMainWindow):
         self._validated_plan = None
         self._current_plan = None
         self._last_plan_summary = None
+        self._set_state("Synchronization complete", "success")
         self._set_status(
             f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
             "success",
@@ -1736,6 +1752,10 @@ class MainWindow(QMainWindow):
             message, severity="warning" if cancelled else "error"
         )
         self._end_bulk_logging()
+        self._set_state(
+            "Synchronization cancelled" if cancelled else "Synchronization failed",
+            "warning" if cancelled else "error",
+        )
         self._set_status(
             "Synchronization was cancelled; compare again before retrying."
             if cancelled
@@ -1762,6 +1782,7 @@ class MainWindow(QMainWindow):
             return
         self._flush_log()
         self.log.clear()
+        self._last_backup_message = None
         self._last_plan_summary = None
         self._active_profile = profile
         self._comparison_profile = profile
@@ -1817,7 +1838,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not start diff tool", request.tool.executable)
             return
         self._append_log("$ " + shlex.join([request.tool.executable, *arguments]))
-        self.status_edit.setText(f"Opened {change.path} in {request.tool.name}.")  # type: ignore[attr-defined]
+        self._set_state(
+            f"Opened {change.path} in {request.tool.name}.",  # type: ignore[attr-defined]
+            "success",
+        )
 
     def _comparison_started(self) -> None:
         self._begin_bulk_logging()
@@ -1835,7 +1859,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Comparing...")
-        self.status_edit.setText("Comparing...")
+        self._set_state("Comparing...")
         self._append_log("STATE comparing")
 
     def _comparison_progress(self, progress: object) -> None:
@@ -1856,6 +1880,7 @@ class MainWindow(QMainWindow):
         self._reset_pause_button()
         self.progress_bar.setValue(0)
         self.progress_label.setText("Comparison cancelled")
+        self._set_state("Comparison cancelled", "warning")
         self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")
         self._append_log("STATE comparison-cancelled")
         self._end_bulk_logging()
@@ -1881,7 +1906,9 @@ class MainWindow(QMainWindow):
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)
-        self.status_edit.setText(f"Comparison complete: {count} changed item(s).")
+        self._set_state(
+            f"Comparison complete: {count} changed item(s).", "success"
+        )
         self._append_log(f"STATE comparison-complete changes={count}")
         self._end_bulk_logging()
 
@@ -2062,7 +2089,7 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
-        self._set_status("Comparison failed.", "error")
+        self._set_state("Comparison failed.", "error")
         self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Comparison failed", message)
@@ -2261,20 +2288,18 @@ class MainWindow(QMainWindow):
             self._baseline_profile = None
 
     def _update_startup_status(self) -> None:
-        if self.source_edit.text().strip() and self.destination_edit.text().strip():
-            missing: list[str] = []
-            try:
-                missing = self._missing_local_directories(self._profile())
-            except ValueError:
-                pass
-            if missing:
-                self._set_status("Missing: " + " ".join(missing), "warning")
-            else:
-                self._set_status(
-                    "Ready. Click Compare to refresh the remembered Source and Destination."
-                )
+        if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
+            self._set_state("Enter locations to compare")
+            return
+        try:
+            missing = self._missing_local_directories(self._profile())
+        except ValueError:
+            missing = ["Invalid location."]
+        if missing:
+            self._set_state("Enter locations to compare")
+            self._set_status("Missing: " + " ".join(missing), "warning")
         else:
-            self._set_status("Choose Source and Destination above the comparison panes.")
+            self._set_state("Ready for compare")
 
     def _restore_window_state(self) -> None:
         settings = app_settings()

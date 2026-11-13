@@ -352,3 +352,9 @@
 
 - The State field moved from the Journal header to the window status bar.
 - Journal lines carry a short `HH:MM` timestamp. Application text uses the readable theme text colour, rsync output is light grey, warnings are cyan, errors red and successes green.
+
+## milestone 1.15ag state bar and journal noise
+
+- The status bar shows only operation states: `Enter locations to compare`, `Ready for compare`, comparison, verification and synchronization states.
+- Warnings and errors no longer replace the state; they appear only in the journal, where the colour conveys severity.
+- Duplicate backup warnings are collapsed, and journal lines no longer carry the redundant `STATUS` and `Warning:`/`Error:` prefixes.
