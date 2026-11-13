@@ -49,6 +49,8 @@ ACTION_HEADER_ACCENT = "#0891B2"
 # Role that carries the comparison path of a row. A directory row has no
 # change of its own, so the path cannot be taken from the change.
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
+# Whether a row sits in a shaded group, for the alternating list background.
+STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
 
 
 @dataclass(slots=True)
@@ -94,6 +96,8 @@ class FlatRow:
     change_index: int
     # The directory the row belongs to.
     group: str
+    # Whether the row sits in a shaded group, so the list alternates.
+    alternate: bool = False
 
 
 class FlatChangeModel(QAbstractTableModel):
@@ -300,6 +304,15 @@ class FlatChangeModel(QAbstractTableModel):
                 )
 
         walk("")
+        # Shade every second group. A group is a directory and its own items,
+        # so the shade follows the hierarchy instead of the row number.
+        alternate = False
+        previous_group: str | None = None
+        for row in rows:
+            if row.group != previous_group:
+                alternate = not alternate
+                previous_group = row.group
+            row.alternate = alternate
         self._rows = rows
 
     # ------------------------------------------------------------------
@@ -749,6 +762,8 @@ class FlatChangeModel(QAbstractTableModel):
             return self.decisions.explicit(row.path)
         if role == PATH_ROLE:
             return row.path
+        if role == STRIPE_ROLE:
+            return row.alternate
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:

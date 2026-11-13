@@ -46,7 +46,7 @@ from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
-from .flat_change_model import FlatChangeModel
+from .flat_change_model import STRIPE_ROLE, FlatChangeModel
 from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
 from .paths import full_path
 
@@ -54,10 +54,18 @@ from .paths import full_path
 PREFIX_COLOR = QColor("#707070")
 # The colour of the rule that connects the items to their directory.
 RULE_COLOR = QColor("#c8c8c8")
+# The shade of every second directory group, the way a printed table
+# alternates its rows. Kept faint so the text stays the focus.
+STRIPE_COLOR = QColor(0, 0, 0, 22)
+HIDDEN_COLOR = QColor("#9ca3af")
 
 
 class UniformRowDelegate(QStyledItemDelegate):
-    """Keep row heights identical in all three panes."""
+    """Keep row heights identical in all three panes.
+
+    Also paints the alternating group background, which the panes share so a
+    row is shaded the same way in all three of them.
+    """
 
     def sizeHint(self, option: object, index: QModelIndex) -> QSize:  # noqa: N802
         # The default implementation asks the model for every role and walks
@@ -66,6 +74,17 @@ class UniformRowDelegate(QStyledItemDelegate):
         metrics = option.fontMetrics  # type: ignore[attr-defined]
         width = metrics.horizontalAdvance(str(text or "")) + 24
         return QSize(width, ROW_HEIGHT)
+
+    def paint(self, painter: object, option: object, index: QModelIndex) -> None:
+        styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+        selected = bool(styled.state & QStyle.StateFlag.State_Selected)
+        if index.data(STRIPE_ROLE) and not selected:
+            painter.fillRect(styled.rect, STRIPE_COLOR)  # type: ignore[attr-defined]
+        # The focus rectangle is dropped: the selected row is already marked
+        # by its background, and the dotted outline reads like a second
+        # cursor next to the hover highlight.
+        styled.state &= ~QStyle.StateFlag.State_HasFocus
+        super().paint(painter, styled, index)  # type: ignore[arg-type]
 
 
 class ActionColumnDelegate(UniformRowDelegate):
@@ -82,14 +101,19 @@ class ActionColumnDelegate(UniformRowDelegate):
             super().paint(painter, option, index)  # type: ignore[arg-type]
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
-        styled.text = ""
-        styled.icon = QIcon()
-        widget = styled.widget
+        selected = bool(styled.state & QStyle.StateFlag.State_Selected)
+        if index.data(STRIPE_ROLE) and not selected:
+            painter.fillRect(styled.rect, STRIPE_COLOR)  # type: ignore[attr-defined]
+        styled.state &= ~QStyle.StateFlag.State_HasFocus
+        blank = QStyleOptionViewItem(styled)
+        blank.text = ""
+        blank.icon = QIcon()
+        widget = blank.widget
         style = widget.style() if widget is not None else QApplication.style()
         style.drawPrimitive(
-            QStyle.PrimitiveElement.PE_PanelItemViewItem, styled, painter, widget
+            QStyle.PrimitiveElement.PE_PanelItemViewItem, blank, painter, widget
         )
-        shifted = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+        shifted = QStyleOptionViewItem(styled)
         offset = (
             style.pixelMetric(QStyle.PixelMetric.PM_IndicatorWidth, None, widget) + 4
         )
@@ -126,6 +150,22 @@ class FlatPathDelegate(UniformRowDelegate):
         depth = row.depth
         is_hidden = model.hidden.is_hidden(row.path)
 
+        styled = QStyleOptionViewItem(option)
+        selected = bool(styled.state & QStyle.StateFlag.State_Selected)
+        # Paint the row background (alternating group, selection, hover) with
+        # the style first, so the custom text below sits on the right colour.
+        styled.state &= ~QStyle.StateFlag.State_HasFocus
+        if index.data(STRIPE_ROLE) and not selected:
+            painter.fillRect(styled.rect, STRIPE_COLOR)
+        blank = QStyleOptionViewItem(styled)
+        blank.text = ""
+        blank.icon = QIcon()
+        widget = blank.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawPrimitive(
+            QStyle.PrimitiveElement.PE_PanelItemViewItem, blank, painter, widget
+        )
+
         painter.save()
         painter.translate(option.rect.left(), option.rect.top())
         baseline = option.rect.height() // 2 + option.fontMetrics.ascent() // 2 - 1
@@ -136,10 +176,15 @@ class FlatPathDelegate(UniformRowDelegate):
             painter.setPen(QPen(RULE_COLOR, 1))
             painter.drawLine(rule_x, 0, rule_x, option.rect.height())
             x += 6
-        color = option.palette.color(option.palette.ColorRole.Text)
-        if is_hidden:
-            # A hidden row stays readable but is clearly marked.
-            color = QColor("#9ca3af")
+        if selected:
+            color = styled.palette.color(
+                styled.palette.ColorRole.HighlightedText
+            )
+        else:
+            color = styled.palette.color(styled.palette.ColorRole.Text)
+            if is_hidden:
+                # A hidden row stays readable but is clearly marked.
+                color = HIDDEN_COLOR
         painter.setPen(color)
         if icon is not None:
             icon.paint(
