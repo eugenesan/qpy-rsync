@@ -467,6 +467,9 @@ class MainWindow(QMainWindow):
         direction_layout = QHBoxLayout(direction)
         direction_layout.setContentsMargins(0, 0, 0, 0)
         direction_layout.setSpacing(4)
+        # The line is secondary to the checkboxes, so it is kept to a single
+        # compact row instead of a full label row of its own.
+        direction.setFixedHeight(16)
         source_label = QLabel("Source")
         source_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
@@ -475,12 +478,16 @@ class MainWindow(QMainWindow):
         destination_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
+        label_font = source_label.font()
+        label_font.setPointSizeF(max(8.5, label_font.pointSizeF() * 0.85))
+        source_label.setFont(label_font)
+        destination_label.setFont(label_font)
         arrow = QLabel("\u2192")
         arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
         arrow.setToolTip("Source is compared with Destination")
         arrow.setObjectName("sync-direction-arrow")
         arrow_font = arrow.font()
-        arrow_font.setPointSizeF(max(11.0, arrow_font.pointSizeF() * 1.6))
+        arrow_font.setPointSizeF(max(9.0, label_font.pointSizeF() * 1.1))
         arrow_font.setBold(True)
         arrow.setFont(arrow_font)
         direction_layout.addWidget(source_label, 1)

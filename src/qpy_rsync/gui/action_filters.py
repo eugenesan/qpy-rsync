@@ -37,7 +37,7 @@ class ActionFilterBar(QWidget):
             box.setIcon(action_icon(action))
             # The checkbox indicator and the glyph fit into a compact square.
             box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-            box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE + 8)
+            box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
             box.setToolTip(self._tooltip(action))
             box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} items")
             box.setChecked(True)
@@ -50,7 +50,7 @@ class ActionFilterBar(QWidget):
         self.unchanged_box = QCheckBox(self)
         self.unchanged_box.setIcon(unchanged_icon())
         self.unchanged_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.unchanged_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE + 8)
+        self.unchanged_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
         self.unchanged_box.setToolTip(
             "Show the unchanged items of the comparison.\n"
             "The inventory lists both sides, so the unchanged items can be "
@@ -67,7 +67,7 @@ class ActionFilterBar(QWidget):
         self.hidden_box = QCheckBox(self)
         self.hidden_box.setIcon(hidden_icon())
         self.hidden_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.hidden_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE + 8)
+        self.hidden_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
         self.hidden_box.setToolTip(
             "Show the items that were hidden from the comparison.\n"
             "A hidden item is not part of the sync. The list is kept in "
