@@ -153,3 +153,24 @@ def gather_inventory(
 def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
     """Return the objects that both trees share unchanged."""
     return gather_inventory(profile, changed).unchanged
+
+
+def gather_destination_metadata(
+    profile,
+    changed: Iterable[Change],
+    progress: Callable[[str, int], None] | None = None,
+) -> InventoryResult:
+    """List the destination only, for the size and date of its objects.
+
+    A comparison reports the source metadata, so an object that exists only
+    on the destination arrives with no size and no date. One listing of the
+    destination fills both in.
+    """
+    callback = (
+        (lambda count: progress("Destination", count)) if progress is not None else None
+    )
+    entries = inventory_paths(profile.destination, profile, callback)
+    metadata = {
+        path: (entry.size, entry.modified_time) for path, entry in entries.items()
+    }
+    return InventoryResult(unchanged=[], destination_metadata=metadata)

@@ -41,7 +41,10 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
-from qpy_rsync.backend.inventory import InventoryResult
+from qpy_rsync.backend.inventory import (
+    InventoryResult,
+    gather_destination_metadata,
+)
 from qpy_rsync.backend.process_runner import ProcessState
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.core.changes import ChangeAction
@@ -193,6 +196,13 @@ class MainWindow(QMainWindow):
         self._inventory_service.progress.connect(self._inventory_progress)
         self._inventory_service.finished.connect(self._inventory_finished)
         self._inventory_service.failed.connect(self._inventory_failed)
+        # A separate, lighter listing fills in the size and the date of the
+        # objects that exist only on the destination.
+        self._metadata_service = InventoryService(
+            self, gather=gather_destination_metadata
+        )
+        self._metadata_service.finished.connect(self._metadata_finished)
+        self._metadata_token = 0
         self._inventory_token = 0
         self._inventory_pending_key: object | None = None
         self._inventory_cache_key: object | None = None
@@ -2035,6 +2045,7 @@ class MainWindow(QMainWindow):
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
+        self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         self.comparison.set_stale(False)
         self._set_locations_stale(False)
@@ -2180,6 +2191,41 @@ class MainWindow(QMainWindow):
 
     def _inventory_summary(self, unchanged: int) -> str:
         return f"Showing {unchanged:,} unchanged item(s)."
+
+    def _fetch_destination_metadata(self) -> None:
+        """Fill in the size and date of the destination-only objects."""
+        if self._active_profile is None:
+            return
+        if getattr(self.comparison.model, "hidden", None) is None:
+            return
+        # The inventory already knows the destination metadata.
+        if self.inventory_after_compare_button.isChecked():
+            return
+        self._metadata_token = self._metadata_service.gather(
+            deepcopy(self._active_profile), list(self._changed_changes())
+        )
+
+    def _changed_changes(self) -> list[object]:
+        return [
+            change
+            for change in self._last_changed_changes
+            if getattr(change, "action", None)
+            is not ChangeAction.NO_CHANGE
+        ]
+
+    def _metadata_finished(self, token: int, extra: object) -> None:
+        if self._closing or token != self._metadata_token:
+            return
+        self._metadata_token = 0
+        result = _inventory_result(extra)
+        if not result.destination_metadata:
+            return
+        merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
+        merged.update(result.destination_metadata)
+        self.comparison.set_destination_metadata(merged)
+        self._append_log(
+            f"Destination metadata: {len(result.destination_metadata)} object(s)."
+        )
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
@@ -2512,7 +2558,8 @@ class MainWindow(QMainWindow):
         ):
             # Turning the toggle on for an existing comparison starts the
             # inventory that would otherwise have run after the comparison.
-            self._apply_inventory_after_compare()
+            self._fetch_destination_metadata()
+        self._apply_inventory_after_compare()
 
     def _shutdown_operations(self) -> None:
         """Stop every running operation before the window is destroyed."""

@@ -90,3 +90,32 @@ def test_inventory_service_reports_listing_progress() -> None:
     application.processEvents()
     assert ("Source", 500) in reports
     assert ("Destination", 750) in reports
+
+
+def test_destination_metadata_is_listed_on_its_own(monkeypatch) -> None:
+    from qpy_rsync.backend import inventory as inv
+
+    def fake_paths(endpoint, profile=None, progress=None):
+        from qpy_rsync.core.changes import ObjectKind
+
+        return {
+            "gone.txt": inv.InventoryEntry(
+                ObjectKind.FILE, size=1234, modified_time="2024-01-02-03:04:05"
+            ),
+            "kept.txt": inv.InventoryEntry(
+                ObjectKind.FILE, size=99, modified_time="2024-02-03-04:05:06"
+            ),
+        }
+
+    monkeypatch.setattr(inv, "inventory_paths", fake_paths)
+    from qpy_rsync.core.endpoints import parse_endpoint
+    from qpy_rsync.core.models import SyncProfile
+
+    profile = SyncProfile(
+        name="t",
+        source=parse_endpoint("/tmp/a"),
+        destination=parse_endpoint("/tmp/b"),
+    )
+    result = inv.gather_destination_metadata(profile, [])
+    assert result.unchanged == []
+    assert result.destination_metadata["gone.txt"] == (1234, "2024-01-02-03:04:05")

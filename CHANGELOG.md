@@ -428,3 +428,8 @@
 - The path filter waits for a short pause or Enter before it runs, matches folders typed with a trailing slash and matches relative paths such as `docs/sub`. Filtering 80,000 items takes about 0.1 s.
 - Sorting by size, date, count or action orders the whole list like FreeFileSync, and a second click reverses it.
 - Removed the unused `change_model.py` and `elided_label.py`.
+
+## milestone 1.15as destination metadata and columns
+
+- A comparison reports the source metadata, so an object that exists only on the destination arrived with a size of 0 B and no date. A short destination listing now fills both in after every comparison that has destination-side items.
+- The Items, Size and Modified columns can be switched off from the header context menu; the choice is remembered per pane. A saved header from an older layout can no longer shrink the name column to an unreadable width.
