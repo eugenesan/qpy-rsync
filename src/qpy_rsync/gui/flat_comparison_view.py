@@ -126,7 +126,8 @@ class FlatPathDelegate(UniformRowDelegate):
 
         text = str(model.data(index, Qt.ItemDataRole.DisplayRole) or "")
         icon = index.data(Qt.ItemDataRole.DecorationRole)
-        depth = row.depth if row.is_directory else row.depth - 1
+        # A directory sits at its own depth, its items one level below it.
+        depth = row.depth
         is_hidden = model.hidden.is_hidden(row.path)
 
         painter.save()
