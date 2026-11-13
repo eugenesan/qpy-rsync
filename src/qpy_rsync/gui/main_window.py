@@ -141,16 +141,16 @@ from .flat_comparison_view import FlatComparisonView
 from .icons import (
     cancel_icon,
     compare_icon,
-    destination_icon,
     filters_icon,
     inventory_mode_icon,
+    backup_icon,
+    folder_add_icon,
     folder_open_icon,
     log_file_icon,
     open_icon,
     pause_icon,
     save_icon,
     settings_icon,
-    source_icon,
     swap_icon,
     synchronize_icon,
     verified_icon,
@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
         self.save_profile_button.setAccessibleName("Save Profile")
         self.backup_open = self._external_open_button(
             "backup-open-button",
-            folder_open_icon(),
+            backup_icon(),
             "Open the backup directory",
             self._open_backup_directory,
         )
@@ -427,8 +427,6 @@ class MainWindow(QMainWindow):
         ):
             button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
             button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.show_unchanged = self.comparison.inventory_button
-        self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
         self.inventory_after_compare_button.toggled.connect(
             self._inventory_after_compare_changed
         )
@@ -446,7 +444,10 @@ class MainWindow(QMainWindow):
             self.log_file_open,
             self.settings_button,
         ):
-            controls.addWidget(widget)
+            if widget is None:
+                controls.addWidget(vertical_separator())
+            else:
+                controls.addWidget(widget)
         controls.addWidget(vertical_separator())
         controls.addWidget(self.comparison.controls, 1)
         layout.addLayout(controls)
@@ -457,11 +458,26 @@ class MainWindow(QMainWindow):
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
         self.action_filters.hidden_toggled.connect(self._apply_show_hidden)
+        self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
+        self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
+        # The arrow above the checkboxes shows the direction of the sync, so
+        # the Source and Destination glyphs are not needed.
+        arrow = QLabel("\u2192")
+        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow.setToolTip("Source is compared with Destination")
+        arrow.setObjectName("sync-direction-arrow")
+        arrow.setFixedHeight(12)
+        filter_column = QWidget(self)
+        filter_column_layout = QVBoxLayout(filter_column)
+        filter_column_layout.setContentsMargins(0, 0, 0, 0)
+        filter_column_layout.setSpacing(0)
+        filter_column_layout.addWidget(arrow, 0)
+        filter_column_layout.addWidget(
+            self.action_filters, 0, Qt.AlignmentFlag.AlignBottom
+        )
         locations.addWidget(source_panel, 40)
-        locations.addWidget(self.action_filters, 0, Qt.AlignmentFlag.AlignVCenter)
-        locations.addWidget(vertical_separator())
-        locations.addWidget(self.comparison.view_controls, 0, Qt.AlignmentFlag.AlignVCenter)
+        locations.addWidget(filter_column, 0, Qt.AlignmentFlag.AlignBottom)
         locations.addWidget(vertical_separator())
         locations.addWidget(destination_panel, 40)
         layout.addLayout(locations)
@@ -481,10 +497,6 @@ class MainWindow(QMainWindow):
         log_layout_column = QVBoxLayout(log_column)
         log_layout_column.setContentsMargins(0, 0, 0, 0)
         log_layout_column.setSpacing(2)
-        self.log_header = QLabel("Journal")
-        self.log_header.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
         self.state_label = QLabel("State:")
         self.state_label.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -523,12 +535,6 @@ class MainWindow(QMainWindow):
         log_container_layout = QVBoxLayout(log_container)
         log_container_layout.setContentsMargins(0, 0, 0, 0)
         log_container_layout.setSpacing(2)
-        header_row = QHBoxLayout()
-        header_row.setContentsMargins(0, 0, 0, 0)
-        header_row.setSpacing(6)
-        header_row.addWidget(self.log_header)
-        header_row.addStretch(1)
-        log_container_layout.addLayout(header_row)
         log_container_layout.addWidget(self.log, 1)
         self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
         self.preview_log_splitter.setChildrenCollapsible(False)
@@ -904,19 +910,6 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(panel)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
-        icon = QLabel()
-        icon.setPixmap(
-            (source_icon() if title == "Source" else destination_icon()).pixmap(
-                CONTROL_SIZE, CONTROL_SIZE
-            )
-        )
-        # The glyph matches the size of the buttons in the same row.
-        icon.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setObjectName(f"{title.lower()}-location-label")
-        icon.setToolTip(f"{title} directory")
-        icon.setAccessibleName(f"{title} directory")
-        row.addWidget(icon)
         open_button = self._external_open_button(
             f"{title.lower()}-open-button",
             folder_open_icon(),
@@ -928,9 +921,17 @@ class MainWindow(QMainWindow):
         else:
             self.destination_open_button = open_button
         row.addWidget(open_button)
-        browse = QPushButton("Browse...")
-        browse.setToolTip(f"Select the {title} directory")
+        browse = QToolButton()
+        browse.setIcon(folder_add_icon())
+        browse.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        browse.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        browse.setToolTip(f"Browse to {title} location")
+        browse.setAccessibleName(f"Browse to {title} location")
         browse.clicked.connect(lambda: self._browse(edit))
+        if title == "Source":
+            self.source_browse_button = browse
+        else:
+            self.destination_browse_button = browse
         row.addWidget(edit, 1)
         row.addWidget(browse)
         if trailing:
@@ -2045,6 +2046,12 @@ class MainWindow(QMainWindow):
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
+        self.comparison.source_is_local = (
+            self._active_profile.source.kind is EndpointKind.LOCAL
+        )
+        self.comparison.destination_is_local = (
+            self._active_profile.destination.kind is EndpointKind.LOCAL
+        )
         self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         self.comparison.set_stale(False)

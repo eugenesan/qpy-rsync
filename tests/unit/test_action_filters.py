@@ -67,7 +67,9 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     app()
     bar = ActionFilterBar()
     boxes = [
-        box for box in bar.findChildren(QCheckBox) if box is not bar.hidden_box
+        box
+        for box in bar.findChildren(QCheckBox)
+        if box not in (bar.hidden_box, bar.unchanged_box)
     ]
     tooltips = [child.toolTip() for child in boxes]
     assert tooltips

@@ -274,6 +274,12 @@ class OverviewBarDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+def _header_height(widget: QWidget) -> int:
+    """A header as short as its text allows, with room for the indicator."""
+    metrics = widget.fontMetrics()
+    return max(16, metrics.height() + 2)
+
+
 class StatisticsBar(QWidget):
     """The selected amounts, the way FreeFileSync shows them.
 
@@ -290,21 +296,16 @@ class StatisticsBar(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(2)
 
-        summary_row = QHBoxLayout()
-        summary_row.setContentsMargins(0, 0, 0, 0)
-        summary_row.setSpacing(6)
-        heading = QLabel("Selected:")
-        heading.setStyleSheet("font-weight: bold;")
-        summary_row.addWidget(heading)
-        self.summary = QLabel("")
-        self.summary.setObjectName("statistics-summary")
-        summary_row.addWidget(self.summary)
-        summary_row.addStretch(1)
-        layout.addLayout(summary_row)
-
         actions_row = QHBoxLayout()
         actions_row.setContentsMargins(0, 0, 0, 0)
         actions_row.setSpacing(4)
+        heading = QLabel("Selected:")
+        heading.setStyleSheet("font-weight: bold;")
+        actions_row.addWidget(heading)
+        self.summary = QLabel("")
+        self.summary.setObjectName("statistics-summary")
+        actions_row.addWidget(self.summary)
+        actions_row.addSpacing(8)
         for action, key in (
             (ChangeAction.CREATE, "created"),
             (ChangeAction.UPDATE_CONTENT, "updated"),
@@ -361,14 +362,10 @@ class OverviewPane(QWidget):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("overview-pane")
-        self.setMinimumWidth(280)
+        self.setMinimumWidth(340)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
-
-        title = QLabel("Overview")
-        title.setStyleSheet("font-weight: bold;")
-        layout.addWidget(title)
 
         self.model = OverviewModel(self)
         self.tree = QTreeView()
@@ -384,6 +381,7 @@ class OverviewPane(QWidget):
         self.tree.header().setSortIndicatorShown(True)
         self.tree.header().setSectionsClickable(True)
         self.tree.header().setStretchLastSection(False)
+        self.tree.header().setFixedHeight(_header_height(self.tree))
         for section in range(OverviewModel.COLUMN_COUNT):
             self.tree.header().setSectionResizeMode(
                 section, QHeaderView.ResizeMode.Interactive

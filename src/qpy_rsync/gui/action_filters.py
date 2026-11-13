@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QSizePolicy, QWidget
 from qpy_rsync.core.changes import ChangeAction
 
 from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
-from .icons import ACTION_LABELS, action_icon, hidden_icon
+from .icons import ACTION_LABELS, action_icon, hidden_icon, unchanged_icon
 
 FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (
     ChangeAction.CREATE,
@@ -23,6 +23,7 @@ class ActionFilterBar(QWidget):
 
     changed = Signal(object)
     hidden_toggled = Signal(bool)
+    unchanged_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +44,21 @@ class ActionFilterBar(QWidget):
             box.toggled.connect(lambda _checked: self._emit_change())
             layout.addWidget(box)
             self._boxes[action] = box
+
+        # The unchanged items and the hidden items are toggles rather than
+        # display filters, so they sit together at the end of the bar.
+        self.unchanged_box = QCheckBox(self)
+        self.unchanged_box.setIcon(unchanged_icon())
+        self.unchanged_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.unchanged_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE + 8)
+        self.unchanged_box.setToolTip(
+            "Show the unchanged items of the comparison.\n"
+            "The inventory lists both sides, so the unchanged items can be "
+            "shown next to the changed ones."
+        )
+        self.unchanged_box.setAccessibleName("Show unchanged items")
+        self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
+        layout.addWidget(self.unchanged_box)
 
         # The hidden items are the ones the user put aside. They affect the
         # sync, so this is not just a display filter: it shows what is

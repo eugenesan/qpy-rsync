@@ -287,6 +287,29 @@ def folder_open_icon() -> QIcon:
     )
 
 
+def folder_add_icon() -> QIcon:
+    """The system icon for choosing a directory."""
+    return _theme_icon(
+        "folder-new-symbolic",
+        "folder-add-symbolic",
+        "folder-new",
+        "folder-drag-accept",
+        "folder",
+        fallback=QStyle.StandardPixmap.SP_DirOpenIcon,
+    )
+
+
+def backup_icon() -> QIcon:
+    """The system icon for the backup directory."""
+    return _theme_icon(
+        "backup-symbolic",
+        "folder-backup-symbolic",
+        "document-save-symbolic",
+        "drive-harddisk",
+        fallback=QStyle.StandardPixmap.SP_DriveHDIcon,
+    )
+
+
 def log_file_icon() -> QIcon:
     """The system icon for opening the log file externally."""
     return _theme_icon(

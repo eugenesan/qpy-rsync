@@ -215,6 +215,10 @@ class FlatComparisonView(QWidget):
         self.model = FlatChangeModel(self)
         self._source_root = ""
         self._destination_root = ""
+        # Whether each side lives on this machine, so local items can be
+        # opened with the desktop handlers.
+        self.source_is_local = True
+        self.destination_is_local = True
         self._syncing = False
         self._update_freeze = 0
 
@@ -434,6 +438,12 @@ class FlatComparisonView(QWidget):
 
     def _configure_columns(self) -> None:
         self._apply_column_visibility()
+        # The header only needs the height of its text, so the list starts a
+        # little higher.
+        for tree in (self.source, self.action, self.destination):
+            tree.header().setFixedHeight(
+                max(16, tree.fontMetrics().height() + 2)
+            )
         self.source.header().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
         self.source.header().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.header().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
@@ -737,6 +747,10 @@ class FlatComparisonView(QWidget):
             self._request_diff(index)
         elif selected is actions["copy"] and path is not None:
             self._copy_path(tree, path)
+        elif selected is actions["open_file"] and path is not None:
+            self._open_local(tree, path)
+        elif selected is actions["open_directory"] and path is not None:
+            self._open_local_directory(tree, path)
         elif selected is actions["reset_one"] and path is not None:
             self.model.reset_decision(path)
         elif selected is actions["reset_subtree"] and path is not None:
@@ -751,6 +765,35 @@ class FlatComparisonView(QWidget):
             self.show_all_hidden()
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
+
+    def _side_is_local(self, tree: QTreeView) -> bool:
+        """Whether the pane's endpoint lives on this machine."""
+        if tree is self.destination:
+            return self.destination_is_local
+        return self.source_is_local
+
+    def _local_path(self, tree: QTreeView, path: str) -> str:
+        root = self.destination_root if tree is self.destination else self.source_root
+        return full_path(root, path)
+
+    def _open_local(self, tree: QTreeView, path: str) -> None:
+        """Open a file with the desktop handler."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self._local_path(tree, path)))
+
+    def _open_local_directory(self, tree: QTreeView, path: str) -> None:
+        """Open the file manager at the item or at the directory that holds it."""
+        from pathlib import Path as _Path
+
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        target = _Path(self._local_path(tree, path))
+        if not target.is_dir():
+            target = target.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
     def _absolute_path(self, tree: QTreeView, path: str | None) -> str:
         if not path:
@@ -782,6 +825,8 @@ class FlatComparisonView(QWidget):
         menu = QMenu(tree)
         actions: dict[str, object] = {
             "copy": None,
+            "open_file": None,
+            "open_directory": None,
             "diff": None,
             "reset_one": None,
             "reset_subtree": None,
@@ -797,6 +842,14 @@ class FlatComparisonView(QWidget):
             menu.addSeparator()
         actions["copy"] = menu.addAction("Copy Path")
         actions["copy"].setEnabled(path is not None)  # type: ignore[union-attr]
+        if path is not None and self._side_is_local(tree):
+            is_directory = bool(getattr(row, "is_directory", False))
+            menu.addSeparator()
+            if not is_directory:
+                actions["open_file"] = menu.addAction("Open File")
+            actions["open_directory"] = menu.addAction(
+                "Open in Directory" if not is_directory else "Open Directory"
+            )
         if not is_unchanged:
             menu.addSeparator()
             actions["diff"] = menu.addAction("Open in Diff Tool")

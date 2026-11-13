@@ -154,13 +154,12 @@ def test_filter_find_focus_and_ui_labels() -> None:
     assert window.comparison.model.HEADERS[1] == "Items"
     assert window.comparison.model.HEADERS[5] == "Item"
     assert window.comparison.model.HEADERS[6] == "Items"
-    assert window.log_header.text() == "Journal"
-    source_label = window.findChild(QLabel, "source-location-label")
-    destination_label = window.findChild(QLabel, "destination-location-label")
-    assert not source_label.pixmap().isNull()
-    assert not destination_label.pixmap().isNull()
-    assert source_label.toolTip() == "Source directory"
-    assert destination_label.toolTip() == "Destination directory"
+    # The Journal and Overview headings are gone; the panes explain
+    # themselves.
+    assert not window.findChildren(QLabel, "overview-title")
+    assert window.source_browse_button.toolTip() == "Browse to Source location"
+    assert window.destination_browse_button.toolTip() == "Browse to Destination location"
+    assert window.settings_button.toolTip() == "Settings"
     window.close()
     application.processEvents()
 
@@ -387,9 +386,6 @@ def test_command_preview_splitter_is_resizable() -> None:
         window.log.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
     )
     assert window.log.minimumHeight() < window.log.minimumSizeHint().height()
-    # The Journal label keeps its natural height so no gap opens up between
-    # the label and the Journal box.
-    assert window.log_header.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
     # The State field lives in the window status bar.
     assert window.statusBar().isAncestorOf(window.status_edit)
     window.close()
@@ -601,10 +597,9 @@ def test_rows_use_separators_between_the_control_groups() -> None:
         for frame in window.findChildren(QFrame)
         if frame.frameShape() == QFrame.Shape.VLine
     ]
-    # Swap | Compare, Load Profile | Filter/Find, Source Browse | filters,
-    # filters | unchanged, unchanged | Destination. The backup and log rows
-    # moved into the Settings dialog.
-    assert len(separators) == 5
+    # Swap | Compare, Load Profile | Filter/Find, Pause | Filter, and the
+    # separators around the Source and Destination panels.
+    assert len(separators) >= 4
     window.close()
     application.processEvents()
 

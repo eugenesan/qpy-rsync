@@ -581,16 +581,19 @@ class FlatChangeModel(QAbstractTableModel):
                 directory = directories.get(row.path)
                 if directory is None or not directory.visible:
                     continue
-                if check_hidden and hidden.is_hidden(row.path):
+                row_is_hidden = hidden.is_hidden(row.path)
+                if check_hidden and row_is_hidden:
                     continue
-                if directory.own_change_index >= 0:
+                if directory.own_change_index >= 0 and not row_is_hidden:
                     visible_change_indices.add(directory.own_change_index)
             else:
                 if not self._change_visible[row.change_index]:
                     continue
-                if check_hidden and hidden.is_hidden(row.path):
+                row_is_hidden = hidden.is_hidden(row.path)
+                if check_hidden and row_is_hidden:
                     continue
-                visible_change_indices.add(row.change_index)
+                if not row_is_hidden:
+                    visible_change_indices.add(row.change_index)
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows
