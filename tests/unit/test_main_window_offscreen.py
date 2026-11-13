@@ -488,6 +488,7 @@ def test_verification_reuses_fresh_comparison() -> None:
         "replaced 0, deleted 0; 1 item, 0 B"
     ) in log
     assert window.progress_label.text() == "Selected actions verified"
+    assert window.status_edit.text() == "Selected actions verified."
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()

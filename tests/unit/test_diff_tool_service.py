@@ -56,12 +56,71 @@ def test_build_request_rejects_one_sided_change(tmp_path: Path) -> None:
         build_diff_request(profile, change, tool=DiffTool("meld", "/usr/bin/meld"))
 
 
-def test_build_request_rejects_remote_endpoint(tmp_path: Path) -> None:
+def test_build_request_stages_a_remote_destination(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("local")
     profile = SyncProfile(
         "test",
-        Endpoint(EndpointKind.LOCAL, str(tmp_path)),
-        Endpoint(EndpointKind.SSH, "/tmp/", host="server"),
+        Endpoint(EndpointKind.LOCAL, str(source)),
+        Endpoint(EndpointKind.SSH, "/remote/", host="server"),
     )
     change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
-    with pytest.raises(DiffToolError, match="both endpoints must be local"):
+
+    def fake_fetch(_profile, _endpoint, _path, target):
+        target.write_text("remote")
+
+    monkeypatch.setattr(
+        "qpy_rsync.services.diff_tool_service._fetch_remote_file", fake_fetch
+    )
+    stage = tmp_path / "stage"
+    request = build_diff_request(
+        profile,
+        change,
+        tool=DiffTool("meld", "/usr/bin/meld"),
+        staging_dir=stage,
+    )
+    assert request.source == source / "file.txt"
+    assert request.destination == stage / "file.txt"
+    assert request.destination.read_text() == "remote"
+    assert request.staging_directory == stage
+
+
+def test_build_request_stages_a_remote_source(tmp_path: Path, monkeypatch) -> None:
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    (destination / "file.txt").write_text("local")
+    profile = SyncProfile(
+        "test",
+        Endpoint(EndpointKind.SSH, "/remote/", host="server"),
+        Endpoint(EndpointKind.LOCAL, str(destination)),
+    )
+    change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+
+    def fake_fetch(_profile, _endpoint, _path, target):
+        target.write_text("remote")
+
+    monkeypatch.setattr(
+        "qpy_rsync.services.diff_tool_service._fetch_remote_file", fake_fetch
+    )
+    stage = tmp_path / "stage"
+    request = build_diff_request(
+        profile,
+        change,
+        tool=DiffTool("meld", "/usr/bin/meld"),
+        staging_dir=stage,
+    )
+    assert request.source == stage / "file.txt"
+    assert request.source.read_text() == "remote"
+    assert request.destination == destination / "file.txt"
+
+
+def test_build_request_rejects_two_remote_endpoints(tmp_path: Path) -> None:
+    profile = SyncProfile(
+        "test",
+        Endpoint(EndpointKind.SSH, "/source/", host="one"),
+        Endpoint(EndpointKind.SSH, "/destination/", host="two"),
+    )
+    change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+    with pytest.raises(DiffToolError, match="At most one"):
         build_diff_request(profile, change, tool=DiffTool("meld", "/usr/bin/meld"))

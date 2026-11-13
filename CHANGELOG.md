@@ -358,3 +358,8 @@
 - The status bar shows only operation states: `Enter locations to compare`, `Ready for compare`, comparison, verification and synchronization states.
 - Warnings and errors no longer replace the state; they appear only in the journal, where the colour conveys severity.
 - Duplicate backup warnings are collapsed, and journal lines no longer carry the redundant `STATUS` and `Warning:`/`Error:` prefixes.
+
+## milestone 1.15ah remote diff staging
+
+- The verification state now reads “Selected actions verified.” without the extra note about files.
+- Diffing a change with one remote endpoint stages that file locally with rsync and opens the normal local diff tool. Staging directories are removed when the app closes.

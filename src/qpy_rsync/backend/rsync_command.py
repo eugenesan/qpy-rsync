@@ -139,6 +139,19 @@ def build_compare_spec(profile: SyncProfile, *, filter_file: Path | None = None)
     return _process_spec(profile, args)
 
 
+def build_fetch_spec(
+    profile: SyncProfile, endpoint: Endpoint, remote_path: str, local_path: Path
+) -> ProcessSpec:
+    """Fetch one remote file into a local staging path."""
+    args = ["--archive", "--no-compress"]
+    remote_shell = _remote_shell_argument(profile)
+    if remote_shell is not None:
+        args.extend(("-e", remote_shell))
+    operand = endpoint.rsync_operand().rstrip("/")
+    args.extend(("--", f"{operand}/{remote_path.lstrip('/')}", str(local_path)))
+    return _process_spec(profile, args)
+
+
 def build_inventory_spec(profile: SyncProfile, endpoint: Endpoint) -> ProcessSpec:
     """List one endpoint's objects using the profile's include/exclude rules."""
     operand = endpoint.rsync_operand()

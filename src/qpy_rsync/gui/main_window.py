@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import shlex
+import shutil
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -193,6 +194,7 @@ class MainWindow(QMainWindow):
         self._inventory_cache_key: object | None = None
         self._inventory_cache: list[object] | None = None
         self._dialog_filter_context: object | None = None
+        self._diff_staging_directories: list[Path] = []
         self._last_backup_message: tuple[str, str] | None = None
         self._last_changed_changes: list[object] = []
         self._sync_service = SyncService(self)
@@ -1493,9 +1495,7 @@ class MainWindow(QMainWindow):
                 )
             self.progress_bar.setValue(100)
             self.progress_label.setText("Selected actions verified")
-            self._set_state(
-                "Selected actions verified. No files were changed.", "success"
-            )
+            self._set_state("Selected actions verified.", "success")
             self._append_log("STATE actions-verified")
             self._end_bulk_logging()
             return
@@ -1832,6 +1832,8 @@ class MainWindow(QMainWindow):
         except DiffToolError as exc:
             QMessageBox.information(self, "Diff tool unavailable", str(exc))
             return
+        if request.staging_directory is not None:
+            self._diff_staging_directories.append(request.staging_directory)
         arguments = [str(request.source), str(request.destination)]
         started, _pid = QProcess.startDetached(request.tool.executable, arguments)
         if not started:
@@ -2338,6 +2340,9 @@ class MainWindow(QMainWindow):
     def _shutdown_operations(self) -> None:
         """Stop every running operation before the window is destroyed."""
         self._cleanup_dialog_filter()
+        for directory in self._diff_staging_directories:
+            shutil.rmtree(directory, ignore_errors=True)
+        self._diff_staging_directories.clear()
         for service in (self._service, self._sync_service, self._plan_validation):
             shutdown = getattr(service, "shutdown", None)
             if shutdown is None:

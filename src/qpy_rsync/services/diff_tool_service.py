@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import shutil
 from shutil import which
 import subprocess
+import tempfile
 from typing import Callable
 
+from qpy_rsync.backend.rsync_command import build_fetch_spec
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.core.enums import EndpointKind
 from qpy_rsync.core.models import SyncProfile
@@ -29,6 +33,7 @@ class DiffRequest:
     tool: DiffTool
     source: Path
     destination: Path
+    staging_directory: Path | None = None
 
 
 class DiffToolError(ValueError):
@@ -72,21 +77,83 @@ def resolve_diff_tool(
     )
 
 
+def _fetch_remote_file(
+    profile: SyncProfile,
+    endpoint,
+    change_path: str,
+    target: Path,
+) -> None:
+    """Stage one remote file locally for the diff tool."""
+    spec = build_fetch_spec(profile, endpoint, change_path, target)
+    environment = os.environ.copy()
+    environment.update(spec.environment)
+    result = subprocess.run(
+        spec.argv(),
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+    )
+    if result.returncode != 0 or not target.is_file():
+        detail = (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"rsync exited with status {result.returncode}"
+        )
+        raise DiffToolError(
+            f"Could not fetch {change_path} from the remote endpoint: {detail}"
+        )
+
+
 def build_diff_request(
     profile: SyncProfile,
     change: Change,
     *,
     tool: DiffTool | None = None,
+    staging_dir: Path | None = None,
 ) -> DiffRequest:
-    if profile.source.kind is not EndpointKind.LOCAL or profile.destination.kind is not EndpointKind.LOCAL:
-        raise DiffToolError("Remote-file staging is not implemented yet; both endpoints must be local.")
     if change.kind is not ObjectKind.FILE:
         raise DiffToolError("Only changed regular files can be opened in a diff tool.")
     if change.action not in _COMPARABLE_ACTIONS:
         raise DiffToolError("The selected change does not have files on both sides.")
+    resolved_tool = tool or resolve_diff_tool()
+
+    source_remote = profile.source.kind is not EndpointKind.LOCAL
+    destination_remote = profile.destination.kind is not EndpointKind.LOCAL
+    if source_remote and destination_remote:
+        raise DiffToolError("At most one endpoint may be remote.")
 
     source = Path(profile.source.path).expanduser() / change.path
     destination = Path(profile.destination.path).expanduser() / change.path
-    if not source.is_file() or not destination.is_file():
-        raise DiffToolError("Both comparison paths must exist and be regular files.")
-    return DiffRequest(tool or resolve_diff_tool(), source, destination)
+    if not source_remote and not source.is_file():
+        raise DiffToolError(f"Source file does not exist: {source}")
+    if not destination_remote and not destination.is_file():
+        raise DiffToolError(f"Destination file does not exist: {destination}")
+    if not source_remote and not destination_remote:
+        return DiffRequest(resolved_tool, source, destination)
+
+    created_staging = staging_dir is None
+    stage = (
+        Path(tempfile.mkdtemp(prefix="qpy-rsync-diff-"))
+        if staging_dir is None
+        else Path(staging_dir).expanduser()
+    )
+    stage.mkdir(parents=True, exist_ok=True)
+    target = stage / Path(change.path).name
+    try:
+        if source_remote:
+            _fetch_remote_file(profile, profile.source, change.path, target)
+            source = target
+        else:
+            _fetch_remote_file(profile, profile.destination, change.path, target)
+            destination = target
+    except DiffToolError:
+        if created_staging:
+            shutil.rmtree(stage, ignore_errors=True)
+        raise
+    return DiffRequest(
+        resolved_tool,
+        source,
+        destination,
+        staging_directory=stage,
+    )
