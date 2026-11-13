@@ -469,13 +469,15 @@ class FlatChangeModel(QAbstractTableModel):
         visible_change_indices: set[int] = set()
         visible_row_of_path: dict[str, int] = {}
         hidden = self.hidden
-        show_hidden = self.show_hidden
+        # Most comparisons have nothing hidden, so the check below is skipped
+        # unless the user actually hid something.
+        check_hidden = bool(hidden) and not self.show_hidden
         for index, row in enumerate(self._rows):
             if row.is_directory:
                 directory = directories.get(row.path)
                 if directory is None or not directory.visible:
                     continue
-                if hidden.is_hidden(row.path) and not show_hidden:
+                if check_hidden and hidden.is_hidden(row.path):
                     continue
                 # A directory that the comparison reported is a change of its
                 # own, the same as in the tree.
@@ -484,7 +486,7 @@ class FlatChangeModel(QAbstractTableModel):
             else:
                 if not self._change_visible[row.change_index]:
                     continue
-                if hidden.is_hidden(row.path) and not show_hidden:
+                if check_hidden and hidden.is_hidden(row.path):
                     continue
                 visible_change_indices.add(row.change_index)
             visible_row_of_path[row.path] = len(visible_rows)
@@ -515,6 +517,7 @@ class FlatChangeModel(QAbstractTableModel):
         # The directories from the deepest one upwards, so a directory knows
         # the totals of the directories below it.
         hidden = self.hidden
+        check_hidden = bool(hidden) and not self.show_hidden
         for path in self._ordered_directories():
             directory = self._directories[path]
             items = 0
@@ -524,7 +527,7 @@ class FlatChangeModel(QAbstractTableModel):
                 if not self._change_visible[index]:
                     continue
                 change = self.changes[index]
-                if hidden.is_hidden(self._change_paths[index]):
+                if check_hidden and hidden.is_hidden(self._change_paths[index]):
                     continue
                 items += 1
                 size += int(change.size or 0)
@@ -533,7 +536,7 @@ class FlatChangeModel(QAbstractTableModel):
                 child = self._directories[child_path]
                 if not child.visible:
                     continue
-                if hidden.is_hidden(child_path):
+                if check_hidden and hidden.is_hidden(child_path):
                     continue
                 items += child.subtree_items
                 size += child.subtree_size
