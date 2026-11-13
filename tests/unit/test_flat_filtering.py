@@ -327,7 +327,7 @@ def test_a_trailing_slash_filters_directories_in() -> None:
 
 
 def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
-    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtCore import QEvent, QPoint, QPointF
     from PySide6.QtGui import QMouseEvent
 
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
@@ -358,15 +358,26 @@ def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
 
     rect = view.action.visualRect(index)
     point = ActionColumnDelegate.marker_rect(rect).center()
-    event = QMouseEvent(
-        QEvent.Type.MouseButtonPress,
-        QPointF(point),
-        QPointF(view.action.viewport().mapToGlobal(point)),
-        Qt.MouseButton.LeftButton,
-        Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier,
-    )
-    assert view.eventFilter(view.action, event) is True
+
+    def tap(at: object) -> None:
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(at),
+            QPointF(view.action.viewport().mapToGlobal(at)),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(view.action.viewport(), event)
+
+    # The click must reach the viewport and restore the hidden row.
+    tap(point)
+    assert view.hidden_paths() == set()
+    # The same spot hides it again, so the marker toggles both ways.
+    tap(point)
+    assert view.hidden_paths() == {"a.txt"}
+    # A finger is less precise than a pointer: the row edge is accepted too.
+    tap(QPoint(point.x(), rect.top() + 1))
     assert view.hidden_paths() == set()
     view.close()
     application.processEvents()

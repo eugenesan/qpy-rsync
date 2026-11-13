@@ -393,8 +393,10 @@ class FlatComparisonView(QWidget):
         )
         pane.doubleClicked.connect(self._request_diff)
         # The space bar hides the selected items; the key event goes to the
-        # focused pane, so the panes are watched.
+        # focused pane, so the panes are watched. The mouse events of a pane
+        # go to its viewport, so the viewport is watched as well.
         pane.installEventFilter(self)
+        pane.viewport().installEventFilter(self)
         return pane
 
     # The optional columns of each pane, in the order they are offered.
@@ -544,27 +546,45 @@ class FlatComparisonView(QWidget):
             )
             if pane is not None
         ]
+        event_type = getattr(event, "type", lambda: None)()
+        action = getattr(self, "action", None)
+        action_viewport = getattr(action, "viewport", lambda: None)()
+        if watched is action_viewport:
+            # The viewport accepts touch events, so a touchscreen sends
+            # TouchBegin instead of the synthesized mouse press that a mouse
+            # would send. Both paths reach the same hit test.
+            if event_type == QEvent.Type.MouseButtonPress:
+                if self._toggle_hidden_at(event.position().toPoint()):
+                    return True
+            elif event_type == QEvent.Type.TouchBegin:
+                points = getattr(event, "points", lambda: ())()
+                if len(points) == 1 and self._toggle_hidden_at(
+                    points[0].position().toPoint()
+                ):
+                    return True
         if watched in panes:
-            event_type = getattr(event, "type", lambda: None)()
             if (
                 event_type == QEvent.Type.KeyPress
                 and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
             ):
                 if self._toggle_hidden():
                     return True
-            if event_type == QEvent.Type.MouseButtonPress and watched is self.action:
-                if self._click_hidden_marker(event):
-                    return True
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
-    def _click_hidden_marker(self, event: object) -> bool:
-        """Toggle the hidden state when the crossed eye is clicked."""
-        position = event.position().toPoint()  # type: ignore[attr-defined]
+    def _toggle_hidden_at(self, position: object) -> bool:
+        """Toggle the hidden state when the crossed eye is clicked or tapped."""
         index = self.action.indexAt(position)
         if not index.isValid():
             return False
         rect = self.action.visualRect(index)
-        if not ActionColumnDelegate.marker_rect(rect).contains(position):
+        marker = ActionColumnDelegate.marker_rect(rect)
+        # A finger is not as precise as a pointer, so the marked area is
+        # widened to the full height of the row and a little to the left.
+        hit = marker.adjusted(-8, -(rect.height() - marker.height()) // 2, 0, 0)
+        hit.setTop(rect.top())
+        hit.setBottom(rect.bottom())
+        hit.setRight(rect.right())
+        if not hit.contains(position):
             return False
         path = self.model.row_path(index.row())
         if not path:
