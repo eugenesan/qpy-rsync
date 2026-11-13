@@ -109,6 +109,7 @@ class ChangeTreeModel(QAbstractItemModel):
         self._override_paths: set[str] = set()
         self._expand_limited_paths: set[str] = set()
         self.expand_limit = 256
+        self.expand_limit_is_total = False
         self._nodes: dict[str, TreeNode] = {}
 
     def set_changes(self, changes: list[Change]) -> None:
@@ -143,17 +144,30 @@ class ChangeTreeModel(QAbstractItemModel):
         self.endResetModel()
         self._refresh_action_header()
 
-    def set_expand_limited_paths(self, paths: set[str], limit: int) -> None:
+    def set_expand_limited_paths(
+        self, paths: set[str], limit: int, *, total: bool = False
+    ) -> None:
         """Remember the folders that were left collapsed by the auto limit."""
         new_paths = {path for path in paths if path}
         new_limit = max(1, int(limit))
         changed = self._expand_limited_paths ^ new_paths
-        if not changed and new_limit == self.expand_limit:
+        if (
+            not changed
+            and new_limit == self.expand_limit
+            and total == self.expand_limit_is_total
+        ):
             return
         self._expand_limited_paths = new_paths
         self.expand_limit = new_limit
-        for path in changed:
-            self._notify_node_changed(path)
+        self.expand_limit_is_total = total
+        if len(changed) > 32:
+            # Marking thousands of rows one dataChanged at a time makes the
+            # proxy rebuild its filter cache repeatedly.
+            self.layoutAboutToBeChanged.emit()
+            self.layoutChanged.emit()
+        else:
+            for path in changed:
+                self._notify_node_changed(path)
 
     def clear_expand_limited(self, paths: str | set[str] | list[str]) -> None:
         """Remove the limit marker from folders the user opened manually."""
@@ -162,8 +176,12 @@ class ChangeTreeModel(QAbstractItemModel):
         if not removed:
             return
         self._expand_limited_paths -= removed
-        for path in removed:
-            self._notify_node_changed(path)
+        if len(removed) > 32:
+            self.layoutAboutToBeChanged.emit()
+            self.layoutChanged.emit()
+        else:
+            for path in removed:
+                self._notify_node_changed(path)
 
     def _notify_node_changed(self, path: str) -> None:
         node = self._nodes.get(path)
@@ -411,27 +429,18 @@ class ChangeTreeModel(QAbstractItemModel):
         items that a display filter hides no longer add to the total, and
         the unchanged items add to it as soon as the inventory lists them.
         """
-        self._visible_paths = None if paths is None else set(paths)
+        new_paths = None if paths is None else set(paths)
+        if new_paths == self._visible_paths:
+            return
+        self._visible_paths = new_paths
         self._compute_sizes(self.root)
         self._compute_items(self.root)
         if not self.root.children:
             return
-        self._emit_aggregate_changed(self.root)
-
-    def _emit_aggregate_changed(self, node: TreeNode) -> None:
-        if node.children:
-            parent = (
-                QModelIndex()
-                if node is self.root
-                else self.createIndex(node.row_index, 0, node)
-            )
-            self.dataChanged.emit(
-                self.index(0, 0, parent),
-                self.index(len(node.children) - 1, self.COLUMN_COUNT - 1, parent),
-                [Qt.ItemDataRole.DisplayRole],
-            )
-            for child in node.children:
-                self._emit_aggregate_changed(child)
+        # One layout change repaints every aggregate instead of emitting a
+        # dataChanged signal per folder, which is quadratic on large trees.
+        self.layoutAboutToBeChanged.emit()
+        self.layoutChanged.emit()
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
@@ -441,7 +450,8 @@ class ChangeTreeModel(QAbstractItemModel):
         self._compute_sizes(self.root)
         if not self.root.children:
             return
-        self._emit_aggregate_changed(self.root)
+        self.layoutAboutToBeChanged.emit()
+        self.layoutChanged.emit()
 
     def _destination_info(self, path: str) -> tuple[int | None, str | None]:
         return self._destination_metadata.get(path, (None, None))
@@ -546,11 +556,19 @@ class ChangeTreeModel(QAbstractItemModel):
         }
         limited_note = ""
         if node.path in self._expand_limited_paths and node.children:
-            limited_note = (
-                f"\n\nLeft collapsed automatically: the comparison has "
-                f"{len(self.changes)} items (limit {self.expand_limit}).\n"
-                "Expand it manually or raise the limit in Settings."
-            )
+            if self.expand_limit_is_total:
+                limited_note = (
+                    f"\n\nLeft collapsed automatically: the comparison has "
+                    f"{len(self.changes)} items, above the "
+                    f"{self.expand_limit:,}-item safety limit.\n"
+                    "Expand folders manually."
+                )
+            else:
+                limited_note = (
+                    f"\n\nLeft collapsed automatically: this folder has "
+                    f"{len(node.children)} items (limit {self.expand_limit}).\n"
+                    "Expand it manually or raise the limit in Settings."
+                )
         if column == self.ACTION:
             if change is None:
                 extra = (

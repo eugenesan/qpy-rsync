@@ -35,6 +35,11 @@ from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binar
 # state from an older layout is not restored into the new columns.
 HEADER_STATE_VERSION = "2"
 
+# A safety cap for automatic expansion. A comparison with more items than
+# this stays collapsed even when every individual folder is below the
+# per-folder setting.
+AUTO_EXPAND_TOTAL = 20000
+
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
 # The action column only carries a checkbox, a glyph and the short "Actions"
@@ -93,6 +98,7 @@ class ComparisonView(QWidget):
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
     sort_changed = Signal(int, object)
+    expansion_limited = Signal(int, int)
 
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -104,6 +110,7 @@ class ComparisonView(QWidget):
         self._syncing_expansion = False
         self._expand_mode = "all"
         self._expand_limit = 256
+        self._last_cap_notice: int | None = None
         self._limited_previous_expansion: set[str] | None = None
         self._limited_manual_expanded: set[str] = set()
         self._limited_manual_collapsed: set[str] = set()
@@ -610,11 +617,12 @@ class ComparisonView(QWidget):
 
         def restore_views() -> None:
             with self._frozen_updates():
-                if expanded_paths:
+                if expanded_paths and len(self.model.changes) <= AUTO_EXPAND_TOTAL:
                     self._expand_paths(expanded_paths)
                 else:
-                    # Expanding every row of a large tree keeps the UI busy for a
-                    # long time. Show the first level and let the user expand further.
+                    # Expanding tens of thousands of rows keeps the UI busy for
+                    # a long time. Apply the safety cap and let the user open
+                    # folders manually.
                     self.expand_initial()
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
@@ -771,6 +779,22 @@ class ComparisonView(QWidget):
             self.model.set_expand_limited_paths(set(), maximum)
             self._refresh_limited_button(set())
             return
+        total = len(self.model.changes)
+        if total > AUTO_EXPAND_TOTAL:
+            limited = {
+                self.model.index(row, 0).internalPointer().path
+                for row in range(self.model.rowCount())
+                if self.model.index(row, 0).internalPointer().children
+            }
+            self.model.set_expand_limited_paths(
+                limited, AUTO_EXPAND_TOTAL, total=True
+            )
+            self._refresh_limited_button(limited)
+            if self._last_cap_notice != total:
+                self._last_cap_notice = total
+                self.expansion_limited.emit(total, AUTO_EXPAND_TOTAL)
+            return
+        self._last_cap_notice = None
         limited, ancestors = self._limited_paths(maximum)
         self.model.set_expand_limited_paths(limited, maximum)
         self._refresh_limited_button(limited)

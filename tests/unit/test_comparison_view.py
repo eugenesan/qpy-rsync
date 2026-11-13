@@ -642,3 +642,31 @@ def test_saved_header_state_cannot_reveal_foreign_columns() -> None:
         assert restored.source.isColumnHidden(column)
     restored.close()
     application.processEvents()
+
+
+def test_total_safety_cap_keeps_a_huge_comparison_collapsed(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui import comparison_view
+
+    application = app()
+    monkeypatch.setattr(comparison_view, "AUTO_EXPAND_TOTAL", 3)
+    view = ComparisonView()
+    view.set_expand_mode("all")
+    view.set_expand_limit(256)
+    limited_events: list[tuple[int, int]] = []
+    view.expansion_limited.connect(
+        lambda count, limit: limited_events.append((count, limit))
+    )
+    view.set_changes(
+        [
+            Change(f"dir{i}/file.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")
+            for i in range(4)
+        ]
+    )
+    application.processEvents()
+    assert not view.source.isExpanded(view.source.model().index(0, 0))
+    assert view.model.expand_limit_is_total
+    assert view.model.limited_paths() == {f"dir{i}" for i in range(4)}
+    assert limited_events == [(4, 3)]
+    view.close()
+    application.processEvents()

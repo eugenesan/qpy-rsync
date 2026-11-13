@@ -367,3 +367,8 @@
 ## milestone 1.15ai diff staging feedback
 
 - Opening a remote file in the diff tool now logs the staging rsync command and its output, sets a "Preparing diff..." state, shows an indeterminate progress bar and uses a wait cursor until staging completes.
+
+## milestone 1.15aj huge inventory expansion guard
+
+- Comparisons above 20,000 items no longer expand automatically, even when each folder is below the per-folder limit. Top-level folders are marked, the journal reports the safety limit, and folders can be opened manually. This keeps adding tens of thousands of unchanged items responsive.
+- Folder aggregate refreshes and large marker updates now use a single layout change instead of thousands of dataChanged signals.

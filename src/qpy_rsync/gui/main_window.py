@@ -257,6 +257,7 @@ class MainWindow(QMainWindow):
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
+        self.comparison.expansion_limited.connect(self._expansion_limited)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
         self.comparison.controls.setParent(root)
@@ -1811,6 +1812,13 @@ class MainWindow(QMainWindow):
             "info",
         )
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
+
+    def _expansion_limited(self, count: int, limit: int) -> None:
+        self._set_status(
+            f"Auto-expansion skipped: {count:,} items exceed the "
+            f"{limit:,}-item safety limit. Expand folders manually.",
+            "warning",
+        )
 
     def _overview_updated(self, changes: object) -> None:
         """Refresh the overview with the items the filters show."""
