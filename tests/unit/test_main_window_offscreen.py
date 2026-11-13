@@ -1133,3 +1133,45 @@ def test_startup_state_is_ready_for_compare_when_locations_exist(tmp_path) -> No
     assert window.status_edit.text() == "Ready for compare"
     window.close()
     application.processEvents()
+
+
+def test_diff_preparation_shows_progress_before_staging(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.diff_tool_service import DiffToolError
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    seen: list[tuple[str, str, bool]] = []
+
+    def fake_build(*_args, **_kwargs):
+        seen.append(
+            (
+                window.status_edit.text(),
+                window.progress_label.text(),
+                not window.progress_bar.isHidden(),
+            )
+        )
+        raise DiffToolError("staging stopped for the test")
+
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.build_diff_request", fake_build
+    )
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QMessageBox.information",
+        lambda *_args, **_kwargs: None,
+    )
+    change = Change(
+        "file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
+    )
+    window._open_diff_tool(change)
+    assert seen
+    assert seen[0][0] == "Preparing diff for file.txt..."
+    assert seen[0][1] == "Preparing the diff tool..."
+    assert seen[0][2] is True
+    assert window.status_edit.text() == "Diff tool unavailable"
+    window.close()
+    application.processEvents()

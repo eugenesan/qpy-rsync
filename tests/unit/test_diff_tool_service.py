@@ -67,7 +67,7 @@ def test_build_request_stages_a_remote_destination(tmp_path: Path, monkeypatch) 
     )
     change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
 
-    def fake_fetch(_profile, _endpoint, _path, target):
+    def fake_fetch(_profile, _endpoint, _path, target, **_kwargs):
         target.write_text("remote")
 
     monkeypatch.setattr(
@@ -97,7 +97,7 @@ def test_build_request_stages_a_remote_source(tmp_path: Path, monkeypatch) -> No
     )
     change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
 
-    def fake_fetch(_profile, _endpoint, _path, target):
+    def fake_fetch(_profile, _endpoint, _path, target, **_kwargs):
         target.write_text("remote")
 
     monkeypatch.setattr(
@@ -124,3 +124,46 @@ def test_build_request_rejects_two_remote_endpoints(tmp_path: Path) -> None:
     change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
     with pytest.raises(DiffToolError, match="At most one"):
         build_diff_request(profile, change, tool=DiffTool("meld", "/usr/bin/meld"))
+
+
+def test_remote_staging_reports_command_and_output(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("local")
+    profile = SyncProfile(
+        "test",
+        Endpoint(EndpointKind.LOCAL, str(source)),
+        Endpoint(EndpointKind.SSH, "/remote/", host="server"),
+    )
+    change = Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")
+    commands: list[object] = []
+    logs: list[str] = []
+    monkeypatch.setattr(
+        "qpy_rsync.backend.rsync_command.askpass_environment", lambda: {}
+    )
+
+    def fake_run(arguments, **_kwargs):
+        Path(arguments[-1]).write_text("remote")
+
+        class Result:
+            returncode = 0
+            stdout = "sent 42 bytes\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(
+        "qpy_rsync.services.diff_tool_service.subprocess.run", fake_run
+    )
+    request = build_diff_request(
+        profile,
+        change,
+        tool=DiffTool("meld", "/usr/bin/meld"),
+        staging_dir=tmp_path / "stage",
+        on_command=commands.append,
+        on_log=logs.append,
+    )
+    assert commands
+    assert any("server:/remote/file.txt" in argument for argument in commands[0].argv())
+    assert "sent 42 bytes" in logs
+    assert request.destination.read_text() == "remote"

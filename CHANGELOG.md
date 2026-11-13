@@ -363,3 +363,7 @@
 
 - The verification state now reads “Selected actions verified.” without the extra note about files.
 - Diffing a change with one remote endpoint stages that file locally with rsync and opens the normal local diff tool. Staging directories are removed when the app closes.
+
+## milestone 1.15ai diff staging feedback
+
+- Opening a remote file in the diff tool now logs the staging rsync command and its output, sets a "Preparing diff..." state, shows an indeterminate progress bar and uses a wait cursor until staging completes.

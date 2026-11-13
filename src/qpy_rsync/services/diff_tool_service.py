@@ -82,18 +82,31 @@ def _fetch_remote_file(
     endpoint,
     change_path: str,
     target: Path,
+    *,
+    on_command: Callable[[object], None] | None = None,
+    on_log: Callable[[str], None] | None = None,
 ) -> None:
     """Stage one remote file locally for the diff tool."""
     spec = build_fetch_spec(profile, endpoint, change_path, target)
+    if on_command is not None:
+        on_command(spec)
     environment = os.environ.copy()
     environment.update(spec.environment)
-    result = subprocess.run(
-        spec.argv(),
-        capture_output=True,
-        text=True,
-        check=False,
-        env=environment,
-    )
+    try:
+        result = subprocess.run(
+            spec.argv(),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+    except OSError as exc:
+        raise DiffToolError(f"Could not run rsync for the diff: {exc}") from exc
+    if on_log is not None:
+        for output in (result.stdout, result.stderr):
+            for line in output.splitlines():
+                if line.strip():
+                    on_log(line)
     if result.returncode != 0 or not target.is_file():
         detail = (
             result.stderr.strip()
@@ -111,6 +124,8 @@ def build_diff_request(
     *,
     tool: DiffTool | None = None,
     staging_dir: Path | None = None,
+    on_command: Callable[[object], None] | None = None,
+    on_log: Callable[[str], None] | None = None,
 ) -> DiffRequest:
     if change.kind is not ObjectKind.FILE:
         raise DiffToolError("Only changed regular files can be opened in a diff tool.")
@@ -142,10 +157,24 @@ def build_diff_request(
     target = stage / Path(change.path).name
     try:
         if source_remote:
-            _fetch_remote_file(profile, profile.source, change.path, target)
+            _fetch_remote_file(
+                profile,
+                profile.source,
+                change.path,
+                target,
+                on_command=on_command,
+                on_log=on_log,
+            )
             source = target
         else:
-            _fetch_remote_file(profile, profile.destination, change.path, target)
+            _fetch_remote_file(
+                profile,
+                profile.destination,
+                change.path,
+                target,
+                on_command=on_command,
+                on_log=on_log,
+            )
             destination = target
     except DiffToolError:
         if created_staging:

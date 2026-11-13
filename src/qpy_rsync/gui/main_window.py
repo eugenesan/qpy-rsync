@@ -1824,24 +1824,59 @@ class MainWindow(QMainWindow):
         """Select a folder of the overview in the tree panes."""
         self.comparison.select_path(path)
 
+    def _log_diff_command(self, spec: object) -> None:
+        """Show the staging command before its rsync run blocks the UI."""
+        self._log_spec(spec)
+        self.log.repaint()
+        self.progress_label.repaint()
+
     def _open_diff_tool(self, change: object) -> None:
         if self._active_profile is None:
             return
+        path = getattr(change, "path", "")
+        self._set_state(f"Preparing diff for {path}...")
+        self._append_log(f"Preparing diff for {path}...")
+        previous_visible = self.progress_bar.isVisible()
+        previous_range = (self.progress_bar.minimum(), self.progress_bar.maximum())
+        previous_value = self.progress_bar.value()
+        previous_text = self.progress_label.text()
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)
+        self.progress_label.setText("Preparing the diff tool...")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
         try:
-            request = build_diff_request(self._active_profile, change)  # type: ignore[arg-type]
+            request = build_diff_request(
+                self._active_profile,  # type: ignore[arg-type]
+                change,
+                on_command=self._log_diff_command,
+                on_log=self._append_rsync_log,
+            )
         except DiffToolError as exc:
+            self._set_state("Diff tool unavailable", "error")
+            self._set_status(str(exc), "error")
             QMessageBox.information(self, "Diff tool unavailable", str(exc))
             return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.progress_bar.setRange(*previous_range)
+            self.progress_bar.setValue(previous_value)
+            self.progress_bar.setVisible(previous_visible)
+            self.progress_label.setText(previous_text)
         if request.staging_directory is not None:
             self._diff_staging_directories.append(request.staging_directory)
         arguments = [str(request.source), str(request.destination)]
         started, _pid = QProcess.startDetached(request.tool.executable, arguments)
         if not started:
+            self._set_state("Diff tool could not start", "error")
+            self._set_status(
+                f"Could not start {request.tool.executable}.", "error"
+            )
             QMessageBox.warning(self, "Could not start diff tool", request.tool.executable)
             return
         self._append_log("$ " + shlex.join([request.tool.executable, *arguments]))
         self._set_state(
-            f"Opened {change.path} in {request.tool.name}.",  # type: ignore[attr-defined]
+            f"Opened {path} in {request.tool.name}.",  # type: ignore[attr-defined]
             "success",
         )
 
