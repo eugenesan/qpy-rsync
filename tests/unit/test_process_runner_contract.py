@@ -23,6 +23,11 @@ def test_running_process_can_be_paused_and_resumed() -> None:
     finished: list[ProcessResult] = []
     runner.on_finished = finished.append
     runner.start(ProcessSpec("sleep", ("5",), {}))
+    # A failed assertion must not leave the process running: Qt aborts on a
+    # QProcess that is destroyed while its process is alive.
+    import atexit
+
+    atexit.register(runner.shutdown)
 
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and not runner.state is ProcessState.RUNNING:
@@ -35,9 +40,25 @@ def test_running_process_can_be_paused_and_resumed() -> None:
         with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:
             return handle.read().rsplit(")", 1)[1].split()[0]
 
+    def wait_for_state(expected: str, *, present: bool) -> str:
+        """Wait until the process reaches (or leaves) the given state.
+
+        The signal is delivered asynchronously, so the state cannot be read
+        back immediately after ``kill``.
+        """
+        deadline = time.monotonic() + 5
+        state = process_state()
+        while time.monotonic() < deadline:
+            state = process_state()
+            if (state == expected) is present:
+                return state
+            application.processEvents()
+            time.sleep(0.01)
+        return state
+
     assert runner.pause()
     assert runner.paused
-    assert process_state() == "T"
+    assert wait_for_state("T", present=True) == "T"
 
     time.sleep(0.5)
     application.processEvents()
@@ -45,7 +66,7 @@ def test_running_process_can_be_paused_and_resumed() -> None:
 
     assert runner.resume()
     assert not runner.paused
-    assert process_state() != "T"
+    assert wait_for_state("T", present=False) != "T"
 
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline and not finished:
