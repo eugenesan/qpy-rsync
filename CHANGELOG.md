@@ -433,3 +433,12 @@
 
 - A comparison reports the source metadata, so an object that exists only on the destination arrived with a size of 0 B and no date. A short destination listing now fills both in after every comparison that has destination-side items.
 - The Items, Size and Modified columns can be switched off from the header context menu; the choice is remembered per pane. A saved header from an older layout can no longer shrink the name column to an unreadable width.
+
+## milestone 1.15at compact layout and local open actions
+
+- The Source and Destination glyphs are gone. A thin arrow above the filter checkboxes shows the comparison direction, and the checkboxes sit at the bottom of the row so the row does not grow.
+- The unchanged toggle is a checkbox next to the hidden one, the Browse buttons became folder icons, the backup button uses the backup icon, and a separator now sits between Pause and Filter.
+- The Journal and Overview headings and their rows are removed; the panes speak for themselves.
+- The compare and overview headers are only as tall as their text, and the overview footer fits on one row.
+- Showing the hidden items no longer changes the overview tree or the statistics: the visible set for those still excludes hidden items until one is restored.
+- The context menu offers Open File and Open in Directory for items whose side is local.

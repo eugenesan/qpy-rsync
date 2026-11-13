@@ -325,3 +325,37 @@ def test_a_narrow_saved_header_does_not_hide_the_names() -> None:
     assert restored.source.columnWidth(restored.model.SOURCE_NAME) >= 160
     restored.close()
     application.processEvents()
+
+
+def test_local_items_offer_open_actions() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.source_root = "/home/user/data"
+    view.source_is_local = True
+    view.set_changes([file_change("docs/a.txt")])
+    index = view.model.index_for_path("docs/a.txt")
+    tree = view.source
+    row = view.model.row_data(index.row())
+    _menu, actions = view._build_context_menu(
+        tree, "docs/a.txt", index.data(Qt.ItemDataRole.UserRole), row
+    )
+    assert actions["open_file"] is not None
+    assert actions["open_directory"] is not None
+    view.close()
+    application.processEvents()
+
+
+def test_remote_items_do_not_offer_open_actions() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.source_is_local = False
+    view.set_changes([file_change("docs/a.txt")])
+    index = view.model.index_for_path("docs/a.txt")
+    row = view.model.row_data(index.row())
+    _menu, actions = view._build_context_menu(
+        view.source, "docs/a.txt", index.data(Qt.ItemDataRole.UserRole), row
+    )
+    assert actions["open_file"] is None
+    assert actions["open_directory"] is None
+    view.close()
+    application.processEvents()

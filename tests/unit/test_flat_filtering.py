@@ -275,3 +275,27 @@ def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
     assert "pics/b.jpg" not in paths
     view.close()
     application.processEvents()
+
+
+def test_showing_hidden_items_does_not_change_the_visible_set() -> None:
+    """The overview and the statistics must not react to the show toggle."""
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    view.hide_path("a.txt")
+    before = [str(change.path) for change in view.visible_changes()]
+    view.set_show_hidden(True)
+    after = [str(change.path) for change in view.visible_changes()]
+    # The row is back in the list, but it is still hidden for the overview.
+    assert any(view.model.row_path(row) == "a.txt" for row in range(view.model.rowCount()))
+    assert before == after == ["b.txt"]
+    view.close()
+    application.processEvents()
