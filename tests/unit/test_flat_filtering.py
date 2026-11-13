@@ -203,3 +203,66 @@ def test_hiding_a_directory_excludes_the_items_below_it() -> None:
     plan = build_execution_plan(profile, changes, ChangeDecisions(), hidden)
     included = {item.path for item in plan.items if item.included}
     assert included == {"other/b.txt"}
+
+
+def test_the_filter_matches_a_folder_with_a_trailing_slash() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("docs/sub/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("pics/c.jpg", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.set_path_filter("docs/")
+    paths = {model.row_path(row) for row in range(model.rowCount())}
+    assert paths == {"docs", "docs/a.txt", "docs/sub", "docs/sub/b.txt"}
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_filter_matches_a_relative_path() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs/sub/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("docs/other/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.set_path_filter("docs/sub")
+    paths = {model.row_path(row) for row in range(model.rowCount())}
+    assert "docs/sub/a.txt" in paths
+    assert "docs/other/b.txt" not in paths
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("pics/b.jpg", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    view.filter_edit.setText("docs/")
+    # Typing does not re-filter right away.
+    assert view.model.rowCount() == 4
+    view.filter_edit.returnPressed.emit()
+    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    assert "docs/a.txt" in paths
+    assert "pics/b.jpg" not in paths
+    view.close()
+    application.processEvents()

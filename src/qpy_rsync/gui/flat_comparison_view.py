@@ -19,6 +19,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QRect,
     QSize,
+    QTimer,
     Qt,
     Signal,
 )
@@ -295,7 +296,14 @@ class FlatComparisonView(QWidget):
         layout.addWidget(self.splitter)
 
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
-        self.filter_edit.textChanged.connect(self.set_path_filter)
+        # Re-filtering a large comparison costs a few hundred milliseconds,
+        # so typing waits for a short pause and Enter applies immediately.
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(300)
+        self._filter_timer.timeout.connect(self._apply_path_filter)
+        self.filter_edit.textChanged.connect(self._filter_changed)
+        self.filter_edit.returnPressed.connect(self._apply_path_filter)
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.header().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.header().sectionResized.connect(
@@ -584,7 +592,18 @@ class FlatComparisonView(QWidget):
         self.filter_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.filter_edit.selectAll()
 
+    def _filter_changed(self, _text: str) -> None:
+        """Re-filter after the typing pauses, or when Enter is pressed."""
+        self._filter_timer.start()
+
+    def _apply_path_filter(self) -> None:
+        self._filter_timer.stop()
+        self.model.set_path_filter(self.filter_edit.text())
+        self.changes_updated.emit(list(self.model.changes))
+
     def set_path_filter(self, text: str) -> None:
+        """Apply a path filter right away, for callers other than the field."""
+        self._filter_timer.stop()
         self.model.set_path_filter(text)
 
     # ------------------------------------------------------------------

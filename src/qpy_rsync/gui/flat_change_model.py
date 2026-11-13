@@ -153,6 +153,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._sort_column = self.SOURCE_NAME
         self._sort_order = Qt.SortOrder.AscendingOrder
         self._pattern = ""
+        self._pattern_is_glob = False
         self._include_directory_contents = False
         self._visible_actions: set[ChangeAction] | None = None
         self._directories: dict[str, FlatDirectory] = {}
@@ -166,6 +167,8 @@ class FlatChangeModel(QAbstractTableModel):
         # Whether the filters show the change, and its size on the
         # destination side. Both are filled in while the filters run.
         self._change_visible: list[bool] = []
+        self._change_path_ok: list[bool] = []
+        self._change_action_ok: list[bool] = []
         self._change_destination_sizes: list[int] = []
         # The directories from the deepest one upwards. The order only
         # changes when the comparison changes.
@@ -201,6 +204,8 @@ class FlatChangeModel(QAbstractTableModel):
         self._change_names = []
         self._change_folded = []
         self._change_visible = []
+        self._change_path_ok = []
+        self._change_action_ok = []
         self._change_destination_sizes = []
 
         def ensure(path: str) -> FlatDirectory:
@@ -227,6 +232,8 @@ class FlatChangeModel(QAbstractTableModel):
                 self._change_names.append("")
                 self._change_folded.append("")
                 self._change_visible.append(False)
+                self._change_path_ok.append(False)
+                self._change_action_ok.append(False)
                 continue
             parent_path, _, name = path.rpartition("/")
             self._change_paths.append(path)
@@ -234,6 +241,8 @@ class FlatChangeModel(QAbstractTableModel):
             self._change_names.append(name)
             self._change_folded.append(name.casefold())
             self._change_visible.append(False)
+            self._change_path_ok.append(False)
+            self._change_action_ok.append(False)
             if change.kind is ObjectKind.DIRECTORY:
                 # A directory that the comparison reported is a row of its
                 # own and carries the change.
@@ -377,6 +386,9 @@ class FlatChangeModel(QAbstractTableModel):
         value = text.strip()
         self._include_directory_contents = value.endswith("/")
         self._pattern = value.rstrip("/").casefold()
+        self._pattern_is_glob = any(
+            character in self._pattern for character in "*?["
+        )
         self._refresh_filters()
 
     def set_visible_actions(self, actions: set[ChangeAction] | None) -> None:
@@ -398,60 +410,78 @@ class FlatChangeModel(QAbstractTableModel):
         self._apply_filters()
         self.layoutChanged.emit()
 
-    def _matches(self, name: str) -> bool:
+    def _matches(self, name: str, path: str | None = None) -> bool:
+        """Match the pattern against a name, or against the whole path.
+
+        A pattern with a slash is matched against the relative path, so
+        "docs/sub" finds the items inside that folder. Without a slash only
+        the name is matched, which is what a search for a file name expects.
+        """
         if not self._pattern:
             return True
-        candidate = name.casefold()
-        if any(character in self._pattern for character in "*?["):
+        if path is not None and "/" in self._pattern:
+            candidate = path.casefold()
+        else:
+            candidate = name.casefold()
+        if self._pattern_is_glob:
             return fnmatchcase(candidate, self._pattern)
         return self._pattern in candidate
 
     def _apply_filters(self) -> None:
         """Decide which rows the filters show.
 
-        The rules are the ones the tree used: a row is shown when it
-        matches or when one of the items below it matches, and the action
-        filter keeps a directory when one of the items below it is allowed.
+        A row is shown when it matches or when one of the items below it
+        matches, and the action filter keeps a directory when one of the
+        items below it is allowed.
         """
         directories = self._directories
-        pattern = self._pattern
-        pattern_active = bool(pattern) and pattern != "*"
+        pattern_active = bool(self._pattern) and self._pattern != "*"
         include_contents = self._include_directory_contents
 
         # Whether the directory or one of its ancestors matched.
-        matched_above: dict[str, bool] = {"": False}
+        directory_matched: dict[str, bool] = {"": False}
         for path, directory in directories.items():
-            matched_above[path] = matched_above.get(
+            directory_matched[path] = directory_matched.get(
                 directory.parent, False
-            ) or (pattern_active and self._matches(directory.name))
+            ) or (
+                pattern_active
+                and self._matches(directory.name, directory.path)
+            )
 
         # The items of every directory.
-        item_path_ok: dict[str, bool] = {}
-        item_action_ok: dict[str, bool] = {}
-        for path, directory in directories.items():
-            group_matched = matched_above.get(path, False)
-            for index in directory.files:
-                change = self.changes[index]
-                key = self._change_paths[index]
-                path_ok = (not pattern_active) or self._matches(
-                    self._change_names[index]
-                )
-                if not path_ok and include_contents and group_matched:
-                    path_ok = True
-                item_path_ok[key] = path_ok
-                item_action_ok[key] = self._action_allowed(change)
-                self._change_visible[index] = path_ok and item_action_ok[key]
+        matches = self._matches
+        change_paths = self._change_paths
+        change_names = self._change_names
+        visible = self._change_visible
+        path_flags = self._change_path_ok
+        action_flags = self._change_action_ok
+        actions_visible = self._visible_actions
+        if pattern_active:
+            for path, directory in directories.items():
+                group_matched = directory_matched.get(path, False)
+                for index in directory.files:
+                    path_ok = matches(change_names[index], change_paths[index])
+                    if not path_ok and include_contents and group_matched:
+                        path_ok = True
+                    action_ok = self._action_allowed(self.changes[index])
+                    path_flags[index] = path_ok
+                    action_flags[index] = action_ok
+                    visible[index] = path_ok and action_ok
+        else:
+            for path, directory in directories.items():
+                for index in directory.files:
+                    action_ok = self._action_allowed(self.changes[index])
+                    path_flags[index] = True
+                    action_flags[index] = action_ok
+                    visible[index] = action_ok
 
         # The directories, from the deepest one upwards.
-        ordered = sorted(
-            (path for path in directories if path),
-            key=lambda value: directories[value].depth,
-            reverse=True,
-        )
-        for path in ordered:
+        for path in self._ordered_directories():
             directory = directories[path]
-            path_ok = (not pattern_active) or self._matches(directory.name)
-            if not path_ok and include_contents and matched_above.get(
+            path_ok = (not pattern_active) or self._matches(
+                directory.name, directory.path
+            )
+            if not path_ok and include_contents and directory_matched.get(
                 directory.parent, False
             ):
                 path_ok = True
@@ -462,13 +492,12 @@ class FlatChangeModel(QAbstractTableModel):
                 child_path_ok = child_path_ok or child.path_ok
                 child_action_ok = child_action_ok or child.action_ok
             for index in directory.files:
-                key = self._change_paths[index]
-                child_path_ok = child_path_ok or item_path_ok.get(key, False)
-                child_action_ok = child_action_ok or item_action_ok.get(key, False)
-            if directory.own_change is not None:
-                key = str(directory.own_change.path).rstrip("/")
-                child_path_ok = child_path_ok or item_path_ok.get(key, False)
-                child_action_ok = child_action_ok or item_action_ok.get(key, False)
+                child_path_ok = child_path_ok or self._change_path_ok[index]
+                child_action_ok = child_action_ok or self._change_action_ok[index]
+            if directory.own_change_index >= 0:
+                index = directory.own_change_index
+                child_path_ok = child_path_ok or self._change_path_ok[index]
+                child_action_ok = child_action_ok or self._change_action_ok[index]
             directory.path_ok = path_ok or child_path_ok
             directory.action_ok = (
                 self._action_allowed(directory.own_change)
@@ -482,8 +511,6 @@ class FlatChangeModel(QAbstractTableModel):
         visible_change_indices: set[int] = set()
         visible_row_of_path: dict[str, int] = {}
         hidden = self.hidden
-        # Most comparisons have nothing hidden, so the check below is skipped
-        # unless the user actually hid something.
         check_hidden = bool(hidden) and not self.show_hidden
         for index, row in enumerate(self._rows):
             if row.is_directory:
@@ -492,8 +519,6 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 if check_hidden and hidden.is_hidden(row.path):
                     continue
-                # A directory that the comparison reported is a change of its
-                # own, the same as in the tree.
                 if directory.own_change_index >= 0:
                     visible_change_indices.add(directory.own_change_index)
             else:
@@ -505,11 +530,8 @@ class FlatChangeModel(QAbstractTableModel):
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows
-        # The changes keep the order of the comparison, the same as in the
-        # tree, so the overview counts them the same way.
         self._visible_changes = [
-            self.changes[index]
-            for index in sorted(visible_change_indices)
+            self.changes[index] for index in sorted(visible_change_indices)
         ]
         self._visible_row_of_path = visible_row_of_path
         self._total_up_directories()
