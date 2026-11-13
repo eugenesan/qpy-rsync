@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
-from qpy_rsync.gui.comparison_view import CONTROL_SIZE
+from qpy_rsync.gui.controls import CONTROL_SIZE
 from qpy_rsync.gui.main_window import MainWindow
 from qpy_rsync.storage.settings import app_settings
 
@@ -27,10 +27,6 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert window.comparison.filter_edit.minimumWidth() == 180
     assert window.comparison.filter_edit.maximumWidth() > 1000
     assert window.comparison.controls.sizePolicy().horizontalPolicy().name == "Expanding"
-    assert not window.comparison.expand_button.text()
-    assert not window.comparison.collapse_button.text()
-    assert not window.comparison.expand_button.icon().isNull()
-    assert not window.comparison.collapse_button.icon().isNull()
     assert not window.comparison.inventory_button.icon().isNull()
     # The toolbar actions are icon buttons of the common control size.
     for button in (
@@ -48,11 +44,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
         assert not button.icon().isNull()
         assert button.width() == CONTROL_SIZE
         assert button.height() == CONTROL_SIZE
-    for button in (
-        window.comparison.inventory_button,
-        window.comparison.expand_button,
-        window.comparison.collapse_button,
-    ):
+    for button in (window.comparison.inventory_button,):
         assert button.size().width() == 40
         assert button.iconSize().width() == 24
     window.source_edit.setText("/src/")
@@ -182,7 +174,7 @@ def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> N
     window.comparison.set_changes(
         [Change("docs/file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
     )
-    directory = window.comparison.proxy.index(0, window.comparison.model.ACTION)
+    directory = window.comparison.model.index(0, window.comparison.model.ACTION)
     window.comparison.action.setCurrentIndex(directory)
     window.comparison.model.setData(
         window.comparison.model.index(0, window.comparison.model.ACTION),
@@ -198,20 +190,6 @@ def test_mode_reset_sequence_clears_proxy_selection_without_stale_indexes() -> N
     window.close()
     application.processEvents()
 
-def test_proxy_index_path_is_mapped_to_source_safely() -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window.comparison.set_changes(
-        [Change("docs/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
-    )
-    application.processEvents()
-    proxy_index = window.comparison.proxy.index(0, window.comparison.model.ACTION)
-    assert window.comparison._source_path_for_proxy_index(proxy_index) == "docs"
-    window.close()
-    application.processEvents()
 
 def test_command_line_options_override_restored_values_without_immediate_persistence(monkeypatch) -> None:
     from qpy_rsync.app import StartupOptions
@@ -355,7 +333,7 @@ def test_unchanged_inventory_is_async_and_cached(tmp_path) -> None:
     window._inventory_finished(7, [extra])
     assert window.comparison.model.rowCount() == 2
     # The unchanged object appears without another comparison.
-    assert window.comparison.proxy.rowCount() == 2
+    assert window.comparison.model.rowCount() == 2
     assert "unchanged=1" in window.log.toPlainText()
 
     window.show_unchanged.setChecked(False)
@@ -740,16 +718,6 @@ def test_turning_inventory_on_runs_it_for_the_current_comparison(tmp_path) -> No
     window.inventory_after_compare_button.setChecked(True)
     assert gathered
     assert gathered[0][1][0].path == "file.txt"
-    window.close()
-    application.processEvents()
-
-
-def test_restored_expansion_limit_has_a_default() -> None:
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    assert window._expand_total_limit == 10000
-    assert window.comparison._expand_total_limit == 10000
     window.close()
     application.processEvents()
 
@@ -1198,10 +1166,6 @@ def test_the_flat_list_adds_a_large_inventory_without_a_warning() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window._list_layout = "flat"
-    window._switch_list_layout()
-    window._expand_total_limit = 5
-    window.comparison.set_expand_total_limit(5)
 
     changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
     unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
@@ -1212,31 +1176,5 @@ def test_the_flat_list_adds_a_large_inventory_without_a_warning() -> None:
     window._populate_unchanged(changed + unchanged, len(unchanged))
     application.processEvents()
     assert window.comparison.model.rowCount() == 64
-    window.close()
-    application.processEvents()
-
-
-def test_the_tree_keeps_its_folders_collapsed_above_the_limit() -> None:
-    from qpy_rsync.core.changes import ChangeAction
-
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    window._list_layout = "tree"
-    window._switch_list_layout()
-    window._expand_total_limit = 5
-    window.comparison.set_expand_total_limit(5)
-
-    changed = _inventory_changes(4, ChangeAction.UPDATE_CONTENT)
-    unchanged = _inventory_changes(40, ChangeAction.NO_CHANGE)
-    window._last_changed_changes = list(changed)
-
-    # No question is asked; the tree just stays collapsed.
-    window._populate_unchanged(changed + unchanged, len(unchanged))
-    application.processEvents()
-    assert window.comparison.model.limited_paths()
-    assert not window.comparison.source.isExpanded(
-        window.comparison.source.model().index(0, 0)
-    )
     window.close()
     application.processEvents()

@@ -410,3 +410,10 @@
 - The large-inventory warning is gone. It existed only to avoid freezing the tree while expanding tens of thousands of rows; the flat list adds 80,000 unchanged items in about three seconds and needs no question. A tree above the comparison limit now simply stays collapsed and marks its top-level folders, with a note in the journal.
 - The per-folder expansion limit ("Auto-expand folders up to") is removed. Only the comparison-wide limit remains, and only for the tree.
 - "Expand Changed Only" and the forcing of an over-limit expansion are removed with the dialog; the marker button still finds the folders the limit left collapsed.
+
+## milestone 1.15aq one comparison view
+
+- The tree is gone from `main`. Keeping two views meant keeping every tree-only workaround alive: the expansion dialog, the per-folder limit, the comparison limit, the Settings dialog and a proxy layer that the flat list never used. The tree implementation is preserved on the `main-tree` branch.
+- Removed `comparison_view.py`, `change_tree_model.py`, `change_filter_proxy.py` and the Settings dialog, which held nothing but the two view settings.
+- `full_path` and the shared control sizes moved to `paths.py` and `controls.py`.
+- The flat view now sizes its unchanged toggle like the other toolbar buttons.

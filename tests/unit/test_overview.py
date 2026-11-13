@@ -101,10 +101,10 @@ def test_overview_pane_reports_the_activated_folder() -> None:
 
 def test_overview_follows_the_action_filters() -> None:
     from qpy_rsync.core.changes import ChangeAction
-    from qpy_rsync.gui.comparison_view import ComparisonView
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
     application = app()
-    view = ComparisonView()
+    view = FlatComparisonView()
     changes = [
         Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=100),
         Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......", size=200),

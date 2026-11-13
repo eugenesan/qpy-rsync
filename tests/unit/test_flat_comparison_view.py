@@ -154,11 +154,8 @@ def test_the_flat_view_shows_everything_without_expanding() -> None:
         ]
     )
     assert view.model.rowCount() == 4
-    # The expansion calls do nothing, but they must not fail.
-    view.expand_initial()
-    view.expand_all()
-    view.collapse_all()
-    assert view.model.rowCount() == 4
+    # There is nothing to expand: the rows are all there from the start.
+    assert not hasattr(view, "expand_initial")
     view.close()
     application.processEvents()
 

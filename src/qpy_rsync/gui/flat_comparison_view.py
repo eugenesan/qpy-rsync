@@ -45,14 +45,10 @@ from PySide6.QtWidgets import (
 from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
 
+from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
 from .flat_change_model import FlatChangeModel
 from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
-from .change_tree_model import full_path
-
-CONTROL_SIZE = 40
-CONTROL_ICON_SIZE = 24
-ACTION_PANE_WIDTH = 78
-ROW_HEIGHT = 22
+from .paths import full_path
 
 # The colour of the dimmed path that precedes the name of a directory.
 PREFIX_COLOR = QColor("#707070")
@@ -158,10 +154,6 @@ class FlatPathDelegate(UniformRowDelegate):
 class FlatComparisonView(QWidget):
     """Synchronized source/action/destination panes over a flat list."""
 
-    # The flat list has nothing to expand, so the expansion limits and the
-    # warning about a large inventory do not apply.
-    supports_expansion = False
-
     diff_requested = Signal(object)
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
@@ -217,6 +209,10 @@ class FlatComparisonView(QWidget):
         self.inventory_button.setIcon(unchanged_icon())
         self.inventory_button.setToolTip("Show unchanged items")
         self.inventory_button.setAccessibleName("Show unchanged items")
+        self.inventory_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.inventory_button.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
 
         self.view_controls = QWidget(self)
         self.view_controls.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -489,7 +485,7 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Data
     # ------------------------------------------------------------------
-    def set_changes(self, changes: list[object], **_options: object) -> None:
+    def set_changes(self, changes: list[object]) -> None:
         """Show a new comparison."""
         for tree in (self.source, self.action, self.destination):
             tree.setCurrentIndex(QModelIndex())
@@ -545,28 +541,6 @@ class FlatComparisonView(QWidget):
 
     def set_path_filter(self, text: str) -> None:
         self.model.set_path_filter(text)
-
-    # ------------------------------------------------------------------
-    # Expansion
-    #
-    # A flat list has nothing to expand, so these calls do nothing. They
-    # exist so the flat view can replace the tree view without a change to
-    # the main window.
-    # ------------------------------------------------------------------
-    def set_expand_mode(self, mode: str) -> None:
-        """Ignored: the flat list has no collapsed folders."""
-
-    def set_expand_total_limit(self, limit: int) -> None:
-        """Ignored: the flat list has no collapsed folders."""
-
-    def expand_initial(self, limit: int | None = None, **_options: object) -> None:
-        """Ignored: the flat list shows everything right away."""
-
-    def expand_all(self) -> None:
-        """Ignored: the flat list shows everything right away."""
-
-    def collapse_all(self) -> None:
-        """Ignored: the flat list shows everything right away."""
 
     # ------------------------------------------------------------------
     # Sorting

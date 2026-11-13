@@ -33,7 +33,7 @@ from qpy_rsync.core.changes import (
 )
 from qpy_rsync.core.units import format_size
 
-from .change_tree_model import full_path
+from .paths import full_path
 from .icons import (
     ACTION_LABELS,
     action_icon,

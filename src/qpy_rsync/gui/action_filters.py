@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QSizePolicy, QWidget
 
 from qpy_rsync.core.changes import ChangeAction
 
-from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE
+from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
 from .icons import ACTION_LABELS, action_icon, hidden_icon
 
 FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (

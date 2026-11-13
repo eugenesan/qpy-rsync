@@ -131,12 +131,8 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
-from .comparison_view import (
-    CONTROL_ICON_SIZE,
-    CONTROL_SIZE,
-    DEFAULT_EXPAND_TOTAL_LIMIT,
-    ComparisonView,
-)
+from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
+from .flat_comparison_view import FlatComparisonView
 from .icons import (
     cancel_icon,
     compare_icon,
@@ -211,11 +207,6 @@ class MainWindow(QMainWindow):
         self._sync_service.on_progress = self._sync_progress
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
-        self._expand_mode = "all"
-        self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
-        # The layout decides which comparison view is built, so it is read
-        # before the user interface is created.
-        self._list_layout = self._stored_list_layout()
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
@@ -232,7 +223,6 @@ class MainWindow(QMainWindow):
         self._log_flush_timer.setInterval(100)
         self._log_flush_timer.timeout.connect(self._flush_log)
         self._build_ui()
-        self._restore_view_settings()
         self._restore_window_state()
         if not self._restore_recent_profile():
             self._restore_filters()
@@ -261,11 +251,10 @@ class MainWindow(QMainWindow):
         self.source_edit.setToolTip(endpoint_help)
         self.destination_edit.setToolTip(endpoint_help)
 
-        self.comparison = self._build_comparison_view()
+        self.comparison = FlatComparisonView()
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
-        self.comparison.expansion_limited.connect(self._expansion_limited)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
         if hasattr(self.comparison, "filter_requested"):
@@ -662,7 +651,6 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
         )
-        self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 
         actions_menu = menu_bar.addMenu("&Actions")
         self._add_action(
@@ -701,121 +689,6 @@ class MainWindow(QMainWindow):
         action.triggered.connect(slot)  # type: ignore[arg-type]
         menu.addAction(action)  # type: ignore[attr-defined]
         return action
-
-    def _edit_settings(self) -> None:
-        from .settings_dialog import SettingsDialog
-
-        dialog = SettingsDialog(
-            self,
-            expand_mode=self._expand_mode,
-            expand_total_limit=self._expand_total_limit,
-            list_layout=self._list_layout,
-        )
-        if not dialog.exec():
-            return
-        mode = dialog.expand_mode()
-        total_limit = dialog.expand_total_limit()
-        layout = dialog.list_layout()
-        if (
-            mode == self._expand_mode
-            and total_limit == self._expand_total_limit
-            and layout == self._list_layout
-        ):
-            return
-        self._expand_mode = mode
-        self._expand_total_limit = total_limit
-        settings = app_settings()
-        settings.setValue("view/expand-after-compare", mode)
-        settings.setValue("view/expand-total-limit", total_limit)
-        settings.setValue("view/list-layout", layout)
-        settings.sync()
-        self.comparison.set_expand_mode(mode)
-        self.comparison.set_expand_total_limit(total_limit)
-        self._append_log(
-            "Settings: folders after a comparison = "
-            f"{mode}; comparison limit = {total_limit} items"
-        )
-        if layout != self._list_layout:
-            # The layout changes the widget, so the window is rebuilt.
-            self._list_layout = layout
-            self._switch_list_layout()
-            return
-        if self.comparison.model.changes:
-            self.comparison.expand_initial()
-
-    def _restore_view_settings(self) -> None:
-        settings = app_settings()
-        mode = str(settings.value("view/expand-after-compare", "all")).strip()
-        if mode not in {"all", "first", "none"}:
-            mode = "all"
-        try:
-            total_limit = int(
-                settings.value(
-                    "view/expand-total-limit", DEFAULT_EXPAND_TOTAL_LIMIT
-                )
-            )
-        except (TypeError, ValueError):
-            total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
-        total_limit = max(1, min(total_limit, 1_000_000))
-        layout = str(settings.value("view/list-layout", "tree")).strip()
-        if layout not in {"tree", "flat"}:
-            layout = "tree"
-        self._expand_mode = mode
-        self._expand_total_limit = total_limit
-        self._list_layout = layout
-        self.comparison.set_expand_mode(mode)
-        self.comparison.set_expand_total_limit(total_limit)
-
-    def _stored_list_layout(self) -> str:
-        """Read the comparison list layout from the settings."""
-        layout = str(app_settings().value("view/list-layout", "tree")).strip()
-        return layout if layout in {"tree", "flat"} else "tree"
-
-    def _build_comparison_view(self) -> object:
-        """Build the comparison view that the settings ask for.
-
-        The flat list is the FreeFileSync style: no folders to expand, so a
-        large comparison never freezes. The tree is still available for
-        comparison.
-        """
-        if self._list_layout == "flat":
-            from .flat_comparison_view import FlatComparisonView
-
-            return FlatComparisonView()
-        return ComparisonView()
-
-    def _switch_list_layout(self) -> None:
-        """Replace the comparison view after the layout setting changed."""
-        old = self.comparison
-        changes = list(old.model.changes)
-        new = self._build_comparison_view()
-        new.diff_requested.connect(self._open_diff_tool)
-        new.decision_changed.connect(self._invalidate_validated_plan)
-        new.changes_updated.connect(self._overview_updated)
-        new.expansion_limited.connect(self._expansion_limited)
-        new.sort_changed.connect(self._comparison_sorted)
-        new.set_expand_mode(self._expand_mode)
-        new.set_expand_total_limit(self._expand_total_limit)
-        new.source_root = old.source_root
-        new.destination_root = old.destination_root
-        self.comparison = new
-
-        # The filter field and the buttons live in the view, so they move
-        # over to the new one.
-        new.controls.setParent(self.centralWidget())
-        self._controls_layout.replaceWidget(old.controls, new.controls)
-        self._locations_layout.replaceWidget(old.view_controls, new.view_controls)
-        self.main_splitter.replaceWidget(
-            self.main_splitter.indexOf(old), new
-        )
-        old.setParent(None)
-        old.deleteLater()
-
-        self.show_unchanged = self.comparison.inventory_button
-        self.show_unchanged.toggled.connect(lambda _checked: self._apply_inventory_mode())
-        if changes:
-            self.comparison.set_changes(changes)
-        self._append_log(f"Comparison list: {self._list_layout}", severity="info")
 
     def _build_menu_button(self) -> None:
         """Mirror the menu bar in a button, for desktops without a global menu."""
@@ -1935,13 +1808,6 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
-    def _expansion_limited(self, count: int, limit: int) -> None:
-        self._set_status(
-            f"Auto-expansion skipped: {count:,} items exceed the "
-            f"{limit:,}-item limit in Settings. Expand folders manually.",
-            "warning",
-        )
-
     def _overview_updated(self, changes: object) -> None:
         """Refresh the overview with the items the filters show."""
         root_name = ""
@@ -2197,37 +2063,18 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.comparison.set_changes(changed)
 
-    def _view_supports_expansion(self) -> bool:
-        """Whether the current comparison view expands folders."""
-        return bool(getattr(self.comparison, "supports_expansion", True))
-
     def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
         """Add the unchanged items to the comparison.
 
-        The flat list has nothing to expand, so it simply adds the rows. A
-        tree that would grow beyond the configured limit keeps its folders
-        collapsed instead of expanding them, which is what used to need a
-        warning dialog.
+        The flat list has nothing to expand, so the rows are simply added.
         """
-        preserve_expansion = True
-        if self._view_supports_expansion() and len(changes) > self._expand_total_limit:
-            preserve_expansion = False
-            self._append_log(
-                f"Inventory: showing {unchanged:,} unchanged items with the "
-                f"folders left collapsed ({len(changes):,} items, limit "
-                f"{self._expand_total_limit:,}).",
-                severity="info",
-            )
         self.progress_label.setText(
             f"Adding {unchanged:,} unchanged item(s) to the comparison..."
         )
         self.progress_label.repaint()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.comparison.set_changes(
-                changes,
-                preserve_expansion=preserve_expansion,
-            )
+            self.comparison.set_changes(changes)
         finally:
             QApplication.restoreOverrideCursor()
         self.progress_bar.setRange(0, 100)
@@ -2235,12 +2082,6 @@ class MainWindow(QMainWindow):
         self.progress_label.setText(self._inventory_summary(unchanged))
 
     def _inventory_summary(self, unchanged: int) -> str:
-        """Describe the inventory in a way that matches the current view."""
-        if self._view_supports_expansion():
-            return (
-                f"Showing {unchanged:,} unchanged item(s); "
-                "expand folders to view nested items."
-            )
         return f"Showing {unchanged:,} unchanged item(s)."
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
