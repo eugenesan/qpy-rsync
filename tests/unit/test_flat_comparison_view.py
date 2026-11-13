@@ -38,7 +38,7 @@ def file_change(path: str, action: ChangeAction = ChangeAction.UPDATE_CONTENT, s
     return Change(path, action, ObjectKind.FILE, code, size=size)
 
 
-def test_rows_start_with_the_directories_and_follow_with_their_items() -> None:
+def test_a_directory_precedes_its_items_and_then_its_subdirectories() -> None:
     application = app()
     model = FlatChangeModel()
     model.set_changes(
@@ -51,11 +51,45 @@ def test_rows_start_with_the_directories_and_follow_with_their_items() -> None:
     paths = _paths(model)
     assert paths == [
         "docs",
-        "docs/sub",
-        "docs/sub/c.txt",
         "docs/a.txt",
         "docs/b.txt",
+        "docs/sub",
+        "docs/sub/c.txt",
     ]
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_each_directory_group_is_contiguous_and_alternates() -> None:
+    from qpy_rsync.gui.flat_change_model import STRIPE_ROLE
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            file_change("docs/a.txt"),
+            file_change("docs/sub/b.txt"),
+            file_change("pics/c.jpg"),
+            file_change("root.txt"),
+        ]
+    )
+    groups = [model.row_data(row).group for row in range(model.rowCount())]
+    stripes = [
+        model.data(model.index(row, model.SOURCE_NAME), STRIPE_ROLE)
+        for row in range(model.rowCount())
+    ]
+    # A group is a directory and its own items, so it must be one run of rows.
+    runs: list[str] = []
+    for group in groups:
+        if not runs or runs[-1] != group:
+            runs.append(group)
+    assert len(runs) == len(set(runs))
+    # Within a run the shade is the same, and adjacent runs differ.
+    for row in range(1, len(groups)):
+        if groups[row] == groups[row - 1]:
+            assert stripes[row] == stripes[row - 1]
+        else:
+            assert stripes[row] != stripes[row - 1]
     model.deleteLater()
     application.processEvents()
 

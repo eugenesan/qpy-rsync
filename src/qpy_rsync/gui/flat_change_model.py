@@ -276,8 +276,10 @@ class FlatChangeModel(QAbstractTableModel):
     def _build_rows(self) -> None:
         """Lay the directories and their items out as a flat list.
 
-        The order is the one the tree shows when everything is expanded: a
-        directory, then its subdirectories, then its own items.
+        The order follows FreeFileSync's flat list: a directory, then its own
+        items, then its subdirectories. Each directory and its own items are
+        therefore contiguous, which is what lets the striping shade whole
+        groups instead of alternating inside one directory.
         """
         rows: list[FlatRow] = []
 
@@ -305,12 +307,6 @@ class FlatChangeModel(QAbstractTableModel):
                         group=path,
                     )
                 )
-            for child_path in sorted(
-                directory.child_directories,
-                key=self._directory_key,
-                reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
-            ):
-                walk(child_path)
             for index in sorted(
                 directory.files,
                 key=self._file_key,
@@ -330,6 +326,12 @@ class FlatChangeModel(QAbstractTableModel):
                         group=path,
                     )
                 )
+            for child_path in sorted(
+                directory.child_directories,
+                key=self._directory_key,
+                reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
+            ):
+                walk(child_path)
 
         # The compared folder itself is a row, so its totals can be read and
         # its checkbox decides the whole comparison at once.
