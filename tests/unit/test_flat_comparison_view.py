@@ -60,7 +60,7 @@ def test_a_directory_precedes_its_items_and_then_its_subdirectories() -> None:
     application.processEvents()
 
 
-def test_each_directory_group_is_contiguous_and_alternates() -> None:
+def test_every_row_alternates_even_inside_one_directory() -> None:
     from qpy_rsync.gui.flat_change_model import STRIPE_ROLE
 
     application = app()
@@ -68,28 +68,21 @@ def test_each_directory_group_is_contiguous_and_alternates() -> None:
     model.set_changes(
         [
             file_change("docs/a.txt"),
-            file_change("docs/sub/b.txt"),
-            file_change("pics/c.jpg"),
+            file_change("docs/b.txt"),
+            file_change("docs/c.txt"),
+            file_change("docs/sub/d.txt"),
+            file_change("pics/e.jpg"),
             file_change("root.txt"),
         ]
     )
-    groups = [model.row_data(row).group for row in range(model.rowCount())]
     stripes = [
         model.data(model.index(row, model.SOURCE_NAME), STRIPE_ROLE)
         for row in range(model.rowCount())
     ]
-    # A group is a directory and its own items, so it must be one run of rows.
-    runs: list[str] = []
-    for group in groups:
-        if not runs or runs[-1] != group:
-            runs.append(group)
-    assert len(runs) == len(set(runs))
-    # Within a run the shade is the same, and adjacent runs differ.
-    for row in range(1, len(groups)):
-        if groups[row] == groups[row - 1]:
-            assert stripes[row] == stripes[row - 1]
-        else:
-            assert stripes[row] != stripes[row - 1]
+    # Every row differs from the one above it, so a directory and its first
+    # item never share a stripe and a group of any size is still striped.
+    for row in range(1, len(stripes)):
+        assert stripes[row] != stripes[row - 1]
     model.deleteLater()
     application.processEvents()
 

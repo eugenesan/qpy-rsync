@@ -49,7 +49,7 @@ ACTION_HEADER_ACCENT = "#0891B2"
 # Role that carries the comparison path of a row. A directory row has no
 # change of its own, so the path cannot be taken from the change.
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
-# Whether a row sits in a shaded group, for the alternating list background.
+# Whether a row is drawn with the alternating background.
 STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
 # Whether the row is hidden, for the crossed-eye marker in the action column.
 HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 4
@@ -98,7 +98,7 @@ class FlatRow:
     change_index: int
     # The directory the row belongs to.
     group: str
-    # Whether the row sits in a shaded group, so the list alternates.
+    # Whether the row is drawn with the shaded background.
     alternate: bool = False
 
 
@@ -278,8 +278,7 @@ class FlatChangeModel(QAbstractTableModel):
 
         The order follows FreeFileSync's flat list: a directory, then its own
         items, then its subdirectories. Each directory and its own items are
-        therefore contiguous, which is what lets the striping shade whole
-        groups instead of alternating inside one directory.
+        therefore contiguous, which keeps a directory next to its contents.
         """
         rows: list[FlatRow] = []
 
@@ -357,15 +356,6 @@ class FlatChangeModel(QAbstractTableModel):
                 key=self._row_sort_key,
                 reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
             )
-        # Shade every second group. A group is a directory and its own items,
-        # so the shade follows the hierarchy instead of the row number.
-        alternate = False
-        previous_group: str | None = None
-        for row in rows:
-            if row.group != previous_group:
-                alternate = not alternate
-                previous_group = row.group
-            row.alternate = alternate
         self._rows = rows
 
     # ------------------------------------------------------------------
@@ -617,6 +607,10 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 if not row_is_hidden:
                     visible_change_indices.add(row.change_index)
+            # The stripes alternate row by row. A directory and its first
+            # item are two rows, so they never share a stripe, and a group of
+            # any size still reads as alternating lines.
+            row.alternate = len(visible_rows) % 2 == 0
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows

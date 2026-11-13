@@ -462,7 +462,8 @@
 
 ## milestone 1.15aw compact actions, touch marker and quiet terminal
 
-- A directory now comes before its own items and then its subdirectories, so each directory group is contiguous. The stripe therefore shades a whole group instead of breaking in the middle of one.
+- A directory now comes before its own items and then its subdirectories, so a directory sits next to its contents.
+- The stripes alternate row by row, not group by group: a directory and its first item never share a stripe, and no run of items is drawn as one block.
 - The crossed-eye marker in the Actions column is watched on the viewport, not the pane, so it responds to a real click. A touchscreen tap is handled as `TouchBegin` because the viewport accepts touch events and receives no synthesized mouse press.
 - The marker hit area covers the full height of the row and a little more to the left, which makes it usable with a finger.
 - The direction line is a single compact row and the filter checkboxes are 40 px tall, so the locations row is 56 px instead of 77 px.
