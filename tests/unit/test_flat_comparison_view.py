@@ -359,3 +359,18 @@ def test_remote_items_do_not_offer_open_actions() -> None:
     assert actions["open_directory"] is None
     view.close()
     application.processEvents()
+
+
+def test_each_side_names_its_own_root_folder() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.source_root = "/home/user/source-data"
+    view.destination_root = "/home/user/dest-data"
+    view.set_changes([file_change("docs/a.txt")])
+    assert view.model.data(view.model.index(0, 0), Qt.ItemDataRole.DisplayRole) == "source-data"
+    assert (
+        view.model.data(view.model.index(0, 5), Qt.ItemDataRole.DisplayRole)
+        == "dest-data"
+    )
+    view.close()
+    application.processEvents()

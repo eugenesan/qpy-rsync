@@ -1228,3 +1228,40 @@ def test_a_finished_comparison_can_play_a_sound(monkeypatch) -> None:
     assert played == ["success"]
     window.close()
     application.processEvents()
+
+
+def test_showing_hidden_items_is_reported() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [
+            Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    window.comparison.hide_path("a.txt")
+    window._apply_show_hidden(True)
+    application.processEvents()
+    assert "hidden item(s)" in window.progress_label.text()
+    assert "Showing 1 hidden item(s)" in window.log.toPlainText()
+
+    window._apply_show_hidden(False)
+    application.processEvents()
+    assert "put aside again" in window.progress_label.text()
+    window.close()
+    application.processEvents()
+
+
+def test_the_backup_button_keeps_its_menu_when_unconfigured() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.backup_edit.setText("")
+    window._update_external_open_states()
+    # The button stays usable so the settings remain one right-click away.
+    assert window.backup_open.isEnabled() is True
+    window.close()
+    application.processEvents()

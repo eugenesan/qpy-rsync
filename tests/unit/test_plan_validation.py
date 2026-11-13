@@ -63,3 +63,27 @@ def test_cancellation_is_reported_once_when_error_and_finish_fire() -> None:
     assert cancelled == ["cancelled"]
     assert errors == []
     application.processEvents()
+
+
+def _two_files():
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    return [
+        Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+    ]
+
+
+def test_a_hidden_item_does_not_invalidate_the_plan() -> None:
+    from qpy_rsync.core.changes import HiddenItems
+    from qpy_rsync.services.plan_validation_service import compare_plan_to_changes
+
+    hidden = HiddenItems()
+    hidden.hide("a.txt")
+    profile = SyncProfile(
+        "plan",
+        Endpoint(EndpointKind.LOCAL, "/src/"),
+        Endpoint(EndpointKind.LOCAL, "/dst/"),
+    )
+    plan = build_execution_plan(profile, _two_files(), ChangeDecisions(), hidden)
+    assert compare_plan_to_changes(plan, _two_files(), hidden).valid

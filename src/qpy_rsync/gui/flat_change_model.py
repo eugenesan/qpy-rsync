@@ -51,6 +51,8 @@ ACTION_HEADER_ACCENT = "#0891B2"
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 # Whether a row sits in a shaded group, for the alternating list background.
 STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
+# Whether the row is hidden, for the crossed-eye marker in the action column.
+HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 @dataclass(slots=True)
@@ -155,6 +157,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._pattern = ""
         self._pattern_is_glob = False
         self._include_directory_contents = False
+        self._directories_only = False
         self._visible_actions: set[ChangeAction] | None = None
         self._directories: dict[str, FlatDirectory] = {}
         # The parsed path of every change. The paths are split once, so the
@@ -263,6 +266,11 @@ class FlatChangeModel(QAbstractTableModel):
     def root_name(self) -> str:
         """The name of the compared folder, shown on the root row."""
         name = self.source_root.rstrip("/").rpartition("/")[2]
+        return name or "."
+
+    def destination_root_name(self) -> str:
+        """The name of the destination folder, which may differ."""
+        name = self.destination_root.rstrip("/").rpartition("/")[2]
         return name or "."
 
     def _build_rows(self) -> None:
@@ -444,6 +452,9 @@ class FlatChangeModel(QAbstractTableModel):
         """
         value = text.strip()
         self._include_directory_contents = value.endswith("/")
+        # A pattern that ends with a slash filters directories in, never
+        # files; files only appear below a matching directory.
+        self._directories_only = self._include_directory_contents
         self._pattern = value.rstrip("/").casefold()
         self._pattern_is_glob = any(
             character in self._pattern for character in "*?["
@@ -469,7 +480,13 @@ class FlatChangeModel(QAbstractTableModel):
         self._apply_filters()
         self.layoutChanged.emit()
 
-    def _matches(self, name: str, path: str | None = None) -> bool:
+    def _matches(
+        self,
+        name: str,
+        path: str | None = None,
+        *,
+        is_directory: bool = False,
+    ) -> bool:
         """Match the pattern against a name, or against the whole path.
 
         A pattern with a slash is matched against the relative path, so
@@ -478,6 +495,8 @@ class FlatChangeModel(QAbstractTableModel):
         """
         if not self._pattern:
             return True
+        if self._directories_only and not is_directory:
+            return False
         if path is not None and "/" in self._pattern:
             candidate = path.casefold()
         else:
@@ -504,7 +523,9 @@ class FlatChangeModel(QAbstractTableModel):
                 directory.parent, False
             ) or (
                 pattern_active
-                and self._matches(directory.name, directory.path)
+                and self._matches(
+                    directory.name, directory.path, is_directory=True
+                )
             )
 
         # The items of every directory.
@@ -538,7 +559,7 @@ class FlatChangeModel(QAbstractTableModel):
         for path in self._ordered_directories():
             directory = directories[path]
             path_ok = (not pattern_active) or self._matches(
-                directory.name, directory.path
+                directory.name, directory.path, is_directory=True
             )
             if not path_ok and include_contents and directory_matched.get(
                 directory.parent, False
@@ -780,9 +801,17 @@ class FlatChangeModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.DisplayRole:
             if index.column() == self.SOURCE_NAME:
-                return row.name if source_present else ""
+                if not source_present:
+                    return ""
+                if not row.path:
+                    return self.root_name()
+                return row.name
             if index.column() == self.DESTINATION_NAME:
-                return row.name if destination_present else ""
+                if not destination_present:
+                    return ""
+                if not row.path:
+                    return self.destination_root_name()
+                return row.name
             if index.column() == self.ACTION:
                 return ""
             if index.column() == self.SOURCE_ITEMS:
@@ -861,6 +890,8 @@ class FlatChangeModel(QAbstractTableModel):
             return row.path
         if role == STRIPE_ROLE:
             return row.alternate
+        if role == HIDDEN_ROLE:
+            return self.hidden.is_hidden(row.path)
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:

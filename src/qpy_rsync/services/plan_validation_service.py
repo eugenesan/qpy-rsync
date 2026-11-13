@@ -34,20 +34,40 @@ class PlanValidationResult:
     exit_code: int
 
 
-def compare_plan_to_changes(plan: ExecutionPlan, changes: list[Change]) -> PlanMismatch:
+def compare_plan_to_changes(
+    plan: ExecutionPlan,
+    changes: list[Change],
+    hidden: object | None = None,
+) -> PlanMismatch:
     expected = {
         (item.path, item.action, item.kind.value)
         for item in plan.included_items
     }
+    hidden_paths = (
+        {path.strip("/") for path in hidden.paths()} if hidden is not None else set()
+    )
     actual = {
         (change.path.rstrip("/"), change.action, change.kind.value)
         for change in changes
         if change.action not in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE, ChangeAction.DESTINATION_ONLY}
+        # A hidden item is deliberately not part of the sync, so a plan that
+        # leaves it out is still correct.
+        and not _is_hidden(str(change.path), hidden_paths)
     }
     return PlanMismatch(
         missing=tuple(sorted(expected - actual)),
         unexpected=tuple(sorted(actual - expected)),
     )
+
+
+def _is_hidden(path: str, hidden_paths: set[str]) -> bool:
+    """Whether the path, or one of its parents, is hidden."""
+    current = path.rstrip("/")
+    while current:
+        if current in hidden_paths:
+            return True
+        current = current.rpartition("/")[0]
+    return False
 
 
 class PlanValidationService:

@@ -362,7 +362,7 @@ class OverviewPane(QWidget):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("overview-pane")
-        self.setMinimumWidth(340)
+        self.setMinimumWidth(430)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
@@ -394,7 +394,10 @@ class OverviewPane(QWidget):
         # The size column takes the remaining width, so no empty band is left
         # at the right edge of the pane.
         self.tree.header().setSectionResizeMode(
-            OverviewModel.SIZE, QHeaderView.ResizeMode.Stretch
+            OverviewModel.FOLDER, QHeaderView.ResizeMode.Stretch
+        )
+        self.tree.header().setSectionResizeMode(
+            OverviewModel.SIZE, QHeaderView.ResizeMode.Interactive
         )
         layout.addWidget(self.tree, 1)
         self.statistics = StatisticsBar(self)

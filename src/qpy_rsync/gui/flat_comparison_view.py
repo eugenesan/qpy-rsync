@@ -47,7 +47,7 @@ from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
-from .flat_change_model import STRIPE_ROLE, FlatChangeModel
+from .flat_change_model import HIDDEN_ROLE, STRIPE_ROLE, FlatChangeModel
 from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
 from .paths import full_path
 from qpy_rsync.storage.settings import app_settings
@@ -90,17 +90,43 @@ class UniformRowDelegate(QStyledItemDelegate):
 
 
 class ActionColumnDelegate(UniformRowDelegate):
-    """Align the icon of a row without a checkbox with the other icons.
+    """Paint the action column, the hidden marker and the row background.
 
     Rows that cannot be selected carry no check indicator, so the style
     draws their icon where the checkbox of the other rows sits. Painting
     the background first and shifting the content keeps the icons in one
     column.
+
+    The crossed eye at the right marks a row that is hidden from the sync.
+    It is drawn for every row, filled for a hidden one and faded otherwise,
+    so it also works as the button that hides and restores the row.
     """
+
+    MARKER_SIZE = 14
+    MARKER_RIGHT = 20
+
+    @classmethod
+    def marker_rect(cls, rect: QRect) -> QRect:
+        size = cls.MARKER_SIZE
+        return QRect(
+            rect.right() - cls.MARKER_RIGHT,
+            rect.top() + (rect.height() - size) // 2,
+            size,
+            size,
+        )
+
+    def _paint_marker(self, painter: object, option: object, index: QModelIndex) -> None:
+        icon = hidden_icon()
+        rect = self.marker_rect(option.rect)  # type: ignore[attr-defined]
+        if not index.data(HIDDEN_ROLE):
+            painter.setOpacity(0.25)  # type: ignore[attr-defined]
+        icon.paint(painter, rect)  # type: ignore[arg-type]
+        painter.setOpacity(1.0)  # type: ignore[attr-defined]
 
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
             super().paint(painter, option, index)  # type: ignore[arg-type]
+            self._paint_marker(painter, option, index)
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
@@ -121,6 +147,7 @@ class ActionColumnDelegate(UniformRowDelegate):
         )
         shifted.rect = shifted.rect.adjusted(offset, 0, 0, 0)
         super().paint(painter, shifted, index)  # type: ignore[arg-type]
+        self._paint_marker(painter, option, index)
 
 
 class FlatPathDelegate(UniformRowDelegate):
@@ -506,15 +533,34 @@ class FlatComparisonView(QWidget):
             )
             if pane is not None
         ]
-        if (
-            watched in panes
-            and getattr(event, "type", lambda: None)()
-            == QEvent.Type.KeyPress
-            and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
-        ):
-            if self._toggle_hidden():
-                return True
+        if watched in panes:
+            event_type = getattr(event, "type", lambda: None)()
+            if (
+                event_type == QEvent.Type.KeyPress
+                and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
+            ):
+                if self._toggle_hidden():
+                    return True
+            if event_type == QEvent.Type.MouseButtonPress and watched is self.action:
+                if self._click_hidden_marker(event):
+                    return True
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
+
+    def _click_hidden_marker(self, event: object) -> bool:
+        """Toggle the hidden state when the crossed eye is clicked."""
+        position = event.position().toPoint()  # type: ignore[attr-defined]
+        index = self.action.indexAt(position)
+        if not index.isValid():
+            return False
+        rect = self.action.visualRect(index)
+        if not ActionColumnDelegate.marker_rect(rect).contains(position):
+            return False
+        path = self.model.row_path(index.row())
+        if not path:
+            return False
+        self.model.hidden.toggle(path)
+        self._refresh_hidden()
+        return True
 
     def _toggle_hidden(self) -> bool:
         """Hide or show the selected items. Returns True when it handled it."""

@@ -299,3 +299,74 @@ def test_showing_hidden_items_does_not_change_the_visible_set() -> None:
     assert before == after == ["b.txt"]
     view.close()
     application.processEvents()
+
+
+def test_a_trailing_slash_filters_directories_in() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs", ChangeAction.UPDATE_CONTENT, ObjectKind.DIRECTORY, ">d"),
+            Change("docs.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("pics/c.jpg", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    # Without the slash a file whose name contains the pattern matches too.
+    model.set_path_filter("docs")
+    assert "docs.txt" in set(_paths(model))
+    # With the slash only the directory is matched, never the file.
+    model.set_path_filter("docs/")
+    paths = set(_paths(model))
+    assert "docs" in paths
+    assert "docs.txt" not in paths
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import HIDDEN_ROLE
+    from qpy_rsync.gui.flat_comparison_view import (
+        ActionColumnDelegate,
+        FlatComparisonView,
+    )
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    view.hide_path("a.txt")
+    view.set_show_hidden(True)
+    application.processEvents()
+
+    row = next(
+        row for row in range(view.model.rowCount())
+        if view.model.row_path(row) == "a.txt"
+    )
+    index = view.model.index(row, view.model.ACTION)
+    assert view.model.data(index, HIDDEN_ROLE) is True
+
+    rect = view.action.visualRect(index)
+    point = ActionColumnDelegate.marker_rect(rect).center()
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(point),
+        QPointF(view.action.viewport().mapToGlobal(point)),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert view.eventFilter(view.action, event) is True
+    assert view.hidden_paths() == set()
+    view.close()
+    application.processEvents()

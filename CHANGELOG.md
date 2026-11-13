@@ -442,3 +442,14 @@
 - The compare and overview headers are only as tall as their text, and the overview footer fits on one row.
 - Showing the hidden items no longer changes the overview tree or the statistics: the visible set for those still excludes hidden items until one is restored.
 - The context menu offers Open File and Open in Directory for items whose side is local.
+
+## milestone 1.15au hidden items, direction line and filter semantics
+
+- Showing the hidden items now writes to the journal and the progress line, the way the unchanged items do.
+- A row that is hidden carries a crossed-eye marker in the Actions column. The marker is faint on every other row and can be clicked to hide or restore it.
+- Each side names its own root folder, so a destination with a different name reads correctly.
+- A filter that ends with a slash matches directories only; files no longer match by name in that case, which restores the tree behaviour.
+- The direction line above the filter checkboxes reads "Source → Destination" with a larger arrow in the middle.
+- The backup button stays enabled so its context menu reaches the backup settings even before a directory is configured.
+- The Overview pane starts wider, its Item column absorbs the extra width, and its footer fits on one row.
+- Verifying the actions no longer fails because an item is hidden: a hidden item is deliberately outside the sync, so the plan that leaves it out is correct.

@@ -461,18 +461,37 @@ class MainWindow(QMainWindow):
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
-        # The arrow above the checkboxes shows the direction of the sync, so
-        # the Source and Destination glyphs are not needed.
+        # The direction line above the checkboxes names both sides, so the
+        # Source and Destination glyphs are not needed.
+        direction = QWidget(self)
+        direction_layout = QHBoxLayout(direction)
+        direction_layout.setContentsMargins(0, 0, 0, 0)
+        direction_layout.setSpacing(4)
+        source_label = QLabel("Source")
+        source_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        destination_label = QLabel("Destination")
+        destination_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         arrow = QLabel("\u2192")
         arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
         arrow.setToolTip("Source is compared with Destination")
         arrow.setObjectName("sync-direction-arrow")
-        arrow.setFixedHeight(12)
+        arrow_font = arrow.font()
+        arrow_font.setPointSizeF(max(11.0, arrow_font.pointSizeF() * 1.6))
+        arrow_font.setBold(True)
+        arrow.setFont(arrow_font)
+        direction_layout.addWidget(source_label, 1)
+        direction_layout.addWidget(arrow, 0)
+        direction_layout.addWidget(destination_label, 1)
+        direction.setObjectName("sync-direction")
         filter_column = QWidget(self)
         filter_column_layout = QVBoxLayout(filter_column)
         filter_column_layout.setContentsMargins(0, 0, 0, 0)
         filter_column_layout.setSpacing(0)
-        filter_column_layout.addWidget(arrow, 0)
+        filter_column_layout.addWidget(direction, 0)
         filter_column_layout.addWidget(
             self.action_filters, 0, Qt.AlignmentFlag.AlignBottom
         )
@@ -785,6 +804,13 @@ class MainWindow(QMainWindow):
         button.clicked.connect(slot)  # type: ignore[arg-type]
         return button
 
+    def _configured_destination_is_local(self) -> bool:
+        try:
+            destination = parse_endpoint(self.destination_edit.text())
+        except ValueError:
+            return False
+        return destination.kind is EndpointKind.LOCAL
+
     def _update_external_open_states(self) -> None:
         for edit, button in (
             (self.source_edit, getattr(self, "source_open_button", None)),
@@ -804,7 +830,9 @@ class MainWindow(QMainWindow):
                 local = destination.kind is EndpointKind.LOCAL
             except ValueError:
                 local = False
-            backup.setEnabled(local and bool(self.backup_edit.text().strip()))
+            # The button keeps its menu so the backup settings stay reachable
+            # even when no directory is configured yet.
+            backup.setEnabled(True)
         log_button = getattr(self, "log_file_open", None)
         if log_button is not None:
             log_button.setEnabled(bool(self.log_file_edit.text().strip()))
@@ -1222,10 +1250,18 @@ class MainWindow(QMainWindow):
     def _open_button_menu(self, button: QToolButton, point: object, section: str) -> None:
         menu = QMenu(button)
         open_action = menu.addAction(button.toolTip())
+        if section == "backup":
+            open_action.setEnabled(
+                bool(self.backup_edit.text().strip())
+                and self._configured_destination_is_local()
+            )
+        elif section == "logging":
+            open_action.setEnabled(bool(self.log_file_edit.text().strip()))
         configure = menu.addAction("Configure...")
         selected = menu.exec(button.mapToGlobal(point))
         if selected is open_action:
-            button.click()
+            if open_action.isEnabled():
+                button.click()
         elif selected is configure:
             self._edit_settings(section)
 
@@ -1545,7 +1581,9 @@ class MainWindow(QMainWindow):
             # result; modified decisions still take the full validation path.
             self._plan_validation_started()
             mismatch = compare_plan_to_changes(
-                self._current_plan, self.comparison.model.changes
+                self._current_plan,
+                self.comparison.model.changes,
+                getattr(self.comparison.model, "hidden", None),
             )
             self._append_log("STATE verification-reused-comparison")
             self._plan_validation_finished(
@@ -2089,6 +2127,27 @@ class MainWindow(QMainWindow):
         """Show the hidden items, or put them aside again."""
         if hasattr(self.comparison, "set_show_hidden"):
             self.comparison.set_show_hidden(show)
+        count = getattr(self.comparison.model, "hidden", None)
+        total = count.count() if count is not None else 0
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        if show:
+            self.progress_label.setText(
+                f"Showing {total:,} hidden item(s); they are dimmed and marked "
+                "with a crossed eye."
+            )
+            self._append_log(
+                f"Showing {total:,} hidden item(s).", severity="info"
+            )
+        else:
+            self.progress_label.setText(
+                f"{total:,} hidden item(s) are put aside again."
+                if total
+                else "No items are hidden."
+            )
+            self._append_log(
+                f"Hiding {total:,} hidden item(s) again.", severity="info"
+            )
         self._refresh_plan_summary()
 
     def _hide_path(self, path: str) -> None:
