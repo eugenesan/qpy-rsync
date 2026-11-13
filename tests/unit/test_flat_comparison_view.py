@@ -456,3 +456,219 @@ def test_the_actions_column_sorts_by_action_label() -> None:
     assert labels() == sorted(labels(), key=str.casefold, reverse=True)
     model.deleteLater()
     application.processEvents()
+
+
+def _nested_changes() -> list:
+    return [
+        file_change("docs/a.txt"),
+        file_change("docs/b.txt"),
+        file_change("docs/sub/c.txt"),
+        file_change("pics/d.jpg"),
+        file_change("root.txt"),
+    ]
+
+
+def test_a_folded_directory_hides_its_children_but_not_its_totals() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(_nested_changes())
+    visible_before = {change.path for change in model.visible_changes()}
+
+    assert model.toggle_collapsed("docs") is True
+    model.refresh_collapsed()
+
+    paths = _paths(model)
+    assert paths == ["root.txt", "docs", "pics", "pics/d.jpg"]
+    # The fold is display-only: the folded items are still in the comparison.
+    assert {change.path for change in model.visible_changes()} == visible_before
+    assert model.row_data(0).has_children is True
+    assert model.row_data(2).has_children is True
+    # Toggling a file makes no sense and reports that.
+    assert model.toggle_collapsed("root.txt") is False
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_folding_the_root_leaves_only_the_root_row() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(_nested_changes())
+    assert model.toggle_collapsed("") is True
+    model.refresh_collapsed()
+    assert model.rowCount() == 1
+    assert model.row_path(0) == ""
+    model.expand_all()
+    model.refresh_collapsed()
+    assert model.rowCount() == 9
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_a_path_filter_temporarily_overrides_the_folds() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(_nested_changes())
+    model.set_collapsed("docs", True)
+    model.refresh_collapsed()
+    assert "docs/a.txt" not in set(_paths(model))
+
+    model.set_path_filter("a.txt")
+    assert "docs/a.txt" in set(_paths(model))
+    model.set_path_filter("")
+    assert "docs/a.txt" not in set(_paths(model))
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_collapse_all_and_expand_all() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(_nested_changes())
+    model.collapse_all()
+    model.refresh_collapsed()
+    # Every directory with children is folded, so only the root row remains.
+    assert model.rowCount() == 1
+    assert model.collapsed == {"", "docs", "docs/sub", "pics"}
+    model.expand_all()
+    model.refresh_collapsed()
+    assert model.collapsed == set()
+    assert "docs/sub/c.txt" in set(_paths(model))
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_a_fold_is_dropped_when_its_directory_disappears() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(_nested_changes())
+    model.set_collapsed("docs/sub", True)
+    model.set_changes([file_change("pics/d.jpg")])
+    assert model.collapsed == set()
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_selecting_a_folded_item_reveals_its_parents() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(_nested_changes())
+    view.collapse_path("docs")
+    assert view.model.index_for_path("docs/sub/c.txt").isValid() is False
+
+    view.select_path("docs/sub/c.txt")
+    application.processEvents()
+    assert view.is_collapsed("docs") is False
+    assert view.model.index_for_path("docs/sub/c.txt").isValid()
+
+    # Folding the root and selecting a deep item expands the whole chain.
+    view.collapse_path("")
+    assert view.model.rowCount() == 1
+    view.select_path("docs/sub/c.txt")
+    assert view.is_collapsed("") is False
+    assert view.model.index_for_path("docs/sub/c.txt").isValid()
+    view.close()
+    application.processEvents()
+
+
+def test_clicking_the_branch_marker_toggles_a_directory() -> None:
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(_nested_changes())
+    application.processEvents()
+
+    row = next(
+        row for row in range(view.model.rowCount())
+        if view.model.row_path(row) == "docs"
+    )
+    index = view.model.index(row, view.model.SOURCE_NAME)
+    rect = view.source.visualRect(index)
+    point = __import__(
+        "qpy_rsync.gui.flat_comparison_view", fromlist=["FlatPathDelegate"]
+    ).FlatPathDelegate.chevron_rect(rect, 0).center()
+
+    def click(at: object) -> None:
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(at),
+            QPointF(view.source.viewport().mapToGlobal(at)),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(view.source.viewport(), event)
+
+    click(point)
+    assert view.is_collapsed("docs") is True
+    assert "docs/a.txt" not in set(_paths(view.model))
+    click(point)
+    assert view.is_collapsed("docs") is False
+    assert "docs/a.txt" in set(_paths(view.model))
+    view.close()
+    application.processEvents()
+
+
+def test_the_fold_menu_offers_the_directory_and_the_whole_tree() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(_nested_changes())
+    directory = view.model.index_for_path("docs")
+    row = view.model.row_data(directory.row())
+    _menu, actions = view._build_context_menu(
+        view.source, "docs", directory.data(Qt.ItemDataRole.UserRole), row
+    )
+    assert actions["collapse"] is not None
+    assert actions["collapse_all"] is not None
+    assert actions["expand_all"] is not None
+
+    file_index = view.model.index_for_path("docs/a.txt")
+    file_row = view.model.row_data(file_index.row())
+    _menu, file_actions = view._build_context_menu(
+        view.source,
+        "docs/a.txt",
+        file_index.data(Qt.ItemDataRole.UserRole),
+        file_row,
+    )
+    assert file_actions["collapse"] is None
+    assert file_actions["collapse_all"] is not None
+    view.close()
+    application.processEvents()
+
+
+def test_the_arrow_keys_fold_and_unfold_a_directory() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(_nested_changes())
+    directory = view.model.index_for_path("docs")
+    view.source.setCurrentIndex(directory)
+
+    left = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier
+    )
+    assert view.eventFilter(view.source, left) is True
+    assert view.is_collapsed("docs") is True
+
+    right = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier
+    )
+    assert view.eventFilter(view.source, right) is True
+    assert view.is_collapsed("docs") is False
+    view.close()
+    application.processEvents()
+
+
+def test_double_clicking_a_directory_toggles_it() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(_nested_changes())
+    view._handle_double_click(view.source, view.model.index_for_path("docs"))
+    assert view.is_collapsed("docs") is True
+    view._handle_double_click(view.source, view.model.index_for_path("docs"))
+    assert view.is_collapsed("docs") is False
+    view.close()
+    application.processEvents()

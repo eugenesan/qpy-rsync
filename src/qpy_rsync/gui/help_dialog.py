@@ -38,6 +38,15 @@ result.
    Checkboxes include or exclude an item. Items that cannot be chosen, such
    as unchanged items, carry no checkbox. The Actions menu resets decisions.
 
+   Space stashes the selected item: it is temporarily left out of the sync and
+   kept aside for this comparison only. The crossed eye on the right of the
+   Actions column stashes and restores it, the filter bar has a "Show stashed
+   items" toggle, and its right-click menu offers "Restore All Stashed".
+   The arrow in front of a folder collapses or expands its contents in the
+   list only: the sync, the totals and the overview keep every item. Left and
+   Right do the same from the keyboard, and "Collapse All Folders" /
+   "Expand All Folders" are in the Actions menu.
+
 5. Verify Actions (F8)
    Builds the execution plan from your selection and checks it with a second
    rsync dry run. It runs only when checkbox decisions were changed after the

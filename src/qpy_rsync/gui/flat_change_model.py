@@ -100,6 +100,8 @@ class FlatRow:
     group: str
     # Whether the row is drawn with the shaded background.
     alternate: bool = False
+    # Whether a directory row has anything below it to fold.
+    has_children: bool = False
 
 
 class FlatChangeModel(QAbstractTableModel):
@@ -142,6 +144,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.stash = StashedItems()
         # When this is on, the stashed items stay in the list, dimmed.
         self.show_stashed = False
+        # The directories whose children are folded out of the list. This is
+        # view state only: the folded items still belong to the sync.
+        self.collapsed: set[str] = set()
         self.changes: list[Change] = []
         self.source_root = ""
         self.destination_root = ""
@@ -193,6 +198,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(self.changes)
         self._build_directories()
+        # A fold is meaningless when its directory is gone; keep the folds of
+        # the directories that are still there.
+        self.collapsed &= set(self._directories)
         self._build_rows()
         self._apply_filters()
         self.endResetModel()
@@ -304,6 +312,7 @@ class FlatChangeModel(QAbstractTableModel):
                             else -1
                         ),
                         group=path,
+                        has_children=directory.has_children,
                     )
                 )
             for index in sorted(
@@ -344,6 +353,10 @@ class FlatChangeModel(QAbstractTableModel):
                 change=None,
                 change_index=-1,
                 group="",
+                has_children=bool(
+                    self._directories.get("")
+                    and self._directories[""].has_children
+                ),
             )
         )
         walk("")
@@ -472,6 +485,53 @@ class FlatChangeModel(QAbstractTableModel):
         self._apply_filters()
         self.layoutChanged.emit()
 
+    def is_collapsed(self, path: str) -> bool:
+        """Whether the children of a directory are folded out of the list."""
+        return path.rstrip("/") in self.collapsed
+
+    def set_collapsed(self, path: str, collapsed: bool) -> None:
+        """Fold or unfold the children of a directory."""
+        clean = path.rstrip("/")
+        directory = self._directories.get(clean)
+        if directory is None or not directory.has_children:
+            self.collapsed.discard(clean)
+            return
+        if collapsed:
+            self.collapsed.add(clean)
+        else:
+            self.collapsed.discard(clean)
+
+    def toggle_collapsed(self, path: str) -> bool:
+        """Fold or unfold a directory. Returns the new folded state."""
+        clean = path.rstrip("/")
+        if self.is_collapsed(clean):
+            self.set_collapsed(clean, False)
+            return False
+        self.set_collapsed(clean, True)
+        return self.is_collapsed(clean)
+
+    def collapse_all(self) -> None:
+        """Fold every directory that has children."""
+        self.collapsed = {
+            path
+            for path, directory in self._directories.items()
+            if directory.has_children
+        }
+
+    def expand_all(self) -> None:
+        """Unfold every directory."""
+        self.collapsed.clear()
+
+    def clear_collapsed(self) -> None:
+        """Forget the folds, for a new comparison."""
+        self.collapsed.clear()
+
+    def refresh_collapsed(self) -> None:
+        """Show the rows again after a fold or an unfold."""
+        self.layoutAboutToBeChanged.emit()
+        self._apply_filters()
+        self.layoutChanged.emit()
+
     def _matches(
         self,
         name: str,
@@ -507,6 +567,16 @@ class FlatChangeModel(QAbstractTableModel):
         directories = self._directories
         pattern_active = bool(self._pattern) and self._pattern != "*"
         include_contents = self._include_directory_contents
+        # A path filter is a request to see the matches, so it temporarily
+        # overrides the folds; clearing the filter brings them back.
+        collapse_active = bool(self.collapsed) and not pattern_active
+        directory_folded: dict[str, bool] = {"": False}
+        if collapse_active:
+            for path, directory in directories.items():
+                directory_folded[path] = (
+                    directory_folded.get(directory.parent, False)
+                    or path in self.collapsed
+                )
 
         # Whether the directory or one of its ancestors matched.
         directory_matched: dict[str, bool] = {"": False}
@@ -607,6 +677,14 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 if not row_is_stashed:
                     visible_change_indices.add(row.change_index)
+            # The rows below a folded directory are out of the list, but
+            # they stay in the totals and in the overview.
+            if (
+                collapse_active
+                and row.path
+                and directory_folded.get(row.parent, False)
+            ):
+                continue
             # The stripes alternate row by row. A directory and its first
             # item are two rows, so they never share a stripe, and a group of
             # any size still reads as alternating lines.

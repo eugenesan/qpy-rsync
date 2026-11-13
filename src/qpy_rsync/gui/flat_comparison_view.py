@@ -23,7 +23,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -161,6 +161,25 @@ class FlatPathDelegate(UniformRowDelegate):
 
     ICON_SIZE = 16
     LEVEL_WIDTH = 14
+    CHEVRON_SIZE = 9
+    # The gutter in front of the folder icon that holds the fold marker.
+    CHEVRON_SPACE = 14
+
+    @classmethod
+    def chevron_rect(cls, rect: QRect, depth: int) -> QRect:
+        """The fold marker of a directory row, in viewport coordinates."""
+        left = rect.left() + 4 + depth * cls.LEVEL_WIDTH
+        top = rect.top() + (rect.height() - cls.CHEVRON_SIZE) // 2
+        return QRect(left, top, cls.CHEVRON_SIZE, cls.CHEVRON_SIZE)
+
+    @classmethod
+    def chevron_hit_rect(cls, rect: QRect, depth: int) -> QRect:
+        """A touch-friendly version of the fold marker's rectangle."""
+        marker = cls.chevron_rect(rect, depth)
+        hit = marker.adjusted(-5, 0, 5, 0)
+        hit.setTop(rect.top())
+        hit.setBottom(rect.bottom())
+        return hit
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         model = index.model()
@@ -198,13 +217,6 @@ class FlatPathDelegate(UniformRowDelegate):
         painter.save()
         painter.translate(option.rect.left(), option.rect.top())
         baseline = option.rect.height() // 2 + option.fontMetrics.ascent() // 2 - 1
-        x = 4 + depth * self.LEVEL_WIDTH
-        if not row.is_directory:
-            # The rule that shows which directory the item belongs to.
-            rule_x = x - 8
-            painter.setPen(QPen(RULE_COLOR, 1))
-            painter.drawLine(rule_x, 0, rule_x, option.rect.height())
-            x += 6
         if selected:
             color = styled.palette.color(
                 styled.palette.ColorRole.HighlightedText
@@ -214,7 +226,39 @@ class FlatPathDelegate(UniformRowDelegate):
             if is_stashed:
                 # A stashed row stays readable but is clearly marked.
                 color = STASHED_COLOR
+        if row.is_directory:
+            if row.has_children:
+                # A folded directory points right, an open one points down,
+                # the same way a tree's branch marker reads.
+                size = self.CHEVRON_SIZE
+                triangle = QPainterPath()
+                if model.is_collapsed(row.path):
+                    triangle.moveTo(0, 0)
+                    triangle.lineTo(size, size / 2)
+                    triangle.lineTo(0, size)
+                else:
+                    triangle.moveTo(0, 0)
+                    triangle.lineTo(size, 0)
+                    triangle.lineTo(size / 2, size)
+                triangle.closeSubpath()
+                painter.save()
+                painter.translate(
+                    4 + depth * self.LEVEL_WIDTH,
+                    (option.rect.height() - size) // 2,
+                )
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+                painter.drawPath(triangle)
+                painter.restore()
+            x = 4 + self.CHEVRON_SPACE + depth * self.LEVEL_WIDTH
+        else:
+            x = 4 + self.CHEVRON_SPACE + depth * self.LEVEL_WIDTH
+            # The rule that shows which directory the item belongs to.
+            rule_x = x - 8
+            painter.setPen(QPen(RULE_COLOR, 1))
+            painter.drawLine(rule_x, 0, rule_x, option.rect.height())
         painter.setPen(color)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         if icon is not None:
             icon.paint(
                 painter,
@@ -280,7 +324,8 @@ class FlatComparisonView(QWidget):
         )
         self.filter_edit.setToolTip(
             "Temporarily filter paths shown in the current comparison. "
-            "This does not change rsync include or exclude rules."
+            "This does not change rsync include or exclude rules. "
+            "Collapsed folders are expanded while a filter is active."
         )
 
         self.inventory_button = QToolButton()
@@ -392,7 +437,9 @@ class FlatComparisonView(QWidget):
         pane.customContextMenuRequested.connect(
             lambda point, t=pane: self._show_context_menu(t, point)
         )
-        pane.doubleClicked.connect(self._request_diff)
+        pane.doubleClicked.connect(
+            lambda index, p=pane: self._handle_double_click(p, index)
+        )
         # The space bar hides the selected items; the key event goes to the
         # focused pane, so the panes are watched. The mouse events of a pane
         # go to its viewport, so the viewport is watched as well.
@@ -549,34 +596,129 @@ class FlatComparisonView(QWidget):
         ]
         event_type = getattr(event, "type", lambda: None)()
         action = getattr(self, "action", None)
-        action_viewport = getattr(action, "viewport", lambda: None)()
-        if watched is action_viewport:
-            # The viewport accepts touch events, so a touchscreen sends
-            # TouchBegin instead of the synthesized mouse press that a mouse
-            # would send. Both paths reach the same hit test.
-            if event_type == QEvent.Type.MouseButtonPress:
-                if self._toggle_stash_at(event.position().toPoint()):
-                    return True
-            elif event_type == QEvent.Type.TouchBegin:
-                points = getattr(event, "points", lambda: ())()
-                if len(points) == 1 and self._toggle_stash_at(
-                    points[0].position().toPoint()
+        # The viewport accepts touch events, so a touchscreen sends TouchBegin
+        # instead of the synthesized mouse press that a mouse would send.
+        # Both paths reach the same hit tests.
+        position = None
+        if event_type in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
+        ):
+            position = event.position().toPoint()
+        elif event_type == QEvent.Type.TouchBegin:
+            points = getattr(event, "points", lambda: ())()
+            if len(points) == 1:
+                position = points[0].position().toPoint()
+        if position is not None:
+            clicked = next(
+                (pane for pane in panes if pane.viewport() is watched),
+                None,
+            )
+            if clicked is not None:
+                if clicked is action:
+                    if event_type == QEvent.Type.MouseButtonPress:
+                        if self._toggle_stash_at(position):
+                            return True
+                    elif (
+                        event_type == QEvent.Type.MouseButtonDblClick
+                        and self._stash_target(position) is not None
+                    ):
+                        return True
+                elif event_type == QEvent.Type.MouseButtonPress:
+                    if self._toggle_collapse_at(clicked, position):
+                        return True
+                elif (
+                    event_type == QEvent.Type.MouseButtonDblClick
+                    and self._collapse_target(clicked, position) is not None
                 ):
                     return True
         if watched in panes:
-            if (
-                event_type == QEvent.Type.KeyPress
-                and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
-            ):
-                if self._toggle_stash():
-                    return True
+            if event_type == QEvent.Type.KeyPress:
+                key = getattr(event, "key", lambda: None)()
+                if key == Qt.Key.Key_Space:
+                    if self._toggle_stash():
+                        return True
+                elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                    if self._handle_collapse_key(watched, key):
+                        return True
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
-    def _toggle_stash_at(self, position: object) -> bool:
-        """Toggle the stash state when the crossed eye is clicked or tapped."""
-        index = self.action.indexAt(position)
+    def _collapse_target(
+        self, tree: QTableView, position: object
+    ) -> str | None:
+        """The directory whose branch marker was hit, if any."""
+        index = tree.indexAt(position)
+        if not index.isValid():
+            return None
+        if index.column() not in (
+            self.model.SOURCE_NAME,
+            self.model.DESTINATION_NAME,
+        ):
+            return None
+        row = self.model.row_data(index.row())
+        if row is None or not row.is_directory or not row.has_children:
+            return None
+        rect = tree.visualRect(index)
+        if not FlatPathDelegate.chevron_hit_rect(rect, row.depth).contains(
+            position
+        ):
+            return None
+        return row.path
+
+    def _toggle_collapse_at(self, tree: QTableView, position: object) -> bool:
+        """Fold or unfold a directory when its branch marker is clicked."""
+        path = self._collapse_target(tree, position)
+        if path is None:
+            return False
+        self.toggle_collapsed(path)
+        return True
+
+    def _handle_collapse_key(self, pane: QTableView, key: int) -> bool:
+        """Use the arrow keys like a tree's expand and collapse keys."""
+        index = pane.currentIndex()
         if not index.isValid():
             return False
+        row = self.model.row_data(index.row())
+        if row is None:
+            return False
+        if row.is_directory:
+            if not row.has_children:
+                return False
+            if key == Qt.Key.Key_Left:
+                if not self.model.is_collapsed(row.path):
+                    self.collapse_path(row.path)
+                else:
+                    self.select_path(row.path.rpartition("/")[0])
+                return True
+            if key == Qt.Key.Key_Right:
+                if self.model.is_collapsed(row.path):
+                    self.expand_path(row.path)
+                else:
+                    child_path = self.model.row_path(index.row() + 1)
+                    if child_path is not None:
+                        self.select_path(child_path)
+                return True
+            return False
+        if key == Qt.Key.Key_Left:
+            self.select_path(row.parent)
+            return True
+        return False
+
+    def _handle_double_click(
+        self, pane: QTableView, index: QModelIndex
+    ) -> None:
+        """Toggle a directory; open the diff tool for anything else."""
+        row = self.model.row_data(index.row())
+        if row is not None and row.is_directory and row.has_children:
+            self.toggle_collapsed(row.path)
+            return
+        self._request_diff(index)
+
+    def _stash_target(self, position: object) -> str | None:
+        """The stashed row whose crossed eye was hit, if any."""
+        index = self.action.indexAt(position)
+        if not index.isValid():
+            return None
         rect = self.action.visualRect(index)
         marker = ActionColumnDelegate.marker_rect(rect)
         # A finger is not as precise as a pointer, so the marked area is
@@ -586,9 +728,13 @@ class FlatComparisonView(QWidget):
         hit.setBottom(rect.bottom())
         hit.setRight(rect.right())
         if not hit.contains(position):
-            return False
-        path = self.model.row_path(index.row())
-        if not path:
+            return None
+        return self.model.row_path(index.row()) or None
+
+    def _toggle_stash_at(self, position: object) -> bool:
+        """Toggle the stash state when the crossed eye is clicked or tapped."""
+        path = self._stash_target(position)
+        if path is None:
             return False
         self.model.stash.toggle(path)
         self._refresh_stashed()
@@ -619,6 +765,41 @@ class FlatComparisonView(QWidget):
                     paths.append(path)
             break
         return paths
+
+    def is_collapsed(self, path: str) -> bool:
+        """Whether a directory's children are folded out of the list."""
+        return self.model.is_collapsed(path)
+
+    def collapse_path(self, path: str) -> None:
+        """Fold a directory's children out of the list."""
+        self.model.set_collapsed(path, True)
+        self.model.refresh_collapsed()
+
+    def expand_path(self, path: str) -> None:
+        """Show the children of a folded directory again."""
+        self.model.set_collapsed(path, False)
+        self.model.refresh_collapsed()
+
+    def toggle_collapsed(self, path: str) -> None:
+        """Fold or unfold a directory."""
+        self.model.toggle_collapsed(path)
+        self.model.refresh_collapsed()
+        self.select_path(path)
+
+    def collapse_all(self) -> None:
+        """Fold every directory that has children."""
+        self.model.collapse_all()
+        self.model.refresh_collapsed()
+        self.select_path("")
+
+    def expand_all(self) -> None:
+        """Unfold every directory."""
+        self.model.expand_all()
+        self.model.refresh_collapsed()
+
+    def clear_collapsed(self) -> None:
+        """Forget the folds, for a new comparison."""
+        self.model.clear_collapsed()
 
     def stash_path(self, path: str) -> None:
         """Stash a path and everything below it."""
@@ -717,8 +898,24 @@ class FlatComparisonView(QWidget):
         """The items of the comparison that the filters show."""
         return self.model.visible_changes()
 
+    def _expand_ancestors(self, path: str) -> bool:
+        """Unfold the parents of a path so that the row can be selected."""
+        if not path.strip("/"):
+            return False
+        changed = False
+        current = path.rstrip("/")
+        while True:
+            current = current.rpartition("/")[0]
+            if current in self.model.collapsed:
+                self.model.collapsed.discard(current)
+                changed = True
+            if not current:
+                return changed
+
     def select_path(self, path: str) -> None:
         """Select the object with the given path in the panes."""
+        if self._expand_ancestors(path):
+            self.model.refresh_collapsed()
         index = self.model.index_for_path(path)
         if not index.isValid():
             return
@@ -817,14 +1014,23 @@ class FlatComparisonView(QWidget):
         if not index.isValid():
             # An empty part of the Actions pane still offers the one action
             # that belongs to the list as a whole.
-            if tree is self.action and self.model.stash:
+            if tree is self.action:
                 menu = QMenu(tree)
-                restore = menu.addAction(
-                    f"Restore All Stashed ({self.model.stash.count()})"
-                )
+                restore = None
+                if self.model.stash:
+                    restore = menu.addAction(
+                        f"Restore All Stashed ({self.model.stash.count()})"
+                    )
+                    menu.addSeparator()
+                collapse_all = menu.addAction("Collapse All Folders")
+                expand_all = menu.addAction("Expand All Folders")
                 selected = menu.exec(tree.viewport().mapToGlobal(point))
                 if selected is restore:
                     self.restore_all_requested.emit()
+                elif selected is collapse_all:
+                    self.collapse_all()
+                elif selected is expand_all:
+                    self.expand_all()
             return
         path = self.model.row_path(index.row())
         change = index.data(Qt.ItemDataRole.UserRole)
@@ -851,6 +1057,14 @@ class FlatComparisonView(QWidget):
             self.restore_path(path)
         elif selected is actions["restore_all_stashed"]:
             self.restore_all_requested.emit()
+        elif selected is actions["collapse"] and path is not None:
+            self.collapse_path(path)
+        elif selected is actions["expand"] and path is not None:
+            self.expand_path(path)
+        elif selected is actions["collapse_all"]:
+            self.collapse_all()
+        elif selected is actions["expand_all"]:
+            self.expand_all()
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
 
@@ -919,9 +1133,13 @@ class FlatComparisonView(QWidget):
             "reset_one": None,
             "reset_subtree": None,
             "reset_all": None,
-            "hide": None,
-            "show": None,
+            "stash": None,
+            "restore": None,
             "restore_all_stashed": None,
+            "collapse": None,
+            "expand": None,
+            "collapse_all": None,
+            "expand_all": None,
             "filters": [],
         }
         if absolute_path:
@@ -974,6 +1192,23 @@ class FlatComparisonView(QWidget):
             actions["restore_all_stashed"] = menu.addAction(
                 f"Restore All Stashed ({stash.count()})"
             )
+
+        # Folding is view-only: a folded item stays in the sync and in the
+        # totals, it is only out of the way while the tree is examined.
+        menu.addSeparator()
+        fold_menu = menu.addMenu("Collapse / Expand")
+        if (
+            path is not None
+            and getattr(row, "is_directory", False)
+            and getattr(row, "has_children", False)
+        ):
+            if self.model.is_collapsed(path):
+                actions["expand"] = fold_menu.addAction("Expand Folder")
+            else:
+                actions["collapse"] = fold_menu.addAction("Collapse Folder")
+            fold_menu.addSeparator()
+        actions["collapse_all"] = fold_menu.addAction("Collapse All Folders")
+        actions["expand_all"] = fold_menu.addAction("Expand All Folders")
         return menu, actions
 
     def _request_diff(self, index: QModelIndex) -> None:

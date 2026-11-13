@@ -757,6 +757,19 @@ class MainWindow(QMainWindow):
             actions_menu, "Cancel", "F10", self._cancel_active_operation
         )
         self._add_action(actions_menu, "Pause", "F11", self._toggle_pause)
+        actions_menu.addSeparator()
+        self._add_action(
+            actions_menu,
+            "Collapse All Folders",
+            "",
+            self.comparison.collapse_all,
+        )
+        self._add_action(
+            actions_menu,
+            "Expand All Folders",
+            "",
+            self.comparison.expand_all,
+        )
 
         help_menu = menu_bar.addMenu("&Help")
         self._add_action(help_menu, "How-To", "F1", self._show_how_to)
@@ -2041,11 +2054,12 @@ class MainWindow(QMainWindow):
         # The metadata of the previous comparison no longer describes the
         # destination.
         self.comparison.set_destination_metadata({})
-        # Stashed items only live in memory, so a new comparison starts
-        # with an empty stash.
+        # Stashed items and folds only live in memory, so a new comparison
+        # starts with an empty stash and every folder open.
         stash = getattr(self.comparison.model, "stash", None)
         if stash is not None:
             stash.clear()
+        self.comparison.clear_collapsed()
         self.action_filters.set_stashed_count(0)
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)

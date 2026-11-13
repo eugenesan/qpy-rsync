@@ -483,3 +483,12 @@
 - The stashed toggle shows its count next to the crossed eye, and its tooltip explains the right-click Restore All Stashed action.
 - The overview pane uses the same wording for folders.
 - The internal names follow the UI: `StashedItems`, `model.stash`, `stash_path`, `restore_path`, `restore_all_stashed`, `STASHED_ROLE`.
+
+## milestone 1.15az collapse and expand
+
+- Every directory row carries a branch marker in the Item columns. Clicking it folds the directory's contents out of the list; clicking it again expands them. Double-click, Left, and Right work like a tree.
+- Folding is view-only. Folded items remain in the sync, the totals, the statistics, and the overview; only the list rows are out of the way.
+- The row context menu has a Collapse / Expand submenu with the folder action and Collapse All Folders / Expand All Folders. The same global actions are in the Actions menu and in the empty part of the Actions pane.
+- A path filter temporarily overrides the folds so a search never loses its matches; clearing the filter restores the folds.
+- Selecting a path from the overview or the filter expands its ancestors first.
+- Folds live in memory, survive sorting and inventory toggles, and are cleared when a new comparison starts.
