@@ -50,6 +50,7 @@ from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HE
 from .flat_change_model import STRIPE_ROLE, FlatChangeModel
 from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
 from .paths import full_path
+from qpy_rsync.storage.settings import app_settings
 
 # The colour of the dimmed path that precedes the name of a directory.
 PREFIX_COLOR = QColor("#707070")
@@ -309,6 +310,16 @@ class FlatComparisonView(QWidget):
         self.destination.header().sectionResized.connect(
             lambda _logical, _old, _new: self.save_view_state()
         )
+        for pane, tree in (
+            ("source", self.source),
+            ("destination", self.destination),
+        ):
+            tree.header().setContextMenuPolicy(
+                Qt.ContextMenuPolicy.CustomContextMenu
+            )
+            tree.header().customContextMenuRequested.connect(
+                lambda point, p=pane, t=tree: self._show_column_menu(p, t, point)
+            )
         self._restore_view_state()
         self._synchronize()
         for tree in (self.source, self.action, self.destination):
@@ -344,25 +355,82 @@ class FlatComparisonView(QWidget):
         tree.installEventFilter(self)
         return tree
 
+    # The optional columns of each pane, in the order they are offered.
+    OPTIONAL_COLUMNS = {
+        "source": (
+            ("Items", 1),
+            ("Size", 2),
+            ("Modified", 3),
+        ),
+        "destination": (
+            ("Items", 6),
+            ("Size", 7),
+            ("Modified", 8),
+        ),
+    }
+
+    def _hidden_columns(self, pane: str) -> set[int]:
+        """The optional columns of a pane that the user switched off."""
+        key = f"comparison/flat-hidden-{pane}"
+        stored = str(app_settings().value(key, "")).strip()
+        hidden: set[int] = set()
+        if stored:
+            for value in stored.split(","):
+                try:
+                    hidden.add(int(value))
+                except ValueError:
+                    continue
+        return hidden
+
+    def _save_hidden_columns(self, pane: str, hidden: set[int]) -> None:
+        settings = app_settings()
+        settings.setValue(
+            f"comparison/flat-hidden-{pane}",
+            ",".join(str(column) for column in sorted(hidden)),
+        )
+        settings.sync()
+
     def _apply_column_visibility(self) -> None:
-        """Show only the columns that belong to each comparison pane."""
-        source_columns = {
-            self.model.SOURCE_NAME,
-            self.model.SOURCE_ITEMS,
-            self.model.SOURCE_SIZE,
-            self.model.SOURCE_TIME,
-        }
-        action_columns = {self.model.ACTION}
-        destination_columns = {
-            self.model.DESTINATION_NAME,
-            self.model.DESTINATION_ITEMS,
-            self.model.DESTINATION_SIZE,
-            self.model.DESTINATION_TIME,
-        }
+        """Show the columns of each pane, minus the ones switched off."""
+        source_hidden = self._hidden_columns("source")
+        destination_hidden = self._hidden_columns("destination")
         for column in range(self.model.COLUMN_COUNT):
-            self.source.setColumnHidden(column, column not in source_columns)
-            self.action.setColumnHidden(column, column not in action_columns)
-            self.destination.setColumnHidden(column, column not in destination_columns)
+            self.source.setColumnHidden(column, column not in {
+                self.model.SOURCE_NAME,
+                self.model.SOURCE_ITEMS,
+                self.model.SOURCE_SIZE,
+                self.model.SOURCE_TIME,
+            } or column in source_hidden)
+            self.action.setColumnHidden(column, column != self.model.ACTION)
+            self.destination.setColumnHidden(column, column not in {
+                self.model.DESTINATION_NAME,
+                self.model.DESTINATION_ITEMS,
+                self.model.DESTINATION_SIZE,
+                self.model.DESTINATION_TIME,
+            } or column in destination_hidden)
+
+    def _show_column_menu(self, pane: str, tree: QTreeView, point: object) -> None:
+        """Offer the optional columns of a pane as a checkable menu."""
+        menu = QMenu(tree)
+        hidden = self._hidden_columns(pane)
+        actions = {}
+        for label, column in self.OPTIONAL_COLUMNS[pane]:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(column not in hidden)
+            actions[action] = column
+        selected = menu.exec(tree.header().mapToGlobal(point))
+        if selected is None:
+            return
+        column = actions.get(selected)
+        if column is None:
+            return
+        if selected.isChecked():
+            hidden.discard(column)
+        else:
+            hidden.add(column)
+        self._save_hidden_columns(pane, hidden)
+        self._apply_column_visibility()
 
     def _configure_columns(self) -> None:
         self._apply_column_visibility()
@@ -807,4 +875,12 @@ class FlatComparisonView(QWidget):
             self.source.header().restoreState(source)
         if destination is not None:
             self.destination.header().restoreState(destination)
+        # A saved state can carry a width from an older layout, so the name
+        # columns are kept wide enough to stay readable.
+        for tree, name_column in (
+            (self.source, self.model.SOURCE_NAME),
+            (self.destination, self.model.DESTINATION_NAME),
+        ):
+            if tree.columnWidth(name_column) < 160:
+                tree.setColumnWidth(name_column, 240)
         self._apply_column_visibility()

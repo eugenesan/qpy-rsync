@@ -286,3 +286,42 @@ def test_the_root_checkbox_decides_the_whole_comparison() -> None:
     assert view.model.decisions.inherited("pics/c.jpg") is ChangeDecision.INCLUDE
     view.close()
     application.processEvents()
+
+
+def test_the_optional_columns_can_be_switched_off() -> None:
+    from qpy_rsync.storage.settings import app_settings
+
+    application = app()
+    app_settings().clear()
+    view = FlatComparisonView()
+    assert not view.source.isColumnHidden(view.model.SOURCE_SIZE)
+    view._save_hidden_columns("source", {view.model.SOURCE_SIZE})
+    view._apply_column_visibility()
+    assert view.source.isColumnHidden(view.model.SOURCE_SIZE)
+    assert not view.source.isColumnHidden(view.model.SOURCE_NAME)
+    # The setting survives a new view.
+    other = FlatComparisonView()
+    assert other.source.isColumnHidden(view.model.SOURCE_SIZE)
+    other.close()
+    view.close()
+    application.processEvents()
+
+
+def test_a_narrow_saved_header_does_not_hide_the_names() -> None:
+    from qpy_rsync.storage.settings import app_settings, encode_binary
+
+    application = app()
+    app_settings().clear()
+    view = FlatComparisonView()
+    header = view.source.header()
+    header.resizeSection(view.model.SOURCE_NAME, 20)
+    app_settings().setValue(
+        "comparison/flat-source-header", encode_binary(header.saveState())
+    )
+    app_settings().sync()
+    view.close()
+
+    restored = FlatComparisonView()
+    assert restored.source.columnWidth(restored.model.SOURCE_NAME) >= 160
+    restored.close()
+    application.processEvents()
