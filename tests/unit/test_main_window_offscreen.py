@@ -1230,7 +1230,7 @@ def test_a_finished_comparison_can_play_a_sound(monkeypatch) -> None:
     application.processEvents()
 
 
-def test_showing_hidden_items_is_reported() -> None:
+def test_showing_stashed_items_is_reported() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -1242,13 +1242,13 @@ def test_showing_hidden_items_is_reported() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    window.comparison.hide_path("a.txt")
-    window._apply_show_hidden(True)
+    window.comparison.stash_path("a.txt")
+    window._apply_show_stashed(True)
     application.processEvents()
-    assert "hidden item(s)" in window.progress_label.text()
-    assert "Showing 1 hidden item(s)" in window.log.toPlainText()
+    assert "stashed item(s)" in window.progress_label.text()
+    assert "Showing 1 stashed item(s)" in window.log.toPlainText()
 
-    window._apply_show_hidden(False)
+    window._apply_show_stashed(False)
     application.processEvents()
     assert "put aside again" in window.progress_label.text()
     window.close()
@@ -1267,7 +1267,7 @@ def test_the_backup_button_keeps_its_menu_when_unconfigured() -> None:
     application.processEvents()
 
 
-def test_unhide_all_puts_every_hidden_item_back() -> None:
+def test_restore_all_stashed_puts_every_stashed_item_back() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -1279,14 +1279,14 @@ def test_unhide_all_puts_every_hidden_item_back() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    window.comparison.hide_path("a.txt")
-    window.comparison.hide_path("b.txt")
+    window.comparison.stash_path("a.txt")
+    window.comparison.stash_path("b.txt")
 
-    window.comparison.unhide_all_requested.emit()
+    window.comparison.restore_all_requested.emit()
     application.processEvents()
 
-    assert window.comparison.hidden_paths() == set()
-    assert "All 2 hidden item(s) are shown again" in window.progress_label.text()
-    assert "Unhid 2 hidden item(s)" in window.log.toPlainText()
+    assert window.comparison.stashed_paths() == set()
+    assert "All 2 stashed item(s) are restored" in window.progress_label.text()
+    assert "Restored 2 stashed item(s)" in window.log.toPlainText()
     window.close()
     application.processEvents()

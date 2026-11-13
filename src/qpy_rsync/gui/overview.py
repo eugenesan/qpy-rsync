@@ -354,9 +354,9 @@ class OverviewPane(QWidget):
     """A compact overview of the comparison, in the style of FreeFileSync."""
 
     folder_activated = Signal(str)
-    # A folder the user hid or showed, and the rsync rule they picked.
-    hide_requested = Signal(str)
-    show_requested = Signal(str)
+    # A folder the user stashed or restored, and the rsync rule they picked.
+    stash_requested = Signal(str)
+    restore_requested = Signal(str)
     filter_requested = Signal(str, str)
 
     def __init__(self, parent: object | None = None) -> None:
@@ -406,7 +406,7 @@ class OverviewPane(QWidget):
         # The size of a folder is the interesting number, like in FreeFileSync.
         self.tree.sortByColumn(OverviewModel.SIZE, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
-        # The same filtering as in the comparison list: the space bar hides
+        # The same filtering as in the comparison list: the space bar stashes
         # the selected folder, the context menu filters it with an rsync
         # pattern.
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -426,7 +426,7 @@ class OverviewPane(QWidget):
             if index.isValid():
                 node: OverviewNode = index.internalPointer()
                 if node.path and not node.is_total:
-                    self.hide_requested.emit(node.path)
+                    self.stash_requested.emit(node.path)
                     return True
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
@@ -443,8 +443,8 @@ class OverviewPane(QWidget):
         heading = menu.addAction(node.path)
         heading.setEnabled(False)
         menu.addSeparator()
-        hide_action = menu.addAction("Hide Folder\tSpace")
-        show_action = menu.addAction("Show Folder")
+        stash_action = menu.addAction("Stash Folder\tSpace")
+        restore_action = menu.addAction("Restore Folder")
         menu.addSeparator()
         filter_menu = menu.addMenu("Exclude via Filter")
         filter_actions = []
@@ -453,10 +453,10 @@ class OverviewPane(QWidget):
             action.setData(phrase.pattern)
             filter_actions.append(action)
         selected = menu.exec(self.tree.viewport().mapToGlobal(point))
-        if selected is hide_action:
-            self.hide_requested.emit(node.path)
-        elif selected is show_action:
-            self.show_requested.emit(node.path)
+        if selected is stash_action:
+            self.stash_requested.emit(node.path)
+        elif selected is restore_action:
+            self.restore_requested.emit(node.path)
         elif selected in filter_actions:
             self.filter_requested.emit(selected.text(), node.path)
 

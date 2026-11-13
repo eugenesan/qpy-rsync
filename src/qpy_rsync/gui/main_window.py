@@ -303,7 +303,7 @@ class MainWindow(QMainWindow):
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
-        self.comparison.unhide_all_requested.connect(self._unhide_all)
+        self.comparison.restore_all_requested.connect(self._restore_all_stashed)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
         if hasattr(self.comparison, "filter_requested"):
@@ -458,8 +458,8 @@ class MainWindow(QMainWindow):
         source_panel = self._location_panel("Source", self.source_edit, trailing=True)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
-        self.action_filters.hidden_toggled.connect(self._apply_show_hidden)
-        self.action_filters.unhide_all_requested.connect(self._unhide_all)
+        self.action_filters.stashed_toggled.connect(self._apply_show_stashed)
+        self.action_filters.restore_all_requested.connect(self._restore_all_stashed)
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -584,8 +584,8 @@ class MainWindow(QMainWindow):
         # The overview summarises the comparison next to the journal.
         self.overview = OverviewPane(self)
         self.overview.folder_activated.connect(self._overview_folder_activated)
-        self.overview.hide_requested.connect(self._hide_path)
-        self.overview.show_requested.connect(self._show_path)
+        self.overview.stash_requested.connect(self._stash_path)
+        self.overview.restore_requested.connect(self._restore_path)
         self.overview.filter_requested.connect(self._add_filter_phrase)
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
@@ -1540,12 +1540,12 @@ class MainWindow(QMainWindow):
             self.overview.set_statistics(None)
             self.validate_plan_button.setEnabled(False)
             return
-        self._update_hidden_count()
+        self._update_stashed_count()
         self._current_plan = build_execution_plan(
             self._active_profile,
             self.comparison.model.changes,
             self.comparison.model.decisions,
-            getattr(self.comparison.model, "hidden", None),
+            getattr(self.comparison.model, "stash", None),
         )
         summary = self._current_plan.summary
         noun = "item" if summary.included == 1 else "items"
@@ -1592,7 +1592,7 @@ class MainWindow(QMainWindow):
             mismatch = compare_plan_to_changes(
                 self._current_plan,
                 self.comparison.model.changes,
-                getattr(self.comparison.model, "hidden", None),
+                getattr(self.comparison.model, "stash", None),
             )
             self._append_log("STATE verification-reused-comparison")
             self._plan_validation_finished(
@@ -1969,7 +1969,7 @@ class MainWindow(QMainWindow):
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
         visible = self.comparison.visible_changes()
         self.overview.set_changes(list(visible), root_name)
-        self._update_hidden_count()
+        self._update_stashed_count()
         self._refresh_plan_summary()
 
     def _overview_folder_activated(self, path: str) -> None:
@@ -2041,12 +2041,12 @@ class MainWindow(QMainWindow):
         # The metadata of the previous comparison no longer describes the
         # destination.
         self.comparison.set_destination_metadata({})
-        # Hidden items only live in memory, so a new comparison starts with
-        # nothing hidden.
-        hidden = getattr(self.comparison.model, "hidden", None)
-        if hidden is not None:
-            hidden.clear()
-        self.action_filters.set_hidden_count(0)
+        # Stashed items only live in memory, so a new comparison starts
+        # with an empty stash.
+        stash = getattr(self.comparison.model, "stash", None)
+        if stash is not None:
+            stash.clear()
+        self.action_filters.set_stashed_count(0)
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
@@ -2132,73 +2132,73 @@ class MainWindow(QMainWindow):
         selected = actions if isinstance(actions, set) else None
         self.comparison.set_action_filter(selected)
 
-    def _apply_show_hidden(self, show: bool) -> None:
-        """Show the hidden items, or put them aside again."""
-        if hasattr(self.comparison, "set_show_hidden"):
-            self.comparison.set_show_hidden(show)
-        count = getattr(self.comparison.model, "hidden", None)
+    def _apply_show_stashed(self, show: bool) -> None:
+        """Show the stashed items, or put them aside again."""
+        if hasattr(self.comparison, "set_show_stashed"):
+            self.comparison.set_show_stashed(show)
+        count = getattr(self.comparison.model, "stash", None)
         total = count.count() if count is not None else 0
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         if show:
             self.progress_label.setText(
-                f"Showing {total:,} hidden item(s); they are dimmed and marked "
+                f"Showing {total:,} stashed item(s); they are dimmed and marked "
                 "with a crossed eye."
             )
             self._append_log(
-                f"Showing {total:,} hidden item(s).", severity="info"
+                f"Showing {total:,} stashed item(s).", severity="info"
             )
         else:
             self.progress_label.setText(
-                f"{total:,} hidden item(s) are put aside again."
+                f"{total:,} stashed item(s) are put aside again."
                 if total
-                else "No items are hidden."
+                else "No items are stashed."
             )
             self._append_log(
-                f"Hiding {total:,} hidden item(s) again.", severity="info"
+                f"Hiding {total:,} stashed item(s) again.", severity="info"
             )
         self._refresh_plan_summary()
 
-    def _unhide_all(self) -> None:
-        """Put every hidden item back and report it."""
-        hidden = getattr(self.comparison.model, "hidden", None)
-        count = hidden.count() if hidden is not None else 0
+    def _restore_all_stashed(self) -> None:
+        """Put every stashed item back and report it."""
+        stash = getattr(self.comparison.model, "stash", None)
+        count = stash.count() if stash is not None else 0
         if not count:
-            self.progress_label.setText("No items are hidden.")
+            self.progress_label.setText("No items are stashed.")
             return
-        self.comparison.show_all_hidden()
+        self.comparison.restore_all_stashed()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText(
-            f"All {count:,} hidden item(s) are shown again."
+            f"All {count:,} stashed item(s) are restored."
         )
-        self._append_log(f"Unhid {count:,} hidden item(s).", severity="info")
+        self._append_log(f"Restored {count:,} stashed item(s).", severity="info")
 
-    def _hide_path(self, path: str) -> None:
-        """Hide a folder or an item from the comparison."""
-        if not hasattr(self.comparison, "hide_path"):
+    def _stash_path(self, path: str) -> None:
+        """Stash a folder or an item from the comparison."""
+        if not hasattr(self.comparison, "stash_path"):
             return
-        self.comparison.hide_path(path)
-        self.action_filters.set_hidden_count(
-            self.comparison.model.hidden.count()
+        self.comparison.stash_path(path)
+        self.action_filters.set_stashed_count(
+            self.comparison.model.stash.count()
         )
         self._refresh_plan_summary()
 
-    def _show_path(self, path: str) -> None:
-        """Show a hidden folder or item again."""
-        if not hasattr(self.comparison, "show_path"):
+    def _restore_path(self, path: str) -> None:
+        """Restore a stashed folder or item."""
+        if not hasattr(self.comparison, "restore_path"):
             return
-        self.comparison.show_path(path)
-        self.action_filters.set_hidden_count(
-            self.comparison.model.hidden.count()
+        self.comparison.restore_path(path)
+        self.action_filters.set_stashed_count(
+            self.comparison.model.stash.count()
         )
         self._refresh_plan_summary()
 
-    def _update_hidden_count(self) -> None:
-        """Keep the hidden item count next to the toggle up to date."""
-        hidden = getattr(self.comparison.model, "hidden", None)
-        count = hidden.count() if hidden is not None else 0
-        self.action_filters.set_hidden_count(count)
+    def _update_stashed_count(self) -> None:
+        """Keep the stashed item count next to the toggle up to date."""
+        stash = getattr(self.comparison.model, "stash", None)
+        count = stash.count() if stash is not None else 0
+        self.action_filters.set_stashed_count(count)
 
     def _apply_inventory_after_compare(self) -> None:
         """Gather the unchanged items when the inventory runs automatically.
@@ -2286,7 +2286,7 @@ class MainWindow(QMainWindow):
         """Fill in the size and date of the destination-only objects."""
         if self._active_profile is None:
             return
-        if getattr(self.comparison.model, "hidden", None) is None:
+        if getattr(self.comparison.model, "stash", None) is None:
             return
         # The inventory already knows the destination metadata.
         if self.inventory_after_compare_button.isChecked():

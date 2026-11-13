@@ -510,15 +510,15 @@ def _checkmark_icon(color: QColor) -> QIcon:
 
 
 @lru_cache(maxsize=None)
-def hidden_icon() -> QIcon:
-    """Eye with a slash, for the items the user hid from the comparison."""
+def stashed_icon() -> QIcon:
+    """Eye with a slash, for the items the user stashed from the comparison."""
     pixmap, painter = _pixmap()
     painter.setPen(_pen(QColor("#6b7280"), 1.8))
     # The outline of an eye.
     painter.drawArc(QRectF(2.5, 4.5, 11.0, 7.0), 0, 180 * 16)
     painter.drawArc(QRectF(2.5, 4.5, 11.0, 7.0), 180 * 16, 180 * 16)
     painter.drawEllipse(QPointF(8.0, 8.0), 2.0, 2.0)
-    # The slash that says the item is hidden.
+    # The slash that says the item is stashed.
     painter.setPen(_pen(QColor("#b91c1c"), 1.8))
     painter.drawLine(QPointF(3.0, 13.0), QPointF(13.0, 3.0))
     painter.end()

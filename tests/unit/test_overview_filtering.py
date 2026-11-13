@@ -1,4 +1,4 @@
-"""The Overview pane hides and filters folders like the comparison list."""
+"""The Overview pane stashes and filters folders like the comparison list."""
 
 import os
 
@@ -37,11 +37,11 @@ def folder_row(pane: OverviewPane, name: str) -> int:
     return -1
 
 
-def test_the_space_bar_on_a_folder_asks_to_hide_it() -> None:
+def test_the_space_bar_on_a_folder_asks_to_stash_it() -> None:
     application = app()
     pane = pane_with_changes()
     fired: list[str] = []
-    pane.hide_requested.connect(fired.append)
+    pane.stash_requested.connect(fired.append)
     row = folder_row(pane, "docs")
     assert row >= 0
     total = pane.model.index(0, 0)
@@ -59,7 +59,7 @@ def test_the_space_bar_on_the_total_row_is_ignored() -> None:
     application = app()
     pane = pane_with_changes()
     fired: list[str] = []
-    pane.hide_requested.connect(fired.append)
+    pane.stash_requested.connect(fired.append)
     pane.tree.setCurrentIndex(pane.model.index(0, 0))
     event = QKeyEvent(
         QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier

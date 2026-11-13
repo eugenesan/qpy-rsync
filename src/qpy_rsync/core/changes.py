@@ -254,14 +254,15 @@ class ChangeDecisions:
         )
 
 
-class HiddenItems:
-    """The items the user hid from the comparison.
+class StashedItems:
+    """The items the user stashed from the comparison.
 
-    FreeFileSync hides an item with the space bar and shows the hidden ones
-    with a toggle. The hidden items are not part of the sync, so this state
-    only affects what the comparison shows.
+    An item is stashed with the space bar or the context menu and restored
+    with the "Show stashed" toggle. A stashed item is not part of the sync;
+    the comparison keeps it so it can be restored, and the next comparison
+    starts with an empty stash.
 
-    A hidden directory covers everything below it, the same way the
+    A stashed directory covers everything below it, the same way the
     decisions of a directory cover its children.
     """
 
@@ -272,44 +273,44 @@ class HiddenItems:
         return bool(self._paths)
 
     def paths(self) -> set[str]:
-        """The paths that are hidden."""
+        """The paths that are stashed."""
         return set(self._paths)
 
     def count(self) -> int:
         return len(self._paths)
 
-    def hide(self, path: str) -> None:
-        """Hide a path and everything below it."""
+    def add(self, path: str) -> None:
+        """Stash a path and everything below it."""
         clean = path.strip("/")
         if clean:
             self._paths.add(clean)
 
-    def show(self, path: str) -> None:
-        """Show a path again."""
+    def restore(self, path: str) -> None:
+        """Restore a path and everything below it."""
         clean = path.strip("/")
         if not clean:
             return
         self._paths.discard(clean)
-        # A path below a hidden directory stays hidden, so the directory
-        # itself has to be shown as well.
-        for hidden in list(self._paths):
-            if hidden.startswith(clean + "/"):
-                self._paths.discard(hidden)
+        # A path below a stashed directory stays stashed, so the directory
+        # itself has to be restored as well.
+        for stashed in list(self._paths):
+            if stashed.startswith(clean + "/"):
+                self._paths.discard(stashed)
 
     def toggle(self, path: str) -> bool:
-        """Hide a path or show it again.
+        """Stash a path or restore it.
 
-        Returns the new state: True when the path is hidden.
+        Returns the new state: True when the path is stashed.
         """
         clean = path.strip("/")
-        if self.is_hidden(clean):
-            self.show(clean)
+        if self.is_stashed(clean):
+            self.restore(clean)
             return False
-        self.hide(clean)
+        self.add(clean)
         return True
 
-    def is_hidden(self, path: str) -> bool:
-        """Return whether a path is hidden, directly or by a parent."""
+    def is_stashed(self, path: str) -> bool:
+        """Return whether a path is stashed, directly or by a parent."""
         clean = path.strip("/")
         if not clean:
             return False
@@ -323,11 +324,11 @@ class HiddenItems:
         return False
 
     def clear(self) -> None:
-        """Show every hidden item again."""
+        """Restore every stashed item."""
         self._paths.clear()
 
     def reconcile(self, paths: set[str]) -> None:
-        """Drop the hidden paths that no longer exist."""
+        """Drop the stashed paths that no longer exist."""
         if not self._paths:
             return
         known = {path.strip("/") for path in paths}

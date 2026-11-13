@@ -37,22 +37,24 @@ class PlanValidationResult:
 def compare_plan_to_changes(
     plan: ExecutionPlan,
     changes: list[Change],
-    hidden: object | None = None,
+    stashed: object | None = None,
 ) -> PlanMismatch:
     expected = {
         (item.path, item.action, item.kind.value)
         for item in plan.included_items
     }
-    hidden_paths = (
-        {path.strip("/") for path in hidden.paths()} if hidden is not None else set()
+    stashed_paths = (
+        {path.strip("/") for path in stashed.paths()}
+        if stashed is not None
+        else set()
     )
     actual = {
         (change.path.rstrip("/"), change.action, change.kind.value)
         for change in changes
         if change.action not in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE, ChangeAction.DESTINATION_ONLY}
-        # A hidden item is deliberately not part of the sync, so a plan that
+        # A stashed item is deliberately not part of the sync, so a plan that
         # leaves it out is still correct.
-        and not _is_hidden(str(change.path), hidden_paths)
+        and not _is_stashed(str(change.path), stashed_paths)
     }
     return PlanMismatch(
         missing=tuple(sorted(expected - actual)),
@@ -60,11 +62,11 @@ def compare_plan_to_changes(
     )
 
 
-def _is_hidden(path: str, hidden_paths: set[str]) -> bool:
-    """Whether the path, or one of its parents, is hidden."""
+def _is_stashed(path: str, stashed_paths: set[str]) -> bool:
+    """Whether the path, or one of its parents, is stashed."""
     current = path.rstrip("/")
     while current:
-        if current in hidden_paths:
+        if current in stashed_paths:
             return True
         current = current.rpartition("/")[0]
     return False

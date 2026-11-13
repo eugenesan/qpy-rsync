@@ -28,7 +28,7 @@ from qpy_rsync.core.changes import (
     ChangeAction,
     ChangeDecision,
     ChangeDecisions,
-    HiddenItems,
+    StashedItems,
     ObjectKind,
 )
 from qpy_rsync.core.units import format_size
@@ -51,8 +51,8 @@ ACTION_HEADER_ACCENT = "#0891B2"
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 # Whether a row is drawn with the alternating background.
 STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
-# Whether the row is hidden, for the crossed-eye marker in the action column.
-HIDDEN_ROLE = Qt.ItemDataRole.UserRole + 4
+# Whether the row is stashed, for the crossed-eye marker in the action column.
+STASHED_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 @dataclass(slots=True)
@@ -138,10 +138,10 @@ class FlatChangeModel(QAbstractTableModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.decisions = ChangeDecisions()
-        # The items the user hid from the comparison with the space bar.
-        self.hidden = HiddenItems()
-        # When this is on, the hidden items stay in the list, dimmed.
-        self.show_hidden = False
+        # The items the user stashed from the comparison with the space bar.
+        self.stash = StashedItems()
+        # When this is on, the stashed items stay in the list, dimmed.
+        self.show_stashed = False
         self.changes: list[Change] = []
         self.source_root = ""
         self.destination_root = ""
@@ -466,8 +466,8 @@ class FlatChangeModel(QAbstractTableModel):
         self._apply_filters()
         self.layoutChanged.emit()
 
-    def refresh_hidden(self) -> None:
-        """Show the rows again after the user hid or showed items."""
+    def refresh_stashed(self) -> None:
+        """Show the rows again after the user stashed or restored items."""
         self.layoutAboutToBeChanged.emit()
         self._apply_filters()
         self.layoutChanged.emit()
@@ -587,25 +587,25 @@ class FlatChangeModel(QAbstractTableModel):
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
         visible_row_of_path: dict[str, int] = {}
-        hidden = self.hidden
-        check_hidden = bool(hidden) and not self.show_hidden
+        stash = self.stash
+        check_stashed = bool(stash) and not self.show_stashed
         for index, row in enumerate(self._rows):
             if row.is_directory:
                 directory = directories.get(row.path)
                 if directory is None or not directory.visible:
                     continue
-                row_is_hidden = hidden.is_hidden(row.path)
-                if check_hidden and row_is_hidden:
+                row_is_stashed = stash.is_stashed(row.path)
+                if check_stashed and row_is_stashed:
                     continue
-                if directory.own_change_index >= 0 and not row_is_hidden:
+                if directory.own_change_index >= 0 and not row_is_stashed:
                     visible_change_indices.add(directory.own_change_index)
             else:
                 if not self._change_visible[row.change_index]:
                     continue
-                row_is_hidden = hidden.is_hidden(row.path)
-                if check_hidden and row_is_hidden:
+                row_is_stashed = stash.is_stashed(row.path)
+                if check_stashed and row_is_stashed:
                     continue
-                if not row_is_hidden:
+                if not row_is_stashed:
                     visible_change_indices.add(row.change_index)
             # The stripes alternate row by row. A directory and its first
             # item are two rows, so they never share a stripe, and a group of
@@ -635,8 +635,8 @@ class FlatChangeModel(QAbstractTableModel):
 
         # The directories from the deepest one upwards, so a directory knows
         # the totals of the directories below it.
-        hidden = self.hidden
-        check_hidden = bool(hidden) and not self.show_hidden
+        stash = self.stash
+        check_stashed = bool(stash) and not self.show_stashed
         # The compared folder comes last, after the directories below it.
         for path in [*self._ordered_directories(), ""]:
             directory = self._directories.get(path)
@@ -651,7 +651,7 @@ class FlatChangeModel(QAbstractTableModel):
                 if not self._change_visible[index]:
                     continue
                 change = self.changes[index]
-                if check_hidden and hidden.is_hidden(self._change_paths[index]):
+                if check_stashed and stash.is_stashed(self._change_paths[index]):
                     continue
                 items += 1
                 size += int(change.size or 0)
@@ -660,7 +660,7 @@ class FlatChangeModel(QAbstractTableModel):
                 child = self._directories[child_path]
                 if not child.visible:
                     continue
-                if check_hidden and hidden.is_hidden(child_path):
+                if check_stashed and stash.is_stashed(child_path):
                     continue
                 items += child.subtree_items
                 size += child.subtree_size
@@ -886,8 +886,8 @@ class FlatChangeModel(QAbstractTableModel):
             return row.path
         if role == STRIPE_ROLE:
             return row.alternate
-        if role == HIDDEN_ROLE:
-            return self.hidden.is_hidden(row.path)
+        if role == STASHED_ROLE:
+            return self.stash.is_stashed(row.path)
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:

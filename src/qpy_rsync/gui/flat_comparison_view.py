@@ -47,8 +47,8 @@ from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
-from .flat_change_model import HIDDEN_ROLE, STRIPE_ROLE, FlatChangeModel
-from .icons import app_menu_icon, hidden_icon, search_icon, unchanged_icon
+from .flat_change_model import STASHED_ROLE, STRIPE_ROLE, FlatChangeModel
+from .icons import app_menu_icon, search_icon, stashed_icon, unchanged_icon
 from .paths import full_path
 from qpy_rsync.storage.settings import app_settings
 
@@ -59,7 +59,7 @@ RULE_COLOR = QColor("#c8c8c8")
 # The shade of every second directory group, the way a printed table
 # alternates its rows. Kept faint so the text stays the focus.
 STRIPE_COLOR = QColor(0, 0, 0, 22)
-HIDDEN_COLOR = QColor("#9ca3af")
+STASHED_COLOR = QColor("#9ca3af")
 
 
 class UniformRowDelegate(QStyledItemDelegate):
@@ -90,16 +90,16 @@ class UniformRowDelegate(QStyledItemDelegate):
 
 
 class ActionColumnDelegate(UniformRowDelegate):
-    """Paint the action column, the hidden marker and the row background.
+    """Paint the action column, the stashed marker and the row background.
 
     Rows that cannot be selected carry no check indicator, so the style
     draws their icon where the checkbox of the other rows sits. Painting
     the background first and shifting the content keeps the icons in one
     column.
 
-    The crossed eye at the right marks a row that is hidden from the sync.
-    It is drawn for every row, filled for a hidden one and faded otherwise,
-    so it also works as the button that hides and restores the row.
+    The crossed eye at the right marks a row that is stashed from the sync.
+    It is drawn for every row, filled for a stashed one and faded otherwise,
+    so it also works as the button that stashes and restores the row.
     """
 
     MARKER_SIZE = 14
@@ -116,9 +116,9 @@ class ActionColumnDelegate(UniformRowDelegate):
         )
 
     def _paint_marker(self, painter: object, option: object, index: QModelIndex) -> None:
-        icon = hidden_icon()
+        icon = stashed_icon()
         rect = self.marker_rect(option.rect)  # type: ignore[attr-defined]
-        if not index.data(HIDDEN_ROLE):
+        if not index.data(STASHED_ROLE):
             painter.setOpacity(0.25)  # type: ignore[attr-defined]
         icon.paint(painter, rect)  # type: ignore[arg-type]
         painter.setOpacity(1.0)  # type: ignore[attr-defined]
@@ -177,7 +177,7 @@ class FlatPathDelegate(UniformRowDelegate):
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         # A directory sits at its own depth, its items one level below it.
         depth = row.depth
-        is_hidden = model.hidden.is_hidden(row.path)
+        is_stashed = model.stash.is_stashed(row.path)
 
         styled = QStyleOptionViewItem(option)
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
@@ -211,9 +211,9 @@ class FlatPathDelegate(UniformRowDelegate):
             )
         else:
             color = styled.palette.color(styled.palette.ColorRole.Text)
-            if is_hidden:
-                # A hidden row stays readable but is clearly marked.
-                color = HIDDEN_COLOR
+            if is_stashed:
+                # A stashed row stays readable but is clearly marked.
+                color = STASHED_COLOR
         painter.setPen(color)
         if icon is not None:
             icon.paint(
@@ -232,7 +232,7 @@ class FlatComparisonView(QWidget):
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
-    unhide_all_requested = Signal()
+    restore_all_requested = Signal()
     sort_changed = Signal(int, object)
     expansion_limited = Signal(int, int)
     # A filter rule for the selected item, as an rsync pattern.
@@ -555,11 +555,11 @@ class FlatComparisonView(QWidget):
             # TouchBegin instead of the synthesized mouse press that a mouse
             # would send. Both paths reach the same hit test.
             if event_type == QEvent.Type.MouseButtonPress:
-                if self._toggle_hidden_at(event.position().toPoint()):
+                if self._toggle_stash_at(event.position().toPoint()):
                     return True
             elif event_type == QEvent.Type.TouchBegin:
                 points = getattr(event, "points", lambda: ())()
-                if len(points) == 1 and self._toggle_hidden_at(
+                if len(points) == 1 and self._toggle_stash_at(
                     points[0].position().toPoint()
                 ):
                     return True
@@ -568,12 +568,12 @@ class FlatComparisonView(QWidget):
                 event_type == QEvent.Type.KeyPress
                 and getattr(event, "key", lambda: None)() == Qt.Key.Key_Space
             ):
-                if self._toggle_hidden():
+                if self._toggle_stash():
                     return True
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
-    def _toggle_hidden_at(self, position: object) -> bool:
-        """Toggle the hidden state when the crossed eye is clicked or tapped."""
+    def _toggle_stash_at(self, position: object) -> bool:
+        """Toggle the stash state when the crossed eye is clicked or tapped."""
         index = self.action.indexAt(position)
         if not index.isValid():
             return False
@@ -590,19 +590,19 @@ class FlatComparisonView(QWidget):
         path = self.model.row_path(index.row())
         if not path:
             return False
-        self.model.hidden.toggle(path)
-        self._refresh_hidden()
+        self.model.stash.toggle(path)
+        self._refresh_stashed()
         return True
 
-    def _toggle_hidden(self) -> bool:
-        """Hide or show the selected items. Returns True when it handled it."""
+    def _toggle_stash(self) -> bool:
+        """Stash or restore the selected items. True when it handled them."""
         paths = self._selected_paths()
         if not paths:
             return False
-        hidden = self.model.hidden
+        stash = self.model.stash
         for path in paths:
-            hidden.toggle(path)
-        self.model.refresh_hidden()
+            stash.toggle(path)
+        self.model.refresh_stashed()
         self.changes_updated.emit(list(self.model.changes))
         return True
 
@@ -620,33 +620,33 @@ class FlatComparisonView(QWidget):
             break
         return paths
 
-    def hide_path(self, path: str) -> None:
-        """Hide a path and everything below it."""
-        self.model.hidden.hide(path)
-        self._refresh_hidden()
+    def stash_path(self, path: str) -> None:
+        """Stash a path and everything below it."""
+        self.model.stash.add(path)
+        self._refresh_stashed()
 
-    def show_path(self, path: str) -> None:
-        """Show a path again."""
-        self.model.hidden.show(path)
-        self._refresh_hidden()
+    def restore_path(self, path: str) -> None:
+        """Restore a path and everything below it."""
+        self.model.stash.restore(path)
+        self._refresh_stashed()
 
-    def show_all_hidden(self) -> None:
-        """Show every hidden item again."""
-        self.model.hidden.clear()
-        self._refresh_hidden()
+    def restore_all_stashed(self) -> None:
+        """Restore every stashed item."""
+        self.model.stash.clear()
+        self._refresh_stashed()
 
-    def hidden_paths(self) -> set[str]:
-        """The paths that the user hid."""
-        return self.model.hidden.paths()
+    def stashed_paths(self) -> set[str]:
+        """The paths that the user stashed."""
+        return self.model.stash.paths()
 
-    def set_show_hidden(self, show: bool) -> None:
-        """Show or hide the items the user hid."""
-        self.model.show_hidden = show
-        self._refresh_hidden()
+    def set_show_stashed(self, show: bool) -> None:
+        """Show or hide the items the user stashed."""
+        self.model.show_stashed = show
+        self._refresh_stashed()
 
-    def _refresh_hidden(self) -> None:
-        """Update the list after the hidden items changed."""
-        self.model.refresh_hidden()
+    def _refresh_stashed(self) -> None:
+        """Update the list after the stashed items changed."""
+        self.model.refresh_stashed()
         self.changes_updated.emit(list(self.model.changes))
 
     @staticmethod
@@ -817,14 +817,14 @@ class FlatComparisonView(QWidget):
         if not index.isValid():
             # An empty part of the Actions pane still offers the one action
             # that belongs to the list as a whole.
-            if tree is self.action and self.model.hidden:
+            if tree is self.action and self.model.stash:
                 menu = QMenu(tree)
-                unhide = menu.addAction(
-                    f"Unhide All ({self.model.hidden.count()})"
+                restore = menu.addAction(
+                    f"Restore All Stashed ({self.model.stash.count()})"
                 )
                 selected = menu.exec(tree.viewport().mapToGlobal(point))
-                if selected is unhide:
-                    self.unhide_all_requested.emit()
+                if selected is restore:
+                    self.restore_all_requested.emit()
             return
         path = self.model.row_path(index.row())
         change = index.data(Qt.ItemDataRole.UserRole)
@@ -845,12 +845,12 @@ class FlatComparisonView(QWidget):
             self.model.reset_subtree_decisions(path)
         elif selected is actions["reset_all"]:
             self.reset_all_decisions()
-        elif selected is actions["hide"] and path is not None:
-            self.hide_path(path)
-        elif selected is actions["show"] and path is not None:
-            self.show_path(path)
-        elif selected is actions["show_all_hidden"]:
-            self.unhide_all_requested.emit()
+        elif selected is actions["stash"] and path is not None:
+            self.stash_path(path)
+        elif selected is actions["restore"] and path is not None:
+            self.restore_path(path)
+        elif selected is actions["restore_all_stashed"]:
+            self.restore_all_requested.emit()
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
 
@@ -921,7 +921,7 @@ class FlatComparisonView(QWidget):
             "reset_all": None,
             "hide": None,
             "show": None,
-            "show_all_hidden": None,
+            "restore_all_stashed": None,
             "filters": [],
         }
         if absolute_path:
@@ -963,16 +963,16 @@ class FlatComparisonView(QWidget):
                     action.setData(phrase.pattern)
                     actions["filters"].append(action)  # type: ignore[union-attr]
 
-        # Hiding items from the comparison.
+        # Stashing items from the comparison.
         menu.addSeparator()
-        hidden = self.model.hidden
-        if path and hidden.is_hidden(path):
-            actions["show"] = menu.addAction("Show Item")
+        stash = self.model.stash
+        if path and stash.is_stashed(path):
+            actions["restore"] = menu.addAction("Restore Item")
         elif path:
-            actions["hide"] = menu.addAction("Hide Item\tSpace")
-        if hidden:
-            actions["show_all_hidden"] = menu.addAction(
-                f"Unhide All ({hidden.count()})"
+            actions["stash"] = menu.addAction("Stash Item\tSpace")
+        if stash:
+            actions["restore_all_stashed"] = menu.addAction(
+                f"Restore All Stashed ({stash.count()})"
             )
         return menu, actions
 

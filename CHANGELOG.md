@@ -475,3 +475,11 @@
 - The Actions context menu, including the empty part of the Actions pane, offers "Unhide All (N)".
 - The hidden-items toggle has a right-click menu with the same action, and its tooltip points to it.
 - Sorting by the Actions column was already intentional: it sorts the whole list by action label and reverses on a second click. A test now covers ascending and descending order.
+
+## milestone 1.15ay stash and restore
+
+- "Hidden items" are now "stashed items". A stashed item is temporarily left out of the sync, kept in memory, and gone after the next comparison; the behavior itself is unchanged.
+- The space bar and the context menu say Stash Item, the restore entries say Restore Item and Restore All Stashed, and the toggle is "Show stashed items".
+- The stashed toggle shows its count next to the crossed eye, and its tooltip explains the right-click Restore All Stashed action.
+- The overview pane uses the same wording for folders.
+- The internal names follow the UI: `StashedItems`, `model.stash`, `stash_path`, `restore_path`, `restore_all_stashed`, `STASHED_ROLE`.

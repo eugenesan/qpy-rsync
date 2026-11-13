@@ -69,7 +69,7 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     boxes = [
         box
         for box in bar.findChildren(QCheckBox)
-        if box not in (bar.hidden_box, bar.unchanged_box)
+        if box not in (bar.stashed_box, bar.unchanged_box)
     ]
     tooltips = [child.toolTip() for child in boxes]
     assert tooltips
@@ -83,13 +83,13 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
         assert box.iconSize().width() == CONTROL_ICON_SIZE
 
 
-def test_the_hidden_toggle_says_it_affects_the_sync() -> None:
+def test_the_stashed_toggle_says_it_affects_the_sync() -> None:
     app()
     bar = ActionFilterBar()
-    bar.set_hidden_count(3)
-    assert "3 hidden item(s)" in bar.hidden_box.toolTip()
-    assert "not part of the sync" in bar.hidden_box.toolTip()
-    assert bar.hidden_box.text() == "3"
+    bar.set_stashed_count(3)
+    assert "3 stashed item(s)" in bar.stashed_box.toolTip()
+    assert "not part of the sync" in bar.stashed_box.toolTip()
+    assert bar.stashed_box.text() == "3"
 
 
 def test_action_filter_survives_model_reset() -> None:
@@ -107,11 +107,11 @@ def test_action_filter_survives_model_reset() -> None:
     assert model.visible_actions() == {ChangeAction.CREATE}
 
 
-def test_the_hidden_toggle_mentions_unhide_all_in_its_tooltip() -> None:
+def test_the_stashed_toggle_mentions_restore_all_in_its_tooltip() -> None:
     app()
     bar = ActionFilterBar()
-    bar.set_hidden_count(0)
-    assert "Right-click to unhide all" in bar.hidden_box.toolTip()
-    bar.set_hidden_count(3)
-    assert "3 hidden item(s)" in bar.hidden_box.toolTip()
-    assert "Right-click to unhide all" in bar.hidden_box.toolTip()
+    bar.set_stashed_count(0)
+    assert "Right-click to restore all stashed items" in bar.stashed_box.toolTip()
+    bar.set_stashed_count(3)
+    assert "3 stashed item(s)" in bar.stashed_box.toolTip()
+    assert "Right-click to restore all stashed items" in bar.stashed_box.toolTip()

@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.backend.rsync_patterns import matches, phrases_for
-from qpy_rsync.core.changes import HiddenItems
+from qpy_rsync.core.changes import StashedItems
 
 
 def app() -> QApplication:
@@ -47,49 +47,49 @@ def test_the_patterns_match_the_paths_they_name() -> None:
     assert matches("/docs/pictures/", "docs/pictures/photo.jpg")
 
 
-def test_a_hidden_directory_covers_the_items_below_it() -> None:
-    hidden = HiddenItems()
-    hidden.hide("docs/pictures")
-    assert hidden.is_hidden("docs/pictures")
-    assert hidden.is_hidden("docs/pictures/photo.jpg")
-    assert not hidden.is_hidden("docs")
-    assert not hidden.is_hidden("docs/notes.txt")
+def test_a_stashed_directory_covers_the_items_below_it() -> None:
+    stash = StashedItems()
+    stash.add("docs/pictures")
+    assert stash.is_stashed("docs/pictures")
+    assert stash.is_stashed("docs/pictures/photo.jpg")
+    assert not stash.is_stashed("docs")
+    assert not stash.is_stashed("docs/notes.txt")
 
 
-def test_a_hidden_item_can_be_shown_again() -> None:
-    hidden = HiddenItems()
-    hidden.hide("docs/pictures")
-    hidden.show("docs/pictures")
-    assert not hidden.is_hidden("docs/pictures/photo.jpg")
+def test_a_stashed_item_can_be_restored() -> None:
+    stash = StashedItems()
+    stash.add("docs/pictures")
+    stash.restore("docs/pictures")
+    assert not stash.is_stashed("docs/pictures/photo.jpg")
 
 
-def test_showing_a_path_also_shows_the_items_below_it() -> None:
-    hidden = HiddenItems()
-    hidden.hide("docs/pictures")
-    hidden.hide("docs/pictures/old")
-    hidden.show("docs/pictures")
-    assert not hidden.is_hidden("docs/pictures/old")
+def test_restoring_a_path_also_restores_the_items_below_it() -> None:
+    stash = StashedItems()
+    stash.add("docs/pictures")
+    stash.add("docs/pictures/old")
+    stash.restore("docs/pictures")
+    assert not stash.is_stashed("docs/pictures/old")
 
 
 def test_toggling_reports_the_new_state() -> None:
-    hidden = HiddenItems()
-    assert hidden.toggle("docs/a.txt") is True
-    assert hidden.is_hidden("docs/a.txt")
-    assert hidden.toggle("docs/a.txt") is False
-    assert not hidden.is_hidden("docs/a.txt")
+    stash = StashedItems()
+    assert stash.toggle("docs/a.txt") is True
+    assert stash.is_stashed("docs/a.txt")
+    assert stash.toggle("docs/a.txt") is False
+    assert not stash.is_stashed("docs/a.txt")
 
 
-def test_the_hidden_items_can_be_cleared() -> None:
-    hidden = HiddenItems()
-    hidden.hide("a.txt")
-    hidden.hide("b.txt")
-    assert hidden.count() == 2
-    hidden.clear()
-    assert hidden.count() == 0
-    assert not hidden
+def test_the_stashed_items_can_be_cleared() -> None:
+    stash = StashedItems()
+    stash.add("a.txt")
+    stash.add("b.txt")
+    assert stash.count() == 2
+    stash.clear()
+    assert stash.count() == 0
+    assert not stash
 
 
-def test_hiding_an_item_removes_it_from_the_list() -> None:
+def test_stashing_an_item_removes_it_from_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
@@ -102,18 +102,18 @@ def test_hiding_an_item_removes_it_from_the_list() -> None:
         ]
     )
     assert view.model.rowCount() == 3
-    view.hide_path("a.txt")
+    view.stash_path("a.txt")
     paths = set(_paths(view.model))
     assert "a.txt" not in paths
     assert "b.txt" in paths
-    view.show_all_hidden()
+    view.restore_all_stashed()
     paths = set(_paths(view.model))
     assert "a.txt" in paths
     view.close()
     application.processEvents()
 
 
-def test_the_hidden_items_can_be_shown_again_in_the_list() -> None:
+def test_the_stashed_items_can_be_shown_again_in_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
@@ -124,10 +124,10 @@ def test_the_hidden_items_can_be_shown_again_in_the_list() -> None:
             Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.hide_path("a.txt")
+    view.stash_path("a.txt")
     assert view.model.rowCount() == 1
-    # The toggle shows the hidden items again, dimmed.
-    view.set_show_hidden(True)
+    # The toggle shows the stashed items again, dimmed.
+    view.set_show_stashed(True)
     application.processEvents()
     assert view.model.rowCount() == 2
     view.close()
@@ -162,7 +162,7 @@ def test_the_space_bar_hides_the_selected_item() -> None:
     )
     assert view.eventFilter(view.source, event) is True
     application.processEvents()
-    assert view.hidden_paths() == {"a.txt"}
+    assert view.stashed_paths() == {"a.txt"}
     paths = set(_paths(view.model))
     assert paths == {"b.txt"}
     view.close()
@@ -184,15 +184,15 @@ def test_hiding_an_item_excludes_it_from_the_sync() -> None:
         Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=10),
         Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=20),
     ]
-    hidden = HiddenItems()
-    hidden.hide("a.txt")
-    plan = build_execution_plan(profile, changes, ChangeDecisions(), hidden)
+    stash = StashedItems()
+    stash.add("a.txt")
+    plan = build_execution_plan(profile, changes, ChangeDecisions(), stash)
     included = {item.path for item in plan.items if item.included}
     assert included == {"b.txt"}
     assert plan.summary.excluded == 1
 
 
-def test_hiding_a_directory_excludes_the_items_below_it() -> None:
+def test_stashing_a_directory_excludes_the_items_below_it() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
     from qpy_rsync.core.enums import EndpointKind
     from qpy_rsync.core.execution_plan import build_execution_plan
@@ -207,9 +207,9 @@ def test_hiding_a_directory_excludes_the_items_below_it() -> None:
         Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=10),
         Change("other/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=20),
     ]
-    hidden = HiddenItems()
-    hidden.hide("docs")
-    plan = build_execution_plan(profile, changes, ChangeDecisions(), hidden)
+    stash = StashedItems()
+    stash.add("docs")
+    plan = build_execution_plan(profile, changes, ChangeDecisions(), stash)
     included = {item.path for item in plan.items if item.included}
     assert included == {"other/b.txt"}
 
@@ -277,7 +277,7 @@ def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
     application.processEvents()
 
 
-def test_showing_hidden_items_does_not_change_the_visible_set() -> None:
+def test_showing_stashed_items_does_not_change_the_visible_set() -> None:
     """The overview and the statistics must not react to the show toggle."""
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
@@ -290,11 +290,11 @@ def test_showing_hidden_items_does_not_change_the_visible_set() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.hide_path("a.txt")
+    view.stash_path("a.txt")
     before = [str(change.path) for change in view.visible_changes()]
-    view.set_show_hidden(True)
+    view.set_show_stashed(True)
     after = [str(change.path) for change in view.visible_changes()]
-    # The row is back in the list, but it is still hidden for the overview.
+    # The row is back in the list, but it is still stashed for the overview.
     assert any(view.model.row_path(row) == "a.txt" for row in range(view.model.rowCount()))
     assert before == after == ["b.txt"]
     view.close()
@@ -326,12 +326,12 @@ def test_a_trailing_slash_filters_directories_in() -> None:
     application.processEvents()
 
 
-def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
+def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
     from PySide6.QtCore import QEvent, QPoint, QPointF
     from PySide6.QtGui import QMouseEvent
 
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-    from qpy_rsync.gui.flat_change_model import HIDDEN_ROLE
+    from qpy_rsync.gui.flat_change_model import STASHED_ROLE
     from qpy_rsync.gui.flat_comparison_view import (
         ActionColumnDelegate,
         FlatComparisonView,
@@ -345,8 +345,8 @@ def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.hide_path("a.txt")
-    view.set_show_hidden(True)
+    view.stash_path("a.txt")
+    view.set_show_stashed(True)
     application.processEvents()
 
     row = next(
@@ -354,7 +354,7 @@ def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
         if view.model.row_path(row) == "a.txt"
     )
     index = view.model.index(row, view.model.ACTION)
-    assert view.model.data(index, HIDDEN_ROLE) is True
+    assert view.model.data(index, STASHED_ROLE) is True
 
     rect = view.action.visualRect(index)
     point = ActionColumnDelegate.marker_rect(rect).center()
@@ -370,14 +370,14 @@ def test_the_hidden_marker_reports_and_toggles_a_row() -> None:
         )
         QApplication.sendEvent(view.action.viewport(), event)
 
-    # The click must reach the viewport and restore the hidden row.
+    # The click must reach the viewport and restore the stashed row.
     tap(point)
-    assert view.hidden_paths() == set()
+    assert view.stashed_paths() == set()
     # The same spot hides it again, so the marker toggles both ways.
     tap(point)
-    assert view.hidden_paths() == {"a.txt"}
+    assert view.stashed_paths() == {"a.txt"}
     # A finger is less precise than a pointer: the row edge is accepted too.
     tap(QPoint(point.x(), rect.top() + 1))
-    assert view.hidden_paths() == set()
+    assert view.stashed_paths() == set()
     view.close()
     application.processEvents()
