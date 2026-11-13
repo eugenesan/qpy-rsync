@@ -372,3 +372,9 @@
 
 - Comparisons above 20,000 items no longer expand automatically, even when each folder is below the per-folder limit. Top-level folders are marked, the journal reports the safety limit, and folders can be opened manually. This keeps adding tens of thousands of unchanged items responsive.
 - Folder aggregate refreshes and large marker updates now use a single layout change instead of thousands of dataChanged signals.
+
+## milestone 1.15ak configurable total expansion limit
+
+- Automatic expansion now stops at 10,000 comparison items by default; the limit is configurable under Settings → Auto-expand comparison up to.
+- Showing a large inventory warns before adding it and offers Add Collapsed (default, marked folders, no expansion) or Expand Normally (may freeze), with Cancel.
+- The collapsed choice bypasses the previous-expansion restore, so the proxy filter and per-row expansion path shown in the abort log is not entered.

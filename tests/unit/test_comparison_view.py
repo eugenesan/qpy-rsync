@@ -644,15 +644,14 @@ def test_saved_header_state_cannot_reveal_foreign_columns() -> None:
     application.processEvents()
 
 
-def test_total_safety_cap_keeps_a_huge_comparison_collapsed(monkeypatch) -> None:
+def test_total_safety_cap_keeps_a_huge_comparison_collapsed() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-    from qpy_rsync.gui import comparison_view
 
     application = app()
-    monkeypatch.setattr(comparison_view, "AUTO_EXPAND_TOTAL", 3)
     view = ComparisonView()
     view.set_expand_mode("all")
     view.set_expand_limit(256)
+    view.set_expand_total_limit(3)
     limited_events: list[tuple[int, int]] = []
     view.expansion_limited.connect(
         lambda count, limit: limited_events.append((count, limit))

@@ -27,6 +27,7 @@ class SettingsDialog(QDialog):
         *,
         expand_mode: str = "all",
         expand_limit: int = 256,
+        expand_total_limit: int = 10000,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -56,6 +57,18 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Auto-expand folders up to", self.limit_spin)
 
+        self.total_limit_spin = QSpinBox()
+        self.total_limit_spin.setRange(1, 10_000_000)
+        self.total_limit_spin.setSingleStep(1000)
+        self.total_limit_spin.setValue(max(1, int(expand_total_limit)))
+        self.total_limit_spin.setSuffix(" items")
+        self.total_limit_spin.setToolTip(
+            "A comparison with more items than this stays collapsed after a "
+            "comparison, even when each folder is below the per-folder limit. "
+            "You are offered a choice before a large inventory is added."
+        )
+        form.addRow("Auto-expand comparison up to", self.total_limit_spin)
+
         hint = QLabel(
             "Folders left collapsed by the limit carry an amber marker; their "
             "tooltip explains why. Collapsed folders with changes keep a "
@@ -77,3 +90,6 @@ class SettingsDialog(QDialog):
 
     def expand_limit(self) -> int:
         return int(self.limit_spin.value())
+
+    def expand_total_limit(self) -> int:
+        return int(self.total_limit_spin.value())

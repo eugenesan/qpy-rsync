@@ -35,10 +35,10 @@ from qpy_rsync.storage.settings import app_settings, decode_binary, encode_binar
 # state from an older layout is not restored into the new columns.
 HEADER_STATE_VERSION = "2"
 
-# A safety cap for automatic expansion. A comparison with more items than
-# this stays collapsed even when every individual folder is below the
-# per-folder setting.
-AUTO_EXPAND_TOTAL = 20000
+# Default stopping point for automatic expansion. The comparison stays
+# collapsed when it grows beyond this many items; the value is configurable
+# from Settings.
+DEFAULT_EXPAND_TOTAL_LIMIT = 10000
 
 CONTROL_SIZE = 40
 CONTROL_ICON_SIZE = 24
@@ -110,7 +110,9 @@ class ComparisonView(QWidget):
         self._syncing_expansion = False
         self._expand_mode = "all"
         self._expand_limit = 256
-        self._last_cap_notice: int | None = None
+        self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
+        self._expand_over_limit_once = False
+        self._last_cap_notice: tuple[int, int] | None = None
         self._limited_previous_expansion: set[str] | None = None
         self._limited_manual_expanded: set[str] = set()
         self._limited_manual_collapsed: set[str] = set()
@@ -592,8 +594,13 @@ class ComparisonView(QWidget):
         self.model.set_destination_metadata(self._destination_metadata)
 
     def set_changes(
-        self, changes: list[object], *, preserve_expansion: bool = False
+        self,
+        changes: list[object],
+        *,
+        preserve_expansion: bool = False,
+        expand_over_limit: bool = False,
     ) -> None:
+        self._expand_over_limit_once = expand_over_limit
         if not preserve_expansion and self.limited_button.isChecked():
             self._limited_previous_expansion = None
             self._limited_manual_expanded.clear()
@@ -616,14 +623,17 @@ class ComparisonView(QWidget):
         self.changes_updated.emit(list(self.model.changes))
 
         def restore_views() -> None:
+            force = self._expand_over_limit_once
+            self._expand_over_limit_once = False
+            over_limit = len(self.model.changes) > self._expand_total_limit
             with self._frozen_updates():
-                if expanded_paths and len(self.model.changes) <= AUTO_EXPAND_TOTAL:
+                if expanded_paths and (not over_limit or force):
                     self._expand_paths(expanded_paths)
                 else:
                     # Expanding tens of thousands of rows keeps the UI busy for
-                    # a long time. Apply the safety cap and let the user open
-                    # folders manually.
-                    self.expand_initial()
+                    # a long time. Apply the configured cap and let the user
+                    # open folders manually.
+                    self.expand_initial(force_total=force)
 
         # Do not repaint proxy indexes until Qt has completed the source reset.
         QTimer.singleShot(0, restore_views)
@@ -765,7 +775,13 @@ class ComparisonView(QWidget):
         """Limit how many items a folder may hold to open automatically."""
         self._expand_limit = max(1, int(limit))
 
-    def expand_initial(self, limit: int | None = None) -> None:
+    def set_expand_total_limit(self, limit: int) -> None:
+        """Limit the total comparison size that opens automatically."""
+        self._expand_total_limit = max(1, int(limit))
+
+    def expand_initial(
+        self, limit: int | None = None, *, force_total: bool = False
+    ) -> None:
         """Open the folders the way the settings ask for.
 
         A folder with more direct items than the configured limit stays
@@ -780,19 +796,20 @@ class ComparisonView(QWidget):
             self._refresh_limited_button(set())
             return
         total = len(self.model.changes)
-        if total > AUTO_EXPAND_TOTAL:
+        if total > self._expand_total_limit and not force_total:
             limited = {
                 self.model.index(row, 0).internalPointer().path
                 for row in range(self.model.rowCount())
                 if self.model.index(row, 0).internalPointer().children
             }
             self.model.set_expand_limited_paths(
-                limited, AUTO_EXPAND_TOTAL, total=True
+                limited, self._expand_total_limit, total=True
             )
             self._refresh_limited_button(limited)
-            if self._last_cap_notice != total:
-                self._last_cap_notice = total
-                self.expansion_limited.emit(total, AUTO_EXPAND_TOTAL)
+            notice = (total, self._expand_total_limit)
+            if self._last_cap_notice != notice:
+                self._last_cap_notice = notice
+                self.expansion_limited.emit(total, self._expand_total_limit)
             return
         self._last_cap_notice = None
         limited, ancestors = self._limited_paths(maximum)

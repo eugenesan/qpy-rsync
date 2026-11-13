@@ -744,12 +744,14 @@ def test_turning_inventory_on_runs_it_for_the_current_comparison(tmp_path) -> No
     application.processEvents()
 
 
-def test_restored_expansion_limit_defaults_to_256() -> None:
+def test_restored_expansion_limits_have_defaults() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
     assert window._expand_limit == 256
     assert window.comparison._expand_limit == 256
+    assert window._expand_total_limit == 10000
+    assert window.comparison._expand_total_limit == 10000
     window.close()
     application.processEvents()
 
@@ -1173,5 +1175,54 @@ def test_diff_preparation_shows_progress_before_staging(monkeypatch) -> None:
     assert seen[0][1] == "Preparing the diff tool..."
     assert seen[0][2] is True
     assert window.status_edit.text() == "Diff tool unavailable"
+    window.close()
+    application.processEvents()
+
+
+def test_large_inventory_can_be_added_collapsed(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._expand_total_limit = 2
+    window.comparison.set_expand_total_limit(2)
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_large_inventory",
+        lambda total, unchanged: calls.append((total, unchanged)) or "collapsed",
+    )
+    changes = [
+        Change(f"dir{i}/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=1)
+        for i in range(4)
+    ]
+    assert window._populate_unchanged(changes, 4)
+    application.processEvents()
+    assert calls == [(4, 4)]
+    assert window.comparison.model.expand_limit_is_total
+    assert window.comparison.model.limited_paths() == {f"dir{i}" for i in range(4)}
+    assert not window.comparison.source.isExpanded(
+        window.comparison.source.model().index(0, 0)
+    )
+    window.close()
+    application.processEvents()
+
+
+def test_large_inventory_can_be_cancelled(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._expand_total_limit = 2
+    window.comparison.set_expand_total_limit(2)
+    monkeypatch.setattr(window, "_confirm_large_inventory", lambda *_args: None)
+    changes = [
+        Change(f"dir{i}/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=", size=1)
+        for i in range(4)
+    ]
+    assert not window._populate_unchanged(changes, 4)
+    application.processEvents()
     window.close()
     application.processEvents()

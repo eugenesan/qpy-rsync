@@ -131,7 +131,12 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
-from .comparison_view import CONTROL_ICON_SIZE, CONTROL_SIZE, ComparisonView
+from .comparison_view import (
+    CONTROL_ICON_SIZE,
+    CONTROL_SIZE,
+    DEFAULT_EXPAND_TOTAL_LIMIT,
+    ComparisonView,
+)
 from .icons import (
     cancel_icon,
     compare_icon,
@@ -208,6 +213,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_transient = self._append_transient_log
         self._expand_mode = "all"
         self._expand_limit = 256
+        self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
         self._backup = BackupOptions()
@@ -693,24 +699,34 @@ class MainWindow(QMainWindow):
             self,
             expand_mode=self._expand_mode,
             expand_limit=self._expand_limit,
+            expand_total_limit=self._expand_total_limit,
         )
         if not dialog.exec():
             return
         mode = dialog.expand_mode()
         limit = dialog.expand_limit()
-        if mode == self._expand_mode and limit == self._expand_limit:
+        total_limit = dialog.expand_total_limit()
+        if (
+            mode == self._expand_mode
+            and limit == self._expand_limit
+            and total_limit == self._expand_total_limit
+        ):
             return
         self._expand_mode = mode
         self._expand_limit = limit
+        self._expand_total_limit = total_limit
         settings = app_settings()
         settings.setValue("view/expand-after-compare", mode)
         settings.setValue("view/expand-limit", limit)
+        settings.setValue("view/expand-total-limit", total_limit)
         settings.sync()
         self.comparison.set_expand_mode(mode)
         self.comparison.set_expand_limit(limit)
+        self.comparison.set_expand_total_limit(total_limit)
         self._append_log(
             "Settings: folders after a comparison = "
-            f"{mode}; auto-expand limit = {limit} items"
+            f"{mode}; per-folder limit = {limit} items; "
+            f"comparison limit = {total_limit} items"
         )
         if self.comparison.model.changes:
             self.comparison.expand_initial()
@@ -725,10 +741,21 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             limit = 256
         limit = max(1, min(limit, 1_000_000))
+        try:
+            total_limit = int(
+                settings.value(
+                    "view/expand-total-limit", DEFAULT_EXPAND_TOTAL_LIMIT
+                )
+            )
+        except (TypeError, ValueError):
+            total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
+        total_limit = max(1, min(total_limit, 1_000_000))
         self._expand_mode = mode
         self._expand_limit = limit
+        self._expand_total_limit = total_limit
         self.comparison.set_expand_mode(mode)
         self.comparison.set_expand_limit(limit)
+        self.comparison.set_expand_total_limit(total_limit)
 
     def _build_menu_button(self) -> None:
         """Mirror the menu bar in a button, for desktops without a global menu."""
@@ -1816,7 +1843,7 @@ class MainWindow(QMainWindow):
     def _expansion_limited(self, count: int, limit: int) -> None:
         self._set_status(
             f"Auto-expansion skipped: {count:,} items exceed the "
-            f"{limit:,}-item safety limit. Expand folders manually.",
+            f"{limit:,}-item limit in Settings. Expand folders manually.",
             "warning",
         )
 
@@ -2013,10 +2040,11 @@ class MainWindow(QMainWindow):
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
-            self._populate_unchanged(
+            if not self._populate_unchanged(
                 changed + list(self._inventory_cache),
                 len(self._inventory_cache),
-            )
+            ):
+                self._hide_unchanged(changed)
             return
         if self._inventory_pending_key == key and self._inventory_token:
             return
@@ -2026,15 +2054,74 @@ class MainWindow(QMainWindow):
         self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
 
-    def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
+    def _confirm_large_inventory(
+        self, total: int, unchanged: int
+    ) -> str | None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Large inventory")
+        box.setText(
+            f"Adding {unchanged:,} unchanged items makes the comparison "
+            f"contain {total:,} items."
+        )
+        box.setInformativeText(
+            f"Automatic expansion stops at {self._expand_total_limit:,} items "
+            "(Settings → Auto-expand comparison up to).\n\n"
+            "Add Collapsed keeps the tree collapsed and marks the top-level "
+            "folders. Expand Normally may freeze the window for a long time."
+        )
+        collapsed = box.addButton(
+            "Add Collapsed", QMessageBox.ButtonRole.AcceptRole
+        )
+        normal = box.addButton(
+            "Expand Normally", QMessageBox.ButtonRole.DestructiveRole
+        )
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(collapsed)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is collapsed:
+            return "collapsed"
+        if clicked is normal:
+            return "normal"
+        return None
+
+    def _hide_unchanged(self, changed: list[object]) -> None:
+        self.show_unchanged.blockSignals(True)
+        self.show_unchanged.setChecked(False)
+        self.show_unchanged.blockSignals(False)
+        self.progress_label.setText("Unchanged items hidden")
+        self.comparison.set_changes(changed)
+
+    def _populate_unchanged(self, changes: list[object], unchanged: int) -> bool:
         """Rebuild the trees and report that the big list is on its way."""
+        total = len(changes)
+        expand_over_limit = False
+        preserve_expansion = True
+        if total > self._expand_total_limit:
+            choice = self._confirm_large_inventory(total, unchanged)
+            if choice is None:
+                self._append_log("Inventory addition cancelled.", severity="warning")
+                return False
+            expand_over_limit = choice == "normal"
+            preserve_expansion = expand_over_limit
+            self._append_log(
+                f"Inventory: adding {unchanged:,} unchanged items "
+                f"{'with normal expansion' if expand_over_limit else 'collapsed'} "
+                f"({total:,} total, limit {self._expand_total_limit:,}).",
+                severity="info" if expand_over_limit else "warning",
+            )
         self.progress_label.setText(
             f"Adding {unchanged:,} unchanged item(s) to the comparison..."
         )
         self.progress_label.repaint()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.comparison.set_changes(changes, preserve_expansion=True)
+            self.comparison.set_changes(
+                changes,
+                preserve_expansion=preserve_expansion,
+                expand_over_limit=expand_over_limit,
+            )
         finally:
             QApplication.restoreOverrideCursor()
         self.progress_bar.setRange(0, 100)
@@ -2043,6 +2130,7 @@ class MainWindow(QMainWindow):
             f"Showing {unchanged:,} unchanged item(s); "
             "expand folders to view nested items."
         )
+        return True
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
@@ -2096,9 +2184,10 @@ class MainWindow(QMainWindow):
         # show its size and date.
         self.comparison.set_destination_metadata(result.destination_metadata)
         if self.show_unchanged.isChecked():
-            self._populate_unchanged(
+            if not self._populate_unchanged(
                 changed + list(result.unchanged), len(result.unchanged)
-            )
+            ):
+                self._hide_unchanged(changed)
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)
