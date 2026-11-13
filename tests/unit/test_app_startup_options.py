@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from qpy_rsync.app import parse_startup_options
@@ -133,3 +135,37 @@ def test_legacy_settings_file_is_removed_after_migration(tmp_path, monkeypatch) 
     finally:
         QCoreApplication.setOrganizationName(organization)
         QCoreApplication.setApplicationName(application_name)
+
+
+def test_qt_environment_keeps_the_glx_probe_out_of_the_terminal(monkeypatch) -> None:
+    from qpy_rsync.app import prepare_qt_environment
+
+    for name in (
+        "QT_XCB_GL_INTEGRATION",
+        "QT_QUICK_BACKEND",
+        "QSG_RHI_BACKEND",
+        "QT_LOGGING_RULES",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    prepare_qt_environment()
+
+    assert os.environ["QT_XCB_GL_INTEGRATION"] == "none"
+    assert os.environ["QT_QUICK_BACKEND"] == "software"
+    assert "qt.glx.warning=false" in os.environ["QT_LOGGING_RULES"]
+    # There is no "software" RHI backend; asking for it falls back to OpenGL.
+    assert "QSG_RHI_BACKEND" not in os.environ
+
+    # A second call must not duplicate the rule.
+    prepare_qt_environment()
+    assert os.environ["QT_LOGGING_RULES"].count("qt.glx.warning=false") == 1
+
+
+def test_qt_environment_keeps_the_existing_logging_rules(monkeypatch) -> None:
+    from qpy_rsync.app import prepare_qt_environment
+
+    monkeypatch.setenv("QT_LOGGING_RULES", "*.debug=true")
+    prepare_qt_environment()
+    rules = os.environ["QT_LOGGING_RULES"]
+    assert "*.debug=true" in rules
+    assert "qt.glx.warning=false" in rules

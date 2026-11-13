@@ -459,3 +459,12 @@
 - The three comparison panes are `QTableView` widgets. The list is flat, so a tree kept per-index tree state for rows that never have children, and that was the dominant cost of loading a large comparison.
 - A fixed vertical-header row height replaces `setUniformRowHeights`; the row numbers are hidden and the grid is off, so the panes look the same as before.
 - Measured on the real view with three panes: 300,000 items load in 3.4 s instead of 11.2 s and sort in 3.3 s instead of 11.1 s; 1,200,000 items load in 12.4 s instead of 44.5 s, sort in 9.4 s and filter in 2.2 s, using 1.5 GB.
+
+## milestone 1.15aw compact actions, touch marker and quiet terminal
+
+- A directory now comes before its own items and then its subdirectories, so each directory group is contiguous. The stripe therefore shades a whole group instead of breaking in the middle of one.
+- The crossed-eye marker in the Actions column is watched on the viewport, not the pane, so it responds to a real click. A touchscreen tap is handled as `TouchBegin` because the viewport accepts touch events and receives no synthesized mouse press.
+- The marker hit area covers the full height of the row and a little more to the left, which makes it usable with a finger.
+- The direction line is a single compact row and the filter checkboxes are 40 px tall, so the locations row is 56 px instead of 77 px.
+- The invalid `QSG_RHI_BACKEND=software` is gone: Qt has no software RHI backend, and asking for one falls back to OpenGL. `QT_QUICK_BACKEND=software` is the setting that selects the software Qt Quick adaptation.
+- GLX probe warnings are kept out of the terminal; on a remote X server they repeated once per probe even though this is a widgets-only application.

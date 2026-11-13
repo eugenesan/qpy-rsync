@@ -24,8 +24,15 @@ unset QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
 export QT_XCB_GL_INTEGRATION=none
 # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
 # context. Remote X11 sessions often expose neither GLX nor EGL, so force the
-# software renderer to avoid the noisy fallback warnings.
+# software renderer to avoid the noisy fallback warnings. (There is no
+# "software" RHI backend; QT_QUICK_BACKEND is the one that selects the
+# software Qt Quick adaptation.)
 export QT_QUICK_BACKEND=software
-export QSG_RHI_BACKEND=software
+if [ -n "${QT_LOGGING_RULES:-}" ]; then
+    export QT_LOGGING_RULES="$QT_LOGGING_RULES
+qt.glx.warning=false"
+else
+    export QT_LOGGING_RULES="qt.glx.warning=false"
+fi
 export PYTHONPATH="$SCRIPT_DIR/src"
 exec "$PYTHON" -m qpy_rsync.app "$@"

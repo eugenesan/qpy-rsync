@@ -85,15 +85,32 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
     )
 
 
+def prepare_qt_environment() -> None:
+    """Keep Qt away from OpenGL on remote X11 sessions.
+
+    The KDE platform theme loads Qt Quick, which asks for a graphics context.
+    A remote X server often has no usable GLX or EGL config, so the software
+    renderer is requested before Qt is initialized.
+    """
+    os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
+    # Qt Quick has a software adaptation, but the RHI backends have no
+    # "software" value: asking for one makes Qt fall back to OpenGL, which is
+    # exactly what produces the qglx_findConfig warnings.
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    # The platform theme can still probe GLX even though this application is
+    # widgets-only. The probe is harmless but noisy, so its warnings are kept
+    # out of the terminal.
+    rules = os.environ.get("QT_LOGGING_RULES", "")
+    if "qt.glx" not in rules:
+        os.environ["QT_LOGGING_RULES"] = (
+            f"{rules}\nqt.glx.warning=false" if rules else "qt.glx.warning=false"
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
-    # The KDE platform theme loads Qt Quick, which tries to create an OpenGL
-    # context. Remote X11 sessions often expose neither GLX nor EGL, so force
-    # the software renderer before Qt is initialized.
-    os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
-    os.environ.setdefault("QT_QUICK_BACKEND", "software")
-    os.environ.setdefault("QSG_RHI_BACKEND", "software")
+    prepare_qt_environment()
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as exc:
