@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMenu,
+    QHBoxLayout,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -18,10 +19,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.core.changes import Change
+from qpy_rsync.core.changes import Change, ChangeAction
 from qpy_rsync.core.units import format_size
 
-from .icons import ACCENT
+from .icons import ACTION_LABELS, ACCENT, action_icon
 
 # The name FreeFileSync gives to the objects that live in the compared
 # folder itself.
@@ -73,6 +74,10 @@ class OverviewModel(QAbstractItemModel):
         super().__init__(parent)
         self.root = OverviewNode("", "")
         self._level_totals: dict[int, int] = {}
+
+    def set_statistics(self, summary: object | None) -> None:
+        """Show the selected amounts below the overview."""
+        self.statistics.set_summary(summary)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         self.beginResetModel()
@@ -269,6 +274,81 @@ class OverviewBarDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+class StatisticsBar(QWidget):
+    """The selected amounts, the way FreeFileSync shows them.
+
+    One line with the total and one line with an icon and a count per action,
+    so the effect of the current selection is visible without reading the
+    journal.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("statistics-bar")
+        self._rows: dict[str, QLabel] = {}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(2)
+
+        summary_row = QHBoxLayout()
+        summary_row.setContentsMargins(0, 0, 0, 0)
+        summary_row.setSpacing(6)
+        heading = QLabel("Selected:")
+        heading.setStyleSheet("font-weight: bold;")
+        summary_row.addWidget(heading)
+        self.summary = QLabel("")
+        self.summary.setObjectName("statistics-summary")
+        summary_row.addWidget(self.summary)
+        summary_row.addStretch(1)
+        layout.addLayout(summary_row)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(0, 0, 0, 0)
+        actions_row.setSpacing(4)
+        for action, key in (
+            (ChangeAction.CREATE, "created"),
+            (ChangeAction.UPDATE_CONTENT, "updated"),
+            (ChangeAction.UPDATE_METADATA, "metadata"),
+            (ChangeAction.REPLACE, "replaced"),
+            (ChangeAction.DELETE, "deleted"),
+            (ChangeAction.NO_CHANGE, "unchanged"),
+        ):
+            label_text = ACTION_LABELS.get(action, action.value)
+            icon = QLabel()
+            icon.setPixmap(action_icon(action).pixmap(16, 16))
+            icon.setToolTip(label_text)
+            value = QLabel("0")
+            value.setToolTip(label_text)
+            value.setMinimumWidth(22)
+            actions_row.addWidget(icon)
+            actions_row.addWidget(value)
+            self._rows[key] = value
+        actions_row.addStretch(1)
+        layout.addLayout(actions_row)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_summary(self, summary: object | None) -> None:
+        """Show the numbers of the current plan, or clear them."""
+        if summary is None:
+            self.summary.setText("")
+            for label in self._rows.values():
+                label.setText("0")
+            return
+        self.summary.setText(
+            f"{summary.included:,} item(s), {format_size(summary.total_size)}"
+        )
+        values = {
+            "created": summary.creates,
+            "updated": summary.updates,
+            "metadata": summary.metadata,
+            "replaced": summary.replacements,
+            "deleted": summary.deletions,
+            "unchanged": summary.retained_destination_only,
+        }
+        for key, value in values.items():
+            self._rows[key].setText(f"{value:,}")
+
+
 class OverviewPane(QWidget):
     """A compact overview of the comparison, in the style of FreeFileSync."""
 
@@ -313,7 +393,14 @@ class OverviewPane(QWidget):
         self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
         self.tree.header().resizeSection(OverviewModel.SIZE, 84)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # The size column takes the remaining width, so no empty band is left
+        # at the right edge of the pane.
+        self.tree.header().setSectionResizeMode(
+            OverviewModel.SIZE, QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.tree, 1)
+        self.statistics = StatisticsBar(self)
+        layout.addWidget(self.statistics, 0)
 
         # The size of a folder is the interesting number, like in FreeFileSync.
         self.tree.sortByColumn(OverviewModel.SIZE, Qt.SortOrder.DescendingOrder)
@@ -378,6 +465,10 @@ class OverviewPane(QWidget):
         node: OverviewNode = index.internalPointer()
         if node.path and not node.is_total:
             self.folder_activated.emit(node.path)
+
+    def set_statistics(self, summary: object | None) -> None:
+        """Show the selected amounts below the overview."""
+        self.statistics.set_summary(summary)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         header = self.tree.header()

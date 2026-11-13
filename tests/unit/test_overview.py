@@ -141,7 +141,10 @@ def test_overview_headers_are_resizable_and_separate_the_share() -> None:
     application = app()
     pane = OverviewPane()
     header = pane.tree.header()
-    for section in range(pane.model.columnCount()):
+    # The size column absorbs the remaining width so no gap is left at the
+    # right edge; the others keep their chosen width.
+    assert header.sectionResizeMode(OverviewModel.SIZE) == header.ResizeMode.Stretch
+    for section in range(OverviewModel.SIZE):
         assert header.sectionResizeMode(section) == header.ResizeMode.Interactive
     assert pane.model.headerData(OverviewModel.FOLDER, Qt.Orientation.Horizontal) == "Item"
     assert pane.model.headerData(OverviewModel.SHARE, Qt.Orientation.Horizontal) == "Share"

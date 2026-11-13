@@ -1390,6 +1390,7 @@ class MainWindow(QMainWindow):
         if self._active_profile is None:
             self._current_plan = None
             self._last_plan_summary = None
+            self.overview.set_statistics(None)
             self.validate_plan_button.setEnabled(False)
             return
         self._update_hidden_count()
@@ -1414,6 +1415,7 @@ class MainWindow(QMainWindow):
         if text != self._last_plan_summary:
             self._last_plan_summary = text
             self._append_log(text)
+        self.overview.set_statistics(summary)
         self.validate_plan_button.setEnabled(summary.included > 0)
         self.synchronize_button.setEnabled(False)
         self._execution_gate.selection_changed(included=summary.included)
