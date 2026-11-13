@@ -174,7 +174,9 @@ class ChangeDecisions:
             if decision is not None:
                 return decision
             current = current.rpartition("/")[0]
-        return None
+        # The compared folder itself can carry a decision, which covers every
+        # item of the comparison.
+        return self._decisions.get("")
 
     def effective_path(self, path: str) -> ChangeDecision:
         return self.inherited(path) or ChangeDecision.INCLUDE

@@ -260,6 +260,11 @@ class FlatChangeModel(QAbstractTableModel):
         self._refresh_destination_sizes()
         self._total_up_changed_counts()
 
+    def root_name(self) -> str:
+        """The name of the compared folder, shown on the root row."""
+        name = self.source_root.rstrip("/").rpartition("/")[2]
+        return name or "."
+
     def _build_rows(self) -> None:
         """Lay the directories and their items out as a flat list.
 
@@ -318,6 +323,20 @@ class FlatChangeModel(QAbstractTableModel):
                     )
                 )
 
+        # The compared folder itself is a row, so its totals can be read and
+        # its checkbox decides the whole comparison at once.
+        rows.append(
+            FlatRow(
+                path="",
+                name=self.root_name(),
+                parent="",
+                depth=0,
+                is_directory=True,
+                change=None,
+                change_index=-1,
+                group="",
+            )
+        )
         walk("")
         # Sorting by size, date, count or action follows FreeFileSync: the
         # whole list is ordered, not each directory on its own. Sorting by
@@ -546,6 +565,11 @@ class FlatChangeModel(QAbstractTableModel):
             ) or child_action_ok
             directory.visible = directory.path_ok and directory.action_ok
 
+        # The compared folder is always shown, so its totals and its
+        # checkbox stay reachable.
+        root = directories.get("")
+        if root is not None and self.changes:
+            root.visible = True
         # The rows of the visible directories.
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
@@ -593,8 +617,13 @@ class FlatChangeModel(QAbstractTableModel):
         # the totals of the directories below it.
         hidden = self.hidden
         check_hidden = bool(hidden) and not self.show_hidden
-        for path in self._ordered_directories():
-            directory = self._directories[path]
+        # The compared folder comes last, after the directories below it.
+        for path in [*self._ordered_directories(), ""]:
+            directory = self._directories.get(path)
+            if directory is None:
+                # The view sorts once while it is built, before any
+                # comparison exists.
+                continue
             items = 0
             size = 0
             destination_size = 0
@@ -678,7 +707,10 @@ class FlatChangeModel(QAbstractTableModel):
         """
         paths: set[str] = set()
         for index in self._visible_rows:
-            paths.add(self._rows[index].path)
+            path = self._rows[index].path
+            # The compared folder itself is a synthetic row, not an item.
+            if path:
+                paths.add(path)
         return paths
 
     def visible_changes(self) -> list[Change]:

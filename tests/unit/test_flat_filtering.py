@@ -13,6 +13,15 @@ def app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
+def _paths(model) -> list[str]:
+    """The item paths of the visible rows, without the compared folder."""
+    return [
+        path
+        for path in (model.row_path(row) for row in range(model.rowCount()))
+        if path
+    ]
+
+
 def test_the_three_phrases_of_an_item_are_rsync_patterns() -> None:
     phrases = phrases_for("docs/pictures/photo.jpg", is_directory=False)
     patterns = [phrase.pattern for phrase in phrases]
@@ -92,13 +101,13 @@ def test_hiding_an_item_removes_it_from_the_list() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    assert view.model.rowCount() == 2
+    assert view.model.rowCount() == 3
     view.hide_path("a.txt")
-    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    paths = set(_paths(view.model))
     assert "a.txt" not in paths
     assert "b.txt" in paths
     view.show_all_hidden()
-    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    paths = set(_paths(view.model))
     assert "a.txt" in paths
     view.close()
     application.processEvents()
@@ -116,11 +125,11 @@ def test_the_hidden_items_can_be_shown_again_in_the_list() -> None:
         ]
     )
     view.hide_path("a.txt")
-    assert view.model.rowCount() == 0
+    assert view.model.rowCount() == 1
     # The toggle shows the hidden items again, dimmed.
     view.set_show_hidden(True)
     application.processEvents()
-    assert view.model.rowCount() == 1
+    assert view.model.rowCount() == 2
     view.close()
     application.processEvents()
 
@@ -154,7 +163,7 @@ def test_the_space_bar_hides_the_selected_item() -> None:
     assert view.eventFilter(view.source, event) is True
     application.processEvents()
     assert view.hidden_paths() == {"a.txt"}
-    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    paths = set(_paths(view.model))
     assert paths == {"b.txt"}
     view.close()
     application.processEvents()
@@ -219,7 +228,7 @@ def test_the_filter_matches_a_folder_with_a_trailing_slash() -> None:
         ]
     )
     model.set_path_filter("docs/")
-    paths = {model.row_path(row) for row in range(model.rowCount())}
+    paths = set(_paths(model))
     assert paths == {"docs", "docs/a.txt", "docs/sub", "docs/sub/b.txt"}
     model.deleteLater()
     application.processEvents()
@@ -238,7 +247,7 @@ def test_the_filter_matches_a_relative_path() -> None:
         ]
     )
     model.set_path_filter("docs/sub")
-    paths = {model.row_path(row) for row in range(model.rowCount())}
+    paths = set(_paths(model))
     assert "docs/sub/a.txt" in paths
     assert "docs/other/b.txt" not in paths
     model.deleteLater()
@@ -259,9 +268,9 @@ def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
     )
     view.filter_edit.setText("docs/")
     # Typing does not re-filter right away.
-    assert view.model.rowCount() == 4
+    assert view.model.rowCount() == 5
     view.filter_edit.returnPressed.emit()
-    paths = {view.model.row_path(row) for row in range(view.model.rowCount())}
+    paths = set(_paths(view.model))
     assert "docs/a.txt" in paths
     assert "pics/b.jpg" not in paths
     view.close()

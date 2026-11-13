@@ -327,19 +327,19 @@ def test_unchanged_inventory_is_async_and_cached(tmp_path) -> None:
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
     # The compared objects are shown while the inventory is still running.
-    assert window.comparison.model.rowCount() == 1
+    assert window.comparison.model.rowCount() == 2
 
     extra = Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "=")
     window._inventory_finished(7, [extra])
-    assert window.comparison.model.rowCount() == 2
+    assert window.comparison.model.rowCount() == 3
     # The unchanged object appears without another comparison.
-    assert window.comparison.model.rowCount() == 2
+    assert window.comparison.model.rowCount() == 3
     assert "unchanged=1" in window.log.toPlainText()
 
     window.show_unchanged.setChecked(False)
     window.show_unchanged.setChecked(True)
     assert len(gathered) == 1
-    assert window.comparison.model.rowCount() == 2
+    assert window.comparison.model.rowCount() == 3
     window.close()
     application.processEvents()
 
@@ -1175,6 +1175,6 @@ def test_the_flat_list_adds_a_large_inventory_without_a_warning() -> None:
     assert not hasattr(window, "_confirm_large_inventory")
     window._populate_unchanged(changed + unchanged, len(unchanged))
     application.processEvents()
-    assert window.comparison.model.rowCount() == 64
+    assert window.comparison.model.rowCount() == 65
     window.close()
     application.processEvents()
