@@ -2054,9 +2054,25 @@ class MainWindow(QMainWindow):
         self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
 
+    def _changed_expansion_summary(self) -> tuple[int, int]:
+        """Count changed items and the folders that contain them."""
+        changed = [
+            item
+            for item in self._last_changed_changes
+            if item.action is not ChangeAction.NO_CHANGE
+        ]
+        folders: set[str] = set()
+        for item in changed:
+            current = str(item.path).rstrip("/").rpartition("/")[0]
+            while current:
+                folders.add(current)
+                current = current.rpartition("/")[0]
+        return len(changed), len(folders)
+
     def _confirm_large_inventory(
         self, total: int, unchanged: int
     ) -> str | None:
+        changed_count, changed_folders = self._changed_expansion_summary()
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Large inventory")
@@ -2064,12 +2080,26 @@ class MainWindow(QMainWindow):
             f"Adding {unchanged:,} unchanged items makes the comparison "
             f"contain {total:,} items."
         )
+        changed_text = ""
+        if changed_count:
+            changed_text = (
+                f"Expand Changed Only opens the {changed_folders:,} folder(s) "
+                f"containing {changed_count:,} changed item(s) and leaves "
+                "unchanged-only folders collapsed.\n\n"
+            )
         box.setInformativeText(
             f"Automatic expansion stops at {self._expand_total_limit:,} items "
             "(Settings → Auto-expand comparison up to).\n\n"
+            f"{changed_text}"
             "Add Collapsed keeps the tree collapsed and marks the top-level "
             "folders. Expand Normally may freeze the window for a long time."
         )
+        changed_button = None
+        if changed_count:
+            changed_button = box.addButton(
+                f"Expand Changed Only ({changed_count:,} items)",
+                QMessageBox.ButtonRole.AcceptRole,
+            )
         collapsed = box.addButton(
             "Add Collapsed", QMessageBox.ButtonRole.AcceptRole
         )
@@ -2077,9 +2107,14 @@ class MainWindow(QMainWindow):
             "Expand Normally", QMessageBox.ButtonRole.DestructiveRole
         )
         box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(collapsed)
+        if changed_button is not None and changed_count <= self._expand_total_limit:
+            box.setDefaultButton(changed_button)
+        else:
+            box.setDefaultButton(collapsed)
         box.exec()
         clicked = box.clickedButton()
+        if changed_button is not None and clicked is changed_button:
+            return "changed"
         if clicked is collapsed:
             return "collapsed"
         if clicked is normal:
@@ -2097,6 +2132,7 @@ class MainWindow(QMainWindow):
         """Rebuild the trees and report that the big list is on its way."""
         total = len(changes)
         expand_over_limit = False
+        expand_changed_only = False
         preserve_expansion = True
         if total > self._expand_total_limit:
             choice = self._confirm_large_inventory(total, unchanged)
@@ -2104,10 +2140,16 @@ class MainWindow(QMainWindow):
                 self._append_log("Inventory addition cancelled.", severity="warning")
                 return False
             expand_over_limit = choice == "normal"
+            expand_changed_only = choice == "changed"
             preserve_expansion = expand_over_limit
+            if expand_changed_only:
+                mode = "changed paths only"
+            elif expand_over_limit:
+                mode = "with normal expansion"
+            else:
+                mode = "collapsed"
             self._append_log(
-                f"Inventory: adding {unchanged:,} unchanged items "
-                f"{'with normal expansion' if expand_over_limit else 'collapsed'} "
+                f"Inventory: adding {unchanged:,} unchanged items {mode} "
                 f"({total:,} total, limit {self._expand_total_limit:,}).",
                 severity="info" if expand_over_limit else "warning",
             )
@@ -2121,6 +2163,7 @@ class MainWindow(QMainWindow):
                 changes,
                 preserve_expansion=preserve_expansion,
                 expand_over_limit=expand_over_limit,
+                expand_changed_only=expand_changed_only,
             )
         finally:
             QApplication.restoreOverrideCursor()

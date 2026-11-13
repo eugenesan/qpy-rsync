@@ -1226,3 +1226,54 @@ def test_large_inventory_can_be_cancelled(monkeypatch) -> None:
     application.processEvents()
     window.close()
     application.processEvents()
+
+
+def test_large_inventory_can_expand_changed_paths_only(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._expand_total_limit = 1
+    window.comparison.set_expand_total_limit(1)
+    changed = Change(
+        "changed/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"
+    )
+    unchanged = Change(
+        "unchanged/file.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="
+    )
+    window._last_changed_changes = [changed]
+    monkeypatch.setattr(
+        window, "_confirm_large_inventory", lambda *_args: "changed"
+    )
+    assert window._populate_unchanged([changed, unchanged], 1)
+    application.processEvents()
+
+    model = window.comparison.model
+    proxy = window.comparison.proxy
+    expanded = {}
+    for row in range(model.rowCount()):
+        index = model.index(row, 0)
+        expanded[index.internalPointer().name] = (
+            window.comparison.source.isExpanded(proxy.mapFromSource(index))
+        )
+    assert expanded["changed"]
+    assert not expanded["unchanged"]
+    window.close()
+    application.processEvents()
+
+
+def test_changed_expansion_summary_counts_changed_paths() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._last_changed_changes = [
+        Change("a/b/c.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+        Change("a/d.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
+        Change("e.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+    ]
+    assert window._changed_expansion_summary() == (2, 2)
+    window.close()
+    application.processEvents()

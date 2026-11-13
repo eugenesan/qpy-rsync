@@ -378,3 +378,8 @@
 - Automatic expansion now stops at 10,000 comparison items by default; the limit is configurable under Settings → Auto-expand comparison up to.
 - Showing a large inventory warns before adding it and offers Add Collapsed (default, marked folders, no expansion) or Expand Normally (may freeze), with Cancel.
 - The collapsed choice bypasses the previous-expansion restore, so the proxy filter and per-row expansion path shown in the abort log is not entered.
+
+## milestone 1.15al changed-paths expansion
+
+- The large-inventory warning now offers Expand Changed Only, with the number of changed items and the folders that would open. It is the default when that set is within the configured comparison limit.
+- Expand Changed Only opens only ancestors of changed items; unchanged-only folders stay collapsed.

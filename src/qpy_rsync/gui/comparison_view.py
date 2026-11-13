@@ -112,6 +112,7 @@ class ComparisonView(QWidget):
         self._expand_limit = 256
         self._expand_total_limit = DEFAULT_EXPAND_TOTAL_LIMIT
         self._expand_over_limit_once = False
+        self._expand_changed_only_once = False
         self._last_cap_notice: tuple[int, int] | None = None
         self._limited_previous_expansion: set[str] | None = None
         self._limited_manual_expanded: set[str] = set()
@@ -599,8 +600,10 @@ class ComparisonView(QWidget):
         *,
         preserve_expansion: bool = False,
         expand_over_limit: bool = False,
+        expand_changed_only: bool = False,
     ) -> None:
         self._expand_over_limit_once = expand_over_limit
+        self._expand_changed_only_once = expand_changed_only
         if not preserve_expansion and self.limited_button.isChecked():
             self._limited_previous_expansion = None
             self._limited_manual_expanded.clear()
@@ -623,8 +626,13 @@ class ComparisonView(QWidget):
         self.changes_updated.emit(list(self.model.changes))
 
         def restore_views() -> None:
+            changed_only = self._expand_changed_only_once
+            self._expand_changed_only_once = False
             force = self._expand_over_limit_once
             self._expand_over_limit_once = False
+            if changed_only:
+                self.expand_changed_only()
+                return
             over_limit = len(self.model.changes) > self._expand_total_limit
             with self._frozen_updates():
                 if expanded_paths and (not over_limit or force):
@@ -826,6 +834,37 @@ class ComparisonView(QWidget):
                         self._expand_branch(
                             tree, self.model.index(row, 0), limited, ancestors
                         )
+
+    def expand_changed_only(self) -> None:
+        """Open ancestors of changed items, leaving unchanged branches closed."""
+        limited, _ancestors = self._limited_paths(self._expand_limit)
+        self.model.set_expand_limited_paths(limited, self._expand_limit)
+        self._refresh_limited_button(limited)
+        with self._frozen_updates(), self._synced_expansion():
+            for tree in (self.source, self.action, self.destination):
+                for row in range(self.model.rowCount()):
+                    self._expand_changed_branch(
+                        tree, self.model.index(row, 0), limited
+                    )
+
+    def _expand_changed_branch(
+        self,
+        tree: QTreeView,
+        source_index: QModelIndex,
+        limited: set[str],
+    ) -> None:
+        node = source_index.internalPointer()
+        if node is None or not node.children or node.subtree_changed == 0:
+            return
+        if node.path in limited:
+            return
+        proxy_index = self.proxy.mapFromSource(source_index)
+        if proxy_index.isValid() and not tree.isExpanded(proxy_index):
+            tree.expand(proxy_index)
+        for row in range(self.model.rowCount(source_index)):
+            self._expand_changed_branch(
+                tree, self.model.index(row, 0, source_index), limited
+            )
 
     def _set_limited_only(self, checked: bool) -> None:
         paths = self.model.limited_paths()
