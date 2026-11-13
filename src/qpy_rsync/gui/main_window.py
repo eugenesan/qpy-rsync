@@ -303,6 +303,7 @@ class MainWindow(QMainWindow):
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
+        self.comparison.unhide_all_requested.connect(self._unhide_all)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
         if hasattr(self.comparison, "filter_requested"):
@@ -458,6 +459,7 @@ class MainWindow(QMainWindow):
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
         self.action_filters.hidden_toggled.connect(self._apply_show_hidden)
+        self.action_filters.unhide_all_requested.connect(self._unhide_all)
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -2156,6 +2158,21 @@ class MainWindow(QMainWindow):
                 f"Hiding {total:,} hidden item(s) again.", severity="info"
             )
         self._refresh_plan_summary()
+
+    def _unhide_all(self) -> None:
+        """Put every hidden item back and report it."""
+        hidden = getattr(self.comparison.model, "hidden", None)
+        count = hidden.count() if hidden is not None else 0
+        if not count:
+            self.progress_label.setText("No items are hidden.")
+            return
+        self.comparison.show_all_hidden()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.progress_label.setText(
+            f"All {count:,} hidden item(s) are shown again."
+        )
+        self._append_log(f"Unhid {count:,} hidden item(s).", severity="info")
 
     def _hide_path(self, path: str) -> None:
         """Hide a folder or an item from the comparison."""

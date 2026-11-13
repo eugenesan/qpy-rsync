@@ -1265,3 +1265,28 @@ def test_the_backup_button_keeps_its_menu_when_unconfigured() -> None:
     assert window.backup_open.isEnabled() is True
     window.close()
     application.processEvents()
+
+
+def test_unhide_all_puts_every_hidden_item_back() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [
+            Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    window.comparison.hide_path("a.txt")
+    window.comparison.hide_path("b.txt")
+
+    window.comparison.unhide_all_requested.emit()
+    application.processEvents()
+
+    assert window.comparison.hidden_paths() == set()
+    assert "All 2 hidden item(s) are shown again" in window.progress_label.text()
+    assert "Unhid 2 hidden item(s)" in window.log.toPlainText()
+    window.close()
+    application.processEvents()

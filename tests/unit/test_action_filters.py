@@ -105,3 +105,13 @@ def test_action_filter_survives_model_reset() -> None:
     )
     assert _names(model) == {"fresh.txt"}
     assert model.visible_actions() == {ChangeAction.CREATE}
+
+
+def test_the_hidden_toggle_mentions_unhide_all_in_its_tooltip() -> None:
+    app()
+    bar = ActionFilterBar()
+    bar.set_hidden_count(0)
+    assert "Right-click to unhide all" in bar.hidden_box.toolTip()
+    bar.set_hidden_count(3)
+    assert "3 hidden item(s)" in bar.hidden_box.toolTip()
+    assert "Right-click to unhide all" in bar.hidden_box.toolTip()

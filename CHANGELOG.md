@@ -469,3 +469,9 @@
 - The direction line is a single compact row and the filter checkboxes are 40 px tall, so the locations row is 56 px instead of 77 px.
 - The invalid `QSG_RHI_BACKEND=software` is gone: Qt has no software RHI backend, and asking for one falls back to OpenGL. `QT_QUICK_BACKEND=software` is the setting that selects the software Qt Quick adaptation.
 - GLX probe warnings are kept out of the terminal; on a remote X server they repeated once per probe even though this is a widgets-only application.
+
+## milestone 1.15ax unhide all and action sorting
+
+- The Actions context menu, including the empty part of the Actions pane, offers "Unhide All (N)".
+- The hidden-items toggle has a right-click menu with the same action, and its tooltip points to it.
+- Sorting by the Actions column was already intentional: it sorts the whole list by action label and reverses on a second click. A test now covers ascending and descending order.

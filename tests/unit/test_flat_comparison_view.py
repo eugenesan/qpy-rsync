@@ -401,3 +401,58 @@ def test_each_side_names_its_own_root_folder() -> None:
     )
     view.close()
     application.processEvents()
+
+
+def test_the_row_context_menu_offers_unhide_all() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            file_change("a.txt"),
+            file_change("b.txt"),
+        ]
+    )
+    view.hide_path("a.txt")
+    view.set_show_hidden(True)
+    index = view.model.index_for_path("a.txt")
+    row = view.model.row_data(index.row())
+    _menu, actions = view._build_context_menu(
+        view.action, "a.txt", index.data(Qt.ItemDataRole.UserRole), row
+    )
+    entry = actions["show_all_hidden"]
+    assert entry is not None
+    assert entry.text() == "Unhide All (1)"
+    view.close()
+    application.processEvents()
+
+
+def test_the_actions_column_sorts_by_action_label() -> None:
+    from qpy_rsync.gui.icons import ACTION_LABELS
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            file_change("a.txt", ChangeAction.CREATE),
+            file_change("b.txt", ChangeAction.DELETE),
+            file_change("c.txt", ChangeAction.UPDATE_CONTENT),
+        ]
+    )
+
+    def labels() -> list[str]:
+        rows = (
+            model.row_data(row)
+            for row in range(model.rowCount())
+        )
+        return [
+            ACTION_LABELS[row.change.action]
+            for row in rows
+            if not row.is_directory
+        ]
+
+    model.sort(model.ACTION, Qt.SortOrder.AscendingOrder)
+    assert labels() == sorted(labels(), key=str.casefold)
+    model.sort(model.ACTION, Qt.SortOrder.DescendingOrder)
+    assert labels() == sorted(labels(), key=str.casefold, reverse=True)
+    model.deleteLater()
+    application.processEvents()

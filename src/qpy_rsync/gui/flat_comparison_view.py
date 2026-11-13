@@ -232,6 +232,7 @@ class FlatComparisonView(QWidget):
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
+    unhide_all_requested = Signal()
     sort_changed = Signal(int, object)
     expansion_limited = Signal(int, int)
     # A filter rule for the selected item, as an rsync pattern.
@@ -814,6 +815,16 @@ class FlatComparisonView(QWidget):
     def _show_context_menu(self, tree: QTableView, point: object) -> None:
         index = tree.indexAt(point)
         if not index.isValid():
+            # An empty part of the Actions pane still offers the one action
+            # that belongs to the list as a whole.
+            if tree is self.action and self.model.hidden:
+                menu = QMenu(tree)
+                unhide = menu.addAction(
+                    f"Unhide All ({self.model.hidden.count()})"
+                )
+                selected = menu.exec(tree.viewport().mapToGlobal(point))
+                if selected is unhide:
+                    self.unhide_all_requested.emit()
             return
         path = self.model.row_path(index.row())
         change = index.data(Qt.ItemDataRole.UserRole)
@@ -839,7 +850,7 @@ class FlatComparisonView(QWidget):
         elif selected is actions["show"] and path is not None:
             self.show_path(path)
         elif selected is actions["show_all_hidden"]:
-            self.show_all_hidden()
+            self.unhide_all_requested.emit()
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
 
@@ -961,7 +972,7 @@ class FlatComparisonView(QWidget):
             actions["hide"] = menu.addAction("Hide Item\tSpace")
         if hidden:
             actions["show_all_hidden"] = menu.addAction(
-                f"Show All Hidden Items ({hidden.count()})"
+                f"Unhide All ({hidden.count()})"
             )
         return menu, actions
 
