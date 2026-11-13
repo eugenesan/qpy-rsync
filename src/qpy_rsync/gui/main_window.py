@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QPalette,
+    QTextCharFormat,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -162,7 +168,7 @@ class MainWindow(QMainWindow):
         self._service.on_finished = self._comparison_finished
         self._service.on_error = self._comparison_error
         self._service.on_cancelled = self._comparison_cancelled
-        self._service.on_log = self._append_log
+        self._service.on_log = self._append_rsync_log
         self._service.on_progress = self._comparison_progress
         self._service.on_transient = self._append_transient_log
         self._active_profile: SyncProfile | None = None
@@ -175,7 +181,7 @@ class MainWindow(QMainWindow):
         self._plan_validation.on_finished = self._plan_validation_finished
         self._plan_validation.on_error = self._plan_validation_error
         self._plan_validation.on_cancelled = self._plan_validation_cancelled
-        self._plan_validation.on_log = self._append_log
+        self._plan_validation.on_log = self._append_rsync_log
         self._plan_validation.on_spec = self._log_spec
         self._plan_validation.on_transient = self._append_transient_log
         self._inventory_service = InventoryService(self)
@@ -192,8 +198,8 @@ class MainWindow(QMainWindow):
         self._sync_service.on_started = self._sync_started
         self._sync_service.on_finished = self._sync_finished
         self._sync_service.on_error = self._sync_error
-        self._sync_service.on_stdout = self._append_log
-        self._sync_service.on_stderr = self._append_log
+        self._sync_service.on_stdout = self._append_rsync_log
+        self._sync_service.on_stderr = self._append_rsync_log
         self._sync_service.on_progress = self._sync_progress
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
@@ -396,11 +402,7 @@ class MainWindow(QMainWindow):
         self.log_header.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        self.header_separator = QFrame()
-        self.header_separator.setFrameShape(QFrame.Shape.VLine)
-        self.header_separator.setFrameShadow(QFrame.Shadow.Plain)
-        self.header_separator.setFixedWidth(1)
-        self.state_label = QLabel("State")
+        self.state_label = QLabel("State:")
         self.state_label.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
@@ -442,9 +444,7 @@ class MainWindow(QMainWindow):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setSpacing(6)
         header_row.addWidget(self.log_header)
-        header_row.addWidget(self.header_separator)
-        header_row.addWidget(self.state_label)
-        header_row.addWidget(self.status_edit, 1)
+        header_row.addStretch(1)
         log_container_layout.addLayout(header_row)
         log_container_layout.addWidget(self.log, 1)
         self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -527,14 +527,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(backup_panel)
 
         self.setCentralWidget(root)
-        self.status_bar_label = QLabel()
-        self.status_bar_label.setObjectName("status-bar-label")
-        self.status_bar_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
-        )
-        self.status_bar_label.setMinimumWidth(0)
         self.statusBar().setSizeGripEnabled(False)
-        self.statusBar().addWidget(self.status_bar_label, 1)
+        self.statusBar().addWidget(self.state_label)
+        self.statusBar().addWidget(self.status_edit, 1)
         self._build_menus()
         self._build_menu_button()
 
@@ -1109,9 +1104,6 @@ class MainWindow(QMainWindow):
         if color:
             style += f" color: {color};"
         self.status_edit.setStyleSheet(style)
-        status_bar_label = getattr(self, "status_bar_label", None)
-        if status_bar_label is not None:
-            status_bar_label.setStyleSheet(style)
 
     def _set_status(self, text: str, severity: str = "info") -> None:
         severity = severity.lower()
@@ -1121,17 +1113,7 @@ class MainWindow(QMainWindow):
         self.status_edit.setToolTip(tooltip)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
-        status_bar_label = getattr(self, "status_bar_label", None)
-        if status_bar_label is not None:
-            # The status bar is reserved for problems; ordinary progress and
-            # success messages stay in the State field and the journal.
-            if severity in {"warning", "error"}:
-                status_bar_label.setText(text.replace("\n", " "))
-                status_bar_label.setToolTip(tooltip)
-            else:
-                status_bar_label.clear()
-                status_bar_label.setToolTip("")
-        self._append_log(f"STATUS {text}")
+        self._append_log(f"STATUS {text}", severity=severity)
 
     def _set_backup_message(self, text: str, severity: str = "info") -> None:
         if severity == "info" and text.startswith("Backups are disabled"):
@@ -1548,8 +1530,8 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
         self.progress_label.setText("Plan validation failed")
-        self.status_edit.setText("Plan validation failed.")
-        self._append_log(message)
+        self._set_status("Plan validation failed.", "error")
+        self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation failed", message)
 
@@ -1750,7 +1732,9 @@ class MainWindow(QMainWindow):
         self._set_busy_controls(False)
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
-        self._append_log(message)
+        self._append_log(
+            message, severity="warning" if cancelled else "error"
+        )
         self._end_bulk_logging()
         self._set_status(
             "Synchronization was cancelled; compare again before retrying."
@@ -2078,8 +2062,8 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
-        self.status_edit.setText("Comparison failed.")
-        self._append_log(message)
+        self._set_status("Comparison failed.", "error")
+        self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Comparison failed", message)
 
@@ -2094,28 +2078,74 @@ class MainWindow(QMainWindow):
             argv = [program, *getattr(spec, "arguments", ())]
         self._append_log("$ " + shlex.join([str(item) for item in argv]))
 
-    def _append_log(self, text: str) -> None:
+    def _append_log(
+        self,
+        text: str,
+        *,
+        rsync: bool = False,
+        severity: str = "info",
+    ) -> None:
         if not text:
             return
         normalized = text.rstrip("\r\n")
         if not normalized:
             return
-        self._log_buffer.append(normalized.replace("\r", "\n"))
+        timestamp = datetime.now().strftime("%H:%M")
+        for line in normalized.replace("\r", "\n").splitlines() or [""]:
+            self._log_buffer.append((line, rsync, severity.lower(), timestamp))
         if self._bulk_logging:
             if not self._log_flush_timer.isActive():
                 self._log_flush_timer.start()
             return
         self._flush_log()
 
+    def _append_rsync_log(self, text: str) -> None:
+        self._append_log(text, rsync=True)
+
     def _flush_log(self) -> None:
         if self._log_flush_timer.isActive():
             self._log_flush_timer.stop()
         if not self._log_buffer:
             return
-        text = "\n".join(self._log_buffer)
-        self._log_buffer.clear()
-        self.log.appendPlainText(text)
-        self._write_session_log(text)
+        entries = self._log_buffer
+        self._log_buffer = []
+        for line, rsync, severity, timestamp in entries:
+            self._append_journal_line(line, timestamp, rsync, severity)
+            self._write_session_log(line)
+
+    def _append_journal_line(
+        self, text: str, timestamp: str, rsync: bool, severity: str
+    ) -> None:
+        cursor = QTextCursor(self.log.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if not self.log.document().isEmpty():
+            cursor.insertBlock()
+        time_format = QTextCharFormat()
+        time_format.setForeground(QColor("#6b7280"))
+        cursor.insertText(f"{timestamp} ", time_format)
+
+        content_format = QTextCharFormat()
+        if rsync:
+            color = QColor("#9ca3af")
+        elif severity == "warning":
+            color = QColor("#0891B2")
+        elif severity == "error":
+            color = QColor("#B91C1C")
+        elif severity == "success":
+            color = QColor("#15803D")
+        else:
+            # Keep regular application text readable on the journal background:
+            # near-white on a dark background, near-black on a light one.
+            background = self.log.palette().color(QPalette.ColorRole.Base)
+            color = (
+                QColor("#f8fafc")
+                if background.lightness() < 128
+                else QColor("#111827")
+            )
+        content_format.setForeground(color)
+        cursor.insertText(text, content_format)
+        self.log.setTextCursor(cursor)
+        self.log.ensureCursorVisible()
 
     def _append_transient_log(self, text: str) -> None:
         """Keep rsync progress in the session log, not in the journal."""

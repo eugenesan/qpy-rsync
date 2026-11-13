@@ -412,8 +412,8 @@ def test_command_preview_splitter_is_resizable() -> None:
     # The Journal label keeps its natural height so no gap opens up between
     # the label and the Journal box.
     assert window.log_header.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Fixed
-    # Status messages share the row of the Journal label.
-    assert window.log_header.parentWidget() is window.status_edit.parentWidget()
+    # The State field lives in the window status bar.
+    assert window.statusBar().isAncestorOf(window.status_edit)
     window.close()
     application.processEvents()
 
@@ -580,15 +580,13 @@ def test_closing_the_window_stops_running_operations() -> None:
     assert window._closing is True
 
 
-def test_state_field_replaces_the_status_row() -> None:
+def test_state_field_lives_in_the_status_bar() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    # The state messages live next to the Journal label, separated from it.
-    assert window.state_label.text() == "State"
-    assert window.log_header.parentWidget() is window.status_edit.parentWidget()
+    assert window.state_label.text() == "State:"
+    assert window.statusBar().isAncestorOf(window.status_edit)
     assert window.status_edit.isReadOnly()
-    assert window.header_separator.parentWidget() is window.status_edit.parentWidget()
     window._set_status("Comparison failed.", "error")
     assert "Comparison failed." in window.status_edit.text()
     assert "Comparison failed." in window.status_edit.toolTip()
@@ -625,9 +623,8 @@ def test_rows_use_separators_between_the_control_groups() -> None:
         if frame.frameShape() == QFrame.Shape.VLine
     ]
     # Swap | Compare, Load Profile | Filter/Find, Source Browse | filters,
-    # filters | unchanged, unchanged | Destination, Protect nested | Log and
-    # the Journal | State divider.
-    assert len(separators) == 7
+    # filters | unchanged, unchanged | Destination, Protect nested | Log.
+    assert len(separators) == 6
     window.close()
     application.processEvents()
 
@@ -999,21 +996,21 @@ def test_open_missing_directory_shows_a_warning(tmp_path, monkeypatch) -> None:
     application.processEvents()
 
 
-def test_status_bar_shows_only_warnings_and_errors() -> None:
+def test_state_field_shows_every_status_message() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
     window._set_status("Everything is fine.", "success")
-    assert window.status_bar_label.text() == ""
+    assert "Everything is fine." in window.status_edit.text()
     window._set_status("Just information.", "info")
-    assert window.status_bar_label.text() == ""
+    assert "Just information." in window.status_edit.text()
 
     window._set_status("Source is missing.", "warning")
-    assert window.status_bar_label.text() == "Source is missing."
-    assert window.status_bar_label.toolTip() == "Source is missing."
+    assert "Source is missing." in window.status_edit.text()
+    assert "Source is missing." in window.status_edit.toolTip()
 
     window._set_status("Open failed.", "error")
-    assert window.status_bar_label.text() == "Open failed."
+    assert "Open failed." in window.status_edit.text()
     assert "STATUS Open failed." in window.log.toPlainText()
     window.close()
     application.processEvents()
@@ -1038,7 +1035,7 @@ def test_failed_external_open_shows_an_error(tmp_path, monkeypatch) -> None:
     window.source_edit.setText(str(directory) + "/")
     window._open_location_directory("Source")
     assert errors
-    assert "Could not open" in window.status_bar_label.text()
+    assert "Could not open" in window.status_edit.text()
     window.close()
     application.processEvents()
 
@@ -1050,6 +1047,43 @@ def test_startup_warns_about_missing_remembered_locations(tmp_path) -> None:
     window.source_edit.setText(str(tmp_path / "missing-source") + "/")
     window.destination_edit.setText(str(tmp_path / "missing-destination") + "/")
     window._update_startup_status()
-    assert "does not exist" in window.status_bar_label.text()
+    assert "does not exist" in window.status_edit.text()
+    window.close()
+    application.processEvents()
+
+
+def test_journal_lines_get_timestamps_and_severity_colors() -> None:
+    import re
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.log.clear()
+    window._append_log("app message")
+    window._append_log("warning message", severity="warning")
+    window._append_log("error message", severity="error")
+    window._append_log("rsync line", rsync=True)
+
+    document = window.log.document()
+    lines = [document.findBlockByNumber(row).text() for row in range(document.blockCount())]
+    assert all(re.match(r"^\d{2}:\d{2} ", line) for line in lines)
+    assert lines[0].endswith("app message")
+    assert lines[1].endswith("warning message")
+
+    def colors(row: int) -> list[str]:
+        block = document.findBlockByNumber(row)
+        result = []
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                result.append(fragment.charFormat().foreground().color().name())
+            iterator += 1
+        return result
+
+    assert colors(1)[-1] == "#0891b2"
+    assert colors(2)[-1] == "#b91c1c"
+    assert colors(3)[-1] == "#9ca3af"
+    assert colors(0)[-1] != "#9ca3af"
     window.close()
     application.processEvents()

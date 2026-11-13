@@ -347,3 +347,8 @@
 
 - The status bar shows only warnings and errors; ordinary and success messages stay in the State field and journal.
 - Missing remembered Source and Destination paths are reported at startup, opening a missing log file warns instead of silently creating it, and a failed external-open attempt reports an error.
+
+## milestone 1.15af journal formatting
+
+- The State field moved from the Journal header to the window status bar.
+- Journal lines carry a short `HH:MM` timestamp. Application text uses the readable theme text colour, rsync output is light grey, warnings are cyan, errors red and successes green.
