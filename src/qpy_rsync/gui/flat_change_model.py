@@ -285,19 +285,27 @@ class FlatChangeModel(QAbstractTableModel):
         """
         path = self.source_root.rstrip("/")
         name = path.rpartition("/")[2]
-        if name:
+        if name and name != ".":
             return name
-        # The root of the file system has no name of its own, and without a
-        # folder the row stays empty.
-        return "/" if self.source_root else ""
+        # Fall back to the full path; for the file-system root show "/". A
+        # dot would look like an item of the comparison.
+        if path and path != ".":
+            return path
+        if self.source_root and self.source_root != ".":
+            return self.source_root
+        return ""
 
     def destination_root_name(self) -> str:
         """The name of the destination folder, which may differ."""
         path = self.destination_root.rstrip("/")
         name = path.rpartition("/")[2]
-        if name:
+        if name and name != ".":
             return name
-        return "/" if self.destination_root else ""
+        if path and path != ".":
+            return path
+        if self.destination_root and self.destination_root != ".":
+            return self.destination_root
+        return ""
 
     def _build_rows(self) -> None:
         """Lay the directories and their items out as a flat list.

@@ -548,3 +548,9 @@
 ## milestone 1.15bg no placeholder on the root row
 
 - The root row of the comparison shows the name of the compared folder, or nothing when there is no folder yet. A dot would look like an item of the comparison.
+
+## milestone 1.15bh the root folder reads as a folder
+
+- The root row now shows its full path instead of a dot when the folder has no
+  basename, and the root icon is a folder with a mark instead of the
+  folder-root-symbolic glyph, which Breeze draws as a slash.
