@@ -535,3 +535,12 @@
 - The inverted click on a checkbox of the action bar toggles between two states. The first one shows only the clicked action; the second one, and an inverted click on a switch that is off, reverse it and every action comes back.
 - The reversal leaves the unchanged and the stashed toggles alone, because they are not part of the action filter.
 - The context menu of a checkbox still offers *Show only this*, so the unchanged and the stashed items can be shown on their own.
+
+## milestone 1.15bf the hover, the action colours and the missing side
+
+- The pointer marks the whole row now, in the pane it is in and in the other one. The tooltips and the context menus stay with their own side.
+- Every action has a colour that marks its items: green for created, light yellow for updated, cyan for metadata only, orange for replaced, red for deleted and brown for the items that only exist in the destination. The glyph of the action carries the same colour.
+- The settings have an "Action colours" page where every colour can be changed and every marking can be switched off.
+- An item is only shown on the side where it exists: a deleted item appears in the destination only, and its source size is no longer a confusing zero.
+- The file type icons carry the colour of their type, so a picture, a document and an archive are told apart at a glance.
+- The toolbar has its separator between the pause button and the filters button again, the log button uses folder-log-symbolic and the settings button settings-configure-symbolic.

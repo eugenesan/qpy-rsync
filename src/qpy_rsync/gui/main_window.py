@@ -150,6 +150,7 @@ from qpy_rsync.services.plan_validation_service import (
 from qpy_rsync.services.sounds import play_completion_sound
 from qpy_rsync.services.sync_service import SyncResult, SyncService
 
+from .action_colours import load_colours, save_colours, set_current_colours
 from .action_filters import ActionFilterBar
 from .command_preview import CommandPreview
 from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
@@ -227,6 +228,9 @@ class MainWindow(QMainWindow):
         # The tools the user may run on an item, and the diff tool command.
         self._external_tools: list[ExternalTool] = load_tools()
         self._diff_command: str = load_diff_command()
+        # The colours that mark the actions of the comparison.
+        self._action_colours = load_colours()
+        set_current_colours(self._action_colours)
         self._diff_staging_directories: list[Path] = []
         self._last_backup_message: tuple[str, str] | None = None
         self._last_changed_changes: list[object] = []
@@ -459,6 +463,7 @@ class MainWindow(QMainWindow):
             self.synchronize_button,
             self.cancel_button,
             self.pause_button,
+            None,
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
@@ -467,6 +472,7 @@ class MainWindow(QMainWindow):
             self.settings_button,
         ):
             if widget is None:
+                # A line between the operations and the rest of the toolbar.
                 controls.addWidget(vertical_separator())
             else:
                 controls.addWidget(widget)
@@ -1323,6 +1329,7 @@ class MainWindow(QMainWindow):
             section=str(section),
             tools=self._external_tools,
             diff_command=self._diff_command,
+            colours=self._action_colours,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1340,8 +1347,17 @@ class MainWindow(QMainWindow):
             save_tools(self._external_tools)
             save_diff_command(self._diff_command)
             self.comparison.set_external_tools(self._external_tools)
+            self._apply_action_colours(dialog.action_colours())
         # The panels return to their holder in any case.
         self._update_external_open_states()
+
+    def _apply_action_colours(self, colours: dict[object, str | None]) -> None:
+        """Use the colours of the actions and repaint the list."""
+        self._action_colours = colours
+        set_current_colours(colours)
+        save_colours(colours)
+        self.action_filters.refresh_icons()
+        self.comparison.model.action_colours_changed()
 
     def _add_filter_phrase(self, label: str, path: object) -> None:
         """Add an rsync exclude rule produced by the context menu."""

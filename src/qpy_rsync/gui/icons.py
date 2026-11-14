@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QApplication, QStyle
 
 from qpy_rsync.core.changes import ChangeAction
 
+from .action_colours import DEFAULT_COLOURS, colour_for
+
 # Icons are drawn on a 16x16 grid and rendered at a larger size so Qt can
 # downscale them cleanly for 24px tool buttons and checkboxes.
 ICON_SIZE = 64
@@ -15,16 +17,13 @@ ICON_GRID = 16
 
 ACCENT = QColor("#0891B2")
 
+# The colour of every action. The user may change them, see
+# :mod:`qpy_rsync.gui.action_colours`.
 ACTION_COLORS: dict[ChangeAction, QColor] = {
-    ChangeAction.CREATE: QColor("#208020"),
-    ChangeAction.UPDATE_CONTENT: QColor("#1d4ed8"),
-    ChangeAction.UPDATE_METADATA: QColor("#1d4ed8"),
-    ChangeAction.DELETE: QColor("#b91c1c"),
-    ChangeAction.DESTINATION_ONLY: QColor("#a05020"),
-    ChangeAction.REPLACE: QColor("#7c3aed"),
-    ChangeAction.NO_CHANGE: QColor("#64748b"),
-    ChangeAction.MESSAGE: QColor("#64748b"),
+    action: QColor(value) for action, value in DEFAULT_COLOURS.items()
 }
+ACTION_COLORS[ChangeAction.NO_CHANGE] = QColor("#64748b")
+ACTION_COLORS[ChangeAction.MESSAGE] = QColor("#64748b")
 
 ACTION_LABELS: dict[ChangeAction, str] = {
     ChangeAction.CREATE: "Create",
@@ -166,7 +165,12 @@ def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
     ``accent`` recolors the icon with the override accent color. Icons are
     cached because they are requested for every painted tree row.
     """
-    color = ACCENT if accent else ACTION_COLORS.get(action, QColor("#64748b"))
+    if accent:
+        color = ACCENT
+    else:
+        # The glyph carries the colour of the action, the same one that marks
+        # the items in the list.
+        color = colour_for(action) or ACTION_COLORS.get(action, QColor("#64748b"))
     pixmap, painter = _pixmap()
     _DRAWERS.get(action, _draw_unchanged)(painter, color)
     painter.end()
@@ -313,6 +317,8 @@ def backup_icon() -> QIcon:
 def log_file_icon() -> QIcon:
     """The system icon for opening the log file externally."""
     return _theme_icon(
+        "folder-log-symbolic",
+        "folder-log",
         "text-x-generic-symbolic",
         "text-x-generic",
         "text-plain",
@@ -409,11 +415,13 @@ def file_group(name: str) -> str:
     return "Regular"
 
 
-def _draw_page(painter: QPainter, color: QColor) -> None:
+def _draw_page(
+    painter: QPainter, color: QColor, fill: QColor | None = None
+) -> None:
     """A page with a folded corner, used as the base of every file icon."""
     pen = _pen(color, 1.4)
     painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setBrush(QBrush(fill) if fill is not None else Qt.BrushStyle.NoBrush)
     path = QPainterPath(QPointF(4.0, 2.0))
     path.lineTo(9.5, 2.0)
     path.lineTo(12.5, 5.0)
@@ -427,11 +435,17 @@ def _draw_page(painter: QPainter, color: QColor) -> None:
 
 @lru_cache(maxsize=None)
 def file_type_icon(name: str) -> QIcon:
-    """Icon for a file, coloured by its type group."""
+    """Icon for a file, coloured by its type group.
+
+    The whole page carries the colour of the group, so a picture, a document
+    and an archive are told apart at a glance.
+    """
     group = file_group(name)
     color = GROUP_COLORS.get(group, GROUP_COLORS["Regular"])
+    tint = QColor(color)
+    tint.setAlpha(55)
     pixmap, painter = _pixmap()
-    _draw_page(painter, QColor("#94a3b8"))
+    _draw_page(painter, color, tint)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QBrush(color))
     painter.drawRect(QRectF(5.5, 9.0, 5.5, 2.5))
@@ -558,6 +572,9 @@ def app_menu_icon() -> QIcon:
 @lru_cache(maxsize=None)
 def settings_icon() -> QIcon:
     """Gear icon for the settings button."""
+    themed = QIcon.fromTheme("settings-configure-symbolic")
+    if not themed.isNull():
+        return themed
     color = QColor("#94a3b8")
     pixmap, painter = _pixmap()
     painter.setPen(_pen(color, 1.4))

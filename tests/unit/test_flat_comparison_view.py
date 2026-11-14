@@ -669,3 +669,77 @@ def test_double_clicking_a_directory_toggles_it() -> None:
     assert view.is_collapsed("docs") is False
     view.close()
     application.processEvents()
+
+
+def test_the_hover_marks_the_whole_row_in_every_pane() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("docs/a.txt"), file_change("docs/b.txt")])
+    first = view.model.index_for_path("docs/a.txt")
+    second = view.model.index_for_path("docs/b.txt")
+
+    view._row_entered(first)
+    assert view.model.hovered_row == first.row()
+
+    view._row_entered(second)
+    assert view.model.hovered_row == second.row()
+
+    view._clear_hover()
+    assert view.model.hovered_row is None
+    view.close()
+    application.processEvents()
+
+
+def test_a_deleted_item_is_only_shown_where_it_exists() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [Change("old.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting   ")]
+    )
+    row = next(
+        row for row in range(model.rowCount()) if model.row_path(row) == "old.txt"
+    )
+    source = model.data(model.index(row, model.SOURCE_NAME), Qt.ItemDataRole.DisplayRole)
+    destination = model.data(
+        model.index(row, model.DESTINATION_NAME), Qt.ItemDataRole.DisplayRole
+    )
+    # The file is removed from the destination, so the source side is empty.
+    assert source == ""
+    assert destination == "old.txt"
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_items_carry_the_colour_of_their_action() -> None:
+    from PySide6.QtGui import QColor
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.action_colours import DEFAULT_COLOURS
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("upd.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    for row, action in ((1, ChangeAction.CREATE), (2, ChangeAction.UPDATE_CONTENT)):
+        colour = model.data(
+            model.index(row, model.SOURCE_NAME), Qt.ItemDataRole.ForegroundRole
+        )
+        assert colour == QColor(DEFAULT_COLOURS[action])
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_file_type_icons_tell_the_types_apart() -> None:
+    from qpy_rsync.gui.icons import file_type_icon
+
+    picture = file_type_icon("photo.jpg")
+    document = file_type_icon("notes.txt")
+    archive = file_type_icon("bundle.zip")
+    assert picture.cacheKey() != document.cacheKey()
+    assert picture.cacheKey() != archive.cacheKey()

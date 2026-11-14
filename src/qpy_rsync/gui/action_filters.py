@@ -187,6 +187,11 @@ class ActionFilterBar(QWidget):
     def _emit_change(self) -> None:
         self.changed.emit(self.visible_actions())
 
+    def refresh_icons(self) -> None:
+        """Draw the action glyphs again after the colours changed."""
+        for action, box in self._boxes.items():
+            box.setIcon(action_icon(action))
+
     def _all_boxes(self) -> list[QCheckBox]:
         """Every checkbox of the bar."""
         return [*self._boxes.values(), self.unchanged_box, self.stashed_box]

@@ -33,6 +33,7 @@ from qpy_rsync.core.changes import (
 )
 from qpy_rsync.core.units import format_size
 
+from .action_colours import colour_for
 from .paths import full_path
 from .icons import (
     ACTION_LABELS,
@@ -148,6 +149,9 @@ class FlatChangeModel(QAbstractTableModel):
         # The directories whose children are folded out of the list. This is
         # view state only: the folded items still belong to the sync.
         self.collapsed: set[str] = set()
+        # The row under the pointer. Every pane marks it, so the hover
+        # follows the item and not the cell.
+        self.hovered_row: int | None = None
         self.changes: list[Change] = []
         self.source_root = ""
         self.destination_root = ""
@@ -196,6 +200,7 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     def set_changes(self, changes: list[Change]) -> None:
         self.beginResetModel()
+        self.hovered_row = None
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(self.changes)
         self._build_directories()
@@ -495,6 +500,15 @@ class FlatChangeModel(QAbstractTableModel):
         self.layoutAboutToBeChanged.emit()
         self._apply_filters()
         self.layoutChanged.emit()
+
+    def action_colours_changed(self) -> None:
+        """Repaint the rows after the colours of the actions changed."""
+        if not self.rowCount():
+            return
+        self.dataChanged.emit(
+            self.index(0, 0),
+            self.index(self.rowCount() - 1, self.columnCount() - 1),
+        )
 
     def is_collapsed(self, path: str) -> bool:
         """Whether the children of a directory are folded out of the list."""
@@ -895,8 +909,12 @@ class FlatChangeModel(QAbstractTableModel):
         if row is None:
             return None
         change = row.change
-        source_present = (
-            change is None or change.action is not ChangeAction.DESTINATION_ONLY
+        # An item is only shown on the side where it exists. A new item is
+        # only on the source, and an item that is deleted only on the
+        # destination.
+        source_present = change is None or change.action not in (
+            ChangeAction.DESTINATION_ONLY,
+            ChangeAction.DELETE,
         )
         destination_present = change is None or change.action is not ChangeAction.CREATE
         directory = self._directories.get(row.path) if row.is_directory else None
@@ -970,10 +988,10 @@ class FlatChangeModel(QAbstractTableModel):
             and change is not None
             and index.column() != self.ACTION
         ):
-            if change.action is ChangeAction.CREATE:
-                return QColor("#208020")
-            if change.action is ChangeAction.DESTINATION_ONLY:
-                return QColor("#a05020")
+            # The item carries the colour of its action.
+            colour = colour_for(change.action)
+            if colour is not None:
+                return colour
         if (
             role == Qt.ItemDataRole.CheckStateRole
             and index.column() == self.ACTION

@@ -85,3 +85,18 @@ def test_the_tools_page_carries_the_tools_and_the_diff_command() -> None:
     # The Tools tab can be opened on its own.
     dialog.show_section("tools")
     assert dialog.tabs.currentIndex() == SECTIONS.index("tools")
+
+
+def test_the_colour_page_carries_the_colours_of_the_actions() -> None:
+    from qpy_rsync.core.changes import ChangeAction
+    from qpy_rsync.gui.action_colours import default_colours
+
+    colours = default_colours()
+    dialog, _holder, _log, _backup = _dialog(colours=colours)
+    assert dialog.action_colours() == colours
+
+    # An action that is not marked reads back as disabled.
+    colours[ChangeAction.REPLACE] = None
+    dialog.set_action_colours(colours)
+    assert dialog.action_colours()[ChangeAction.REPLACE] is None
+    assert dialog.action_colours()[ChangeAction.CREATE] is not None
