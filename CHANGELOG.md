@@ -501,7 +501,7 @@
 
 - The compared folder is the parent of the tree: it has no branch marker, it sits at the far left, and it uses the folder-root-symbolic icon.
 - A created or destination-only item is coloured in the Item column too, not only in the size and the date.
-- The action filter bar groups its toggles with separators: the action filters, then the unchanged items, then the stashed items.
+- The action filter bar separates every pair of checkboxes with a line, so it is clear which indicator belongs to which glyph.
 - A filter no longer leaves a folder behind without its items: a folder is shown when its name matches, or when it holds an item that matches and is allowed.
 - The unchanged items are no longer dropped when an action checkbox is used. The toggle that shows them allows them explicitly.
 - The settings dialog has a test module of its own again.

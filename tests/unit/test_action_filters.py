@@ -128,8 +128,10 @@ def test_the_action_toggles_only_take_focus_from_the_keyboard() -> None:
         assert box.focusPolicy() & Qt.FocusPolicy.TabFocus
 
 
-def test_the_bar_separates_the_action_filters_from_the_other_toggles() -> None:
+def test_the_bar_separates_every_pair_of_checkboxes() -> None:
     from PySide6.QtWidgets import QFrame
+
+    from qpy_rsync.gui.action_filters import FILTERABLE_ACTIONS
 
     app()
     bar = ActionFilterBar()
@@ -138,5 +140,7 @@ def test_the_bar_separates_the_action_filters_from_the_other_toggles() -> None:
         for child in bar.findChildren(QFrame)
         if child.frameShape() == QFrame.Shape.VLine
     ]
-    # One line before the unchanged items, one before the stashed items.
-    assert len(lines) == 2
+    # One line between every pair of checkboxes, so it is clear which
+    # indicator belongs to which glyph.
+    boxes = len(FILTERABLE_ACTIONS) + 2
+    assert len(lines) == boxes - 1

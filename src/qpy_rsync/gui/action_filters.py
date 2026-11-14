@@ -51,7 +51,7 @@ class ActionFilterBar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         self._boxes: dict[ChangeAction, QCheckBox] = {}
-        for action in FILTERABLE_ACTIONS:
+        for index, action in enumerate(FILTERABLE_ACTIONS):
             box = QCheckBox(self)
             box.setIcon(action_icon(action))
             # The checkbox indicator and the glyph fit into a compact square.
@@ -63,6 +63,10 @@ class ActionFilterBar(QWidget):
             box.toggled.connect(lambda _checked: self._emit_change())
             layout.addWidget(box)
             self._boxes[action] = box
+            if index < len(FILTERABLE_ACTIONS) - 1:
+                # A line between every pair of checkboxes, so it is clear
+                # which indicator belongs to which glyph.
+                layout.addWidget(_separator())
 
         # The unchanged items and the stashed items are toggles rather than
         # display filters, so they sit together at the end of the bar, behind
