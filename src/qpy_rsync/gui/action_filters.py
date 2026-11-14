@@ -129,7 +129,8 @@ class ActionFilterBar(QWidget):
             "This checkbox filters the view and doesn't affect the sync. "
             "Use the sync mode selector or the action checkboxes below to "
             "control the sync.\n"
-            "Ctrl+click shows only this action, and only this action again."
+            "Ctrl+click shows only this action, and only this action again. "
+            "Right-click opens the same choices."
         )
 
     def visible_actions(self) -> set[ChangeAction]:
@@ -249,12 +250,21 @@ class ActionFilterBar(QWidget):
         if stashed_changed:
             self.stashed_toggled.emit(self.stashed_box.isChecked())
 
+    def reset_defaults(self) -> None:
+        """The state the bar starts in: every action and nothing else."""
+        wanted = {box: True for box in self._boxes.values()}
+        wanted[self.unchanged_box] = False
+        wanted[self.stashed_box] = False
+        self._set_states(wanted)
+
     def _show_box_menu(self, box: QCheckBox, point: object) -> None:
         """Offer the inverted choice for one checkbox."""
         menu = QMenu(self)
         only = menu.addAction("Show only this")
         others = menu.addAction("Show everything but this")
         every = menu.addAction("Show all")
+        menu.addSeparator()
+        reset = menu.addAction("Reset to default")
         selected = menu.exec(box.mapToGlobal(point))  # type: ignore[arg-type]
         boxes = self._all_boxes()
         if selected is only:
@@ -263,3 +273,5 @@ class ActionFilterBar(QWidget):
             self._set_states({other: other is not box for other in boxes})
         elif selected is every:
             self._set_states({other: True for other in boxes})
+        elif selected is reset:
+            self.reset_defaults()

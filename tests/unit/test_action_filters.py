@@ -236,3 +236,20 @@ def test_ctrl_click_on_the_stashed_box_solos_it() -> None:
     for other in bar._all_boxes():
         if other is not box:
             assert other.isChecked() is False
+
+
+def test_the_context_menu_can_reset_the_bar_to_its_default() -> None:
+    app()
+    bar = ActionFilterBar()
+    box = bar._boxes[ChangeAction.CREATE]
+    _click(box, ctrl=True)
+    assert box.isChecked() is True
+    bar.unchanged_box.setChecked(True)
+    bar.stashed_box.setChecked(True)
+
+    bar.reset_defaults()
+
+    # The default is every action and nothing else.
+    assert all(other.isChecked() for other in bar._boxes.values())
+    assert bar.unchanged_box.isChecked() is False
+    assert bar.stashed_box.isChecked() is False
