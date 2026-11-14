@@ -432,3 +432,33 @@ def test_the_unchanged_items_survive_the_action_filter() -> None:
     assert "same.txt" in set(_paths(model))
     model.deleteLater()
     application.processEvents()
+
+
+def test_the_stashed_items_are_shown_even_when_the_action_filter_excludes_them() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("updated.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("created.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.stash.add("updated.txt")
+    model.set_visible_actions({ChangeAction.CREATE})
+    model.refresh_stashed()
+
+    # The stashed item is put aside, so it is out of the list.
+    assert "updated.txt" not in set(_paths(model))
+
+    # Asking for the stashed items shows them, whatever the action filters
+    # say, because the toggle is about what was put aside.
+    model.show_stashed = True
+    model.refresh_stashed()
+    paths = set(_paths(model))
+    assert "updated.txt" in paths
+    assert "created.txt" in paths
+    model.deleteLater()
+    application.processEvents()

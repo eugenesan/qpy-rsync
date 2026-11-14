@@ -681,20 +681,27 @@ class FlatChangeModel(QAbstractTableModel):
         stash = self.stash
         check_stashed = bool(stash) and not self.show_stashed
         for index, row in enumerate(self._rows):
+            row_is_stashed = stash.is_stashed(row.path)
             if row.is_directory:
                 directory = directories.get(row.path)
-                if directory is None or not directory.visible:
+                if directory is None:
                     continue
-                row_is_stashed = stash.is_stashed(row.path)
-                if check_stashed and row_is_stashed:
+                if row_is_stashed:
+                    # A stashed folder is shown when the user asks for it,
+                    # even when the action filters exclude its action.
+                    if check_stashed or not directory.path_ok:
+                        continue
+                elif not directory.visible:
                     continue
                 if directory.own_change_index >= 0 and not row_is_stashed:
                     visible_change_indices.add(directory.own_change_index)
             else:
-                if not self._change_visible[row.change_index]:
-                    continue
-                row_is_stashed = stash.is_stashed(row.path)
-                if check_stashed and row_is_stashed:
+                if row_is_stashed:
+                    # The same goes for a stashed item: the action filters
+                    # do not hide what the user asked to see.
+                    if check_stashed or not self._change_path_ok[row.change_index]:
+                        continue
+                elif not self._change_visible[row.change_index]:
                     continue
                 if not row_is_stashed:
                     visible_change_indices.add(row.change_index)

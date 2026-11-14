@@ -512,3 +512,10 @@
 - The command is split into words before the placeholders are filled in, so a path with a space stays one argument. A placeholder without a value leaves nothing behind.
 - The diff tool command moved to the same page and uses the same placeholders. An empty field keeps the tool that the system offers.
 - Asking for the unchanged items switches the inventory button on, so the second listing that a comparison needs is explained instead of surprising.
+
+## milestone 1.15bd the inverted click on the action bar
+
+- Ctrl+click on a checkbox of the action bar inverts the filter: the clicked action is the only one that is shown, and a second inverted click shows everything but that action.
+- The context menu of every checkbox offers the same choice: Show only this, Show everything but this and Show all.
+- A plain click still toggles a single action, and the tooltips mention the inverted click.
+- The stashed items are shown whenever the "Show stashed items" toggle is on, even when the action filters exclude their action. The inverted click on the stashed toggle therefore shows only the stashed items.

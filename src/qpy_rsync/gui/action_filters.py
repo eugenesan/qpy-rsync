@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -47,6 +47,8 @@ class ActionFilterBar(QWidget):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._stashed_count = 0
+        # The checkbox whose inverted click is being handled.
+        self._inverse_click: QCheckBox | None = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
@@ -79,7 +81,8 @@ class ActionFilterBar(QWidget):
         self.unchanged_box.setToolTip(
             "Show the unchanged items of the comparison.\n"
             "The inventory lists both sides, so the unchanged items can be "
-            "shown next to the changed ones."
+            "shown next to the changed ones.\n"
+            "Ctrl+click shows only the unchanged items."
         )
         self.unchanged_box.setAccessibleName("Show unchanged items")
         self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
@@ -108,8 +111,15 @@ class ActionFilterBar(QWidget):
         # Breeze marks a focused icon-only checkbox with an underline. A
         # pointer click should not leave that marker behind, but Tab must
         # still reach the control, so focus follows the keyboard only.
-        for box in (*self._boxes.values(), self.unchanged_box, self.stashed_box):
+        for box in self._all_boxes():
             box.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+            # Ctrl+click inverts the filter of the bar, and the context menu
+            # offers the same choice.
+            box.installEventFilter(self)
+            box.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            box.customContextMenuRequested.connect(
+                lambda point, b=box: self._show_box_menu(b, point)
+            )
 
     @staticmethod
     def _tooltip(action: ChangeAction) -> str:
@@ -118,7 +128,8 @@ class ActionFilterBar(QWidget):
             f"Display only: {label}\n"
             "This checkbox filters the view and doesn't affect the sync. "
             "Use the sync mode selector or the action checkboxes below to "
-            "control the sync."
+            "control the sync.\n"
+            "Ctrl+click shows only this action, and only this action again."
         )
 
     def visible_actions(self) -> set[ChangeAction]:
@@ -141,7 +152,8 @@ class ActionFilterBar(QWidget):
             f"{head}\n"
             "A stashed item is not part of the sync. The stash is kept in "
             "memory only, so it is gone after the next comparison.\n"
-            "Right-click to restore all stashed items."
+            "Right-click to restore all stashed items.\n"
+            "Ctrl+click shows only the stashed items."
         )
 
     def set_stashed_count(self, count: int) -> None:
@@ -173,3 +185,81 @@ class ActionFilterBar(QWidget):
 
     def _emit_change(self) -> None:
         self.changed.emit(self.visible_actions())
+
+    def _all_boxes(self) -> list[QCheckBox]:
+        """Every checkbox of the bar."""
+        return [*self._boxes.values(), self.unchanged_box, self.stashed_box]
+
+    def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
+        """Handle the inverted click on a checkbox of the bar."""
+        if isinstance(watched, QCheckBox) and watched in self._all_boxes():
+            event_type = getattr(event, "type", lambda: None)()
+            if event_type == QEvent.Type.MouseButtonPress:
+                modifiers = getattr(event, "modifiers", lambda: Qt.KeyboardModifier.NoModifier)()
+                if modifiers & Qt.KeyboardModifier.ControlModifier:
+                    # The click is handled here, so the checkbox must not
+                    # toggle itself.
+                    self._inverse_click = watched
+                    self._apply_inverse(watched)
+                    return True
+            elif event_type == QEvent.Type.MouseButtonRelease:
+                if self._inverse_click is watched:
+                    self._inverse_click = None
+                    return True
+        return super().eventFilter(watched, event)  # type: ignore[arg-type]
+
+    def _apply_inverse(self, box: QCheckBox) -> None:
+        """Show only the action of the box, or everything but it.
+
+        A box that is the only checked one is inverted, so the second
+        inverted click shows everything but that action.
+        """
+        boxes = self._all_boxes()
+        others = [other for other in boxes if other is not box]
+        solo = box.isChecked() and not any(
+            other.isChecked() for other in others
+        )
+        if solo:
+            wanted = {other: other is not box for other in boxes}
+        else:
+            wanted = {other: other is box for other in boxes}
+        self._set_states(wanted)
+
+    def _set_states(self, wanted: dict[QCheckBox, bool]) -> None:
+        """Set the checkboxes and report the change once."""
+        action_changed = False
+        unchanged_changed = False
+        stashed_changed = False
+        for box, value in wanted.items():
+            if box.isChecked() == value:
+                continue
+            box.blockSignals(True)
+            box.setChecked(value)
+            box.blockSignals(False)
+            if box is self.unchanged_box:
+                unchanged_changed = True
+            elif box is self.stashed_box:
+                stashed_changed = True
+            else:
+                action_changed = True
+        if action_changed:
+            self._emit_change()
+        if unchanged_changed:
+            self.unchanged_toggled.emit(self.unchanged_box.isChecked())
+        if stashed_changed:
+            self.stashed_toggled.emit(self.stashed_box.isChecked())
+
+    def _show_box_menu(self, box: QCheckBox, point: object) -> None:
+        """Offer the inverted choice for one checkbox."""
+        menu = QMenu(self)
+        only = menu.addAction("Show only this")
+        others = menu.addAction("Show everything but this")
+        every = menu.addAction("Show all")
+        selected = menu.exec(box.mapToGlobal(point))  # type: ignore[arg-type]
+        boxes = self._all_boxes()
+        if selected is only:
+            self._set_states({other: other is box for other in boxes})
+        elif selected is others:
+            self._set_states({other: other is not box for other in boxes})
+        elif selected is every:
+            self._set_states({other: True for other in boxes})

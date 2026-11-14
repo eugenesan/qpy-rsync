@@ -144,3 +144,95 @@ def test_the_bar_separates_every_pair_of_checkboxes() -> None:
     # indicator belongs to which glyph.
     boxes = len(FILTERABLE_ACTIONS) + 2
     assert len(lines) == boxes - 1
+
+
+def _click(box: QCheckBox, *, ctrl: bool = False) -> None:
+    """Send a click to a checkbox of the bar."""
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+
+    position = QPointF(box.rect().center())
+    modifiers = (
+        Qt.KeyboardModifier.ControlModifier if ctrl else Qt.KeyboardModifier.NoModifier
+    )
+    for event_type in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+        event = QMouseEvent(
+            event_type,
+            position,
+            position,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            modifiers,
+        )
+        QApplication.sendEvent(box, event)
+
+
+def test_ctrl_click_shows_only_that_action() -> None:
+    app()
+    bar = ActionFilterBar()
+    seen: list[set] = []
+    bar.changed.connect(lambda actions: seen.append(actions))
+    box = bar._boxes[ChangeAction.CREATE]
+
+    _click(box, ctrl=True)
+
+    # Only the clicked action is left, so the view shows only its items.
+    assert box.isChecked() is True
+    for other in bar._boxes.values():
+        if other is not box:
+            assert other.isChecked() is False
+    assert seen[-1] == {ChangeAction.CREATE}
+
+
+def test_ctrl_click_again_shows_everything_but_that_action() -> None:
+    app()
+    bar = ActionFilterBar()
+    seen: list[set] = []
+    bar.changed.connect(lambda actions: seen.append(actions))
+    box = bar._boxes[ChangeAction.CREATE]
+
+    _click(box, ctrl=True)
+    _click(box, ctrl=True)
+
+    assert box.isChecked() is False
+    for other in bar._boxes.values():
+        if other is not box:
+            assert other.isChecked() is True
+    assert seen[-1] == set(FILTERABLE_ACTIONS) - {ChangeAction.CREATE}
+
+
+def test_a_plain_click_still_toggles_the_box() -> None:
+    app()
+    bar = ActionFilterBar()
+    box = bar._boxes[ChangeAction.CREATE]
+    assert box.isChecked() is True
+    _click(box)
+    assert box.isChecked() is False
+
+
+def test_the_context_menu_of_a_box_offers_the_inverted_choices() -> None:
+    app()
+    bar = ActionFilterBar()
+    box = bar._boxes[ChangeAction.CREATE]
+    others = [other for other in bar._all_boxes() if other is not box]
+
+    bar._set_states({other: other is box for other in bar._all_boxes()})
+    assert box.isChecked() is True
+    assert all(other.isChecked() is False for other in others)
+
+    bar._set_states({other: other is not box for other in bar._all_boxes()})
+    assert box.isChecked() is False
+    assert all(other.isChecked() is True for other in others)
+
+
+def test_ctrl_click_on_the_stashed_box_solos_it() -> None:
+    app()
+    bar = ActionFilterBar()
+    box = bar.stashed_box
+
+    _click(box, ctrl=True)
+
+    assert box.isChecked() is True
+    for other in bar._all_boxes():
+        if other is not box:
+            assert other.isChecked() is False
