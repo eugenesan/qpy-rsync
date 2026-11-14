@@ -129,8 +129,8 @@ class ActionFilterBar(QWidget):
             "This checkbox filters the view and doesn't affect the sync. "
             "Use the sync mode selector or the action checkboxes below to "
             "control the sync.\n"
-            "Ctrl+click shows only this action, and only this action again. "
-            "Right-click opens the same choices."
+            "Ctrl+click shows only this action, and a second inverted click "
+            "brings every action back. Right-click opens the same choices."
         )
 
     def visible_actions(self) -> set[ChangeAction]:
@@ -210,20 +210,24 @@ class ActionFilterBar(QWidget):
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
     def _apply_inverse(self, box: QCheckBox) -> None:
-        """Show only the action of the box, or everything but it.
+        """Show only the kind of the box, or bring every action back.
 
-        A box that is the only checked one is inverted, so the second
-        inverted click shows everything but that action.
+        A box that is on becomes the only one that is shown. A box that is
+        off, or one that is already the only one that is shown, reverses
+        that: every action comes back and the unchanged and the stashed
+        toggles keep their state.
         """
         boxes = self._all_boxes()
-        others = [other for other in boxes if other is not box]
-        solo = box.isChecked() and not any(
-            other.isChecked() for other in others
-        )
-        if solo:
-            wanted = {other: other is not box for other in boxes}
-        else:
-            wanted = {other: other is box for other in boxes}
+        if box.isChecked():
+            others = [other for other in boxes if other is not box]
+            if any(other.isChecked() for other in others):
+                self._set_states({other: other is box for other in boxes})
+                return
+        wanted = {other: True for other in self._boxes.values()}
+        # The unchanged and the stashed toggles are not part of the action
+        # filter, so the reset leaves them alone.
+        wanted[self.unchanged_box] = self.unchanged_box.isChecked()
+        wanted[self.stashed_box] = self.stashed_box.isChecked()
         self._set_states(wanted)
 
     def _set_states(self, wanted: dict[QCheckBox, bool]) -> None:

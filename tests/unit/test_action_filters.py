@@ -184,7 +184,7 @@ def test_ctrl_click_shows_only_that_action() -> None:
     assert seen[-1] == {ChangeAction.CREATE}
 
 
-def test_ctrl_click_again_shows_everything_but_that_action() -> None:
+def test_ctrl_click_again_brings_every_action_back() -> None:
     app()
     bar = ActionFilterBar()
     seen: list[set] = []
@@ -192,13 +192,53 @@ def test_ctrl_click_again_shows_everything_but_that_action() -> None:
     box = bar._boxes[ChangeAction.CREATE]
 
     _click(box, ctrl=True)
+    assert seen[-1] == {ChangeAction.CREATE}
+
+    # The box is now the only one that is shown, so the second inverted
+    # click reverses the first one.
     _click(box, ctrl=True)
 
-    assert box.isChecked() is False
+    assert box.isChecked() is True
     for other in bar._boxes.values():
-        if other is not box:
-            assert other.isChecked() is True
-    assert seen[-1] == set(FILTERABLE_ACTIONS) - {ChangeAction.CREATE}
+        assert other.isChecked() is True
+    assert seen[-1] == set(FILTERABLE_ACTIONS)
+
+
+def test_ctrl_click_on_a_switch_that_is_off_brings_every_action_back() -> None:
+    app()
+    bar = ActionFilterBar()
+    seen: list[set] = []
+    bar.changed.connect(lambda actions: seen.append(actions))
+    create = bar._boxes[ChangeAction.CREATE]
+    delete = bar._boxes[ChangeAction.DELETE]
+
+    _click(create, ctrl=True)
+    assert delete.isChecked() is False
+
+    # The switch is off, so the inverted click reverses the operation.
+    _click(delete, ctrl=True)
+
+    for other in bar._boxes.values():
+        assert other.isChecked() is True
+    assert seen[-1] == set(FILTERABLE_ACTIONS)
+
+
+def test_the_reversed_filter_leaves_the_unchanged_and_stashed_toggles_alone() -> None:
+    app()
+    bar = ActionFilterBar()
+    create = bar._boxes[ChangeAction.CREATE]
+    bar.stashed_box.setChecked(True)
+
+    _click(create, ctrl=True)
+    # The solo switches the other toggles off.
+    assert bar.stashed_box.isChecked() is False
+
+    _click(bar._boxes[ChangeAction.DELETE], ctrl=True)
+
+    # The reset restores the actions, but the stashed toggle keeps the state
+    # it had.
+    assert all(other.isChecked() for other in bar._boxes.values())
+    assert bar.stashed_box.isChecked() is False
 
 
 def test_a_plain_click_still_toggles_the_box() -> None:
@@ -225,12 +265,30 @@ def test_the_context_menu_of_a_box_offers_the_inverted_choices() -> None:
     assert all(other.isChecked() is True for other in others)
 
 
-def test_ctrl_click_on_the_stashed_box_solos_it() -> None:
+def test_ctrl_click_on_a_switch_that_is_off_reverses_the_operation() -> None:
+    app()
+    bar = ActionFilterBar()
+    seen: list[set] = []
+    bar.changed.connect(lambda actions: seen.append(actions))
+    create = bar._boxes[ChangeAction.CREATE]
+
+    _click(create, ctrl=True)
+    assert seen[-1] == {ChangeAction.CREATE}
+
+    # The stashed switch is off, so the inverted click reverses the solo.
+    _click(bar.stashed_box, ctrl=True)
+
+    assert all(other.isChecked() for other in bar._boxes.values())
+    assert bar.stashed_box.isChecked() is False
+    assert seen[-1] == set(FILTERABLE_ACTIONS)
+
+
+def test_the_context_menu_can_still_show_only_the_stashed_items() -> None:
     app()
     bar = ActionFilterBar()
     box = bar.stashed_box
 
-    _click(box, ctrl=True)
+    bar._set_states({other: other is box for other in bar._all_boxes()})
 
     assert box.isChecked() is True
     for other in bar._all_boxes():

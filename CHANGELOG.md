@@ -529,3 +529,9 @@
 - The context menu of every checkbox offers the same choice: Show only this, Show everything but this, Show all, and Reset to default, which puts the six action checkboxes back on and the unchanged and stashed toggles back off.
 - A plain click still toggles a single action, and the tooltips mention the inverted click.
 - The stashed items are shown whenever the "Show stashed items" toggle is on, even when the action filters exclude their action. The inverted click on the stashed toggle therefore shows only the stashed items.
+
+## milestone 1.15be the second inverted click
+
+- The inverted click on a checkbox of the action bar toggles between two states. The first one shows only the clicked action; the second one, and an inverted click on a switch that is off, reverse it and every action comes back.
+- The reversal leaves the unchanged and the stashed toggles alone, because they are not part of the action filter.
+- The context menu of a checkbox still offers *Show only this*, so the unchanged and the stashed items can be shown on their own.
