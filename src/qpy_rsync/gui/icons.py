@@ -470,13 +470,14 @@ def root_folder_icon() -> QIcon:
     The desktop theme knows a picture for it; a folder with a mark is the
     fallback for a session without an icon theme.
     """
-    themed = QIcon.fromTheme("folder-root-symbolic")
-    if not themed.isNull():
-        return themed
+    # The Breeze "folder-root-symbolic" icon is drawn as a slash, which reads
+    # as a dot next to an empty name, so a painted folder with a mark is used
+    # instead.
     pixmap, painter = _pixmap()
     _draw_folder(painter, QColor("#94a3b8"))
-    painter.setPen(QPen(QColor("#64748b"), 1.4))
-    painter.drawLine(4.0, 13.0, 9.0, 13.0)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#64748b")))
+    painter.drawEllipse(QPointF(12.0, 12.0), 2.5, 2.5)
     painter.end()
     return QIcon(pixmap)
 

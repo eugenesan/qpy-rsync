@@ -554,3 +554,8 @@
 - The root row now shows its full path instead of a dot when the folder has no
   basename, and the root icon is a folder with a mark instead of the
   folder-root-symbolic glyph, which Breeze draws as a slash.
+
+## milestone 1.15bi the root folder icon
+
+- The root folder icon is painted as a folder with a mark, instead of the
+  folder-root-symbolic theme icon, which Breeze draws as a slash.
