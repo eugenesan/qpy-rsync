@@ -291,6 +291,51 @@ class FlatPathDelegate(UniformRowDelegate):
         painter.restore()
 
 
+class _StretchableHeader(QHeaderView):
+    """A header whose stretch section can still be dragged by the user."""
+
+    def __init__(
+        self,
+        orientation: Qt.Orientation,
+        parent: QWidget | None = None,
+        *,
+        stretch_section: int | None = None,
+    ) -> None:
+        super().__init__(orientation, parent)
+        self._stretch_section = stretch_section
+        self._user_resized = False
+        # The model is associated and the first columns are sized before the
+        # user can touch the header, so those events must not look like a
+        # manual resize.
+        self._auto_resizing = True
+        self.sectionResized.connect(self._section_resized)
+
+    def _section_resized(self, logical_index: int, _old: int, _new: int) -> None:
+        if logical_index == self._stretch_section and not self._auto_resizing:
+            self._user_resized = True
+        elif not self._user_resized and logical_index != self._stretch_section:
+            self._grow()
+
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        if not self._user_resized:
+            self._grow()
+
+    def _grow(self) -> None:
+        if self._user_resized or self._stretch_section is None:
+            return
+        available = self.width()
+        used = sum(
+            self.sectionSize(i)
+            for i in range(self.count())
+            if i != self._stretch_section and not self.isSectionHidden(i)
+        )
+        new_width = max(self.minimumSectionSize(), available - used)
+        self._auto_resizing = True
+        self.resizeSection(self._stretch_section, new_width)
+        self._auto_resizing = False
+
+
 class FlatComparisonView(QWidget):
     """Synchronized source/action/destination panes over a flat list."""
 
@@ -456,9 +501,23 @@ class FlatComparisonView(QWidget):
         pane.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         pane.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         pane.setSortingEnabled(True)
-        pane.horizontalHeader().setStretchLastSection(False)
-        pane.horizontalHeader().setSortIndicatorShown(True)
-        pane.horizontalHeader().setSectionsClickable(True)
+        stretch_section = (
+            self.model.SOURCE_NAME
+            if label in ("Source", "Action")
+            else self.model.DESTINATION_NAME
+        )
+        if label == "Action":
+            stretch_section = None
+        header = _StretchableHeader(
+            Qt.Orientation.Horizontal, pane, stretch_section=stretch_section
+        )
+        pane.setHorizontalHeader(header)
+        # The stretchable header grows the stretch section on every resize.
+        for section in range(header.count()):
+            header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setSortIndicatorShown(True)
+        header.setSectionsClickable(True)
         pane.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         pane.customContextMenuRequested.connect(
             lambda point, t=pane: self._show_context_menu(t, point)
@@ -562,7 +621,12 @@ class FlatComparisonView(QWidget):
             tree.horizontalHeader().setFixedHeight(
                 max(16, tree.fontMetrics().height() + 2)
             )
-        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Stretch)
+        # The item column is grown by the stretchable header, so it stays
+        # resizable. The resizeSection calls below would otherwise look like a
+        # manual resize, so they are made while the header is auto-resizing.
+        for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
+            header._auto_resizing = True
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
@@ -575,7 +639,7 @@ class FlatComparisonView(QWidget):
         )
         self.action.horizontalHeader().resizeSection(self.model.ACTION, ACTION_PANE_WIDTH)
         self.destination.horizontalHeader().setSectionResizeMode(
-            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Stretch
+            self.model.DESTINATION_NAME, QHeaderView.ResizeMode.Interactive
         )
         self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_ITEMS, QHeaderView.ResizeMode.Interactive
@@ -590,6 +654,10 @@ class FlatComparisonView(QWidget):
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_ITEMS, 60)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE, 90)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_TIME, 150)
+        for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
+            header._auto_resizing = False
+        self.source.horizontalHeader()._grow()
+        self.destination.horizontalHeader()._grow()
 
     def _synchronize(self) -> None:
         trees = (self.source, self.action, self.destination)
@@ -1331,10 +1399,19 @@ class FlatComparisonView(QWidget):
             self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
         source = decode_binary(settings.value("comparison/flat-source-header"))
         destination = decode_binary(settings.value("comparison/flat-destination-header"))
-        if source is not None:
-            self.source.horizontalHeader().restoreState(source)
-        if destination is not None:
-            self.destination.horizontalHeader().restoreState(destination)
+        import sys
+        print("RESTORE source is", source is not None, "dest", destination is not None, file=sys.stderr)
+        for header, state in (
+            (self.source.horizontalHeader(), source),
+            (self.destination.horizontalHeader(), destination),
+        ):
+            if state is None:
+                continue
+            if isinstance(header, _StretchableHeader):
+                header._auto_resizing = True
+            header.restoreState(state)
+            if isinstance(header, _StretchableHeader):
+                header._auto_resizing = False
         # A saved state can carry a width from an older layout, so the name
         # columns are kept wide enough to stay readable.
         for tree, name_column in (
@@ -1342,5 +1419,9 @@ class FlatComparisonView(QWidget):
             (self.destination, self.model.DESTINATION_NAME),
         ):
             if tree.columnWidth(name_column) < 160:
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = True
                 tree.setColumnWidth(name_column, 240)
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = False
         self._apply_column_visibility()

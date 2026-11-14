@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from qpy_rsync.core.changes import Change, ChangeAction
 from qpy_rsync.core.units import format_size
 
+from .flat_comparison_view import _StretchableHeader
 from .icons import ACTION_LABELS, ACCENT, action_icon
 
 # The name FreeFileSync gives to the objects that live in the compared
@@ -370,6 +371,12 @@ class OverviewPane(QWidget):
         self.model = OverviewModel(self)
         self.tree = QTreeView()
         self.tree.setObjectName("overview-tree")
+        # The item column takes the free space but can still be dragged.
+        self.tree.setHeader(
+            _StretchableHeader(
+                Qt.Orientation.Horizontal, self.tree, stretch_section=OverviewModel.FOLDER
+            )
+        )
         self.tree.setModel(self.model)
         self.tree.setUniformRowHeights(True)
         self.tree.setHeaderHidden(False)
@@ -391,14 +398,6 @@ class OverviewPane(QWidget):
         self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
         self.tree.header().resizeSection(OverviewModel.SIZE, 84)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        # The size column takes the remaining width, so no empty band is left
-        # at the right edge of the pane.
-        self.tree.header().setSectionResizeMode(
-            OverviewModel.FOLDER, QHeaderView.ResizeMode.Stretch
-        )
-        self.tree.header().setSectionResizeMode(
-            OverviewModel.SIZE, QHeaderView.ResizeMode.Interactive
-        )
         layout.addWidget(self.tree, 1)
         self.statistics = StatisticsBar(self)
         layout.addWidget(self.statistics, 0)

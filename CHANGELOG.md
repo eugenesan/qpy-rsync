@@ -564,3 +564,9 @@
 
 - rsync reports the compared folder itself as "." or "./". That is the root of
   the list, not an item inside it, so it is no longer shown as an item.
+
+## milestone 1.15bj resizable item columns
+
+- The Item columns of the comparison panes and the overview pane take all the
+  free space by default, but they can now be resized by dragging their edge.
+  The column keeps the chosen width until the comparison changes.
