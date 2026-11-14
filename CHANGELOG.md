@@ -544,3 +544,7 @@
 - An item is only shown on the side where it exists: a deleted item appears in the destination only, and its source size is no longer a confusing zero.
 - The file type icons carry the colour of their type, so a picture, a document and an archive are told apart at a glance.
 - The toolbar has its separator between the pause button and the filters button again, the log button uses folder-log-symbolic and the settings button settings-configure-symbolic.
+
+## milestone 1.15bg no placeholder on the root row
+
+- The root row of the comparison shows the name of the compared folder, or nothing when there is no folder yet. A dot would look like an item of the comparison.

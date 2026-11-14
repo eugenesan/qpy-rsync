@@ -743,3 +743,31 @@ def test_the_file_type_icons_tell_the_types_apart() -> None:
     archive = file_type_icon("bundle.zip")
     assert picture.cacheKey() != document.cacheKey()
     assert picture.cacheKey() != archive.cacheKey()
+
+
+def test_the_root_row_has_no_placeholder_name() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes([file_change("docs/a.txt")])
+    # Without a known folder the root row stays empty instead of showing a
+    # dot, which would look like an item of the comparison.
+    assert model.data(model.index(0, model.SOURCE_NAME), Qt.ItemDataRole.DisplayRole) == ""
+    assert (
+        model.data(model.index(0, model.DESTINATION_NAME), Qt.ItemDataRole.DisplayRole)
+        == ""
+    )
+
+    model.source_root = "/home/user/Pictures"
+    model.destination_root = "/mnt/backup/Pictures"
+    model._build_rows()
+    model._apply_filters()
+    assert (
+        model.data(model.index(0, model.SOURCE_NAME), Qt.ItemDataRole.DisplayRole)
+        == "Pictures"
+    )
+    assert (
+        model.data(model.index(0, model.DESTINATION_NAME), Qt.ItemDataRole.DisplayRole)
+        == "Pictures"
+    )
+    model.deleteLater()
+    application.processEvents()

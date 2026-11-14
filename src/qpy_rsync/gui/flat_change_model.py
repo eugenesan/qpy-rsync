@@ -278,14 +278,26 @@ class FlatChangeModel(QAbstractTableModel):
         self._total_up_changed_counts()
 
     def root_name(self) -> str:
-        """The name of the compared folder, shown on the root row."""
-        name = self.source_root.rstrip("/").rpartition("/")[2]
-        return name or "."
+        """The name of the compared folder, shown on the root row.
+
+        Without a known folder the row stays empty; a dot would look like an
+        item of the comparison.
+        """
+        path = self.source_root.rstrip("/")
+        name = path.rpartition("/")[2]
+        if name:
+            return name
+        # The root of the file system has no name of its own, and without a
+        # folder the row stays empty.
+        return "/" if self.source_root else ""
 
     def destination_root_name(self) -> str:
         """The name of the destination folder, which may differ."""
-        name = self.destination_root.rstrip("/").rpartition("/")[2]
-        return name or "."
+        path = self.destination_root.rstrip("/")
+        name = path.rpartition("/")[2]
+        if name:
+            return name
+        return "/" if self.destination_root else ""
 
     def _build_rows(self) -> None:
         """Lay the directories and their items out as a flat list.
