@@ -54,3 +54,11 @@ def test_deletion_placeholder_metadata_is_suppressed_and_kind_is_inferred() -> N
     assert old_file.size is None and old_file.modified_time is None
     assert old_file.kind is ObjectKind.FILE
     assert old_directory.kind is ObjectKind.DIRECTORY
+
+def test_the_compared_folder_is_not_reported_as_an_item() -> None:
+    from qpy_rsync.backend.rsync_parser import parse_record
+
+    # The folder rsync compares is reported as "." or "./", which is the
+    # root of the list and not an item inside it.
+    assert parse_record(".d..t......|qpy-rsync|4096|qpy-rsync|2026/11/12-00:24:14|qpy-rsync|.") is None
+    assert parse_record(">f.st......|qpy-rsync|1|qpy-rsync|time|qpy-rsync|./") is None

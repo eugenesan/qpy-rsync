@@ -559,3 +559,8 @@
 
 - The root folder icon is painted as a folder with a mark, instead of the
   folder-root-symbolic theme icon, which Breeze draws as a slash.
+
+## milestone 1.15bi the root folder is not an item
+
+- rsync reports the compared folder itself as "." or "./". That is the root of
+  the list, not an item inside it, so it is no longer shown as an item.

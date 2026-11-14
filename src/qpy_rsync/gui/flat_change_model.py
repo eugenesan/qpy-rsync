@@ -243,6 +243,10 @@ class FlatChangeModel(QAbstractTableModel):
 
         for index, change in enumerate(self.changes):
             path = str(change.path).rstrip("/")
+            # The compared folder itself is reported as "." or "./" by rsync.
+            # It is the root of the list, not an item inside it.
+            if path in {".", "./"}:
+                path = ""
             if not path:
                 self._change_paths.append("")
                 self._change_parents.append("")

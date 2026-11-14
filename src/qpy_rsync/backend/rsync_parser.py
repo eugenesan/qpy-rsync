@@ -81,6 +81,10 @@ def parse_record(line: str, *, delete_enabled: bool = True) -> Change | None:
     marker = " -> "
     if _kind(code) is ObjectKind.SYMLINK and marker in name_and_link:
         path, link_target = name_and_link.split(marker, 1)
+    # The compared folder itself is reported as "." or "./" by rsync. It is
+    # the root of the comparison, not an item inside it.
+    if path in {".", "./"}:
+        return None
     if not path:
         raise RsyncParseError("Empty change path")
 
