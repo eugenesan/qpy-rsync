@@ -75,13 +75,21 @@ result.
 9. Profiles (F2/F3)
    Save and load the whole setup in $XDG_CONFIG_HOME/qpy-rsync/profiles.
 
-10. Large comparisons
-    Settings (Ctrl+,) limits how many direct items a folder may have to open
-    automatically (default 256). Larger folders stay collapsed and carry an
-    amber marker; their tooltip explains the limit. Branches without a large
-    folder still open normally. Expand a folder by hand or raise the limit.
-    Inventory reports the number of listed objects while it works, and adding
-    a large unchanged set shows a population message.
+10. Tools
+    The Tools page of the settings lists the tools that the context menu of a
+    row offers. A tool is a command with placeholders:
+      %a  full path of the item in the pane you clicked
+      %f  its file name          %x  its extension      %b  the name without it
+      %d  its directory
+      %A  full path of the item in the other pane
+      %F  its file name          %X  its extension      %B  the name without it
+      %D  its directory
+      %R  host of the other pane %U  its user           %V  "@" with a user
+      %W  ":" with a host        %P  "://" when remote
+      %T  the name of the tool   %O  its options        %%  a literal percent
+    Examples: kate %d/%f, meld %D %d, scp %d/%f %U%V%R%W%D/%F.
+    The diff tool command on the same page uses the same placeholders; an
+    empty field keeps the tool that the system offers.
 """
 
 

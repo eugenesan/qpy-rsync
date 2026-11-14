@@ -30,8 +30,8 @@ def _dialog(**kwargs) -> tuple[SettingsDialog, QWidget, QWidget, QWidget]:
 def test_the_dialog_has_a_tab_for_every_section() -> None:
     dialog, _holder, _log, _backup = _dialog()
     titles = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
-    assert titles == ["General", "Logging", "Backup"]
-    assert len(SECTIONS) == 3
+    assert titles == ["General", "Logging", "Backup", "Tools"]
+    assert len(SECTIONS) == 4
 
 
 def test_show_section_selects_the_tab() -> None:
@@ -69,3 +69,19 @@ def test_the_dialog_offers_ok_and_cancel() -> None:
     standard = buttons[0].standardButtons()
     assert standard & QDialogButtonBox.StandardButton.Ok
     assert standard & QDialogButtonBox.StandardButton.Cancel
+
+
+def test_the_tools_page_carries_the_tools_and_the_diff_command() -> None:
+    from qpy_rsync.services.external_tools import ExternalTool
+
+    dialog, _holder, _log, _backup = _dialog(
+        tools=[ExternalTool(name="Kate", command="kate %d/%f")],
+        diff_command="meld %a %A",
+    )
+    tools = dialog.external_tools()
+    assert [tool.name for tool in tools] == ["Kate"]
+    assert tools[0].command == "kate %d/%f"
+    assert dialog.diff_command() == "meld %a %A"
+    # The Tools tab can be opened on its own.
+    dialog.show_section("tools")
+    assert dialog.tabs.currentIndex() == SECTIONS.index("tools")

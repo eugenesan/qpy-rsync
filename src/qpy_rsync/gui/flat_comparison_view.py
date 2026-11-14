@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 
 from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.services.external_tools import ExternalTool
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
 from .flat_change_model import STASHED_ROLE, STRIPE_ROLE, FlatChangeModel
@@ -286,6 +287,8 @@ class FlatComparisonView(QWidget):
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object)
     restore_all_requested = Signal()
+    # A tool the user wants to run on the row: name, path, side, is a folder.
+    tool_requested = Signal(str, str, str, bool)
     sort_changed = Signal(int, object)
     expansion_limited = Signal(int, int)
     # A filter rule for the selected item, as an rsync pattern.
@@ -302,6 +305,8 @@ class FlatComparisonView(QWidget):
         self.destination_is_local = True
         self._syncing = False
         self._update_freeze = 0
+        # The tools the context menu offers on an item.
+        self._external_tools: list[ExternalTool] = []
 
         self.source = self._tree("Source")
         self.action = self._tree("Action")
@@ -895,6 +900,10 @@ class FlatComparisonView(QWidget):
         self.model.set_changes(changes)  # type: ignore[arg-type]
         self.changes_updated.emit(list(self.model.changes))
 
+    def set_external_tools(self, tools: list[ExternalTool]) -> None:
+        """The tools the context menu offers on an item."""
+        self._external_tools = list(tools)
+
     def set_action_filter(
         self,
         actions: set[ChangeAction] | None,
@@ -1083,6 +1092,9 @@ class FlatComparisonView(QWidget):
             self.collapse_all()
         elif selected is actions["expand_all"]:
             self.expand_all()
+        elif selected in actions["tools"]:
+            name, tool_path, side, is_directory = selected.data()
+            self.tool_requested.emit(name, tool_path, side, bool(is_directory))
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
 
@@ -1159,6 +1171,7 @@ class FlatComparisonView(QWidget):
             "collapse_all": None,
             "expand_all": None,
             "filters": [],
+            "tools": [],
         }
         if absolute_path:
             heading = menu.addAction(absolute_path)
@@ -1210,6 +1223,19 @@ class FlatComparisonView(QWidget):
             actions["restore_all_stashed"] = menu.addAction(
                 f"Restore All Stashed ({stash.count()})"
             )
+
+        # The tools the user configured for the items of the comparison.
+        if path:
+            enabled = [tool for tool in self._external_tools if tool.enabled]
+            if enabled:
+                menu.addSeparator()
+                tool_menu = menu.addMenu("Open with")
+                side = "destination" if tree is self.destination else "source"
+                is_directory = bool(getattr(row, "is_directory", False))
+                for tool in enabled:
+                    action = tool_menu.addAction(tool.name)
+                    action.setData((tool.name, path, side, is_directory))
+                    actions["tools"].append(action)  # type: ignore[union-attr]
 
         # Folding is view-only: a folded item stays in the sync and in the
         # totals, it is only out of the way while the tree is examined.

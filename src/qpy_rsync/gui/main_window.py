@@ -4,6 +4,7 @@ from copy import deepcopy
 import shlex
 import shutil
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -124,7 +125,22 @@ from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile, Transf
 from qpy_rsync.core.validation import validate_profile
 from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
-from qpy_rsync.services.diff_tool_service import DiffToolError, build_diff_request
+from qpy_rsync.services.diff_tool_service import (
+    DiffTool,
+    DiffToolError,
+    build_diff_request,
+)
+from qpy_rsync.services.external_tools import (
+    ExternalTool,
+    ExternalToolError,
+    ToolContext,
+    build_tool_command,
+    item_context,
+    load_diff_command,
+    load_tools,
+    save_diff_command,
+    save_tools,
+)
 from qpy_rsync.services.inventory_service import InventoryService
 from qpy_rsync.services.plan_validation_service import (
     PlanValidationResult,
@@ -208,6 +224,9 @@ class MainWindow(QMainWindow):
         self._inventory_cache_key: object | None = None
         self._inventory_cache: list[object] | None = None
         self._dialog_filter_context: object | None = None
+        # The tools the user may run on an item, and the diff tool command.
+        self._external_tools: list[ExternalTool] = load_tools()
+        self._diff_command: str = load_diff_command()
         self._diff_staging_directories: list[Path] = []
         self._last_backup_message: tuple[str, str] | None = None
         self._last_changed_changes: list[object] = []
@@ -304,6 +323,8 @@ class MainWindow(QMainWindow):
         self.comparison.decision_changed.connect(self._invalidate_validated_plan)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.restore_all_requested.connect(self._restore_all_stashed)
+        self.comparison.tool_requested.connect(self._run_external_tool)
+        self.comparison.set_external_tools(self._external_tools)
         self.comparison.sort_changed.connect(self._comparison_sorted)
 
         if hasattr(self.comparison, "filter_requested"):
@@ -1300,6 +1321,8 @@ class MainWindow(QMainWindow):
             backup_panel=self._backup_panel,
             sound_enabled=self._sound_enabled,
             section=str(section),
+            tools=self._external_tools,
+            diff_command=self._diff_command,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1312,6 +1335,11 @@ class MainWindow(QMainWindow):
                 settings = app_settings()
                 settings.setValue("sound/enabled", enabled)
                 settings.sync()
+            self._external_tools = dialog.external_tools()
+            self._diff_command = dialog.diff_command()
+            save_tools(self._external_tools)
+            save_diff_command(self._diff_command)
+            self.comparison.set_external_tools(self._external_tools)
         # The panels return to their holder in any case.
         self._update_external_open_states()
 
@@ -2010,10 +2038,28 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Preparing the diff tool...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
+        configured = self._diff_command.strip()
+        if configured:
+            try:
+                shlex.split(configured)
+            except ValueError as exc:
+                self._set_state("Diff tool unavailable", "error")
+                self._set_status(
+                    f"The diff tool command cannot be parsed: {exc}", "error"
+                )
+                QMessageBox.information(
+                    self, "Diff tool unavailable", f"The command cannot be parsed: {exc}"
+                )
+                return
         try:
             request = build_diff_request(
                 self._active_profile,  # type: ignore[arg-type]
                 change,
+                tool=(
+                    DiffTool(name="diff", executable=shlex.split(configured)[0])
+                    if configured
+                    else None
+                ),
                 on_command=self._log_diff_command,
                 on_log=self._append_rsync_log,
             )
@@ -2030,20 +2076,88 @@ class MainWindow(QMainWindow):
             self.progress_label.setText(previous_text)
         if request.staging_directory is not None:
             self._diff_staging_directories.append(request.staging_directory)
-        arguments = [str(request.source), str(request.destination)]
-        started, _pid = QProcess.startDetached(request.tool.executable, arguments)
+        if configured:
+            # The command of the user decides where the two files go.
+            context = ToolContext(
+                picked_full_path=str(request.source),
+                picked_directory=str(request.source.parent),
+                picked_name=request.source.name,
+                other_full_path=str(request.destination),
+                other_directory=str(request.destination.parent),
+                other_name=request.destination.name,
+                picked_endpoint=self._active_profile.source,  # type: ignore[attr-defined]
+                other_endpoint=self._active_profile.destination,  # type: ignore[attr-defined]
+                tool_name="diff",
+            )
+            try:
+                argv = build_tool_command(
+                    ExternalTool(name="diff", command=configured), context
+                )
+            except ExternalToolError as exc:
+                self._set_state("Diff tool unavailable", "error")
+                self._set_status(str(exc), "error")
+                QMessageBox.information(self, "Diff tool unavailable", str(exc))
+                return
+            executable = argv[0]
+            arguments = argv[1:]
+        else:
+            executable = request.tool.executable
+            arguments = [str(request.source), str(request.destination)]
+        started, _pid = QProcess.startDetached(executable, arguments)
         if not started:
             self._set_state("Diff tool could not start", "error")
-            self._set_status(
-                f"Could not start {request.tool.executable}.", "error"
-            )
-            QMessageBox.warning(self, "Could not start diff tool", request.tool.executable)
+            self._set_status(f"Could not start {executable}.", "error")
+            QMessageBox.warning(self, "Could not start diff tool", executable)
             return
-        self._append_log("$ " + shlex.join([request.tool.executable, *arguments]))
+        self._append_log("$ " + shlex.join([executable, *arguments]))
         self._set_state(
             f"Opened {path} in {request.tool.name}.",  # type: ignore[attr-defined]
             "success",
         )
+
+    def _run_external_tool(
+        self, name: str, path: str, side: str, is_directory: bool
+    ) -> None:
+        """Run one of the tools the user configured on an item."""
+        tool = next(
+            (tool for tool in self._external_tools if tool.name == name), None
+        )
+        if tool is None:
+            return
+        profile = self._active_profile
+        if profile is None:
+            self._set_status("No profile is loaded.", "error")
+            return
+        picked = profile.source if side == "source" else profile.destination
+        other = profile.destination if side == "source" else profile.source
+        context = item_context(
+            path,
+            is_directory=is_directory,
+            picked_root=picked.path,
+            other_root=other.path,
+            picked_endpoint=picked,
+            other_endpoint=other,
+            tool_name=tool.name,
+            options=tool.options,
+        )
+        try:
+            argv = build_tool_command(tool, context)
+        except ExternalToolError as exc:
+            self._set_status(str(exc), "error")
+            QMessageBox.warning(self, "Tool cannot run", str(exc))
+            return
+        self._append_log("$ " + shlex.join(argv))
+        try:
+            subprocess.Popen(
+                argv,
+                cwd=context.picked_directory or None,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self._set_status(f"Could not start {tool.name}: {exc}", "error")
+            QMessageBox.warning(self, "Could not start the tool", str(exc))
+            return
+        self._set_state(f"Started {tool.name}.", "success")
 
     def _comparison_started(self) -> None:
         self._begin_bulk_logging()
@@ -2254,6 +2368,14 @@ class MainWindow(QMainWindow):
 
     def _apply_inventory_mode(self) -> None:
         """Show or hide the unchanged items of the current comparison."""
+        if self.show_unchanged.isChecked() and not (
+            self.inventory_after_compare_button.isChecked()
+        ):
+            # The unchanged items are only known after both trees are listed,
+            # so the button that does that is switched on as well. The button
+            # then starts the listing.
+            self.inventory_after_compare_button.setChecked(True)
+            return
         changed = list(self._last_changed_changes)
         if self._active_profile is None:
             return
@@ -2361,10 +2483,22 @@ class MainWindow(QMainWindow):
                 self._warn_missing_local_directories(missing, "Inventory")
                 return
         self._inventory_pending_key = key
-        self.progress_label.setText("Gathering unchanged items...")
+        if self.show_unchanged.isChecked():
+            self.progress_label.setText(
+                "Listing both trees for the unchanged items..."
+            )
+        else:
+            self.progress_label.setText("Gathering unchanged items...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self._append_log("STATE inventory-started")
+        self._append_log(
+            "Listing both trees to find the unchanged items, because the "
+            "unchanged toggle asks for them."
+            if self.show_unchanged.isChecked()
+            else "Listing both trees to find the unchanged items.",
+            severity="info",
+        )
         self._inventory_token = self._inventory_service.gather(
             deepcopy(self._active_profile), changed
         )

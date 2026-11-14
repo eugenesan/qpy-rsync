@@ -505,3 +505,10 @@
 - A filter no longer leaves a folder behind without its items: a folder is shown when its name matches, or when it holds an item that matches and is allowed.
 - The unchanged items are no longer dropped when an action checkbox is used. The toggle that shows them allows them explicitly.
 - The settings dialog has a test module of its own again.
+
+## milestone 1.15bc external tools
+
+- The settings have a Tools page that lists the tools the context menu of a row offers. A tool is a command with placeholders: `%a`, `%f`, `%x`, `%b` and `%d` for the item in the pane that was clicked, `%A`, `%F`, `%X`, `%B` and `%D` for the item in the other pane, `%R`, `%U`, `%V`, `%W` and `%P` for the remote side of the other pane, `%T` for the tool, `%O` for its options and `%%` for a literal percent.
+- The command is split into words before the placeholders are filled in, so a path with a space stays one argument. A placeholder without a value leaves nothing behind.
+- The diff tool command moved to the same page and uses the same placeholders. An empty field keeps the tool that the system offers.
+- Asking for the unchanged items switches the inventory button on, so the second listing that a comparison needs is explained instead of surprising.

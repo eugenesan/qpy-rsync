@@ -1290,3 +1290,19 @@ def test_restore_all_stashed_puts_every_stashed_item_back() -> None:
     assert "Restored 2 stashed item(s)" in window.log.toPlainText()
     window.close()
     application.processEvents()
+
+
+def test_asking_for_the_unchanged_items_switches_the_inventory_on() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window.inventory_after_compare_button.isChecked() is False
+
+    window.show_unchanged.setChecked(True)
+    application.processEvents()
+
+    # The unchanged items are only known after both trees are listed, so the
+    # inventory button follows the toggle.
+    assert window.inventory_after_compare_button.isChecked() is True
+    window.close()
+    application.processEvents()

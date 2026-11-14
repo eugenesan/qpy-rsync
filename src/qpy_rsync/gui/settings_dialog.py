@@ -12,8 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync.services.external_tools import ExternalTool
+
+from .tools_panel import ToolsPanel
+
 # The tabs are named so a context menu can open the matching one.
-SECTIONS = ("general", "logging", "backup")
+SECTIONS = ("general", "logging", "backup", "tools")
 
 
 class SettingsDialog(QDialog):
@@ -33,6 +37,8 @@ class SettingsDialog(QDialog):
         backup_panel: QWidget,
         sound_enabled: bool = True,
         section: str = "general",
+        tools: list[ExternalTool] | None = None,
+        diff_command: str = "",
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -63,9 +69,11 @@ class SettingsDialog(QDialog):
         hint.setWordWrap(True)
         general_layout.addWidget(hint)
         general_layout.addStretch(1)
+        self.tools_panel = ToolsPanel(self, tools or [], diff_command)
         self.tabs.addTab(general, "General")
         self.tabs.addTab(log_panel, "Logging")
         self.tabs.addTab(backup_panel, "Backup")
+        self.tabs.addTab(self.tools_panel, "Tools")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -87,6 +95,14 @@ class SettingsDialog(QDialog):
 
     def sound_enabled(self) -> bool:
         return self.sound_checkbox.isChecked()
+
+    def external_tools(self) -> list[ExternalTool]:
+        """The tools the page describes."""
+        return self.tools_panel.tools()
+
+    def diff_command(self) -> str:
+        """The diff tool command the page describes."""
+        return self.tools_panel.diff_command()
 
     def done(self, result: int) -> None:  # noqa: D102
         # The panels belong to the main window; keep them alive when the
