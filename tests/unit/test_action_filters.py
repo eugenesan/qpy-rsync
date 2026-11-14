@@ -126,3 +126,17 @@ def test_the_action_toggles_only_take_focus_from_the_keyboard() -> None:
     for box in (*bar._boxes.values(), bar.unchanged_box, bar.stashed_box):
         assert box.focusPolicy() == Qt.FocusPolicy.TabFocus
         assert box.focusPolicy() & Qt.FocusPolicy.TabFocus
+
+
+def test_the_bar_separates_the_action_filters_from_the_other_toggles() -> None:
+    from PySide6.QtWidgets import QFrame
+
+    app()
+    bar = ActionFilterBar()
+    lines = [
+        child
+        for child in bar.findChildren(QFrame)
+        if child.frameShape() == QFrame.Shape.VLine
+    ]
+    # One line before the unchanged items, one before the stashed items.
+    assert len(lines) == 2

@@ -2144,7 +2144,22 @@ class MainWindow(QMainWindow):
 
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None
-        self.comparison.set_action_filter(selected)
+        self.comparison.set_action_filter(self._actions_with_unchanged(selected))
+
+    def _actions_with_unchanged(
+        self, actions: set[ChangeAction] | None
+    ) -> set[ChangeAction] | None:
+        """The action filter, with the unchanged items when they are shown.
+
+        The unchanged items are not one of the action checkboxes, so the
+        toggle that shows them has to allow them explicitly; otherwise they
+        would disappear as soon as an action checkbox is used.
+        """
+        if actions is None:
+            return None
+        if self.show_unchanged.isChecked():
+            return set(actions) | {ChangeAction.NO_CHANGE}
+        return set(actions)
 
     def _apply_show_stashed(self, show: bool) -> None:
         """Show the stashed items, or put them aside again."""
@@ -2286,6 +2301,13 @@ class MainWindow(QMainWindow):
         self.progress_label.repaint()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
+            # The filter is set before the rows are built, so the unchanged
+            # items are shown right away.
+            self.comparison.set_action_filter(
+                set(self.action_filters.visible_actions())
+                | {ChangeAction.NO_CHANGE},
+                apply=False,
+            )
             self.comparison.set_changes(changes)
         finally:
             QApplication.restoreOverrideCursor()

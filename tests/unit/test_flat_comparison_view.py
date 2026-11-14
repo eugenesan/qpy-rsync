@@ -489,17 +489,15 @@ def test_a_folded_directory_hides_its_children_but_not_its_totals() -> None:
     application.processEvents()
 
 
-def test_folding_the_root_leaves_only_the_root_row() -> None:
+def test_the_compared_folder_is_never_folded() -> None:
     application = app()
     model = FlatChangeModel()
     model.set_changes(_nested_changes())
-    assert model.toggle_collapsed("") is True
-    model.refresh_collapsed()
-    assert model.rowCount() == 1
-    assert model.row_path(0) == ""
-    model.expand_all()
+    # The compared folder is the parent of the tree, so it stays open.
+    assert model.toggle_collapsed("") is False
     model.refresh_collapsed()
     assert model.rowCount() == 9
+    assert model.collapsed == set()
     model.deleteLater()
     application.processEvents()
 
@@ -526,9 +524,10 @@ def test_collapse_all_and_expand_all() -> None:
     model.set_changes(_nested_changes())
     model.collapse_all()
     model.refresh_collapsed()
-    # Every directory with children is folded, so only the root row remains.
-    assert model.rowCount() == 1
-    assert model.collapsed == {"", "docs", "docs/sub", "pics"}
+    # Every directory with children is folded; the compared folder stays open
+    # with the items that sit directly in it.
+    assert model.rowCount() == 4
+    assert model.collapsed == {"docs", "docs/sub", "pics"}
     model.expand_all()
     model.refresh_collapsed()
     assert model.collapsed == set()
@@ -560,12 +559,10 @@ def test_selecting_a_folded_item_reveals_its_parents() -> None:
     assert view.is_collapsed("docs") is False
     assert view.model.index_for_path("docs/sub/c.txt").isValid()
 
-    # Folding the root and selecting a deep item expands the whole chain.
+    # The compared folder cannot be folded, so it never hides the tree.
     view.collapse_path("")
-    assert view.model.rowCount() == 1
-    view.select_path("docs/sub/c.txt")
     assert view.is_collapsed("") is False
-    assert view.model.index_for_path("docs/sub/c.txt").isValid()
+    assert view.model.rowCount() == 9
     view.close()
     application.processEvents()
 

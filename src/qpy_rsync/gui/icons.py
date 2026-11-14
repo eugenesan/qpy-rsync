@@ -450,6 +450,24 @@ def folder_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def root_folder_icon() -> QIcon:
+    """Icon of the compared folder, the parent of the whole tree.
+
+    The desktop theme knows a picture for it; a folder with a mark is the
+    fallback for a session without an icon theme.
+    """
+    themed = QIcon.fromTheme("folder-root-symbolic")
+    if not themed.isNull():
+        return themed
+    pixmap, painter = _pixmap()
+    _draw_folder(painter, QColor("#94a3b8"))
+    painter.setPen(QPen(QColor("#64748b"), 1.4))
+    painter.drawLine(4.0, 13.0, 9.0, 13.0)
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
 def folder_limited_icon() -> QIcon:
     """Folder icon with a marker for a folder left collapsed by the limit."""
     pixmap, painter = _pixmap()

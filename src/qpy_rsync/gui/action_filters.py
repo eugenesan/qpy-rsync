@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QHBoxLayout,
     QMenu,
     QSizePolicy,
@@ -13,6 +14,16 @@ from qpy_rsync.core.changes import ChangeAction
 
 from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
 from .icons import ACTION_LABELS, action_icon, stashed_icon, unchanged_icon
+
+def _separator() -> QFrame:
+    """A thin line that groups the checkboxes of the bar."""
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.VLine)
+    line.setFrameShadow(QFrame.Shadow.Plain)
+    line.setFixedWidth(1)
+    line.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+    return line
+
 
 FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (
     ChangeAction.CREATE,
@@ -54,7 +65,9 @@ class ActionFilterBar(QWidget):
             self._boxes[action] = box
 
         # The unchanged items and the stashed items are toggles rather than
-        # display filters, so they sit together at the end of the bar.
+        # display filters, so they sit together at the end of the bar, behind
+        # a separator that tells them apart from the action filters.
+        layout.addWidget(_separator())
         self.unchanged_box = QCheckBox(self)
         self.unchanged_box.setIcon(unchanged_icon())
         self.unchanged_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -72,6 +85,7 @@ class ActionFilterBar(QWidget):
         # sync, so this is not just a display filter: it shows what is
         # already excluded from the sync, the way the unchanged toggle shows
         # what the comparison kept.
+        layout.addWidget(_separator())
         self.stashed_box = QCheckBox(self)
         self.stashed_box.setIcon(stashed_icon())
         self.stashed_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -133,7 +147,7 @@ class ActionFilterBar(QWidget):
         self.stashed_box.setText(text)
         # The fixed size leaves room for the indicator and the glyph, so the
         # count needs its own width when there is one.
-        extra = self.stashed_box.fontMetrics().horizontalAdvance(text) + 4 if text else 0
+        extra = self.stashed_box.fontMetrics().horizontalAdvance(text) + 10 if text else 0
         self.stashed_box.setFixedWidth(CONTROL_ICON_SIZE + 20 + extra)
         self.stashed_box.setVisible(True)
         self.stashed_box.setToolTip(self._stashed_tooltip(count))

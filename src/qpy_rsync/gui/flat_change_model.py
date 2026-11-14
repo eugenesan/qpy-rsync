@@ -41,6 +41,7 @@ from .icons import (
     folder_icon,
     folder_sync_changed_icon,
     folder_sync_icon,
+    root_folder_icon,
     unchanged_faded_icon,
 )
 
@@ -466,10 +467,20 @@ class FlatChangeModel(QAbstractTableModel):
         )
         self._refresh_filters()
 
-    def set_visible_actions(self, actions: set[ChangeAction] | None) -> None:
-        """Restrict the displayed rows to the given comparison actions."""
+    def set_visible_actions(
+        self,
+        actions: set[ChangeAction] | None,
+        *,
+        apply: bool = True,
+    ) -> None:
+        """Restrict the displayed rows to the given comparison actions.
+
+        With ``apply`` off the filter is only remembered, so the next rebuild
+        of the rows uses it without a second pass over the list.
+        """
         self._visible_actions = None if actions is None else set(actions)
-        self._refresh_filters()
+        if apply:
+            self._refresh_filters()
 
     def visible_actions(self) -> set[ChangeAction] | None:
         return None if self._visible_actions is None else set(self._visible_actions)
@@ -490,10 +501,13 @@ class FlatChangeModel(QAbstractTableModel):
         return path.rstrip("/") in self.collapsed
 
     def set_collapsed(self, path: str, collapsed: bool) -> None:
-        """Fold or unfold the children of a directory."""
+        """Fold or unfold the children of a directory.
+
+        The compared folder is never folded: it is the parent of the tree.
+        """
         clean = path.rstrip("/")
         directory = self._directories.get(clean)
-        if directory is None or not directory.has_children:
+        if directory is None or not directory.has_children or not clean:
             self.collapsed.discard(clean)
             return
         if collapsed:
@@ -511,11 +525,14 @@ class FlatChangeModel(QAbstractTableModel):
         return self.is_collapsed(clean)
 
     def collapse_all(self) -> None:
-        """Fold every directory that has children."""
+        """Fold every directory that has children.
+
+        The compared folder stays open: it is the parent of the tree.
+        """
         self.collapsed = {
             path
             for path, directory in self._directories.items()
-            if directory.has_children
+            if directory.has_children and path
         }
 
     def expand_all(self) -> None:
@@ -631,11 +648,15 @@ class FlatChangeModel(QAbstractTableModel):
             child_action_ok = False
             for child_path in directory.child_directories:
                 child = directories[child_path]
-                child_path_ok = child_path_ok or child.path_ok
-                child_action_ok = child_action_ok or child.action_ok
+                if child.action_ok:
+                    child_action_ok = True
+                    if child.path_ok:
+                        child_path_ok = True
             for index in directory.files:
-                child_path_ok = child_path_ok or self._change_path_ok[index]
-                child_action_ok = child_action_ok or self._change_action_ok[index]
+                if self._change_action_ok[index]:
+                    child_action_ok = True
+                    if self._change_path_ok[index]:
+                        child_path_ok = True
             if directory.own_change_index >= 0:
                 index = directory.own_change_index
                 child_path_ok = child_path_ok or self._change_path_ok[index]
@@ -1079,7 +1100,9 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _item_icon(self, row: FlatRow) -> Any:
         if row.is_directory:
-            return folder_icon()
+            # The compared folder is the parent of the tree, so it gets its
+            # own icon.
+            return folder_icon() if row.path else root_folder_icon()
         if row.change is not None and row.change.kind is ObjectKind.SYMLINK:
             return file_type_icon("link")
         return file_type_icon(row.name)

@@ -381,3 +381,54 @@ def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
     assert view.stashed_paths() == set()
     view.close()
     application.processEvents()
+
+
+def test_a_filter_never_leaves_a_folder_without_its_items() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.action_filters import FILTERABLE_ACTIONS
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs/photo.png", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
+            Change("docs/other.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.set_visible_actions(set(FILTERABLE_ACTIONS))
+    model.set_path_filter("png")
+
+    # The unchanged item is filtered out by the action filter, so the folder
+    # that holds it must not stay behind on its own.
+    assert "docs" not in set(_paths(model))
+    assert "docs/photo.png" not in set(_paths(model))
+
+    # With the unchanged items allowed, the match and its folder are shown.
+    model.set_visible_actions(set(FILTERABLE_ACTIONS) | {ChangeAction.NO_CHANGE})
+    paths = set(_paths(model))
+    assert "docs" in paths
+    assert "docs/photo.png" in paths
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_the_unchanged_items_survive_the_action_filter() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.action_filters import FILTERABLE_ACTIONS
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("same.txt", ChangeAction.NO_CHANGE, ObjectKind.FILE, "="),
+            Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.set_visible_actions(set(FILTERABLE_ACTIONS))
+    assert "same.txt" not in set(_paths(model))
+    model.set_visible_actions(set(FILTERABLE_ACTIONS) | {ChangeAction.NO_CHANGE})
+    assert "same.txt" in set(_paths(model))
+    model.deleteLater()
+    application.processEvents()

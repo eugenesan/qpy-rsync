@@ -496,3 +496,12 @@
 ## milestone 1.15ba pointer focus on the action filters
 
 - The action filter checkboxes take focus only from the keyboard (`TabFocus`). A pointer click no longer leaves Breeze's focus underline behind, while Tab and Space still reach and toggle the filters.
+
+## milestone 1.15bb the parent folder, colours and filter fixes
+
+- The compared folder is the parent of the tree: it has no branch marker, it sits at the far left, and it uses the folder-root-symbolic icon.
+- A created or destination-only item is coloured in the Item column too, not only in the size and the date.
+- The action filter bar groups its toggles with separators: the action filters, then the unchanged items, then the stashed items.
+- A filter no longer leaves a folder behind without its items: a folder is shown when its name matches, or when it holds an item that matches and is allowed.
+- The unchanged items are no longer dropped when an action checkbox is used. The toggle that shows them allows them explicitly.
+- The settings dialog has a test module of its own again.

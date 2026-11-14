@@ -23,7 +23,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -223,11 +223,18 @@ class FlatPathDelegate(UniformRowDelegate):
             )
         else:
             color = styled.palette.color(styled.palette.ColorRole.Text)
+            # The model colours a created or destination-only item; the name
+            # carries the same colour as the size and the date.
+            foreground = index.data(Qt.ItemDataRole.ForegroundRole)
+            if isinstance(foreground, QBrush):
+                color = foreground.color()
+            elif isinstance(foreground, QColor):
+                color = foreground
             if is_stashed:
                 # A stashed row stays readable but is clearly marked.
                 color = STASHED_COLOR
         if row.is_directory:
-            if row.has_children:
+            if row.has_children and row.path:
                 # A folded directory points right, an open one points down,
                 # the same way a tree's branch marker reads.
                 size = self.CHEVRON_SIZE
@@ -250,7 +257,9 @@ class FlatPathDelegate(UniformRowDelegate):
                 painter.setBrush(color)
                 painter.drawPath(triangle)
                 painter.restore()
-            x = 4 + self.CHEVRON_SPACE + depth * self.LEVEL_WIDTH
+            # The compared folder is the parent of the tree: it has no
+            # branch marker and sits at the far left.
+            x = 4 + (0 if not row.path else self.CHEVRON_SPACE) + depth * self.LEVEL_WIDTH
         else:
             x = 4 + self.CHEVRON_SPACE + depth * self.LEVEL_WIDTH
             # The rule that shows which directory the item belongs to.
@@ -658,6 +667,9 @@ class FlatComparisonView(QWidget):
         row = self.model.row_data(index.row())
         if row is None or not row.is_directory or not row.has_children:
             return None
+        if not row.path:
+            # The compared folder is the parent of the tree and stays open.
+            return None
         rect = tree.visualRect(index)
         if not FlatPathDelegate.chevron_hit_rect(rect, row.depth).contains(
             position
@@ -883,10 +895,16 @@ class FlatComparisonView(QWidget):
         self.model.set_changes(changes)  # type: ignore[arg-type]
         self.changes_updated.emit(list(self.model.changes))
 
-    def set_action_filter(self, actions: set[ChangeAction] | None) -> None:
+    def set_action_filter(
+        self,
+        actions: set[ChangeAction] | None,
+        *,
+        apply: bool = True,
+    ) -> None:
         """Show only the given actions and refresh the overview."""
-        self.model.set_visible_actions(actions)
-        self.changes_updated.emit(list(self.model.changes))
+        self.model.set_visible_actions(actions, apply=apply)
+        if apply:
+            self.changes_updated.emit(list(self.model.changes))
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
