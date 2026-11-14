@@ -73,3 +73,29 @@ def test_the_context_menu_offers_the_tools() -> None:
     assert entry.data() == ("Kate", "docs/a.txt", "source", False)
     view.close()
     application.processEvents()
+
+
+def test_a_configured_tool_runs_on_the_item() -> None:
+    import sys
+
+    from qpy_rsync.core.endpoints import parse_endpoint
+    from qpy_rsync.core.models import SyncProfile
+    from qpy_rsync.gui.main_window import MainWindow
+
+    application = app()
+    window = MainWindow()
+    window._active_profile = SyncProfile(
+        name="test",
+        source=parse_endpoint("/home/user/src"),
+        destination=parse_endpoint("/home/user/dst"),
+    )
+    window._external_tools = [
+        ExternalTool(name="Noop", command=f"{sys.executable} -c pass")
+    ]
+    window._run_external_tool("Noop", "docs/a.txt", "source", False)
+    application.processEvents()
+
+    assert "Started Noop." in window.status_edit.text()
+    assert any("pass" in line for line in window.log.toPlainText().splitlines())
+    window.close()
+    application.processEvents()

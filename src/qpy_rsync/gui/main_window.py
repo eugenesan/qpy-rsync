@@ -2144,18 +2144,23 @@ class MainWindow(QMainWindow):
             argv = build_tool_command(tool, context)
         except ExternalToolError as exc:
             self._set_status(str(exc), "error")
-            QMessageBox.warning(self, "Tool cannot run", str(exc))
+            self._set_state("The tool command cannot be used", "error")
             return
         self._append_log("$ " + shlex.join(argv))
+        # The tool starts in the folder of the item, when that folder is on
+        # this machine.
+        working_directory = context.picked_directory
+        if working_directory and not Path(working_directory).is_dir():
+            working_directory = ""
         try:
             subprocess.Popen(
                 argv,
-                cwd=context.picked_directory or None,
+                cwd=working_directory or None,
                 start_new_session=True,
             )
         except OSError as exc:
             self._set_status(f"Could not start {tool.name}: {exc}", "error")
-            QMessageBox.warning(self, "Could not start the tool", str(exc))
+            self._set_state(f"{tool.name} could not start", "error")
             return
         self._set_state(f"Started {tool.name}.", "success")
 
