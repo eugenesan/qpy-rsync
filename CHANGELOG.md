@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- The readme describes the application, its usage and its screenshots, and
+  points at the installation and the debugging documents.
+- The design, the architecture and the specifications live in one document,
+  `docs/design.md`.
+- The milestones and the plan live in one document, `docs/roadmap.md`.
+- The version moves from 0.1.0.dev0 to 0.2.0.
+- `dump-content.sh` moves to `tools/`.
+
 ## 0.1.0.dev0
 
 - Bootstrap the `qpy-rsync` repository.

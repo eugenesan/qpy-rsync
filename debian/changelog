@@ -1,5 +1,6 @@
-qpy-rsync (0.1.0.dev0) unstable; urgency=low
+qpy-rsync (0.2.0) unstable; urgency=low
 
+  * Flat comparison list with stashing, folding and external tools.
   * Initial Debian packaging.
   * Preview-driven comparison, verification and synchronization with rsync.
   * Overview pane, journal with session log and pausable transfers.

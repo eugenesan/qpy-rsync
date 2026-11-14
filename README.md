@@ -1,259 +1,214 @@
 # qpy-rsync
 
-`qpy-rsync` is a Linux-focused PySide6 frontend for `rsync`. It uses rsync dry-runs as the source of truth, presents planned changes visually, and will validate user selections before executing a one-way synchronization.
+`qpy-rsync` is a graphical frontend for `rsync` for the Linux desktop. It
+compares two locations with a real `rsync --dry-run`, shows what would change
+in a flat, sortable list, lets you decide item by item what to do, and only
+writes after you verified and confirmed the plan. It speaks the rsync dialect
+you already know, keeps every command inspectable, and never touches a file
+without a preview in front of it.
 
-## Current state
+The application is a visualization, configuration and control layer. It does
+not implement its own transfer engine: the preview and the synchronization
+always run the same `rsync` with equivalent options.
 
-Milestones 1 through 1.15d provide a read-only comparison, selection, verification, and confirmation workflow with:
+![The main window of qpy-rsync](docs/main-window.png)
 
-- local and rsync-over-SSH endpoints
-- asynchronous rsync dry-run execution and controlled output parsing
-- synchronized hierarchical source, action, and destination panes
-- destination-only inventory without enabling destructive synchronization
-- graphical OpenSSH askpass integration
-- optional system-Python or `.venv` development workflows
+## What it does
 
-Per-object decisions, persistent ordered filters, backup policy, synchronization modes, immutable execution plans, a second verification dry run, final confirmation, and real synchronization execution are implemented. Real synchronization is currently restricted to disposable local smoke-test paths under /tmp/qpy-rsync-smoke.
+- compares a local folder with another local folder, or with one folder on a
+  remote host over SSH
+- shows the source, the action and the destination of every item in one flat
+  list, with the folders painted as a hierarchy
+- lets you include or exclude items, whole folders or a whole comparison
+- stashes items for the duration of one comparison, and folds folders away
+  while you read a large tree
+- keeps one ordered list of rsync include and exclude rules, with a live
+  preview of the command
+- takes a backup of everything it changes, in a directory you choose
+- verifies the selection with a second dry run and asks for an explicit
+  confirmation before it writes anything
+- reports the progress, keeps a journal of every command, and logs the raw
+  rsync output in a session file
+- opens an item in an external diff tool, or in any external tool you
+  configure
+
+## Using it
+
+### 1. Enter the two locations
+
+Both fields accept the same syntax:
+
+```text
+/home/alice/data          a local folder
+~/data                    a local folder, ~ is expanded
+server:/srv/data          a folder on a remote host
+alice@server:/srv/data    a folder on a remote host, with a user
+```
+
+At most one side may be remote. `Host` aliases from `~/.ssh/config` work as
+they do for `rsync`. Press **Enter** in the destination field to start the
+comparison when both sides are filled in.
+
+### 2. Choose the method
+
+| Method | Behaviour |
+|---|---|
+| **Update** | copies new and changed items, keeps what only exists in the destination |
+| **Mirror** | makes the destination match the source, deleting the items that only exist there |
+| **New Only** | copies only the items that are missing in the destination |
+
+### 3. Compare
+
+**Compare** (F5) runs `rsync --dry-run`. The list fills with the items that
+rsync reported, grouped by folder. The three panes stay synchronized: the
+source on the left, the action in the middle, the destination on the right.
+
+The action pane carries a checkbox for every item that can be decided.
+Checking an item includes it in the synchronization, unchecking it excludes
+it. A folder decides for everything below it, and a child can override its
+folder.
+
+### 4. Filter, fold and stash
+
+The filter field above the panes matches the names of the items, or their
+relative path when the pattern contains a slash. Shell-style globs work
+(`*.jpg`, `file?.txt`, `[0-9]*`). A pattern that ends with a slash matches
+folders only.
+
+The branch marker in front of a folder folds its contents out of the list.
+Folding is a view-only operation: the synchronization, the totals and the
+overview keep every item.
+
+**Space** stashes the selected item. A stashed item is left out of the
+synchronization, stays in the comparison so that you can restore it, and is
+forgotten with the next comparison. The crossed-eye marker in the action
+column stashes and restores an item, the *Show stashed items* toggle in the
+filter bar reveals them, and its right-click menu offers *Restore All
+Stashed*.
+
+The checkboxes above the panes filter the list by action. A plain click
+toggles one action, **Ctrl+click** inverts the bar so that only the clicked
+action is shown, and the right-click menu of a checkbox offers *Show only
+this*, *Show everything but this*, *Show all* and *Reset to default*.
+
+### 5. Verify and synchronize
+
+**Validate Actions** (F8) builds an immutable plan of your selection and runs
+a second dry run with it. If the result differs from what you see, the
+execution is blocked and the difference is reported.
+
+**Synchronize** (F9) then opens the confirmation dialog with the endpoints,
+the counts, the destructive operations and the backup configuration. Only
+after you confirm, a write-capable `rsync` runs with the verified plan.
+
+![The confirmation dialog of a synchronization](docs/sync-dialog.png)
+
+### Filters, backups and profiles
+
+- **Filters** (F7) maintains the ordered include and exclude rules. The first
+  matching rsync rule wins, and the rules apply to the comparison and to the
+  execution.
+- The **backup directory** turns on rsync's `--backup` for everything that is
+  changed or removed on the destination. When the backup folder lies inside
+  the compared tree, it is protected automatically.
+- **Save Profile** (F2) and **Load Profile** (F3) store the endpoints, the
+  method, the rules and the backup settings.
+
+### External tools
+
+The settings have a *Tools* page that lists the tools the context menu of a
+row offers. A tool is a command with placeholders:
+
+| Placeholder | Meaning |
+|---|---|
+| `%a` | the full path of the item in the pane you clicked |
+| `%f` | its file name, `%x` its extension, `%b` the name without it |
+| `%d` | its directory |
+| `%A` | the full path of the item in the other pane |
+| `%F` | its file name, `%X` its extension, `%B` the name without it |
+| `%D` | its directory |
+| `%R` `%U` `%V` `%W` `%P` | the host, the user, `@`, `:` and `://` of the other pane |
+| `%T` `%O` | the name and the options of the tool |
+| `%%` | a literal percent |
+
+```text
+kate %d/%f
+meld %D %d
+scp %d/%f %U%V%R%W%D/%F
+```
+
+The same page holds the command of the diff tool. An empty field keeps the
+tool that the system offers, with the preference of Git.
+
+![The settings dialog of qpy-rsync](docs/settings-dialog.png)
+
+### Keyboard
+
+| Key | Action |
+|---|---|
+| F1 | the how-to |
+| F2 / F3 | save and load a profile |
+| F4 | focus the method |
+| F5 / F6 / F7 | compare, inventory, filters |
+| F8 / F9 | validate the actions, synchronize |
+| F10 / F11 | cancel a running operation, pause it |
+| Ctrl+F | focus the filter field |
+| Ctrl+, | the settings |
+| Ctrl+Z | reset every manual decision |
+| Space | stash the selected item |
+| Left / Right | fold and unfold a folder |
+| Ctrl+click | invert the action filter |
+| Ctrl+Q | quit |
 
 ## Requirements
 
 - Python 3.11 or newer
 - rsync 3.x
-- OpenSSH client for remote profiles
-- PySide6 6.7 or newer for the GUI
+- OpenSSH for the remote endpoints
+- PySide6 6.7 or newer for the interface
+- an askpass helper (`ksshaskpass`) for the password prompts of a remote host
 
-## Run from a source checkout
+## Installation
 
-A virtual environment is optional. The repository provides system-Python
-runners that resolve the checkout location automatically and can be invoked
-from any working directory.
+The runtime packages, the optional virtual environment, the development
+packages and the SSH prerequisites are described in
+[`docs/installation.md`](docs/installation.md).
 
-Run the application with Ubuntu's system Python and PySide6:
+The short version, with the system Python of Ubuntu:
 
 ```bash
 ./qpy-rsync.sh
 ```
 
-Enable console diagnostics explicitly when needed:
+The runners resolve the checkout themselves and work from any directory.
+`./qpy-rsync-test.sh -q` runs the whole test suite, compiles the sources and
+checks the diff.
 
-```bash
-QPY_RSYNC_DEBUG=1 ./qpy-rsync.sh 2>&1 | tee qpy-rsync-debug.log
-```
+## Development and debugging
 
-Run the complete test and source-validation workflow without `.venv`:
+- [`docs/installation.md`](docs/installation.md) — the runtime, the
+  development packages and the test commands
+- [`docs/debugging.md`](docs/debugging.md) — the console diagnostics of a run
 
-```bash
-./qpy-rsync-test.sh -q
-```
+## Documentation
 
-Arguments are forwarded to pytest, so focused test runs work as expected:
-
-```bash
-./qpy-rsync-test.sh tests/unit/test_command.py -vv
-```
-
-After pytest succeeds, `qpy-rsync-test.sh` also runs Python bytecode
-compilation and `git diff --check`.
-
-Both runners use `/usr/bin/python3` by default. Override it when testing another
-system interpreter:
-
-```bash
-QPY_RSYNC_SYSTEM_PYTHON=/usr/bin/python3.13 ./qpy-rsync-test.sh -q
-```
-
-The equivalent direct application command is:
-
-```bash
-PYTHONPATH="$PWD/src" /usr/bin/python3 -m qpy_rsync.app
-```
-
-For an isolated development environment instead:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e '.[dev]'
-pytest -q
-qpy-rsync
-```
-
-See [`docs/installation.md`](docs/installation.md) for Ubuntu runtime and
-development packages, system-Python testing, SSH prerequisites, and debugging.
-See [`docs/roadmap.md`](docs/roadmap.md) for upcoming milestones and
-[`docs/diff-tool-integration.md`](docs/diff-tool-integration.md) for the
-external diff-tool design.
+| Document | Content |
+|---|---|
+| [`docs/design.md`](docs/design.md) | the design, the architecture and the specifications |
+| [`docs/roadmap.md`](docs/roadmap.md) | the milestones, their validation and the plan |
+| [`docs/installation.md`](docs/installation.md) | the installation, the development setup and the SSH prerequisites |
+| [`docs/debugging.md`](docs/debugging.md) | the diagnostics of a run |
+| [`CHANGELOG.md`](CHANGELOG.md) | the history of every change |
 
 ## Safety status
 
-This is pre-alpha software. Real synchronization is implemented and validated, but execution remains intentionally restricted to local smoke-test paths under /tmp/qpy-rsync-smoke while synchronization safety, cancellation handling, and failure handling continue to mature.
+This is pre-alpha software. The synchronization is implemented and validated,
+but the execution stays restricted to disposable local paths under
+`/tmp/qpy-rsync-smoke` while the cancellation and the failure handling mature.
+The verification dry run and the explicit confirmation stand between a
+comparison and a write, and the application never runs a command through a
+shell.
 
-## milestone 1 local comparison
+## License
 
-The GUI now performs asynchronous local `rsync --dry-run` comparisons and displays normalized changes in a sortable, path-filterable table. It remains read-only: no synchronization action is exposed. See `docs/milestone-1-smoke-test.md`.
-
-## External diff tool
-
-For local-to-local comparisons, right-click or double-click a changed regular
-file to open it in an external diff tool. qpy-rsync honors Git's
-`diff.guitool`, `diff.tool`, and `difftool.<tool>.path` settings, then looks for
-Meld, KDiff3, Kompare, or Vimdiff. Remote-file staging is not implemented yet.
-
-## Comparison-tree filtering and saved state
-
-The comparison view supports case-insensitive filename filtering and shell-style
-globs:
-
-- `guide` matches names containing `guide`.
-- `*.py` matches Python filenames.
-- `file?.txt` uses `?` for one character.
-- `[0-9]*` matches names beginning with a digit.
-- `*` shows all changed objects.
-- `.` matches names containing a literal period.
-- `docs/` matches the `docs` directory and retains its complete subtree.
-
-Matching files remain visible with their ancestor directories. Use **Expand
-All** and **Collapse All** to control all three synchronized panes.
-
-qpy-rsync remembers the main-window geometry, comparison-pane ratios, column
-layout, and the last successfully used source and destination pair. Press
-**Enter** in the destination field to start comparison when both endpoints are
-present.
-
-## Per-object decisions
-
-The center **Action** pane contains a checkbox for every selectable changed
-object. Checked objects are included in the future synchronization plan;
-unchecked objects are excluded. These controls do not execute `rsync`.
-
-Directories, including synthetic parent directories created for the tree,
-control their complete subtrees. A child can override an excluded parent by
-being checked explicitly, and checking the directory again includes the
-subtree. Message and no-change records are not selectable.
-
-Decisions survive a recompare only while the same path retains the same action
-and object kind. Stale decisions are discarded when that identity changes.
-
-## Persistent rsync filters
-
-Use **Filters...** to maintain one ordered list of persistent rules. Rules are
-saved across restarts and are applied to both comparison and future execution.
-The first matching rsync rule wins.
-
-The editor supports three rule types:
-
-- **Include** generates `--include=PATTERN`.
-- **Exclude** generates `--exclude=PATTERN`.
-- **Advanced** generates `--filter RULE` for native rsync filter syntax.
-
-Include and exclude are the recommended interface for ordinary rules. Advanced
-rules support native rsync features such as protect/risk rules and merge files.
-Classic include/exclude options and advanced filter rules share the same ordered
-rsync rule list.
-
-Rsync must be allowed to traverse parent directories before it can match an
-included descendant. For example, to include only the root `.git/HEAD` entry:
-
-```text
-Include  /.git/
-Include  /.git/HEAD
-Exclude  /.git/***
-```
-
-Rules can be enabled or disabled without removal. Disabled rules retain their
-position, type, pattern, and comment but are omitted from the rsync argument
-vector. Import reads native rsync filter-file lines as Advanced rules. Export
-writes all enabled rules in native filter-file syntax.
-
-Changing rules keeps the previous comparison visible but marks it **STALE**.
-Per-object decision checkboxes are locked until a new comparison succeeds;
-browsing, expansion, visual path filtering, and diff-tool inspection remain
-available. A checkbox decision cannot re-include an item excluded by persistent
-filters because rsync did not return that item in the comparison.
-
-## Backup directory and recovery tree
-
-A non-empty **Backup directory** enables rsync backups for destination objects
-that rsync alters or removes. qpy-rsync always uses `--backup` together with
-`--backup-dir`; clearing the field disables backups. Backup naming, rotation,
-retention, and cleanup remain user-managed.
-
-The backup path is interpreted on the destination side. For an SSH destination,
-enter a path on that remote host without `host:` syntax. Local backup paths may
-use `~`, which qpy-rsync expands before command generation.
-
-qpy-rsync reports whether a local backup directory is missing, empty, non-empty,
-or unavailable for inspection. A missing directory may be created by rsync. A
-non-empty directory is allowed, but newer backups may replace older files that
-have the same relative path. Remote directory contents are not probed yet.
-
-When the backup directory is inside the source or destination tree, automatic
-protection is enabled by default. qpy-rsync injects both rules before user
-filters:
-
-```text
-P /relative-backup-path/***
-- /relative-backup-path/***
-```
-
-The protect rule prevents destination-side deletion; the exclude rule prevents
-normal traversal and transfer. Protection can be disabled explicitly, which
-produces a warning. Backup-setting changes retain the comparison and checkbox decisions, but revoke prior verification because the final rsync command changed. The log pane previews the dry-run command whenever endpoint, mode, backup-directory, or protection settings change.
-
-## Synchronization modes
-
-The mode selector defines the default one-way behavior from Source to Destination:
-
-- **Update** copies new and changed Source objects while retaining objects that exist only in Destination.
-- **Mirror** makes Destination match Source and uses `--delete-during` for Destination-only objects.
-- **New Only** uses `--ignore-existing` to copy objects missing from Destination without updating or deleting existing Destination objects.
-
-Changing mode keeps the old tree as a disabled, visibly stale reference and requires another comparison. In Update and New Only, Destination-only rows default to **keep** with an unchecked checkbox. Checking such a row turns the effective action into **delete**. In Mirror, deletion rows default checked; unchecking protects and retains them. Directory decisions apply to descendants. The Action-pane context menu can reset one decision, a subtree, or all manual decisions.
-
-## Selected-action verification and confirmation
-
-After a successful comparison, qpy-rsync builds an immutable snapshot of the effective checked and unchecked actions. The summary separates executable actions, unchecked actions, retained Destination-only objects, destructive operations, and backup state.
-
-**Verify Selected Actions** creates a private mode-`0600` rsync filter file and performs a second dry run. Execution remains blocked if path, action, object kind, endpoint, mode, filters, backup configuration, or decisions no longer match the visible selection. Temporary filter files are removed on every completion path.
-
-After successful verification, **Synchronize...** opens a final confirmation dialog showing Source, Destination, operation counts, destructive operations, backup configuration, nested protection, and a verification fingerprint. Explicit acknowledgment is required. In the current milestone, confirming only records that the review completed; it does not launch real synchronization.
-
-## Testing and reproducible smoke fixtures
-
-`qpy-rsync-test.sh` runs Python with `PYTHONFAULTHANDLER=1`, treats Qt warnings as fatal, forces Qt's offscreen platform, mirrors output to `/tmp/qpy-rsync.log`, runs pytest, compiles all sources, and runs `git diff --check`.
-
-Create disposable Source, Destination, and Backup trees with:
-
-```bash
-./tools/setup-sync-smoke-test.sh
-```
-
-Collect an exact post-test inventory, hashes, and key file contents with:
-
-```bash
-./tools/collect-sync-smoke-results.sh
-```
-
-
-## Milestone 1.15d execution validation
-
-Real synchronization smoke tests completed successfully:
-
-- Update/default
-- Update/manual-delete
-- Mirror/default
-- Mirror/protect-one
-- New Only/default
-- New Only/manual-delete
-- Synchronization cancellation
-- Synchronization failure
-
-Additional features validated:
-
-- write-capable SyncService execution
-- execution gate state machine
-- selected-action verification workflow
-- secure temporary decision filters (0600)
-- GUI startup options (--dir-pair, --backup, --mode, --compare)
-- persistent session logging
-- terminal events for completed, cancelled, and failed synchronization
+GPL-3.0-or-later. See [`LICENSE`](LICENSE).

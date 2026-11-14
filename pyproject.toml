@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qpy-rsync"
-version = "0.1.0.dev0"
+version = "0.2.0"
 description = "A PySide6 visual frontend for safe, preview-driven rsync synchronization"
 readme = "README.md"
 requires-python = ">=3.11"

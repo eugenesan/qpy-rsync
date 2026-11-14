@@ -1,125 +1,113 @@
-# Development roadmap
+# Roadmap and milestones
 
-The roadmap follows the comparison-first safety model. Each milestone must
-preserve the full Git history, pass the complete test suite, compile the Python
-sources, and be delivered as a Git-generated downloadable patch.
+This document is the single place for the milestones of qpy-rsync: what has
+been delivered, how it was validated, and what is planned. The detailed
+history of every change is in [`../CHANGELOG.md`](../CHANGELOG.md); the design
+that the milestones implement is in [`design.md`](design.md).
 
-## Completed foundation
+## How the milestones work
 
-Milestones 1 through 1.10 established:
+Every milestone must
 
-- asynchronous rsync dry-run comparison
-- controlled output parsing and diagnostics
-- destination-only inventory
-- synchronized hierarchical source/action/destination views
-- local and SSH endpoint parsing
-- graphical OpenSSH askpass support
-- system-process environment sanitization
-- restoration of X11 `DISPLAY` for rsync's SSH remote shell
+- keep the full Git history,
+- pass the complete test suite,
+- compile the Python sources,
+- and be delivered as a Git-generated downloadable patch.
 
-## Milestone 1.11: installation and development documentation
+A milestone that changes the runtime behaviour also needs a focused manual
+smoke test, which is recorded below.
 
-- make `.venv` explicitly optional
-- document Ubuntu system-Python/PySide6 setup
-- document runtime and development packages separately
-- document `qpy-rsync.sh`
-- document system-Python tests for the repository's `src/` layout
-- document current SSH and debugging prerequisites
-- record the external diff-tool design and revised roadmap
+## Delivered milestones
 
-## Milestone 1.12: external diff tool
+The milestones 1 through 1.15bd are described in the changelog, one section
+each. In short:
 
-- resolve a preferred tool using Git-compatible selection conventions
-- support meld, kdiff3, kompare, and vimdiff
-- add **Open in Diff Tool** for one selected changed regular file
-- launch local-to-local comparisons directly
-- stage one remote file privately for local-to-SSH comparisons
-- disable unsupported object types with an actionable explanation
-- defer arbitrary `difftool.<tool>.cmd` shell expressions
+| Milestone | Delivered |
+|---|---|
+| 1 | the local comparison with a dry run and a read-only list |
+| 1.1 – 1.10 | the parser, the destination inventory, the SSH endpoints, the askpass helper, the process environment |
+| 1.11 | the installation and the development documentation |
+| 1.12 | the external diff tool |
+| 1.13 | the comparison usability: filtering, the panes, the saved state |
+| 1.14 | the per-object decisions |
+| 1.15a | the persistent include and exclude filters |
+| 1.15b | the backup directory and the nested protection |
+| 1.15c | the immutable execution plan and the verification dry run |
+| 1.15d | the confirmation and the write-capable synchronization |
+| 1.15e – 1.15z | the progress, the inventory mode, the profiles, the command preview and the review fixes |
+| 1.15aa – 1.15al | the toolbar, the icons, the journal, the diff staging and the expansion limits |
+| 1.15am – 1.15ap | the flat comparison list that replaced the tree |
+| 1.15aq – 1.15az | one comparison view, the settings, the statistics, the columns, the stash and the folding |
+| 1.15ba – 1.15bd | the quiet terminal, the parent folder, the external tools and the inverted action filter |
 
-## Milestone 1.13: comparison-tree usability (completed)
+## Milestone validation notes
 
-- ancestor-preserving filename filtering
-- shell-style glob matching and directory-subtree mode
-- synchronized expand/collapse controls
-- corrected destination-tree rendering and responsive columns
-- persisted window, splitter, and header geometry
-- persisted endpoint pair and Enter-to-compare workflow
+The notes below record how the early milestones were checked on a real
+machine. They are kept as the reference for the repeatable smoke tests.
 
-File-type icons and additional accessible action styling remain candidates for
-a later usability refinement.
+### milestone 1: the local smoke test
 
-## Milestone 1.14: per-object decisions (completed)
+```bash
+rm -rf /tmp/qpy-rsync-source /tmp/qpy-rsync-destination
+mkdir -p /tmp/qpy-rsync-source/sub /tmp/qpy-rsync-destination
+printf 'new\n' > /tmp/qpy-rsync-source/new.txt
+printf 'changed-new\n' > /tmp/qpy-rsync-source/changed.txt
+printf 'changed-old\n' > /tmp/qpy-rsync-destination/changed.txt
+printf 'destination-only\n' > /tmp/qpy-rsync-destination/old.txt
+chmod 755 /tmp/qpy-rsync-source/new.txt
+```
 
-- explicit include, exclude, and inherited decision states
-- checkboxes in the center action pane
-- inherited decisions from real and synthetic directories
-- explicit child overrides
-- stable decision preservation across unchanged recomparisons
-- stale-decision invalidation when path identity changes
-- included, excluded, and destructive summary counts
-- non-selectable message and no-change records
+Select the two directories and click **Compare**. The milestone performs only
+`rsync --dry-run`; it never synchronizes or deletes. The expected changes are
+`new.txt`, `changed.txt` and `sub/`.
 
-Conflict-policy visualization remains a candidate for refinement alongside the
-Milestone 1.15 execution-plan confirmation UI.
+### milestone 1.1: the completion fix
 
-## Milestone 1.15a: persistent include/exclude filters (completed)
+The first runner converted `QProcess.ExitStatus` with `int()`. The enum
+conversion differs between the PySide6 releases, and the resulting `TypeError`
+left the window showing *Comparing...* after rsync had exited. The runner now
+compares the enum directly, drains the final output and always forwards the
+result, so the status changes to *Comparison completed*.
 
-- ordered classic `--include` and `--exclude` rules
-- advanced native `--filter` rules
-- enable/disable state without rule removal
-- rule editing, reordering, duplication, import, and export
-- persistent ad hoc filter settings
-- stale-comparison retention and decision locking
+### milestone 1.4: the comparison smoke test
 
-## Milestone 1.15b: backup and versioning (completed)
+Compare the same trees and verify that the three panes stay synchronized, that
+a source-only row shows *create*, that a destination-only row shows *keep*
+while the deletion is disabled, that a destination-only file shows no
+`Unknown`, no size `0` and no epoch timestamp, and that a local path starting
+with `~/` is expanded.
 
-- one optional, user-managed destination-side backup directory
-- mandatory pairing of `--backup` with validated `--backup-dir`
-- local missing, empty, non-empty, and unavailable inspection states
-- endpoint equality, root, control-character, relative-path, and nesting checks
-- automatic nested backup-tree protect and exclude rules
-- persistent backup settings and live command preview
+### milestone 1.7: the askpass display fix
 
-## Milestone 1.15c: immutable execution plan (completed)
+The controlled output format does not need a locale-dependent parser, so
+qpy-rsync no longer forces `LC_ALL=C`; the askpass helper otherwise read it
+as the non-UTF-8 `ANSI_X3.4-1968` locale. When `WAYLAND_DISPLAY` is present
+and `QT_QPA_PLATFORM` is not set explicitly, the askpass child receives
+`QT_QPA_PLATFORM=wayland`. The complete inherited desktop environment still
+supplies `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`.
+If neither a Wayland nor an X11 session is present, the password
+authentication is blocked before rsync starts.
 
-- immutable effective-action snapshot and semantic profile fingerprint
-- private decision-filter generation and cleanup
-- second validation dry run with exact path/action/kind comparison
-- mismatch blocking and verification invalidation
-- wide-screen workflow UI and mandatory offscreen Qt regression tests
+### milestone 1.8: the X11 askpass fix
 
-## Milestone 1.15d: confirmation and synchronization execution
+The trace of milestone 1.7 showed the platform but an empty display name, so
+the session values are now inserted into the process environment explicitly:
 
-Completed planning and confirmation work:
+```text
+DISPLAY
+XAUTHORITY
+DBUS_SESSION_BUS_ADDRESS
+XDG_RUNTIME_DIR
+WAYLAND_DISPLAY
+```
 
-- Update, Mirror, and New Only mode defaults
-- manually selected Destination-only deletion outside Mirror
-- row, subtree, and global decision reset
-- explicit execution-gate state machine
-- final confirmation summary and destructive warning
-- reproducible disposable sync fixtures and result collection
+The values stay visible in the debug mode so that a display authentication can
+be diagnosed precisely. They are session endpoints, not passwords, but the
+paths and the user names should still be reviewed before a log is shared.
 
-Remaining execution work:
+## The delivery gate
 
-- launch write-capable rsync only after fresh verification and confirmation
-- parse progress and statistics
-- support cancellation and exit-code mapping
-- clean up temporary filters on every result path
-- recompare after successful completion
-- keep failed and cancelled runs visibly incomplete
-
-## Milestone 1.16: profiles and Ubuntu packaging
-
-- complete profile persistence and recent-profile handling
-- install desktop file, icon, documentation, and launcher
-- build a Debian package using Ubuntu's system Python and PySide6
-- declare rsync, OpenSSH, util-linux, and optional askpass dependencies
-- add package installation and smoke tests
-
-## Delivery gate
-
-Before any milestone patch is delivered:
+Before a milestone is delivered:
 
 ```bash
 git apply --check milestone.patch
@@ -129,29 +117,24 @@ PYTHONPATH="$PWD/src" /usr/bin/python3 -m pytest -q
 /usr/bin/python3 -m compileall -q src
 ```
 
-When a milestone changes runtime behavior, its patch also requires a focused
-manual smoke test documented in the milestone notes.
+A milestone that changes the runtime behaviour also needs the focused manual
+smoke test that its section describes.
 
-## 1.15e Progress and override visibility
+## Planned work
 
-- Structured synchronization progress reporting.
-- Progress bar and execution status during real synchronization.
-- Action* (N modified) header showing active user overrides.
-- Color-highlighted manual overrides.
-- Override counts in execution-plan summaries.
-- Tests covering reset-to-default and override counting semantics.
+### Milestone 1.16: profiles and the Ubuntu packaging
 
-## 1.15f Inventory mode
+- complete the profile persistence and the recent-profile handling
+- install the desktop file, the icon, the documentation and the launcher
+- build a Debian package on Ubuntu's system Python and PySide6
+- declare the rsync, OpenSSH, util-linux and optional askpass dependencies
+- add the package installation and the smoke tests
 
-- Optional Show unchanged files mode.
-- Merge comparison results with full inventory view.
-- Unchanged objects displayed as read-only entries.
-- Copy Path action available for unchanged objects.
-- No decisions, actions, reset operations, or synchronization semantics for unchanged objects.
-- Inventory-mode tests and tree-state validation.
+### After 1.16
 
-## Post-1.15f
-
-- Review removal of /tmp/qpy-rsync-smoke execution restriction.
-- Additional synchronization hardening and real-world validation.
-
+- review the removal of the `/tmp/qpy-rsync-smoke` execution restriction
+- harden the synchronization further and validate it on real trees
+- refine the conflict policy of an existing destination object
+- improve the rename and move detection
+- extend the external tools with a per-tool working directory and a
+  per-profile selection
