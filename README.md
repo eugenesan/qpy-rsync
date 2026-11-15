@@ -73,7 +73,17 @@ folder.
 The filter field above the panes matches the names of the items, or their
 relative path when the pattern contains a slash. Shell-style globs work
 (`*.jpg`, `file?.txt`, `[0-9]*`). A pattern that ends with a slash matches
-folders only.
+the folder with that name exactly, and retains its complete subtree.
+
+```text
+guide        matches names containing "guide"
+*.py         matches Python filenames
+file?.txt    uses ? for one character
+[0-9]*       matches names beginning with a digit
+*            shows all changed objects
+.            matches names containing a literal period
+docs/        matches the docs folder exactly and retains its subtree
+```
 
 The branch marker in front of a folder folds its contents out of the list.
 Folding is a view-only operation: the synchronization, the totals and the
