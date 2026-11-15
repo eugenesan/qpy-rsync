@@ -319,7 +319,7 @@ class StatisticsBar(QWidget):
             (ChangeAction.UPDATE_METADATA, "metadata"),
             (ChangeAction.REPLACE, "replaced"),
             (ChangeAction.DELETE, "deleted"),
-            (ChangeAction.NO_CHANGE, "unchanged"),
+            (ChangeAction.DESTINATION_ONLY, "kept"),
         ):
             label_text = ACTION_LABELS.get(action, action.value)
             icon = QLabel()
@@ -351,7 +351,7 @@ class StatisticsBar(QWidget):
             "metadata": summary.metadata,
             "replaced": summary.replacements,
             "deleted": summary.deletions,
-            "unchanged": summary.retained_destination_only,
+            "kept": summary.retained_destination_only,
         }
         for key, value in values.items():
             self._rows[key].setText(f"{value:,}")

@@ -642,3 +642,9 @@
   toggling a column updates the panes immediately.
 - The modified columns can be shown again after they are switched off: the
   default hidden set is kept separate from a saved empty set.
+
+## milestone 1.15bp the overview shows "Keep in destination"
+
+- The statistics bar now shows "Keep in Destination" (the count of the
+  destination-only items that are kept) instead of an "Unchanged" entry that
+  was always zero, because the comparison plan contains no unchanged items.
