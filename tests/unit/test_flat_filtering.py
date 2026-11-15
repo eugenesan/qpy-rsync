@@ -301,6 +301,29 @@ def test_showing_stashed_items_does_not_change_the_visible_set() -> None:
     application.processEvents()
 
 
+def test_a_trailing_slash_matches_the_directory_exactly() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("test/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("tests/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+            Change("dir test/c.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
+        ]
+    )
+    model.set_path_filter("test/")
+    paths = set(_paths(model))
+    assert "test" in paths
+    assert "test/a.txt" in paths
+    assert "tests" not in paths
+    assert "dir test" not in paths
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_a_trailing_slash_filters_directories_in() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_change_model import FlatChangeModel

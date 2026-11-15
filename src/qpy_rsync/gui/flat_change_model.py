@@ -604,6 +604,12 @@ class FlatChangeModel(QAbstractTableModel):
             return True
         if self._directories_only and not is_directory:
             return False
+        if self._directories_only and is_directory and not self._pattern_is_glob:
+            # A pattern that ends with a slash names a directory: it matches
+            # the directory with that name, not every name that contains it.
+            if path is not None and "/" in self._pattern:
+                return path.casefold() == self._pattern.casefold()
+            return name.casefold() == self._pattern.casefold()
         if path is not None and "/" in self._pattern:
             candidate = path.casefold()
         else:
