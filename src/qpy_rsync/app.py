@@ -182,9 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     migrate_legacy_settings()
     window = MainWindow()
-    from qpy_rsync.gui.about import version_string
-
-    window.setWindowTitle(version_string())
+    window.setWindowTitle("qpy-rsync")
     if icon_path.is_file():
         window.setWindowIcon(QIcon(str(icon_path)))
     window.apply_startup_options(options)
