@@ -330,18 +330,25 @@ class _StretchableHeader(QHeaderView):
             available = self.width()
             if self._user_resized:
                 # The item column was claimed: grow the last visible column so
-                # the right edge of the header sticks to the view.
+                # the right edge of the header sticks to the view. Cap the
+                # growth so a narrow item column does not make the size column
+                # absurdly wide.
                 stretch = self._last_visible_section()
                 if stretch is None or stretch == self._stretch_section:
                     return
+                default = self.sectionSize(stretch)
+                cap = default * 2
             else:
                 stretch = self._stretch_section
+                cap = None
             used = sum(
                 self.sectionSize(i)
                 for i in range(self.count())
                 if i != stretch and not self.isSectionHidden(i)
             )
             new_width = max(self.minimumSectionSize(), available - used)
+            if cap is not None:
+                new_width = min(new_width, cap)
             self._auto_resizing = True
             self.resizeSection(stretch, new_width)
             self._auto_resizing = False
