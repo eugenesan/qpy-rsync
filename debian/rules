@@ -13,5 +13,5 @@ override_dh_auto_install:
 	dh_auto_install
 	install -D -m 0644 qpy-rsync.svg \
 		debian/qpy-rsync/usr/share/icons/hicolor/scalable/apps/qpy-rsync.svg
-	install -D -m 0644 debian/qpy-rsync.desktop \
+	install -D -m 0644 qpy-rsync.desktop \
 		debian/qpy-rsync/usr/share/applications/qpy-rsync.desktop

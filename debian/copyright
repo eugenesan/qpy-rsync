@@ -1,9 +1,9 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: qpy-rsync
-Source: https://github.com/qpy-rsync/qpy-rsync
+Source: https://github.com/eugenesan/qpy-rsync
 
 Files: *
-Copyright: qpy-rsync contributors
+Copyright: Eugene San (eugenesan) <eugenesan@gmail.com>
 License: GPL-3.0-or-later
  This program is free software: you can redistribute it and/or modify it
  under the terms of the GNU General Public License as published by the Free

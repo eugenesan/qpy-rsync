@@ -1,8 +1,11 @@
-qpy-rsync (0.2.0) unstable; urgency=low
+qpy-rsync (0.2.0-0) resolute; urgency=medium
 
-  * Flat comparison list with stashing, folding and external tools.
+  * New upstream version
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Sun, 15 Nov 2026 12:15:21 -0700
+
+qpy-rsync (0.1.0-0) resolute; urgency=low
+
   * Initial Debian packaging.
-  * Preview-driven comparison, verification and synchronization with rsync.
-  * Overview pane, journal with session log and pausable transfers.
 
- -- qpy-rsync contributors <qpy-rsync@localhost>  Thu, 12 Nov 2026 12:00:00 +0000
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Thu, 12 Nov 2026 12:00:00 +0000
