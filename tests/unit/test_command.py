@@ -123,9 +123,9 @@ def test_local_backup_directory_expands_home(monkeypatch) -> None:
     assert "--backup-dir=/home/tester/dst/.backup" in arguments
     assert "P /.backup/***" in arguments
 
-def test_the_comparison_has_no_progress_that_could_break_the_records() -> None:
+def test_the_comparison_reports_progress_without_breaking_the_records() -> None:
     arguments = list(build_compare_spec(profile()).arguments)
-    # Rsync writes the progress to stdout with a carriage return, so it ends
-    # up in front of the next record and the parser reads a broken code.
-    assert "--info=progress2" not in arguments
+    # The compare service splits stdout on carriage returns, so progress2 can
+    # no longer be glued to the following record.
+    assert "--info=progress2" in arguments
     assert "--info=progress2" in list(build_sync_spec(profile()).arguments)
