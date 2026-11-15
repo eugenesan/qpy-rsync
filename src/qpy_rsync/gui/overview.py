@@ -402,7 +402,12 @@ class OverviewPane(QWidget):
         self.tree.header().resizeSection(OverviewModel.FOLDER, 200)
         self.tree.header().resizeSection(OverviewModel.SHARE, 96)
         self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
-        self.tree.header().resizeSection(OverviewModel.SIZE, 70)
+        # The size column is the same width as in the comparison panes.
+        from PySide6.QtWidgets import QHeaderView as _QHeaderView
+        metrics = self.tree.fontMetrics()
+        self.tree.header().resizeSection(
+            OverviewModel.SIZE, metrics.horizontalAdvance("0" * 11) + 8
+        )
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
         self.statistics = StatisticsBar(self)
