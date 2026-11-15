@@ -1,31 +1,29 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
+from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.core.enums import FilterRuleType
 from qpy_rsync.core.models import FilterRule
-from qpy_rsync.gui.filter_editor import FilterEditorDialog, FilterTypeDelegate
+from qpy_rsync.gui.filter_editor import FilterEditorDialog
 
 
 def app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
-def test_filter_type_column_uses_dropdown_editor() -> None:
+def test_filter_editor_converts_bare_lines_to_exclusions() -> None:
     application = app()
     dialog = FilterEditorDialog([FilterRule("*.tmp", rule_type=FilterRuleType.EXCLUDE)])
-    delegate = dialog.table.itemDelegateForColumn(dialog.model.TYPE)
-    assert isinstance(delegate, FilterTypeDelegate)
-    index = dialog.model.index(0, dialog.model.TYPE)
-    option = QStyleOptionViewItem()
+    assert any("- *.tmp" in line or "*.tmp" in line for line in dialog.text().splitlines())
+    dialog.close()
+    application.processEvents()
 
-    editor = delegate.createEditor(dialog.table.viewport(), option, index)
-    delegate.setEditorData(editor, index)
-    assert editor.currentData() == FilterRuleType.EXCLUDE.value
 
-    editor.setCurrentIndex(editor.findData(FilterRuleType.INCLUDE.value))
-    delegate.setModelData(editor, dialog.model, index)
-    assert dialog.model.rules[0].rule_type is FilterRuleType.INCLUDE
+def test_filter_editor_empty_uses_examples() -> None:
+    application = app()
+    dialog = FilterEditorDialog([])
+    assert "Order of filters" in dialog.text()
+    assert dialog.rules() == []
     dialog.close()
     application.processEvents()
