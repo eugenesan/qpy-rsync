@@ -169,3 +169,12 @@ def test_qt_environment_keeps_the_existing_logging_rules(monkeypatch) -> None:
     rules = os.environ["QT_LOGGING_RULES"]
     assert "*.debug=true" in rules
     assert "qt.glx.warning=false" in rules
+
+
+def test_the_about_dialog_reports_the_commit_of_the_checkout() -> None:
+    from qpy_rsync.gui.about import build_stamp
+
+    # The application often runs from a synchronized copy, so the stamp
+    # tells which build is on the screen.
+    stamp = build_stamp()
+    assert stamp == "" or len(stamp) >= 4

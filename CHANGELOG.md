@@ -583,3 +583,9 @@
 
 - The action of an item now follows the attributes that rsync reports. A file whose modification time, permissions, owner or group changed is a metadata change, even though rsync marks it with the transfer marker. Only a changed value or a changed size is a content change.
 - The right-click menu of the log button has a "Clear Log" entry that empties the log file and keeps the session logging into it.
+
+## milestone 1.15bm the build in the about dialog
+
+- The About dialog reports the commit of the checkout, so it is visible which
+  build is on the screen. The application often runs from a copy that is
+  synchronized from another machine.
