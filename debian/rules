@@ -8,14 +8,3 @@ export PYBUILD_NAME = qpy-rsync
 # The test suite starts Qt applications; it runs in the repository, not
 # during a package build.
 override_dh_auto_test:
-
-override_dh_auto_install:
-	dh_auto_install
-	install -D -m 0644 qpy-rsync.svg \
-		debian/qpy-rsync/usr/share/icons/hicolor/scalable/apps/qpy-rsync.svg
-	install -D -m 0644 qpy-rsync.desktop \
-		debian/qpy-rsync/usr/share/applications/qpy-rsync.desktop
-	install -D -m 0644 README.md \
-		debian/qpy-rsync/usr/share/doc/qpy-rsync/readme.md
-	install -D -m 0644 CHANGELOG.md \
-		debian/qpy-rsync/usr/share/doc/qpy-rsync/changelog.md
