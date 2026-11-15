@@ -69,6 +69,8 @@ def _rules_to_text(rules: list[FilterRule]) -> str:
             base = item.rule if item.rule.lstrip().startswith("-") else item.rule
         else:
             base = item.rule
+        if item.comment:
+            lines.append(f"# {item.comment}")
         if not item.enabled:
             base = f"# {base}"
         lines.append(base)
