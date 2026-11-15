@@ -1200,12 +1200,16 @@ class FlatChangeModel(QAbstractTableModel):
             destination_modified = ""
             if row.change is not None:
                 source_modified = row.change.modified_time or ""
-                destination_modified = row.change.destination_time or ""
+                # The destination time is filled in later, by the metadata
+                # listing, so it is taken from there.
+                _size, destination_modified = self._destination_info(row.path)
+                destination_modified = destination_modified or ""
             elif row.is_directory:
                 directory = self._directories.get(row.path)
                 if directory is not None and directory.own_change is not None:
                     source_modified = directory.own_change.modified_time or ""
-                    destination_modified = directory.own_change.destination_time or ""
+                    _size, destination_modified = self._destination_info(row.path)
+                    destination_modified = destination_modified or ""
             tooltip = (
                 f"Source: {source_full}\n"
                 f"Destination: {destination_full}\n"
