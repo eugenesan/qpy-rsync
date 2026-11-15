@@ -1306,13 +1306,35 @@ class MainWindow(QMainWindow):
             )
         elif section == "logging":
             open_action.setEnabled(bool(self.log_file_edit.text().strip()))
+        clear = None
+        if section == "logging":
+            clear = menu.addAction("Clear Log")
         configure = menu.addAction("Configure...")
         selected = menu.exec(button.mapToGlobal(point))
         if selected is open_action:
             if open_action.isEnabled():
                 button.click()
+        elif selected is clear:
+            self._clear_log()
         elif selected is configure:
             self._edit_settings(section)
+
+    def _clear_log(self) -> None:
+        """Empty the session log file and keep logging into it."""
+        text = self.log_file_edit.text().strip()
+        target = Path(text).expanduser() if text else self._log_file_path
+        self._close_session_log()
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("", encoding="utf-8")
+        except OSError as exc:
+            self._set_status(f"Could not clear the log file: {exc}", "error")
+            return
+        # The session continues in the file that was cleared.
+        self._log_file_path = target
+        self._write_session_log("The log file was cleared.")
+        self._append_log(f"The log file was cleared: {target}", severity="info")
+        self._set_status(f"The log file was cleared: {target}")
 
     def _edit_settings(self, section: str = "general") -> None:
         """Open the settings dialog on the given section."""

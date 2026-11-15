@@ -35,7 +35,15 @@ def _action(code: str, *, delete_enabled: bool) -> ChangeAction:
     attrs = code[2:]
     if "+" in attrs:
         return ChangeAction.CREATE
-    if code[0] in {">", "<"} or attrs[0] in {"c", "s"}:
+    if code[0] in {"c", "h"}:
+        # A local change, such as a symlink that points somewhere new, or a
+        # new hard link: the content is different.
+        return ChangeAction.UPDATE_CONTENT
+    # The first two attributes are the value and the size; they describe the
+    # content. A transfer that only changes the time, the permissions, the
+    # owner, the group or the attributes is a metadata change, even though
+    # rsync reports it with the transfer marker.
+    if attrs[0] == "c" or attrs[1] == "s":
         return ChangeAction.UPDATE_CONTENT
     if any(char not in {".", " "} for char in attrs):
         return ChangeAction.UPDATE_METADATA

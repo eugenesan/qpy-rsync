@@ -578,3 +578,8 @@
 - The model is reset when the rows change instead of announcing a layout change. A layout change left the accessibility interface with a stale row count, which produced the "QAccessibleTable::child: Invalid index" warnings.
 - The selected row is kept when the model is reset.
 - The harmless OpenGL notices of the KDE platform theme ("Cannot create platform OpenGL context" and "fallback to QtQuick software backend") are kept out of the terminal; every other message still comes through.
+
+## milestone 1.15bl the action of an item and the log file
+
+- The action of an item now follows the attributes that rsync reports. A file whose modification time, permissions, owner or group changed is a metadata change, even though rsync marks it with the transfer marker. Only a changed value or a changed size is a content change.
+- The right-click menu of the log button has a "Clear Log" entry that empties the log file and keeps the session logging into it.

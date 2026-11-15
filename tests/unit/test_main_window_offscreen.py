@@ -1306,3 +1306,21 @@ def test_asking_for_the_unchanged_items_switches_the_inventory_on() -> None:
     assert window.inventory_after_compare_button.isChecked() is True
     window.close()
     application.processEvents()
+
+
+def test_the_log_file_can_be_cleared(tmp_path) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    log_file = tmp_path / "session.log"
+    log_file.write_text("the old session\n", encoding="utf-8")
+    window.log_file_edit.setText(str(log_file))
+
+    window._clear_log()
+    application.processEvents()
+
+    contents = log_file.read_text(encoding="utf-8")
+    assert "the old session" not in contents
+    assert "cleared" in contents
+    window.close()
+    application.processEvents()
