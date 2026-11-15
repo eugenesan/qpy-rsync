@@ -23,6 +23,27 @@ _MODE_ARGUMENTS = {
 }
 
 
+def _build_stamp() -> str:
+    """The commit of the checkout, when the tool runs from one."""
+    from pathlib import Path
+    import subprocess
+
+    root = Path(__file__).resolve().parents[2]
+    if not (root / ".git").exists():
+        return ""
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "--short", "HEAD"),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="qpy-rsync-cli",
@@ -61,6 +82,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-command",
         action="store_true",
         help="print the exact argument vector before comparison",
+    )
+    stamp = _build_stamp()
+    version_text = "qpy-rsync-cli 0.2.0"
+    if stamp:
+        version_text = f"{version_text} ({stamp})"
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=version_text,
+        help="print the version and exit",
     )
     return parser
 
