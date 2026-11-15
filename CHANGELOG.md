@@ -669,3 +669,13 @@
   statistics bar is not clipped without taking too much room.
 - Loading a profile now refreshes the startup status, so the "Enter locations
   to compare" message is replaced with the proper state.
+
+## milestone 1.15bq the item column and the size column
+
+- The item column takes the free space by default and stays resizable. Once
+  it is resized by hand, the last visible column absorbs the free space, so
+  the right edge of the header sticks to the view.
+- The size column is sized for nine characters, which fits "999.9 KiB".
+- The modified column is sized for nineteen characters.
+- The overview pane's size column is the same width as the one in the
+  comparison panes.

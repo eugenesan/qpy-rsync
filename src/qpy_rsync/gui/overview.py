@@ -393,7 +393,7 @@ class OverviewPane(QWidget):
         )
         self.tree.header().setSortIndicatorShown(True)
         self.tree.header().setSectionsClickable(True)
-        self.tree.header().setStretchLastSection(True)
+        self.tree.header().setStretchLastSection(False)
         self.tree.header().setFixedHeight(_header_height(self.tree))
         for section in range(OverviewModel.COLUMN_COUNT):
             self.tree.header().setSectionResizeMode(
@@ -402,7 +402,7 @@ class OverviewPane(QWidget):
         self.tree.header().resizeSection(OverviewModel.FOLDER, 200)
         self.tree.header().resizeSection(OverviewModel.SHARE, 96)
         self.tree.header().resizeSection(OverviewModel.ITEMS, 56)
-        self.tree.header().resizeSection(OverviewModel.SIZE, 84)
+        self.tree.header().resizeSection(OverviewModel.SIZE, 70)
         self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.tree, 1)
         self.statistics = StatisticsBar(self)

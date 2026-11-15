@@ -655,7 +655,7 @@ class FlatComparisonView(QWidget):
             header._auto_resizing = True
         metrics = self.source.fontMetrics()
         size_width = metrics.horizontalAdvance("0" * 9) + 8
-        time_width = metrics.horizontalAdvance("0" * 19) + 8
+        time_width = metrics.horizontalAdvance("0" * 16) + 8
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
@@ -1473,7 +1473,7 @@ class FlatComparisonView(QWidget):
         # time columns wide enough for their content.
         metrics = self.source.fontMetrics()
         min_size = metrics.horizontalAdvance("0" * 9)
-        min_time = metrics.horizontalAdvance("0" * 19)
+        min_time = metrics.horizontalAdvance("0" * 16)
         for tree, name_column in (
             (self.source, self.model.SOURCE_NAME),
             (self.destination, self.model.DESTINATION_NAME),
