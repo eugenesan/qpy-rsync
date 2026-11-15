@@ -308,32 +308,52 @@ class _StretchableHeader(QHeaderView):
         # user can touch the header, so those events must not look like a
         # manual resize.
         self._auto_resizing = True
+        self._growing = False
         self.sectionResized.connect(self._section_resized)
 
     def _section_resized(self, logical_index: int, _old: int, _new: int) -> None:
         if logical_index == self._stretch_section and not self._auto_resizing:
             self._user_resized = True
-        elif not self._user_resized and logical_index != self._stretch_section:
+        if not self._auto_resizing and not self._growing:
             self._grow()
 
     def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
-        if not self._user_resized:
+        if not self._growing:
             self._grow()
 
     def _grow(self) -> None:
-        if self._user_resized or self._stretch_section is None:
+        if self._growing or self._stretch_section is None:
             return
-        available = self.width()
-        used = sum(
-            self.sectionSize(i)
-            for i in range(self.count())
-            if i != self._stretch_section and not self.isSectionHidden(i)
-        )
-        new_width = max(self.minimumSectionSize(), available - used)
-        self._auto_resizing = True
-        self.resizeSection(self._stretch_section, new_width)
-        self._auto_resizing = False
+        self._growing = True
+        try:
+            available = self.width()
+            if self._user_resized:
+                # The item column was claimed: grow the last visible column so
+                # the right edge of the header sticks to the view.
+                stretch = self._last_visible_section()
+                if stretch is None or stretch == self._stretch_section:
+                    return
+            else:
+                stretch = self._stretch_section
+            used = sum(
+                self.sectionSize(i)
+                for i in range(self.count())
+                if i != stretch and not self.isSectionHidden(i)
+            )
+            new_width = max(self.minimumSectionSize(), available - used)
+            self._auto_resizing = True
+            self.resizeSection(stretch, new_width)
+            self._auto_resizing = False
+        finally:
+            self._growing = False
+
+    def _last_visible_section(self) -> int | None:
+        """The last visible section, or None."""
+        for i in range(self.count() - 1, -1, -1):
+            if not self.isSectionHidden(i):
+                return i
+        return None
 
 
 class FlatComparisonView(QWidget):
@@ -515,7 +535,7 @@ class FlatComparisonView(QWidget):
         # The stretchable header grows the stretch section on every resize.
         for section in range(header.count()):
             header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
         header.setSortIndicatorShown(True)
         header.setSectionsClickable(True)
         pane.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

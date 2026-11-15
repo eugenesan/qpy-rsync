@@ -655,3 +655,10 @@
   matches the total of the comparison when everything is checked. The bytes
   that will actually be written stay in the plan summary and the confirmation
   dialog.
+
+## milestone 1.15bo the item column and the size column
+
+- The item column takes the free space by default and stays resizable. Once
+  it is resized by hand, the last visible column absorbs the free space, so
+  the right edge of the header sticks to the view.
+- The size column is sized for eight characters.
