@@ -662,3 +662,10 @@
   it is resized by hand, the last visible column absorbs the free space, so
   the right edge of the header sticks to the view.
 - The size column is sized for eight characters.
+
+## milestone 1.15bp the overview pane
+
+- The overview pane starts 460 px wide and defaults to 500 px, so the
+  statistics bar is not clipped without taking too much room.
+- Loading a profile now refreshes the startup status, so the "Enter locations
+  to compare" message is replaced with the proper state.

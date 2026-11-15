@@ -369,7 +369,7 @@ class OverviewPane(QWidget):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("overview-pane")
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(460)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
