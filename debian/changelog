@@ -1,3 +1,11 @@
+qpy-rsync (0.2.1-0) resolute; urgency=medium
+
+  * 2.0.1: the filter editor is now a single text editor using rsync
+    filter syntax, with syntax highlighting, validation, a live preview,
+    Import/Export/OK/Cancel buttons and a Help button.
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Sun, 15 Nov 2026 18:00:00 -0700
+
 qpy-rsync (0.2.0-0) resolute; urgency=medium
 
   * 0.2.0: flat comparison list with stashing, folding, external tools,

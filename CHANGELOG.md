@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1
+
+- The filter editor is now a single text editor using rsync filter syntax;
+  lines without an operator are treated as exclusions, and commenting or
+  uncommenting a line is the only way to enable or disable a rule.
+- The editor provides syntax highlighting, validation and a live preview of
+  how the current line is interpreted, plus Import, Export, OK and Cancel
+  buttons and a Help button with an rsync filter explanation.
+- Progress reporting is restored to the dry-run comparison.
+- The window title no longer carries the version string.
+
+
 - The readme describes the application, its usage and its screenshots, and
   points at the installation and the debugging documents.
 - The design, the architecture and the specifications live in one document,
