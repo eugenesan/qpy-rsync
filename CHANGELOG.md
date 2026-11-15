@@ -635,3 +635,10 @@
 - The open buttons of the source and destination use the cloud-upload and
   cloud-download icons. The "Source" and "Destination" labels and the arrow
   above the action filters are gone, so the row is shorter.
+
+## milestone 1.15bp the column menu and the modified column
+
+- The header context menu now applies the column visibility right away, so
+  toggling a column updates the panes immediately.
+- The modified columns can be shown again after they are switched off: the
+  default hidden set is kept separate from a saved empty set.

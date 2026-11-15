@@ -553,21 +553,21 @@ class FlatComparisonView(QWidget):
     def _hidden_columns(self, pane: str) -> set[int]:
         """The optional columns of a pane that the user switched off."""
         key = f"comparison/flat-hidden-{pane}"
+        # The modified columns are hidden by default; they are still
+        # reachable from the action tooltip. A saved, empty set is different
+        # from "never saved", so the user's choice to show the modified
+        # column survives.
+        if not app_settings().contains(key):
+            if pane == "source":
+                return {self.model.SOURCE_TIME}
+            return {self.model.DESTINATION_TIME}
         stored = str(app_settings().value(key, "")).strip()
         hidden: set[int] = set()
-        if stored:
-            for value in stored.split(","):
-                try:
-                    hidden.add(int(value))
-                except ValueError:
-                    continue
-        else:
-            # The modified columns are hidden by default: they are usually
-            # not needed, and the modification time is in the action tooltip.
-            if pane == "source":
-                hidden = {self.model.SOURCE_TIME}
-            else:
-                hidden = {self.model.DESTINATION_TIME}
+        for value in stored.split(","):
+            try:
+                hidden.add(int(value))
+            except ValueError:
+                continue
         return hidden
 
     def _save_hidden_columns(self, pane: str, hidden: set[int]) -> None:
