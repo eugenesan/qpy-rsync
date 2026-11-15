@@ -98,6 +98,9 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
 _BENIGN_QT_MESSAGES = (
     "Cannot create platform OpenGL context",
     "fallback to QtQuick software backend",
+    "Socket not connected",
+    "QLocalSocket::PeerClosedError",
+    "Connection::send() called with connection not inited",
 )
 
 

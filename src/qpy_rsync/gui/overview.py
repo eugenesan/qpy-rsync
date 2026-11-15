@@ -304,11 +304,13 @@ class StatisticsBar(QWidget):
         actions_row.setSpacing(4)
         self.summary = QLabel("")
         self.summary.setObjectName("statistics-summary")
-        self.summary.setToolTip(
-            "Selected: the items that are checked in the comparison, with "
-            "their total size and the count of each action. The six icons "
+        tooltip = (
+            "Selected: the items that are checked in the comparison,\n"
+            "with their total size and the count of each action. The icons "
             "below are the same actions."
         )
+        self.summary.setToolTip(tooltip)
+        self.setToolTip(tooltip)
         actions_row.addWidget(self.summary)
         actions_row.addSpacing(8)
         for action, key in (
@@ -367,7 +369,7 @@ class OverviewPane(QWidget):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("overview-pane")
-        self.setMinimumWidth(580)
+        self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)

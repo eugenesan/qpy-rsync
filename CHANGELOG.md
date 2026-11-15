@@ -621,3 +621,17 @@
   width are widened to the same minimum.
 - The modified columns are hidden by default; the modification time is
   shown in the tooltip of the action column instead.
+
+## milestone 1.15bo the overview and the sync dialog
+
+- The "Selected:" heading is a two-line tooltip on the whole statistics bar.
+- The overview pane starts 480 px wide and defaults to 540 px, so the
+  statistics bar is not clipped without being too wide.
+- The sync dialog's command stops growing once it is fully visible; the
+  decision rules keep the free space.
+- The progress bar is reset when the sync dialog is dismissed.
+- The terminal no longer shows the harmless KDE/Qt notices about the socket
+  and the OpenGL context.
+- The open buttons of the source and destination use the cloud-upload and
+  cloud-download icons. The "Source" and "Destination" labels and the arrow
+  above the action filters are gone, so the row is shorter.

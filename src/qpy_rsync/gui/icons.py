@@ -291,6 +291,28 @@ def folder_open_icon() -> QIcon:
     )
 
 
+@lru_cache(maxsize=None)
+def cloud_upload_icon() -> QIcon:
+    """The system icon for uploading to the source side."""
+    return _theme_icon(
+        "cloud-upload-symbolic",
+        "cloud-upload",
+        "go-up",
+        fallback=QStyle.StandardPixmap.SP_ArrowUp,
+    )
+
+
+@lru_cache(maxsize=None)
+def cloud_download_icon() -> QIcon:
+    """The system icon for downloading from the destination side."""
+    return _theme_icon(
+        "cloud-download-symbolic",
+        "cloud-download",
+        "go-down",
+        fallback=QStyle.StandardPixmap.SP_ArrowDown,
+    )
+
+
 def folder_add_icon() -> QIcon:
     """The system icon for choosing a directory."""
     return _theme_icon(

@@ -163,6 +163,8 @@ from .icons import (
     backup_icon,
     folder_add_icon,
     folder_open_icon,
+    cloud_download_icon,
+    cloud_upload_icon,
     log_file_icon,
     open_icon,
     pause_icon,
@@ -493,42 +495,12 @@ class MainWindow(QMainWindow):
         destination_panel = self._location_panel("Destination", self.destination_edit)
         # The direction line above the checkboxes names both sides, so the
         # Source and Destination glyphs are not needed.
-        direction = QWidget(self)
-        direction_layout = QHBoxLayout(direction)
-        direction_layout.setContentsMargins(0, 0, 0, 0)
-        direction_layout.setSpacing(4)
-        # The line is secondary to the checkboxes, so it is kept to a single
-        # compact row instead of a full label row of its own.
-        direction.setFixedHeight(16)
-        source_label = QLabel("Source")
-        source_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        destination_label = QLabel("Destination")
-        destination_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        label_font = source_label.font()
-        label_font.setPointSizeF(max(8.5, label_font.pointSizeF() * 0.85))
-        source_label.setFont(label_font)
-        destination_label.setFont(label_font)
-        arrow = QLabel("\u2192")
-        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        arrow.setToolTip("Source is compared with Destination")
-        arrow.setObjectName("sync-direction-arrow")
-        arrow_font = arrow.font()
-        arrow_font.setPointSizeF(max(9.0, label_font.pointSizeF() * 1.1))
-        arrow_font.setBold(True)
-        arrow.setFont(arrow_font)
-        direction_layout.addWidget(source_label, 1)
-        direction_layout.addWidget(arrow, 0)
-        direction_layout.addWidget(destination_label, 1)
-        direction.setObjectName("sync-direction")
+        # The action filters sit on their own; the Source and Destination
+        # glyphs above them were redundant, so the row is just the filters.
         filter_column = QWidget(self)
         filter_column_layout = QVBoxLayout(filter_column)
         filter_column_layout.setContentsMargins(0, 0, 0, 0)
         filter_column_layout.setSpacing(0)
-        filter_column_layout.addWidget(direction, 0)
         filter_column_layout.addWidget(
             self.action_filters, 0, Qt.AlignmentFlag.AlignBottom
         )
@@ -619,7 +591,7 @@ class MainWindow(QMainWindow):
         log_splitter.setStretchFactor(0, 1)
         log_splitter.setStretchFactor(1, 0)
         # The overview carries the statistics bar, so it gets the room.
-        log_splitter.setSizes([500, 620])
+        log_splitter.setSizes([700, 540])
         log_layout.addWidget(log_splitter, 1)
         splitter.addWidget(log_panel)
         splitter.setSizes([380, 250])
@@ -991,7 +963,7 @@ class MainWindow(QMainWindow):
         row.setSpacing(4)
         open_button = self._external_open_button(
             f"{title.lower()}-open-button",
-            folder_open_icon(),
+            cloud_upload_icon() if title == "Source" else cloud_download_icon(),
             f"Open the {title} directory",
             lambda: self._open_location_directory(title),
         )
@@ -1831,6 +1803,10 @@ class MainWindow(QMainWindow):
             if not accepted:
                 self._execution_gate.confirmation_cancelled()
                 self.synchronize_button.setEnabled(True)
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setVisible(False)
+                self.progress_label.setText("Synchronization cancelled.")
                 return
             try:
                 self._sync_service.synchronize(

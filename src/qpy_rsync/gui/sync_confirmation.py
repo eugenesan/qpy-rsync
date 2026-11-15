@@ -278,9 +278,11 @@ class SyncConfirmationDialog(QDialog):
         self.preview_splitter.setHandleWidth(6)
         self.preview_splitter.addWidget(command_panel)
         self.preview_splitter.addWidget(rules_panel)
-        self.preview_splitter.setStretchFactor(0, 1)
+        # The command is short and stops growing once it is fully visible;
+        # the decision rules can be long, so they keep the free space.
+        self.preview_splitter.setStretchFactor(0, 0)
         self.preview_splitter.setStretchFactor(1, 1)
-        self.preview_splitter.setSizes([220, 220])
+        self.preview_splitter.setSizes([140, 300])
         layout.addWidget(self.preview_splitter, 1)
 
         self.details = QLabel(
