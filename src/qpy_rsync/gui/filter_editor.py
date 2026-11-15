@@ -29,6 +29,45 @@ from qpy_rsync.core.enums import FilterRuleType
 from qpy_rsync.core.models import FilterRule
 
 
+_RSFILTER_HELP = '''rsync filter rules
+
+Each non-empty, non-comment line is one rule, applied in order; rsync
+stops at the first matching rule.
+
+Operator prefixes (rsync filter syntax):
+  + pattern   include the matching path
+  - pattern   exclude the matching path
+  P pattern   protect (do not delete) the matching path
+  R pattern   risk (allow deletion) of the matching path
+  H pattern   hide the matching path
+  S pattern   show the matching path
+  : pattern   send a rule to the daemon side
+  . pattern   merge a per-directory filter file
+  !           clear the current list of rules
+  (no prefix) treated as an exclusion: "- pattern"
+
+Lines without an operator are interpreted as exclusions.
+
+Comments:
+  A line starting with "#" is a comment and is ignored. Commenting or
+  uncommenting a rule is the only way to enable or disable it.
+
+Patterns:
+  *  matches any path component, but stops at slashes
+  ** matches anything, including slashes
+  ?  matches any single character
+  [..] character class
+  A trailing "/" matches directories only.
+  A leading "/" anchors the pattern to the transfer root.
+
+Examples:
+  __pycache__/        exclude any __pycache__ directory
+  *.pyc               exclude every .pyc file
+  + important.txt     include important.txt even if excluded above
+  - main.py           exclude main.py
+  P cache/***         protect the cache tree from deletion
+'''
+
 _EXAMPLE_TEXT = """# Order of filters is important.
 # Rsync stops at the first matching rule.
 #
@@ -139,8 +178,10 @@ class FilterEditorDialog(QDialog):
 
         import_button = QPushButton("Import", self)
         export_button = QPushButton("Export", self)
+        help_button = QPushButton("Help", self)
         import_button.clicked.connect(self._import)
         export_button.clicked.connect(self._export)
+        help_button.clicked.connect(self._show_help)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -151,6 +192,7 @@ class FilterEditorDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.addWidget(import_button)
         button_row.addWidget(export_button)
+        button_row.addWidget(help_button)
         button_row.addStretch(1)
         button_row.addWidget(buttons)
 
@@ -207,6 +249,24 @@ class FilterEditorDialog(QDialog):
             if rule is not None and validate_rule(rule):
                 return True
         return False
+
+    def _show_help(self) -> None:
+        from PySide6.QtGui import QFontDatabase
+        from PySide6.QtWidgets import QPlainTextEdit as _QPlainTextEdit
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Rsync filters")
+        dialog.resize(640, 520)
+        layout = QVBoxLayout(dialog)
+        viewer = _QPlainTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        viewer.setPlainText(_RSFILTER_HELP)
+        layout.addWidget(viewer, 1)
+        close_buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_buttons.rejected.connect(dialog.reject)
+        layout.addWidget(close_buttons)
+        dialog.exec()
 
     def _import(self) -> None:
         name, _ = QFileDialog.getOpenFileName(self, "Import rsync filter file")
