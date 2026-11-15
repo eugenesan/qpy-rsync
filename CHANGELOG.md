@@ -602,3 +602,10 @@
   the "Selected:" line and the six per-action counts are never clipped.
 - The per-action values get 30 px instead of 22 px, which is enough for a
   three-digit count.
+
+## milestone 1.15bo the size and the time columns
+
+- The size and the modified columns of the comparison list are sized for ten
+  and twenty-one characters, so a long size or a timestamp does not get
+  clipped. Saved states that carry a narrower width are widened to the same
+  minimum.

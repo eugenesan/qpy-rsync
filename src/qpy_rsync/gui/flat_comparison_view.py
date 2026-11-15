@@ -626,14 +626,17 @@ class FlatComparisonView(QWidget):
         # manual resize, so they are made while the header is auto-resizing.
         for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
             header._auto_resizing = True
+        metrics = self.source.fontMetrics()
+        size_width = metrics.horizontalAdvance("0" * 10) + 8
+        time_width = metrics.horizontalAdvance("0" * 21) + 8
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_NAME, 240)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_ITEMS, 60)
-        self.source.horizontalHeader().resizeSection(self.model.SOURCE_SIZE, 90)
-        self.source.horizontalHeader().resizeSection(self.model.SOURCE_TIME, 150)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_SIZE, size_width)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_TIME, time_width)
         self.action.horizontalHeader().setSectionResizeMode(
             self.model.ACTION, QHeaderView.ResizeMode.Interactive
         )
@@ -652,8 +655,8 @@ class FlatComparisonView(QWidget):
         )
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_NAME, 240)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_ITEMS, 60)
-        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE, 90)
-        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_TIME, 150)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE, size_width)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_TIME, time_width)
         for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
             header._auto_resizing = False
         self.source.horizontalHeader()._grow()
@@ -1439,7 +1442,11 @@ class FlatComparisonView(QWidget):
             if isinstance(header, _StretchableHeader):
                 header._auto_resizing = False
         # A saved state can carry a width from an older layout, so the name
-        # columns are kept wide enough to stay readable.
+        # columns are kept wide enough to stay readable, and the size and the
+        # time columns wide enough for their content.
+        metrics = self.source.fontMetrics()
+        min_size = metrics.horizontalAdvance("0" * 10)
+        min_time = metrics.horizontalAdvance("0" * 21)
         for tree, name_column in (
             (self.source, self.model.SOURCE_NAME),
             (self.destination, self.model.DESTINATION_NAME),
@@ -1448,6 +1455,22 @@ class FlatComparisonView(QWidget):
                 if isinstance(tree.horizontalHeader(), _StretchableHeader):
                     tree.horizontalHeader()._auto_resizing = True
                 tree.setColumnWidth(name_column, 240)
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = False
+        for tree, size_column, time_column in (
+            (self.source, self.model.SOURCE_SIZE, self.model.SOURCE_TIME),
+            (self.destination, self.model.DESTINATION_SIZE, self.model.DESTINATION_TIME),
+        ):
+            if tree.columnWidth(size_column) < min_size:
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = True
+                tree.setColumnWidth(size_column, min_size)
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = False
+            if tree.columnWidth(time_column) < min_time:
+                if isinstance(tree.horizontalHeader(), _StretchableHeader):
+                    tree.horizontalHeader()._auto_resizing = True
+                tree.setColumnWidth(time_column, min_time)
                 if isinstance(tree.horizontalHeader(), _StretchableHeader):
                     tree.horizontalHeader()._auto_resizing = False
         self._apply_column_visibility()
