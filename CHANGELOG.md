@@ -1,7 +1,5 @@
 # Changelog
 
-## 0.2.0
-
 - The readme describes the application, its usage and its screenshots, and
   points at the installation and the debugging documents.
 - The design, the architecture and the specifications live in one document,
@@ -10,7 +8,7 @@
 - The version moves from 0.1.0.dev0 to 0.2.0.
 - `dump-content.sh` moves to `tools/`.
 
-## 0.1.0.dev0
+## 0.1.0
 
 - Bootstrap the `qpy-rsync` repository.
 - Add typed profile and endpoint models.
@@ -19,6 +17,7 @@
 - Add a command-preview CLI, tests, and a PySide6 application shell.
 
 - Add Git repository and archive-delivery policy.
+
 
 ## milestone 1
 
@@ -453,7 +452,9 @@
 - Showing the hidden items no longer changes the overview tree or the statistics: the visible set for those still excludes hidden items until one is restored.
 - The context menu offers Open File and Open in Directory for items whose side is local.
 
-## milestone 1.15au hidden items, direction line and filter semantics
+## 0.2.0
+
+## 1.15au hidden items, direction line and filter semantics
 
 - Showing the hidden items now writes to the journal and the progress line, the way the unchanged items do.
 - A row that is hidden carries a crossed-eye marker in the Actions column. The marker is faint on every other row and can be clicked to hide or restore it.
@@ -464,13 +465,13 @@
 - The Overview pane starts wider, its Item column absorbs the extra width, and its footer fits on one row.
 - Verifying the actions no longer fails because an item is hidden: a hidden item is deliberately outside the sync, so the plan that leaves it out is correct.
 
-## milestone 1.15av table panes instead of tree panes
+## 1.15av table panes instead of tree panes
 
 - The three comparison panes are `QTableView` widgets. The list is flat, so a tree kept per-index tree state for rows that never have children, and that was the dominant cost of loading a large comparison.
 - A fixed vertical-header row height replaces `setUniformRowHeights`; the row numbers are hidden and the grid is off, so the panes look the same as before.
 - Measured on the real view with three panes: 300,000 items load in 3.4 s instead of 11.2 s and sort in 3.3 s instead of 11.1 s; 1,200,000 items load in 12.4 s instead of 44.5 s, sort in 9.4 s and filter in 2.2 s, using 1.5 GB.
 
-## milestone 1.15aw compact actions, touch marker and quiet terminal
+## 1.15aw compact actions, touch marker and quiet terminal
 
 - A directory now comes before its own items and then its subdirectories, so a directory sits next to its contents.
 - The stripes alternate row by row, not group by group: a directory and its first item never share a stripe, and no run of items is drawn as one block.
@@ -480,13 +481,13 @@
 - The invalid `QSG_RHI_BACKEND=software` is gone: Qt has no software RHI backend, and asking for one falls back to OpenGL. `QT_QUICK_BACKEND=software` is the setting that selects the software Qt Quick adaptation.
 - GLX probe warnings are kept out of the terminal; on a remote X server they repeated once per probe even though this is a widgets-only application.
 
-## milestone 1.15ax unhide all and action sorting
+## 1.15ax unhide all and action sorting
 
 - The Actions context menu, including the empty part of the Actions pane, offers "Unhide All (N)".
 - The hidden-items toggle has a right-click menu with the same action, and its tooltip points to it.
 - Sorting by the Actions column was already intentional: it sorts the whole list by action label and reverses on a second click. A test now covers ascending and descending order.
 
-## milestone 1.15ay stash and restore
+## 1.15ay stash and restore
 
 - "Hidden items" are now "stashed items". A stashed item is temporarily left out of the sync, kept in memory, and gone after the next comparison; the behavior itself is unchanged.
 - The space bar and the context menu say Stash Item, the restore entries say Restore Item and Restore All Stashed, and the toggle is "Show stashed items".
@@ -494,7 +495,7 @@
 - The overview pane uses the same wording for folders.
 - The internal names follow the UI: `StashedItems`, `model.stash`, `stash_path`, `restore_path`, `restore_all_stashed`, `STASHED_ROLE`.
 
-## milestone 1.15az collapse and expand
+## 1.15az collapse and expand
 
 - Every directory row carries a branch marker in the Item columns. Clicking it folds the directory's contents out of the list; clicking it again expands them. Double-click, Left, and Right work like a tree.
 - Folding is view-only. Folded items remain in the sync, the totals, the statistics, and the overview; only the list rows are out of the way.
@@ -503,11 +504,11 @@
 - Selecting a path from the overview or the filter expands its ancestors first.
 - Folds live in memory, survive sorting and inventory toggles, and are cleared when a new comparison starts.
 
-## milestone 1.15ba pointer focus on the action filters
+## 1.15ba pointer focus on the action filters
 
 - The action filter checkboxes take focus only from the keyboard (`TabFocus`). A pointer click no longer leaves Breeze's focus underline behind, while Tab and Space still reach and toggle the filters.
 
-## milestone 1.15bb the parent folder, colours and filter fixes
+## 1.15bb the parent folder, colours and filter fixes
 
 - The compared folder is the parent of the tree: it has no branch marker, it sits at the far left, and it uses the folder-root-symbolic icon.
 - A created or destination-only item is coloured in the Item column too, not only in the size and the date.
@@ -516,27 +517,27 @@
 - The unchanged items are no longer dropped when an action checkbox is used. The toggle that shows them allows them explicitly.
 - The settings dialog has a test module of its own again.
 
-## milestone 1.15bc external tools
+## 1.15bc external tools
 
 - The settings have a Tools page that lists the tools the context menu of a row offers. A tool is a command with placeholders: `%a`, `%f`, `%x`, `%b` and `%d` for the item in the pane that was clicked, `%A`, `%F`, `%X`, `%B` and `%D` for the item in the other pane, `%R`, `%U`, `%V`, `%W` and `%P` for the remote side of the other pane, `%T` for the tool, `%O` for its options and `%%` for a literal percent.
 - The command is split into words before the placeholders are filled in, so a path with a space stays one argument. A placeholder without a value leaves nothing behind.
 - The diff tool command moved to the same page and uses the same placeholders. An empty field keeps the tool that the system offers.
 - Asking for the unchanged items switches the inventory button on, so the second listing that a comparison needs is explained instead of surprising.
 
-## milestone 1.15bd the inverted click on the action bar
+## 1.15bd the inverted click on the action bar
 
 - Ctrl+click on a checkbox of the action bar inverts the filter: the clicked action is the only one that is shown, and a second inverted click shows everything but that action.
 - The context menu of every checkbox offers the same choice: Show only this, Show everything but this, Show all, and Reset to default, which puts the six action checkboxes back on and the unchanged and stashed toggles back off.
 - A plain click still toggles a single action, and the tooltips mention the inverted click.
 - The stashed items are shown whenever the "Show stashed items" toggle is on, even when the action filters exclude their action. The inverted click on the stashed toggle therefore shows only the stashed items.
 
-## milestone 1.15be the second inverted click
+## 1.15be the second inverted click
 
 - The inverted click on a checkbox of the action bar toggles between two states. The first one shows only the clicked action; the second one, and an inverted click on a switch that is off, reverse it and every action comes back.
 - The reversal leaves the unchanged and the stashed toggles alone, because they are not part of the action filter.
 - The context menu of a checkbox still offers *Show only this*, so the unchanged and the stashed items can be shown on their own.
 
-## milestone 1.15bf the hover, the action colours and the missing side
+## 1.15bf the hover, the action colours and the missing side
 
 - The pointer marks the whole row now, in the pane it is in and in the other one. The tooltips and the context menus stay with their own side.
 - Every action has a colour that marks its items: green for created, light yellow for updated, cyan for metadata only, orange for replaced, red for deleted and brown for the items that only exist in the destination. The glyph of the action carries the same colour.
@@ -545,33 +546,33 @@
 - The file type icons carry the colour of their type, so a picture, a document and an archive are told apart at a glance.
 - The toolbar has its separator between the pause button and the filters button again, the log button uses folder-log-symbolic and the settings button settings-configure-symbolic.
 
-## milestone 1.15bg no placeholder on the root row
+## 1.15bg no placeholder on the root row
 
 - The root row of the comparison shows the name of the compared folder, or nothing when there is no folder yet. A dot would look like an item of the comparison.
 
-## milestone 1.15bh the root folder reads as a folder
+## 1.15bh the root folder reads as a folder
 
 - The root row now shows its full path instead of a dot when the folder has no
   basename, and the root icon is a folder with a mark instead of the
   folder-root-symbolic glyph, which Breeze draws as a slash.
 
-## milestone 1.15bi the root folder icon
+## 1.15bi the root folder icon
 
 - The root folder icon is painted as a folder with a mark, instead of the
   folder-root-symbolic theme icon, which Breeze draws as a slash.
 
-## milestone 1.15bi the root folder is not an item
+## 1.15bi the root folder is not an item
 
 - rsync reports the compared folder itself as "." or "./". That is the root of
   the list, not an item inside it, so it is no longer shown as an item.
 
-## milestone 1.15bj resizable item columns
+## 1.15bj resizable item columns
 
 - The Item columns of the comparison panes and the overview pane take all the
   free space by default, but they can now be resized by dragging their edge.
   The column keeps the chosen width until the comparison changes.
 
-## milestone 1.15bk the records stay clean and the terminal stays quiet
+## 1.15bk the records stay clean and the terminal stays quiet
 
 - The comparison no longer asks rsync for its progress. Rsync writes the progress to stdout with a carriage return, so it ended up in front of the next record and the parser read a broken itemized code. Such a record was reported as a metadata change instead of the change it was.
 - The parser rejects a record whose code is not an rsync itemized code, so a mixed-up line is reported instead of silently changing the action of an item.
@@ -579,38 +580,38 @@
 - The selected row is kept when the model is reset.
 - The harmless OpenGL notices of the KDE platform theme ("Cannot create platform OpenGL context" and "fallback to QtQuick software backend") are kept out of the terminal; every other message still comes through.
 
-## milestone 1.15bl the action of an item and the log file
+## 1.15bl the action of an item and the log file
 
 - The action of an item now follows the attributes that rsync reports. A file whose modification time, permissions, owner or group changed is a metadata change, even though rsync marks it with the transfer marker. Only a changed value or a changed size is a content change.
 - The right-click menu of the log button has a "Clear Log" entry that empties the log file and keeps the session logging into it.
 
-## milestone 1.15bm the build in the about dialog
+## 1.15bm the build in the about dialog
 
 - The About dialog reports the commit of the checkout, so it is visible which
   build is on the screen. The application often runs from a copy that is
   synchronized from another machine.
 
-## milestone 1.15bo the sync dialog and the records
+## 1.15bo the sync dialog and the records
 
 - `decision_filter_lines` was O(N²): for every included item it scanned every excluded directory. A comparison with stashed directories therefore froze while the dialog opened. The excluded directories are now in a set, so the check is linear in the number of items.
 - The sync confirmation dialog shows "Preparing the synchronization..." with a busy bar and repaints while it is built, so the button is seen.
 - The progress label of the comparison now says how many items have been found, updated as the dry run writes them.
 
-## milestone 1.15bm the overview fits the statistics
+## 1.15bm the overview fits the statistics
 
 - The overview pane starts wide enough (580 px) and defaults to 620 px, so
   the "Selected:" line and the six per-action counts are never clipped.
 - The per-action values get 30 px instead of 22 px, which is enough for a
   three-digit count.
 
-## milestone 1.15bo the size and the time columns
+## 1.15bo the size and the time columns
 
 - The size and the modified columns of the comparison list are sized for ten
   and twenty-one characters, so a long size or a timestamp does not get
   clipped. Saved states that carry a narrower width are widened to the same
   minimum.
 
-## milestone 1.15bo the overview fits the statistics
+## 1.15bo the overview fits the statistics
 
 - The "Selected:" heading is now a tooltip on the summary label, with a
   short description of what it counts. The overview pane starts 580 px wide
@@ -622,7 +623,7 @@
 - The modified columns are hidden by default; the modification time is
   shown in the tooltip of the action column instead.
 
-## milestone 1.15bo the overview and the sync dialog
+## 1.15bo the overview and the sync dialog
 
 - The "Selected:" heading is a two-line tooltip on the whole statistics bar.
 - The overview pane starts 480 px wide and defaults to 540 px, so the
@@ -636,41 +637,41 @@
   cloud-download icons. The "Source" and "Destination" labels and the arrow
   above the action filters are gone, so the row is shorter.
 
-## milestone 1.15bp the column menu and the modified column
+## 1.15bp the column menu and the modified column
 
 - The header context menu now applies the column visibility right away, so
   toggling a column updates the panes immediately.
 - The modified columns can be shown again after they are switched off: the
   default hidden set is kept separate from a saved empty set.
 
-## milestone 1.15bp the overview shows "Keep in destination"
+## 1.15bp the overview shows "Keep in destination"
 
 - The statistics bar now shows "Keep in Destination" (the count of the
   destination-only items that are kept) instead of an "Unchanged" entry that
   was always zero, because the comparison plan contains no unchanged items.
 
-## milestone 1.15bp the selected size
+## 1.15bp the selected size
 
 - "Selected:" now shows the total size of the items that are checked, so it
   matches the total of the comparison when everything is checked. The bytes
   that will actually be written stay in the plan summary and the confirmation
   dialog.
 
-## milestone 1.15bo the item column and the size column
+## 1.15bo the item column and the size column
 
 - The item column takes the free space by default and stays resizable. Once
   it is resized by hand, the last visible column absorbs the free space, so
   the right edge of the header sticks to the view.
 - The size column is sized for eight characters.
 
-## milestone 1.15bp the overview pane
+## 1.15bp the overview pane
 
 - The overview pane starts 460 px wide and defaults to 500 px, so the
   statistics bar is not clipped without taking too much room.
 - Loading a profile now refreshes the startup status, so the "Enter locations
   to compare" message is replaced with the proper state.
 
-## milestone 1.15bq the item column and the size column
+## 1.15bq the item column and the size column
 
 - The item column takes the free space by default and stays resizable. Once
   it is resized by hand, the last visible column absorbs the free space, so
@@ -680,7 +681,7 @@
 - The overview pane's size column is the same width as the one in the
   comparison panes.
 
-## milestone 1.15bq the item column and the size column
+## 1.15bq the item column and the size column
 
 - The item column takes the free space by default and stays resizable. Once
   it is resized by hand, the last visible column absorbs the free space, so
@@ -691,7 +692,7 @@
 - The overview pane's size column is the same width as the one in the
   comparison panes.
 
-## milestone 1.15bp the item column and the size column
+## 1.15bp the item column and the size column
 
 - The item column takes the free space by default and stays resizable. Once
   it is resized by hand, the last visible column absorbs the free space, so
@@ -703,7 +704,7 @@
 - The overview pane's size column is the same width as the one in the
   comparison panes.
 
-## milestone 1.15bp the overview pane
+## 1.15bp the overview pane
 
 - The overview pane starts 474 px wide and defaults to 514 px, so the
   statistics bar is not clipped without taking too much room.

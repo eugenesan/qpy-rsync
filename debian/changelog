@@ -1,11 +1,14 @@
 qpy-rsync (0.2.0-0) resolute; urgency=medium
 
-  * New upstream version
+  * 0.2.0: flat comparison list with stashing, folding, external tools,
+    the action colours, the inverted filter click and a quiet terminal.
 
  -- Eugene San (eugenesan) <eugenesan@gmail.com>  Sun, 15 Nov 2026 12:15:21 -0700
 
 qpy-rsync (0.1.0-0) resolute; urgency=low
 
   * Initial Debian packaging.
+  * 0.1.0: the read-only comparison, the per-object decisions, the
+    verification, the confirmation and the synchronization execution.
 
  -- Eugene San (eugenesan) <eugenesan@gmail.com>  Thu, 12 Nov 2026 12:00:00 +0000
