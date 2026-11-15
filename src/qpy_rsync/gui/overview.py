@@ -393,7 +393,7 @@ class OverviewPane(QWidget):
         )
         self.tree.header().setSortIndicatorShown(True)
         self.tree.header().setSectionsClickable(True)
-        self.tree.header().setStretchLastSection(False)
+        self.tree.header().setStretchLastSection(True)
         self.tree.header().setFixedHeight(_header_height(self.tree))
         for section in range(OverviewModel.COLUMN_COUNT):
             self.tree.header().setSectionResizeMode(

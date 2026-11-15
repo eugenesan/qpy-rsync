@@ -515,7 +515,7 @@ class FlatComparisonView(QWidget):
         # The stretchable header grows the stretch section on every resize.
         for section in range(header.count()):
             header.setSectionResizeMode(section, QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(False)
+        header.setStretchLastSection(True)
         header.setSortIndicatorShown(True)
         header.setSectionsClickable(True)
         pane.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -634,8 +634,8 @@ class FlatComparisonView(QWidget):
         for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
             header._auto_resizing = True
         metrics = self.source.fontMetrics()
-        size_width = metrics.horizontalAdvance("0" * 8) + 8
-        time_width = metrics.horizontalAdvance("0" * 21) + 8
+        size_width = metrics.horizontalAdvance("0" * 9) + 8
+        time_width = metrics.horizontalAdvance("0" * 19) + 8
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
@@ -1452,8 +1452,8 @@ class FlatComparisonView(QWidget):
         # columns are kept wide enough to stay readable, and the size and the
         # time columns wide enough for their content.
         metrics = self.source.fontMetrics()
-        min_size = metrics.horizontalAdvance("0" * 8)
-        min_time = metrics.horizontalAdvance("0" * 21)
+        min_size = metrics.horizontalAdvance("0" * 9)
+        min_time = metrics.horizontalAdvance("0" * 19)
         for tree, name_column in (
             (self.source, self.model.SOURCE_NAME),
             (self.destination, self.model.DESTINATION_NAME),

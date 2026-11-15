@@ -1196,20 +1196,27 @@ class FlatChangeModel(QAbstractTableModel):
                     if label and detail_line
                     else (label or detail_line)
                 )
-            modified = ""
-            if row.change is not None and row.change.modified_time:
-                modified = row.change.modified_time
+            source_modified = ""
+            destination_modified = ""
+            if row.change is not None:
+                source_modified = row.change.modified_time or ""
+                destination_modified = row.change.destination_time or ""
             elif row.is_directory:
                 directory = self._directories.get(row.path)
                 if directory is not None and directory.own_change is not None:
-                    modified = directory.own_change.modified_time or ""
+                    source_modified = directory.own_change.modified_time or ""
+                    destination_modified = directory.own_change.destination_time or ""
             tooltip = (
                 f"Source: {source_full}\n"
                 f"Destination: {destination_full}\n"
                 f"{details}"
             )
-            if modified:
-                tooltip += f"\nModified: {modified}"
+            if source_modified or destination_modified:
+                tooltip += "\nModified:"
+                if source_modified:
+                    tooltip += f" source {source_modified}"
+                if destination_modified:
+                    tooltip += f", destination {destination_modified}"
             return tooltip
         if destination_column:
             return destination_full

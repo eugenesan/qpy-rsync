@@ -379,8 +379,9 @@ def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
     index = view.model.index(row, view.model.ACTION)
     assert view.model.data(index, STASHED_ROLE) is True
 
-    rect = view.action.visualRect(index)
-    point = ActionColumnDelegate.marker_rect(rect).center()
+    def marker_point() -> "QPoint":
+        rect = view.action.visualRect(index)
+        return ActionColumnDelegate.marker_rect(rect).center()
 
     def tap(at: object) -> None:
         event = QMouseEvent(
@@ -394,13 +395,14 @@ def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
         QApplication.sendEvent(view.action.viewport(), event)
 
     # The click must reach the viewport and restore the stashed row.
-    tap(point)
+    tap(marker_point())
     assert view.stashed_paths() == set()
     # The same spot hides it again, so the marker toggles both ways.
-    tap(point)
+    tap(marker_point())
     assert view.stashed_paths() == {"a.txt"}
     # A finger is less precise than a pointer: the row edge is accepted too.
-    tap(QPoint(point.x(), rect.top() + 1))
+    rect = view.action.visualRect(index)
+    tap(QPoint(marker_point().x(), rect.top() + 1))
     assert view.stashed_paths() == set()
     view.close()
     application.processEvents()
