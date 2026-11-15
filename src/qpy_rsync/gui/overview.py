@@ -323,7 +323,7 @@ class StatisticsBar(QWidget):
             icon.setToolTip(label_text)
             value = QLabel("0")
             value.setToolTip(label_text)
-            value.setMinimumWidth(22)
+            value.setMinimumWidth(30)
             actions_row.addWidget(icon)
             actions_row.addWidget(value)
             self._rows[key] = value
@@ -365,7 +365,7 @@ class OverviewPane(QWidget):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("overview-pane")
-        self.setMinimumWidth(430)
+        self.setMinimumWidth(580)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)

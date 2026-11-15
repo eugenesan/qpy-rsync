@@ -618,7 +618,8 @@ class MainWindow(QMainWindow):
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
         log_splitter.setStretchFactor(1, 0)
-        log_splitter.setSizes([600, 500])
+        # The overview carries the statistics bar, so it gets the room.
+        log_splitter.setSizes([500, 620])
         log_layout.addWidget(log_splitter, 1)
         splitter.addWidget(log_panel)
         splitter.setSizes([380, 250])

@@ -595,3 +595,10 @@
 - `decision_filter_lines` was O(N²): for every included item it scanned every excluded directory. A comparison with stashed directories therefore froze while the dialog opened. The excluded directories are now in a set, so the check is linear in the number of items.
 - The sync confirmation dialog shows "Preparing the synchronization..." with a busy bar and repaints while it is built, so the button is seen.
 - The progress label of the comparison now says how many items have been found, updated as the dry run writes them.
+
+## milestone 1.15bm the overview fits the statistics
+
+- The overview pane starts wide enough (580 px) and defaults to 620 px, so
+  the "Selected:" line and the six per-action counts are never clipped.
+- The per-action values get 30 px instead of 22 px, which is enough for a
+  three-digit count.
