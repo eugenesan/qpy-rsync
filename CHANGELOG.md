@@ -609,3 +609,15 @@
   and twenty-one characters, so a long size or a timestamp does not get
   clipped. Saved states that carry a narrower width are widened to the same
   minimum.
+
+## milestone 1.15bo the overview fits the statistics
+
+- The "Selected:" heading is now a tooltip on the summary label, with a
+  short description of what it counts. The overview pane starts 580 px wide
+  and defaults to 620 px, so the whole "Selected:" line and the six
+  per-action counts fit with three-digit numbers.
+- The size and the modified columns of the comparison list are sized for
+  ten and twenty-one characters, and saved states that carry a narrower
+  width are widened to the same minimum.
+- The modified columns are hidden by default; the modification time is
+  shown in the tooltip of the action column instead.

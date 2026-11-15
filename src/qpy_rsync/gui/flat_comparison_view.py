@@ -561,6 +561,13 @@ class FlatComparisonView(QWidget):
                     hidden.add(int(value))
                 except ValueError:
                     continue
+        else:
+            # The modified columns are hidden by default: they are usually
+            # not needed, and the modification time is in the action tooltip.
+            if pane == "source":
+                hidden = {self.model.SOURCE_TIME}
+            else:
+                hidden = {self.model.DESTINATION_TIME}
         return hidden
 
     def _save_hidden_columns(self, pane: str, hidden: set[int]) -> None:
@@ -627,7 +634,7 @@ class FlatComparisonView(QWidget):
         for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
             header._auto_resizing = True
         metrics = self.source.fontMetrics()
-        size_width = metrics.horizontalAdvance("0" * 10) + 8
+        size_width = metrics.horizontalAdvance("0" * 8) + 8
         time_width = metrics.horizontalAdvance("0" * 21) + 8
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
@@ -1445,7 +1452,7 @@ class FlatComparisonView(QWidget):
         # columns are kept wide enough to stay readable, and the size and the
         # time columns wide enough for their content.
         metrics = self.source.fontMetrics()
-        min_size = metrics.horizontalAdvance("0" * 10)
+        min_size = metrics.horizontalAdvance("0" * 8)
         min_time = metrics.horizontalAdvance("0" * 21)
         for tree, name_column in (
             (self.source, self.model.SOURCE_NAME),

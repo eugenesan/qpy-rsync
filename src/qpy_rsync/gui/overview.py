@@ -302,11 +302,13 @@ class StatisticsBar(QWidget):
         actions_row = QHBoxLayout()
         actions_row.setContentsMargins(0, 0, 0, 0)
         actions_row.setSpacing(4)
-        heading = QLabel("Selected:")
-        heading.setStyleSheet("font-weight: bold;")
-        actions_row.addWidget(heading)
         self.summary = QLabel("")
         self.summary.setObjectName("statistics-summary")
+        self.summary.setToolTip(
+            "Selected: the items that are checked in the comparison, with "
+            "their total size and the count of each action. The six icons "
+            "below are the same actions."
+        )
         actions_row.addWidget(self.summary)
         actions_row.addSpacing(8)
         for action, key in (
@@ -323,7 +325,7 @@ class StatisticsBar(QWidget):
             icon.setToolTip(label_text)
             value = QLabel("0")
             value.setToolTip(label_text)
-            value.setMinimumWidth(30)
+            value.setMinimumWidth(26)
             actions_row.addWidget(icon)
             actions_row.addWidget(value)
             self._rows[key] = value
