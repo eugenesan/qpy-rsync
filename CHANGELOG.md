@@ -589,3 +589,9 @@
 - The About dialog reports the commit of the checkout, so it is visible which
   build is on the screen. The application often runs from a copy that is
   synchronized from another machine.
+
+## milestone 1.15bo the sync dialog and the records
+
+- `decision_filter_lines` was O(N²): for every included item it scanned every excluded directory. A comparison with stashed directories therefore froze while the dialog opened. The excluded directories are now in a set, so the check is linear in the number of items.
+- The sync confirmation dialog shows "Preparing the synchronization..." with a busy bar and repaints while it is built, so the button is seen.
+- The progress label of the comparison now says how many items have been found, updated as the dry run writes them.

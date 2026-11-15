@@ -23,15 +23,21 @@ def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
         for item in plan.items
         if not item.included and item.kind is ObjectKind.DIRECTORY
     }
-    included_overrides = [
-        item
-        for item in plan.items
-        if item.included
-        and any(
-            item.path.strip("/").startswith(directory + "/")
-            for directory in excluded_directories
-        )
-    ]
+    # An included item that lives below an excluded directory needs an
+    # explicit include, otherwise the exclude would hide it. A set of the
+    # excluded directories makes the check linear in the number of items.
+    included_overrides: list[PlanItem] = []
+    for item in plan.items:
+        if not item.included:
+            continue
+        clean = item.path.strip("/")
+        # Walk the path components: an excluded ancestor makes this item an
+        # override.
+        parts = clean.split("/")
+        for position in range(1, len(parts)):
+            if "/".join(parts[:position]) in excluded_directories:
+                included_overrides.append(item)
+                break
     traversal: set[str] = set()
     for item in included_overrides:
         parts = item.path.strip("/").split("/")

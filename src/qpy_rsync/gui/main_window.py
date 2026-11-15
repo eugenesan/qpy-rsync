@@ -1786,6 +1786,7 @@ class MainWindow(QMainWindow):
         self._set_state("Preparing the synchronization...")
         QApplication.processEvents()
         self._backup_changed()
+        QApplication.processEvents()
         if (
             self._validated_plan is None
             or self._active_profile is None
@@ -1802,6 +1803,8 @@ class MainWindow(QMainWindow):
             self._profile(),
             self.comparison.model.changes,
         )
+        self.progress_label.setText("Preparing the synchronization...")
+        QApplication.processEvents()
         if not freshness.fresh:
             self._invalidate_validated_plan()
             QMessageBox.warning(
