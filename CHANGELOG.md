@@ -702,3 +702,8 @@
 - The modified column is sized for nineteen characters.
 - The overview pane's size column is the same width as the one in the
   comparison panes.
+
+## milestone 1.15bp the overview pane
+
+- The overview pane starts 474 px wide and defaults to 514 px, so the
+  statistics bar is not clipped without taking too much room.
