@@ -226,9 +226,11 @@ class OverviewModel(QAbstractItemModel):
 
     def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:  # noqa: A003
         """Sort the folders by their number of objects or by their size."""
-        self.layoutAboutToBeChanged.emit()
+        # The rows move, so the model is reset; a layout change would leave
+        # the accessibility interface with a stale row count.
+        self.beginResetModel()
         self._sort(self.root, column, order)
-        self.layoutChanged.emit()
+        self.endResetModel()
 
     def _sort(self, node: OverviewNode, column: int, order: Qt.SortOrder) -> None:
         if column == self.FOLDER:

@@ -85,6 +85,38 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
     )
 
 
+# The Qt notices that are harmless on a remote X server: the KDE platform
+# theme loads Qt Quick, which asks for an OpenGL context that the server
+# cannot provide, and falls back to the software renderer.
+_BENIGN_QT_MESSAGES = (
+    "Cannot create platform OpenGL context",
+    "fallback to QtQuick software backend",
+)
+
+
+def install_qt_message_filter() -> None:
+    """Keep the harmless OpenGL notices out of the terminal.
+
+    Every other message is passed on, so a real problem is still reported.
+    """
+
+    try:
+        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+    except ImportError:  # pragma: no cover - PySide6 is always there
+        return
+
+    def handler(mode: object, _context: object, message: str) -> None:
+        text = str(message)
+        if any(pattern in text for pattern in _BENIGN_QT_MESSAGES):
+            return
+        sys.stderr.write(text + "\n")
+        if mode == QtMsgType.QtFatalMsg:
+            sys.stderr.flush()
+            os.abort()
+
+    qInstallMessageHandler(handler)
+
+
 def prepare_qt_environment() -> None:
     """Keep Qt away from OpenGL on remote X11 sessions.
 
@@ -111,6 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
     prepare_qt_environment()
+    install_qt_message_filter()
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as exc:

@@ -836,6 +836,25 @@ class FlatComparisonView(QWidget):
             return None
         return self.model.row_path(index.row()) or None
 
+    def _current_path(self) -> str | None:
+        """The path of the row that is selected in the panes."""
+        index = self.source.currentIndex()
+        if not index.isValid():
+            return None
+        return self.model.row_path(index.row())
+
+    @contextmanager
+    def _keeping_the_selection(self) -> Iterator[None]:
+        """Keep the selected row across a reset of the model.
+
+        A reset clears the selection, so the path is remembered and selected
+        again afterwards.
+        """
+        path = self._current_path()
+        yield
+        if path:
+            self.select_path(path)
+
     def _row_entered(self, index: QModelIndex) -> None:
         """Mark the row under the pointer in every pane."""
         row = index.row()
@@ -871,9 +890,10 @@ class FlatComparisonView(QWidget):
         if not paths:
             return False
         stash = self.model.stash
-        for path in paths:
-            stash.toggle(path)
-        self.model.refresh_stashed()
+        with self._keeping_the_selection():
+            for path in paths:
+                stash.toggle(path)
+            self.model.refresh_stashed()
         self.changes_updated.emit(list(self.model.changes))
         return True
 
@@ -897,30 +917,33 @@ class FlatComparisonView(QWidget):
 
     def collapse_path(self, path: str) -> None:
         """Fold a directory's children out of the list."""
-        self.model.set_collapsed(path, True)
-        self.model.refresh_collapsed()
+        with self._keeping_the_selection():
+            self.model.set_collapsed(path, True)
+            self.model.refresh_collapsed()
 
     def expand_path(self, path: str) -> None:
         """Show the children of a folded directory again."""
-        self.model.set_collapsed(path, False)
-        self.model.refresh_collapsed()
+        with self._keeping_the_selection():
+            self.model.set_collapsed(path, False)
+            self.model.refresh_collapsed()
 
     def toggle_collapsed(self, path: str) -> None:
         """Fold or unfold a directory."""
-        self.model.toggle_collapsed(path)
-        self.model.refresh_collapsed()
-        self.select_path(path)
+        with self._keeping_the_selection():
+            self.model.toggle_collapsed(path)
+            self.model.refresh_collapsed()
 
     def collapse_all(self) -> None:
         """Fold every directory that has children."""
-        self.model.collapse_all()
-        self.model.refresh_collapsed()
-        self.select_path("")
+        with self._keeping_the_selection():
+            self.model.collapse_all()
+            self.model.refresh_collapsed()
 
     def expand_all(self) -> None:
         """Unfold every directory."""
-        self.model.expand_all()
-        self.model.refresh_collapsed()
+        with self._keeping_the_selection():
+            self.model.expand_all()
+            self.model.refresh_collapsed()
 
     def clear_collapsed(self) -> None:
         """Forget the folds, for a new comparison."""
@@ -928,13 +951,15 @@ class FlatComparisonView(QWidget):
 
     def stash_path(self, path: str) -> None:
         """Stash a path and everything below it."""
-        self.model.stash.add(path)
-        self._refresh_stashed()
+        with self._keeping_the_selection():
+            self.model.stash.add(path)
+            self._refresh_stashed()
 
     def restore_path(self, path: str) -> None:
         """Restore a path and everything below it."""
-        self.model.stash.restore(path)
-        self._refresh_stashed()
+        with self._keeping_the_selection():
+            self.model.stash.restore(path)
+            self._refresh_stashed()
 
     def restore_all_stashed(self) -> None:
         """Restore every stashed item."""
@@ -1019,7 +1044,8 @@ class FlatComparisonView(QWidget):
         apply: bool = True,
     ) -> None:
         """Show only the given actions and refresh the overview."""
-        self.model.set_visible_actions(actions, apply=apply)
+        with self._keeping_the_selection():
+            self.model.set_visible_actions(actions, apply=apply)
         if apply:
             self.changes_updated.emit(list(self.model.changes))
 
@@ -1086,7 +1112,8 @@ class FlatComparisonView(QWidget):
 
     def _apply_path_filter(self) -> None:
         self._filter_timer.stop()
-        self.model.set_path_filter(self.filter_edit.text())
+        with self._keeping_the_selection():
+            self.model.set_path_filter(self.filter_edit.text())
         self.changes_updated.emit(list(self.model.changes))
 
     def set_path_filter(self, text: str) -> None:
@@ -1107,7 +1134,8 @@ class FlatComparisonView(QWidget):
                 if self.model.sort_order() == Qt.SortOrder.AscendingOrder
                 else Qt.SortOrder.AscendingOrder
             )
-        self.model.sort(column, order)
+        with self._keeping_the_selection():
+            self.model.sort(column, order)
         self._show_sort_indicator(self.model.sort_column(), self.model.sort_order())
         self.sort_changed.emit(self.model.sort_column(), self.model.sort_order())
 
@@ -1399,8 +1427,6 @@ class FlatComparisonView(QWidget):
             self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
         source = decode_binary(settings.value("comparison/flat-source-header"))
         destination = decode_binary(settings.value("comparison/flat-destination-header"))
-        import sys
-        print("RESTORE source is", source is not None, "dest", destination is not None, file=sys.stderr)
         for header, state in (
             (self.source.horizontalHeader(), source),
             (self.destination.horizontalHeader(), destination),

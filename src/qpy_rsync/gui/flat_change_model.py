@@ -420,10 +420,10 @@ class FlatChangeModel(QAbstractTableModel):
             return
         self._sort_column = column
         self._sort_order = order
-        self.layoutAboutToBeChanged.emit()
+        self.beginResetModel()
         self._build_rows()
         self._apply_filters()
-        self.layoutChanged.emit()
+        self.endResetModel()
 
     def _row_sort_key(self, row: FlatRow) -> tuple:
         """The key of one row when the whole list is sorted."""
@@ -515,15 +515,15 @@ class FlatChangeModel(QAbstractTableModel):
         return None if self._visible_actions is None else set(self._visible_actions)
 
     def _refresh_filters(self) -> None:
-        self.layoutAboutToBeChanged.emit()
+        self.beginResetModel()
         self._apply_filters()
-        self.layoutChanged.emit()
+        self.endResetModel()
 
     def refresh_stashed(self) -> None:
         """Show the rows again after the user stashed or restored items."""
-        self.layoutAboutToBeChanged.emit()
+        self.beginResetModel()
         self._apply_filters()
-        self.layoutChanged.emit()
+        self.endResetModel()
 
     def action_colours_changed(self) -> None:
         """Repaint the rows after the colours of the actions changed."""
@@ -583,9 +583,9 @@ class FlatChangeModel(QAbstractTableModel):
 
     def refresh_collapsed(self) -> None:
         """Show the rows again after a fold or an unfold."""
-        self.layoutAboutToBeChanged.emit()
+        self.beginResetModel()
         self._apply_filters()
-        self.layoutChanged.emit()
+        self.endResetModel()
 
     def _matches(
         self,

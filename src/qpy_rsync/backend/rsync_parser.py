@@ -42,6 +42,19 @@ def _action(code: str, *, delete_enabled: bool) -> ChangeAction:
     return ChangeAction.NO_CHANGE
 
 
+def _is_itemized_code(code: str) -> bool:
+    """Whether a field holds an rsync itemized code.
+
+    Rsync writes eleven characters for an itemized change, and
+    "*deleting" for a deletion. Anything else means the line was mixed up
+    with another output, and reading it as a change would report the wrong
+    action.
+    """
+    if code.startswith("*deleting"):
+        return True
+    return len(code) == 11
+
+
 def _kind(code: str) -> ObjectKind:
     if code.startswith("*deleting"):
         return ObjectKind.UNKNOWN
@@ -60,6 +73,8 @@ def parse_record(line: str, *, delete_enabled: bool = True) -> Change | None:
     if len(parts) != 4:
         raise RsyncParseError(f"Expected four output fields, got {len(parts)}")
     code, size_text, modified_time, name_and_link = parts
+    if not _is_itemized_code(code):
+        raise RsyncParseError(f"Invalid itemized code: {code!r}")
     if ITEM_SEPARATOR in name_and_link:
         raise RsyncParseError("Field separator appears in filename; record is ambiguous")
     if "\x00" in name_and_link:

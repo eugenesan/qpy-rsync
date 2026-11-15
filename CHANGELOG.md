@@ -570,3 +570,11 @@
 - The Item columns of the comparison panes and the overview pane take all the
   free space by default, but they can now be resized by dragging their edge.
   The column keeps the chosen width until the comparison changes.
+
+## milestone 1.15bk the records stay clean and the terminal stays quiet
+
+- The comparison no longer asks rsync for its progress. Rsync writes the progress to stdout with a carriage return, so it ended up in front of the next record and the parser read a broken itemized code. Such a record was reported as a metadata change instead of the change it was.
+- The parser rejects a record whose code is not an rsync itemized code, so a mixed-up line is reported instead of silently changing the action of an item.
+- The model is reset when the rows change instead of announcing a layout change. A layout change left the accessibility interface with a stale row count, which produced the "QAccessibleTable::child: Invalid index" warnings.
+- The selected row is kept when the model is reset.
+- The harmless OpenGL notices of the KDE platform theme ("Cannot create platform OpenGL context" and "fallback to QtQuick software backend") are kept out of the terminal; every other message still comes through.

@@ -62,3 +62,17 @@ def test_the_compared_folder_is_not_reported_as_an_item() -> None:
     # root of the list and not an item inside it.
     assert parse_record(".d..t......|qpy-rsync|4096|qpy-rsync|2026/11/12-00:24:14|qpy-rsync|.") is None
     assert parse_record(">f.st......|qpy-rsync|1|qpy-rsync|time|qpy-rsync|./") is None
+
+
+def test_a_broken_itemized_code_is_rejected() -> None:
+    import pytest
+
+    from qpy_rsync.backend.rsync_parser import RsyncParseError
+
+    # Rsync's progress can end up in front of a record when it shares the
+    # output stream. Such a line must not be read as a metadata change.
+    with pytest.raises(RsyncParseError):
+        parse_record(
+            "1,270,991,051 59% 1183.70GB/s 0:00:00 (xfr#9635)*deleting"
+            "|qpy-rsync|0|qpy-rsync|1970/01/01 00:00:00|qpy-rsync|file.txt"
+        )
