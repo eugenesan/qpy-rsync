@@ -648,3 +648,10 @@
 - The statistics bar now shows "Keep in Destination" (the count of the
   destination-only items that are kept) instead of an "Unchanged" entry that
   was always zero, because the comparison plan contains no unchanged items.
+
+## milestone 1.15bp the selected size
+
+- "Selected:" now shows the total size of the items that are checked, so it
+  matches the total of the comparison when everything is checked. The bytes
+  that will actually be written stay in the plan summary and the confirmation
+  dialog.

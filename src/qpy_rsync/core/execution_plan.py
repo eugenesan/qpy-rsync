@@ -55,6 +55,9 @@ class PlanSummary:
     deletions: int
     backup_enabled: bool
     total_size: int = 0
+    # The size of every included item, whether or not its content is
+    # transferred. This is the number the overview shows as "Selected".
+    included_size: int = 0
 
 
 @dataclass(slots=True, frozen=True)
@@ -92,6 +95,7 @@ def build_execution_plan(
     creates = updates = metadata = replacements = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
     total_size = 0
+    included_size = 0
     modified = decisions.modified_count(changes_list)
     stashed_paths = (
         {path.strip("/") for path in stashed.paths()} if stashed else set()
@@ -135,6 +139,7 @@ def build_execution_plan(
         if selected:
             included += 1
             destructive += int(is_destructive)
+            included_size += int(change.size or 0)
             if effective_action in {
                 ChangeAction.CREATE,
                 ChangeAction.UPDATE_CONTENT,
@@ -169,6 +174,7 @@ def build_execution_plan(
         deletions=deletions,
         backup_enabled=profile.backup.enabled,
         total_size=total_size,
+        included_size=included_size,
     )
     return ExecutionPlan(
         profile_fingerprint=profile_fingerprint(profile),

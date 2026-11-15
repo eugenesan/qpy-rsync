@@ -343,7 +343,7 @@ class StatisticsBar(QWidget):
                 label.setText("0")
             return
         self.summary.setText(
-            f"{summary.included:,} item(s), {format_size(summary.total_size)}"
+            f"{summary.included:,} item(s), {format_size(summary.included_size)}"
         )
         values = {
             "created": summary.creates,
