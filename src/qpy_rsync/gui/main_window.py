@@ -196,6 +196,7 @@ class MainWindow(QMainWindow):
         self._service.on_log = self._append_rsync_log
         self._service.on_progress = self._comparison_progress
         self._service.on_transient = self._append_transient_log
+        self._service.on_items = self._comparison_items
         self._active_profile: SyncProfile | None = None
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
@@ -1776,6 +1777,14 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Plan validation failed", message)
 
     def _show_sync_confirmation(self) -> None:
+        # The backup settings and the plan are checked before the dialog
+        # opens, which can take a moment on a large comparison. Show that
+        # the button was heard and let the interface repaint.
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(True)
+        self.progress_label.setText("Preparing the synchronization...")
+        self._set_state("Preparing the synchronization...")
+        QApplication.processEvents()
         self._backup_changed()
         if (
             self._validated_plan is None
@@ -2227,6 +2236,12 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Comparing...")
         self._set_state("Comparing...")
         self._append_log("STATE comparing")
+
+    def _comparison_items(self, count: int) -> None:
+        """Report how many items the dry run has found so far."""
+        if self._closing:
+            return
+        self.progress_label.setText(f"Comparing... {count:,} item(s) found")
 
     def _comparison_progress(self, progress: object) -> None:
         percent = int(getattr(progress, "percent", 0))

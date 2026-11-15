@@ -59,6 +59,9 @@ def test_mirror_deletion_record_parses_as_delete() -> None:
     captured = []
     service.on_finished = captured.append
     service._delete_enabled = profile(SyncMode.MIRROR).transfer.mirror_enabled
+    service._stdout_chunk(
+        "*deleting  |qpy-rsync||qpy-rsync||qpy-rsync|extra.txt\n"
+    )
     service._finish(
         ProcessResult(
             0,
@@ -78,6 +81,9 @@ def test_update_deletion_record_parses_as_destination_only() -> None:
     captured = []
     service.on_finished = captured.append
     service._delete_enabled = profile(SyncMode.UPDATE).transfer.mirror_enabled
+    service._stdout_chunk(
+        "*deleting  |qpy-rsync||qpy-rsync||qpy-rsync|extra.txt\n"
+    )
     service._finish(
         ProcessResult(
             0,

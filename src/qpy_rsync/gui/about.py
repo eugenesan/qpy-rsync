@@ -16,6 +16,15 @@ _DESCRIPTION = (
 )
 
 
+def version_string() -> str:
+    """The version of the application, with the commit when it runs from one."""
+    text = f"qpy-rsync {__version__}"
+    stamp = build_stamp()
+    if stamp:
+        text = f"{text} ({stamp})"
+    return text
+
+
 def build_stamp() -> str:
     """The commit of the checkout, when the application runs from one.
 

@@ -18,6 +18,7 @@ class StartupOptions:
     compare: bool = False
     log_file: str | None = None
     logging_enabled: bool | None = None
+    version: bool = False
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -57,6 +58,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="disable persistent session logging for this launch",
     )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="print the version and the build, then exit",
+    )
     return parser
 
 
@@ -80,6 +86,7 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
             namespace.compare,
             namespace.log_file,
             False if namespace.no_log_file else (True if namespace.log_file else None),
+            namespace.version,
         ),
         qt_arguments,
     )
@@ -142,6 +149,11 @@ def prepare_qt_environment() -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
+    if options.version:
+        from qpy_rsync.gui.about import version_string
+
+        print(version_string())
+        return 0
     prepare_qt_environment()
     install_qt_message_filter()
     try:
@@ -167,6 +179,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     migrate_legacy_settings()
     window = MainWindow()
+    from qpy_rsync.gui.about import version_string
+
+    window.setWindowTitle(version_string())
     if icon_path.is_file():
         window.setWindowIcon(QIcon(str(icon_path)))
     window.apply_startup_options(options)

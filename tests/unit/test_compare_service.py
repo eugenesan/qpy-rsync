@@ -17,8 +17,10 @@ def test_compare_service_streams_records_and_progress() -> None:
     service = CompareService()
     logs: list[str] = []
     progress: list[object] = []
+    counts: list[int] = []
     service.on_log = logs.append
     service.on_progress = progress.append
+    service.on_items = counts.append
 
     service._stdout_chunk(">f.st......|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file")
     assert logs == []
@@ -27,6 +29,7 @@ def test_compare_service_streams_records_and_progress() -> None:
     assert len(progress) == 1
     assert progress[0].files_completed == 1
     assert progress[0].percent == 50
+    assert counts == [1]
 
 
 def test_compare_service_reports_cancellation_without_finishing() -> None:
