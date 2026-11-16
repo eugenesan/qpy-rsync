@@ -1443,7 +1443,6 @@ class MainWindow(QMainWindow):
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
-        self._append_log(f"Profile saved: {path}")
 
     def _load_profile(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
