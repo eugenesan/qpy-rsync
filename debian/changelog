@@ -1,3 +1,11 @@
+qpy-rsync (0.3.0-0) resolute; urgency=medium
+
+  * 0.3.0: unified profile management with a profile editor, extensive
+    keyboard shortcuts, profile-owned auto-inventory state and improved
+    progress and change detection.
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Mon, 16 Nov 2026 12:00:00 -0700
+
 qpy-rsync (0.2.1-0) resolute; urgency=medium
 
   * 2.0.1: the filter editor is now a single text editor using rsync
