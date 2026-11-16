@@ -2593,9 +2593,9 @@ class MainWindow(QMainWindow):
             ("Alt+S", self.source_edit),
             ("Alt+D", self.destination_edit),
             ("Ctrl+W", self.overview.tree),
-            ("Ctrl+[", self.comparison.source),
-            ("Ctrl+]", self.comparison.destination),
-            ("Ctrl+\\", self.comparison.action),
+            ("Ctrl+S", self.comparison.source),
+            ("Ctrl+D", self.comparison.destination),
+            ("Ctrl+N", self.comparison.action),
         ):
             self._add_shortcut(
                 key,
