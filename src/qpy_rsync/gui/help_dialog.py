@@ -101,16 +101,15 @@ result.
 
 12. Keyboard shortcuts
     Alt+S / Alt+D  focus the Source / Destination location field
-    Alt+O / Alt+L / Alt+R / Alt+A  focus the Overview / Source / Destination /
-                   Actions pane (Alt+C also focuses Actions where Alt+A is
-                   reserved by the desktop)
+    Ctrl+W         focus the Overview pane
+    Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
+    Ctrl+N         focus the Actions column
     Alt+Enter      open the context menu of the current row
     Alt+1..8       click the numbered checkbox in the actions bar
     Ctrl+1..8      Ctrl-click (invert) the numbered checkbox
     F2 / F3        save / load a profile
     F4             edit the profile
     F12            cycle the synchronization method
-    Ctrl+S / Ctrl+D  open the Source / Destination directory
     Ctrl+B / Ctrl+L  open the Backup directory / the log file location
     The external tools in the context menu of an item have numbered shortcuts
     (1..8) that work while the menu is open.

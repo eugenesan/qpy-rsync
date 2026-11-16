@@ -2566,18 +2566,12 @@ class MainWindow(QMainWindow):
         for key, widget in (
             ("Alt+S", self.source_edit),
             ("Alt+D", self.destination_edit),
-            ("Alt+O", self.overview.tree),
-            ("Alt+L", self.comparison.source),
-            ("Alt+R", self.comparison.destination),
-            ("Alt+A", self.comparison.action),
+            ("Ctrl+W", self.overview.tree),
+            ("Ctrl+S", self.comparison.source),
+            ("Ctrl+D", self.comparison.destination),
+            ("Ctrl+N", self.comparison.action),
         ):
-            self._add_shortcut(
-                key,
-                lambda w=widget: (
-                    w.selectAll() if hasattr(w, "selectAll") else None,
-                    w.setFocus(),
-                ),
-            )
+            self._add_shortcut(key, lambda w=widget: w.setFocus())
             if hasattr(widget, "setToolTip"):
                 widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key})")
         for number in range(1, 9):
@@ -2590,17 +2584,12 @@ class MainWindow(QMainWindow):
                 lambda n=number: self.action_filters.toggle_shortcut(n, inverted=True),
             )
         for key, button in (
-            ("Ctrl+S", self.source_open_button),
-            ("Ctrl+D", self.destination_open_button),
             ("Ctrl+B", self.backup_open),
             ("Ctrl+L", self.log_file_open),
         ):
             self._add_shortcut(key, button.click)
             button.setToolTip(f"{button.toolTip()} (Shortcut: {key})")
         self._add_shortcut("Alt+Return", self._open_current_context_menu)
-        # Alt+A is grabbed by some desktop environments, so keep an
-        # alternative binding for the Actions pane.
-        self._add_shortcut("Alt+C", self.comparison.action.setFocus)
 
     def _open_current_context_menu(self) -> None:
         from PySide6.QtWidgets import QApplication
