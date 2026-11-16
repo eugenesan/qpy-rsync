@@ -25,11 +25,11 @@ def _paths(model) -> list[str]:
 def test_the_three_phrases_of_an_item_are_rsync_patterns() -> None:
     phrases = phrases_for("docs/pictures/photo.jpg", is_directory=False)
     patterns = [phrase.pattern for phrase in phrases]
-    assert patterns == ["*.jpg", "*/photo.jpg", "/docs/pictures/photo.jpg"]
+    assert patterns == ["*.jpg", "photo.jpg", "/docs/pictures/photo.jpg"]
     # A directory keeps the trailing slash, like rsync expects.
     directory = phrases_for("docs/pictures", is_directory=True)
     assert [phrase.pattern for phrase in directory] == [
-        "*/pictures/",
+        "pictures/",
         "/docs/pictures/",
     ]
 
@@ -38,8 +38,10 @@ def test_the_patterns_match_the_paths_they_name() -> None:
     assert matches("*.jpg", "pictures/photo.jpg")
     assert matches("*.jpg", "photo.jpg")
     assert not matches("*.jpg", "pictures/photo.png")
-    assert matches("*/photo.jpg", "a/b/photo.jpg")
-    assert not matches("*/photo.jpg", "a/b/other.jpg")
+    assert matches("photo.jpg", "a/b/photo.jpg")
+    assert matches("photo.jpg", "photo.jpg")
+    assert not matches("photo.jpg", "a/b/other.jpg")
+    assert matches("pictures/", "a/b/pictures/photo.jpg")
     assert matches("/docs/pictures/photo.jpg", "docs/pictures/photo.jpg")
     assert not matches("/docs/pictures/photo.jpg", "other/docs/pictures/photo.jpg")
     # A directory pattern covers everything below it.

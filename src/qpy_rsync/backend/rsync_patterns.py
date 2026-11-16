@@ -58,13 +58,15 @@ def phrases_for(path: str, *, is_directory: bool) -> list[FilterPhrase]:
             )
         )
 
-    # The name of the item at any depth.
+    # The name of the item at any depth. In rsync a pattern without a slash
+    # matches the basename everywhere, including at the root; a leading "*/"
+    # would require a parent component and miss root-level items.
     if name:
         suffix = "/" if is_directory else ""
         phrases.append(
             FilterPhrase(
-                label=f"*/{name}{suffix}",
-                pattern=f"*/{name}{suffix}",
+                label=f"{name}{suffix}",
+                pattern=f"{name}{suffix}",
             )
         )
 
