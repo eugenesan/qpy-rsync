@@ -1187,9 +1187,9 @@ def test_the_settings_dialog_opens_on_the_requested_section() -> None:
         log_panel=window._log_panel,
         backup_panel=window._backup_panel,
         sound_enabled=True,
-        section="backup",
+        section="logging",
     )
-    assert dialog.tabs.currentIndex() == SECTIONS.index("backup")
+    assert dialog.tabs.currentIndex() == SECTIONS.index("logging")
     dialog.show_section("logging")
     assert dialog.tabs.currentIndex() == SECTIONS.index("logging")
     dialog.close()

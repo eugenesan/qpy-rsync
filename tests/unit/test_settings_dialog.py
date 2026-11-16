@@ -30,13 +30,13 @@ def _dialog(**kwargs) -> tuple[SettingsDialog, QWidget, QWidget, QWidget]:
 def test_the_dialog_has_a_tab_for_every_section() -> None:
     dialog, _holder, _log, _backup = _dialog()
     titles = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
-    assert titles == ["General", "Logging", "Backup", "Tools"]
-    assert len(SECTIONS) == 4
+    assert titles == ["General", "Logging", "Tools"]
+    assert len(SECTIONS) == 3
 
 
 def test_show_section_selects_the_tab() -> None:
-    dialog, _holder, _log, _backup = _dialog(section="backup")
-    assert dialog.tabs.currentIndex() == SECTIONS.index("backup")
+    dialog, _holder, _log, _backup = _dialog(section="logging")
+    assert dialog.tabs.currentIndex() == SECTIONS.index("logging")
     dialog.show_section("logging")
     assert dialog.tabs.currentIndex() == SECTIONS.index("logging")
     # An unknown section falls back to the first tab.

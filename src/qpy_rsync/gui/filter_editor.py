@@ -3,14 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
-from PySide6.QtCore import QRegularExpression, Qt
-from PySide6.QtGui import (
-    QColor,
-    QFont,
-    QSyntaxHighlighter,
-    QTextCharFormat,
-    QTextCursor,
-)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -21,13 +15,13 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
-from qpy_rsync.backend.rsync_filters import validate_rule
 from qpy_rsync.backend.rsync_filters import export_filter_file, import_filter_file
+from qpy_rsync.backend.rsync_filters import validate_rule
 from qpy_rsync.core.enums import FilterRuleType
 from qpy_rsync.core.models import FilterRule
-
 
 _RSFILTER_HELP = '''rsync filter rules
 
@@ -128,7 +122,9 @@ class FilterSyntaxHighlighter(QSyntaxHighlighter):
         self.invalid_format = QTextCharFormat()
         self.invalid_format.setForeground(QColor("#d73a49"))
         self.invalid_format.setUnderlineColor(QColor("#d73a49"))
-        self.invalid_format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
+        self.invalid_format.setUnderlineStyle(
+            QTextCharFormat.UnderlineStyle.SingleUnderline
+        )
 
     def highlightBlock(self, text: str) -> None:  # noqa: N802
         stripped = text.lstrip()
@@ -141,69 +137,33 @@ class FilterSyntaxHighlighter(QSyntaxHighlighter):
                 op_len = 2
             leading = len(text) - len(stripped)
             self.setFormat(leading, op_len, self.operator_format)
-        else:
-            # bare line -> interpreted as exclusion; mark as a hint
-            pass
-        # validate
         rule = _line_to_rule(text)
-        if rule is not None:
-            message = validate_rule(rule)
-            if message:
-                self.setFormat(0, len(text), self.invalid_format)
+        if rule is not None and validate_rule(rule):
+            self.setFormat(0, len(text), self.invalid_format)
 
 
-class FilterEditorDialog(QDialog):
+class FilterEditorWidget(QWidget):
+    """The text editor and its preview, usable standalone or in a dialog."""
+
     def __init__(self, rules=None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Rsync include/exclude filters")
-        self.resize(760, 520)
-
-        if rules is None:
-            rules = []
-        text = _rules_to_text(list(rules))
+        text = _rules_to_text(list(rules or []))
         if not text.strip():
             text = _EXAMPLE_TEXT
-
         self.editor = QPlainTextEdit(self)
         self.text_edit = self.editor
         self.plain_text_edit = self.editor
         self.text_editor = self.editor
         self.editor.setPlainText(text)
         self.highlighter = FilterSyntaxHighlighter(self.editor.document())
-
         self.preview_label = QLabel("", self)
         self.preview_label.setWordWrap(True)
         self.editor.cursorPositionChanged.connect(self._update_preview)
         self._update_preview()
-
-        import_button = QPushButton("Import", self)
-        export_button = QPushButton("Export", self)
-        help_button = QPushButton("Help", self)
-        import_button.clicked.connect(self._import)
-        export_button.clicked.connect(self._export)
-        help_button.clicked.connect(self._show_help)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._accept_if_valid)
-        buttons.rejected.connect(self.reject)
-
-        button_row = QHBoxLayout()
-        button_row.addWidget(import_button)
-        button_row.addWidget(export_button)
-        button_row.addWidget(help_button)
-        button_row.addStretch(1)
-        button_row.addWidget(buttons)
-
         layout = QVBoxLayout(self)
         layout.addWidget(self.editor, 1)
         layout.addWidget(self.preview_label)
-        layout.addLayout(button_row)
 
-    # ------------------------------------------------------------------ #
-    # Public API
-    # ------------------------------------------------------------------ #
     def rules(self) -> list[FilterRule]:
         result: list[FilterRule] = []
         for line in self.editor.toPlainText().splitlines():
@@ -224,33 +184,28 @@ class FilterEditorDialog(QDialog):
     def toPlainText(self) -> str:  # noqa: N802
         return self.editor.toPlainText()
 
-    # ------------------------------------------------------------------ #
-    # Internals
-    # ------------------------------------------------------------------ #
-    def _update_preview(self) -> None:
-        cursor = self.editor.textCursor()
-        block = cursor.block()
-        line = block.text()
-        stripped = line.strip()
-        if not stripped:
-            self.preview_label.setText("Preview: (blank line, ignored)")
-            return
-        if stripped.startswith("#"):
-            self.preview_label.setText("Preview: comment, ignored")
-            return
-        if stripped.startswith(_OPERATORS):
-            self.preview_label.setText(f"Preview: advanced rsync rule: {stripped}")
-        else:
-            self.preview_label.setText(f"Preview: interpreted as exclusion: - {stripped}")
-
-    def _has_errors(self) -> bool:
+    def has_errors(self) -> bool:
         for line in self.editor.toPlainText().splitlines():
             rule = _line_to_rule(line)
             if rule is not None and validate_rule(rule):
                 return True
         return False
 
-    def _show_help(self) -> None:
+    def _update_preview(self) -> None:
+        line = self.editor.textCursor().block().text()
+        stripped = line.strip()
+        if not stripped:
+            self.preview_label.setText("Preview: (blank line, ignored)")
+        elif stripped.startswith("#"):
+            self.preview_label.setText("Preview: comment, ignored")
+        elif stripped.startswith(_OPERATORS):
+            self.preview_label.setText(f"Preview: advanced rsync rule: {stripped}")
+        else:
+            self.preview_label.setText(
+                f"Preview: interpreted as exclusion: - {stripped}"
+            )
+
+    def show_help(self) -> None:
         from PySide6.QtGui import QFontDatabase
         from PySide6.QtWidgets import QPlainTextEdit as _QPlainTextEdit
 
@@ -268,7 +223,7 @@ class FilterEditorDialog(QDialog):
         layout.addWidget(close_buttons)
         dialog.exec()
 
-    def _import(self) -> None:
+    def import_file(self) -> None:
         name, _ = QFileDialog.getOpenFileName(self, "Import rsync filter file")
         if name:
             try:
@@ -276,7 +231,7 @@ class FilterEditorDialog(QDialog):
             except OSError as exc:
                 QMessageBox.warning(self, "Import failed", str(exc))
 
-    def _export(self) -> None:
+    def export_file(self) -> None:
         name, _ = QFileDialog.getSaveFileName(self, "Export rsync filter file")
         if name:
             try:
@@ -284,20 +239,76 @@ class FilterEditorDialog(QDialog):
             except OSError as exc:
                 QMessageBox.warning(self, "Export failed", str(exc))
 
+
+class FilterEditorDialog(QDialog):
+    def __init__(self, rules=None, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Rsync include/exclude filters")
+        self.resize(760, 520)
+        self.widget = FilterEditorWidget(rules, self)
+        self.editor = self.widget.editor
+        self.text_edit = self.editor
+        self.plain_text_edit = self.editor
+        self.text_editor = self.editor
+        self.preview_label = self.widget.preview_label
+        self._has_errors = self.widget.has_errors
+        import_button = QPushButton("Import", self)
+        export_button = QPushButton("Export", self)
+        help_button = QPushButton("Help", self)
+        import_button.clicked.connect(self.widget.import_file)
+        export_button.clicked.connect(self.widget.export_file)
+        help_button.clicked.connect(self.widget.show_help)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._accept_if_valid)
+        buttons.rejected.connect(self.reject)
+        button_row = QHBoxLayout()
+        button_row.addWidget(import_button)
+        button_row.addWidget(export_button)
+        button_row.addWidget(help_button)
+        button_row.addStretch(1)
+        button_row.addWidget(buttons)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.widget, 1)
+        layout.addLayout(button_row)
+
+    def rules(self) -> list[FilterRule]:
+        return self.widget.rules()
+
+    def get_rules(self) -> list[FilterRule]:
+        return self.rules()
+
+    def text(self) -> str:
+        return self.widget.text()
+
+    def set_text(self, value: str) -> None:
+        self.widget.set_text(value)
+
+    def toPlainText(self) -> str:  # noqa: N802
+        return self.widget.text()
+
     def _accept_if_valid(self) -> None:
-        if self._has_errors():
+        if self.widget.has_errors():
             QMessageBox.warning(
                 self, "Invalid filters", "Correct the highlighted filter lines first."
             )
             return
         self.accept()
 
-    # Backwards-compatible alias used by the old table implementation.
     def _accept(self) -> None:
         self._accept_if_valid()
 
+    def _show_help(self) -> None:
+        self.widget.show_help()
 
-# Keep the old delegate importable for compatibility.
+    def _import(self) -> None:
+        self.widget.import_file()
+
+    def _export(self) -> None:
+        self.widget.export_file()
+
+
 class FilterTypeDelegate:
     """Deprecated: retained only so old imports keep working."""
 

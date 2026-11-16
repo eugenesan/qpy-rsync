@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import asdict
 import shlex
 import shutil
 import os
@@ -113,7 +114,7 @@ def _inventory_result(payload: object) -> InventoryResult:
         unchanged=list(payload),  # type: ignore[call-overload]
         destination_metadata={},
     )
-from qpy_rsync.core.enums import EndpointKind, Severity, SyncMode
+from qpy_rsync.core.enums import ConflictPolicy, EndpointKind, Severity, SyncMode
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
 from qpy_rsync.core.units import format_size
@@ -123,7 +124,13 @@ from qpy_rsync.core.execution_plan import (
     check_plan_freshness,
     profile_fingerprint,
 )
-from qpy_rsync.core.models import BackupOptions, FilterRule, SyncProfile, TransferOptions
+from qpy_rsync.core.models import (
+    BackupOptions,
+    FilterRule,
+    PreservationOptions,
+    SyncProfile,
+    TransferOptions,
+)
 from qpy_rsync.core.validation import validate_profile
 from qpy_rsync.services.backup_inspection import inspect_backup_directory
 from qpy_rsync.services.compare_service import CompareResult, CompareService
@@ -182,7 +189,6 @@ from .icons import (
 from .overview import OverviewPane
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
-from .filter_settings import decode_filters, encode_filters
 from .sync_confirmation import SyncConfirmationDialog
 
 if TYPE_CHECKING:
@@ -205,6 +211,9 @@ class MainWindow(QMainWindow):
         self._service.on_items = self._comparison_items
         self._active_profile: SyncProfile | None = None
         self._profile_path: Path | None = None
+        self._profile_transfer = TransferOptions()
+        self._profile_preservation = PreservationOptions()
+        self._profile_conflict = ConflictPolicy.OVERRIDE
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
         self._validated_plan: ExecutionPlan | None = None
@@ -270,7 +279,6 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._restore_window_state()
         if not self._restore_recent_profile():
-            self._restore_filters()
             self._restore_backup()
         self._restore_logging_settings()
         self._sound_enabled = app_settings().value(
@@ -1237,7 +1245,14 @@ class MainWindow(QMainWindow):
                 directory=self.backup_edit.text().strip(),
                 protect_nested=self.protect_backup.isChecked(),
             ),
-            transfer=TransferOptions(sync_mode=SyncMode(self.sync_mode.currentData())),
+            transfer=TransferOptions(
+                **{
+                    **asdict(self._profile_transfer),
+                    "sync_mode": SyncMode(self.sync_mode.currentData()),
+                }
+            ),
+            preservation=PreservationOptions(**asdict(self._profile_preservation)),
+            conflict_policy=self._profile_conflict,
         )
 
     def _sync_mode_changed(self) -> None:
@@ -1258,21 +1273,33 @@ class MainWindow(QMainWindow):
         self._refresh_profile_marker()
 
     def _edit_filters(self) -> None:
-        dialog = FilterEditorDialog(self._filters, self)
+        self._edit_profile("filters")
+
+    def _edit_profile(self, section: str = "transfer") -> None:
+        from .profile_editor import ProfileEditorDialog
+
+        dialog = ProfileEditorDialog(self._profile(), self, section)
         if not dialog.exec():
             return
-        updated = dialog.rules()
-        if updated == self._filters:
-            return
-        self._filters = updated
-        self._save_filters()
-        self._update_filter_summary(stale=True)
-        self.comparison.set_stale(True)
-        self._invalidate_plan_context()
-        self._set_state(
-            "Stale comparison: filter rules changed. Compare again to refresh results.",
-            "warning",
-        )
+        updated = dialog.profile()
+        self._profile_transfer = deepcopy(updated.transfer)
+        self._profile_preservation = deepcopy(updated.preservation)
+        self._profile_conflict = updated.conflict_policy
+        self.backup_edit.setText(updated.backup.directory)
+        self.protect_backup.setChecked(updated.backup.protect_nested)
+        self._backup_changed()
+        index = self.sync_mode.findData(updated.transfer.sync_mode)
+        if index >= 0:
+            self.sync_mode.setCurrentIndex(index)
+        if updated.filters != self._filters:
+            self._filters = list(updated.filters)
+            self._update_filter_summary(stale=True)
+            self.comparison.set_stale(True)
+            self._invalidate_plan_context()
+            self._set_state(
+                "Stale comparison: filter rules changed. Compare again to refresh results.",
+                "warning",
+            )
         self._refresh_profile_marker()
 
     def _configure_open_button_menu(self, button: QToolButton, section: str) -> None:
@@ -1389,7 +1416,6 @@ class MainWindow(QMainWindow):
             self._append_log(f"Filter already present: {pattern}", severity="warning")
             return
         self._filters.append(rule)
-        self._save_filters()
         self._update_filter_summary(stale=True)
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
@@ -1484,6 +1510,8 @@ class MainWindow(QMainWindow):
             note = menu.addAction("No recent profiles")
             note.setEnabled(False)
         menu.addSeparator()
+        edit = menu.addAction("Edit...")
+        edit.triggered.connect(self._edit_profile)
         save_as = menu.addAction("Save As...")
         save_as.triggered.connect(self._save_profile)
         reset = menu.addAction("Reset")
@@ -1596,7 +1624,6 @@ class MainWindow(QMainWindow):
         self.protect_backup.setChecked(True)
         self._backup = BackupOptions(directory="", protect_nested=True)
         self._filters = []
-        self._save_filters()
         self._update_filter_summary(stale=False)
         self._update_backup_status()
         self._update_external_open_states()
@@ -1645,7 +1672,9 @@ class MainWindow(QMainWindow):
             protect_nested=profile.backup.protect_nested,
         )
         self._filters = list(profile.filters)
-        self._save_filters()
+        self._profile_transfer = deepcopy(profile.transfer)
+        self._profile_preservation = deepcopy(profile.preservation)
+        self._profile_conflict = profile.conflict_policy
         self._update_filter_summary(stale=False)
         self._update_backup_status()
         self._update_external_open_states()
@@ -2993,23 +3022,6 @@ class MainWindow(QMainWindow):
         except (ValueError, KeyError, TypeError):
             return False
         return True
-
-    def _save_filters(self) -> None:
-        settings = app_settings()
-        settings.setValue(
-            "comparison/filters", encode_text(encode_filters(self._filters))
-        )
-        settings.sync()
-
-    def _restore_filters(self) -> None:
-        settings = app_settings()
-        payload = decode_text(settings.value("comparison/filters", "")) or ""
-        try:
-            self._filters = decode_filters(payload)
-        except (TypeError, ValueError):
-            self._filters = []
-            self._append_log("Stored filters were invalid and have been ignored.")
-        self._update_filter_summary()
 
     def _save_backup(self) -> None:
         settings = app_settings()

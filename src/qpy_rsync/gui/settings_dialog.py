@@ -31,7 +31,7 @@ from .action_colours import DEFAULT_COLOURS
 from .tools_panel import ToolsPanel
 
 # The tabs are named so a context menu can open the matching one.
-SECTIONS = ("general", "logging", "backup", "tools")
+SECTIONS = ("general", "logging", "tools")
 
 
 class SettingsDialog(QDialog):
@@ -114,7 +114,6 @@ class SettingsDialog(QDialog):
         self.tools_panel = ToolsPanel(self, tools or [], diff_command)
         self.tabs.addTab(general, "General")
         self.tabs.addTab(log_panel, "Logging")
-        self.tabs.addTab(backup_panel, "Backup")
         self.tabs.addTab(self.tools_panel, "Tools")
 
         button_row = QHBoxLayout()
