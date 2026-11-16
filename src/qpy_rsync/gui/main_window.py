@@ -740,7 +740,10 @@ class MainWindow(QMainWindow):
             file_menu, "Load Profile...", "F3", self._load_profile
         )
         self._add_action(
-            file_menu, "Save Profile...", "F2", self._save_profile
+            file_menu, "Save Profile", "F2", self._save_current_profile
+        )
+        self._add_action(
+            file_menu, "Save Profile As...", "", self._save_profile
         )
         file_menu.addSeparator()
         self._add_action(file_menu, "Quit", "Ctrl+Q", self.close)
@@ -1582,6 +1585,19 @@ class MainWindow(QMainWindow):
             )
             if answer == QMessageBox.StandardButton.Yes:
                 self._save_profile()
+            return
+        state = "Changed" if self._profile_is_modified() else "Unchanged"
+        box = QMessageBox(self)
+        box.setWindowTitle("Save profile")
+        box.setText(
+            f"Profile: {self._profile_path.name}\nState: {state}\n\n"
+            "Save the current profile settings?"
+        )
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(save)
+        box.exec()
+        if box.clickedButton() is not save:
             return
         try:
             save_profile(self._profile_path, self._profile())
