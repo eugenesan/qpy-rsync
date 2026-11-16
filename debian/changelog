@@ -1,3 +1,10 @@
+qpy-rsync (0.3.1-0) resolute; urgency=medium
+
+  * 0.3.1: valid rsync filter patterns, full advanced filter validation and
+    a browsable stale-comparison state.
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Mon, 16 Nov 2026 15:00:00 -0700
+
 qpy-rsync (0.3.0-0) resolute; urgency=medium
 
   * 0.3.0: unified profile management with a profile editor, extensive

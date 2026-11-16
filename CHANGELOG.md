@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed the "Exclude via Filter" entries of the item context menu: the
+  "by name" option now generates rsync's basename pattern (`name` or `name/`)
+  instead of `*/name`, so it also matches items at the transfer root.
+- Filter validation and syntax highlighting now cover all advanced rsync
+  filter rules, including modifiers such as `-s`, `-p`, `+r` and merge rules.
+- A stale comparison stays browsable: lists, context menus, tools and further
+  filter additions keep working, while decisions and synchronization remain
+  disabled until Compare runs.
+
 ## 0.3.0
 
 - Profiles are now managed from a single button with Load, Save, a list of up
