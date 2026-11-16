@@ -10,6 +10,8 @@ view, so the two can be compared on the same data.
 
 from __future__ import annotations
 
+import time
+
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -380,6 +382,7 @@ class FlatComparisonView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._context_menu_closed_at = 0.0
         self.model = FlatChangeModel(self)
         self._source_root = ""
         self._destination_root = ""
@@ -850,6 +853,10 @@ class FlatComparisonView(QWidget):
         self, pane: QTableView, index: QModelIndex
     ) -> None:
         """Toggle a directory; open the diff tool for anything else."""
+        # Dismissing a context menu with a click or Escape can leave a stray
+        # double-click on the same row, which used to open its directory.
+        if time.monotonic() - self._context_menu_closed_at < 0.4:
+            return
         row = self.model.row_data(index.row())
         if row is not None and row.is_directory and row.has_children:
             self.toggle_collapsed(row.path)
@@ -1209,6 +1216,16 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Context menu
     # ------------------------------------------------------------------
+    def show_context_menu_for_current(self, tree: QTableView) -> None:
+        """Open the context menu of the current row from the keyboard."""
+        index = tree.currentIndex()
+        point = (
+            tree.visualRect(index).center()
+            if index.isValid()
+            else tree.viewport().rect().center()
+        )
+        self._show_context_menu(tree, point)
+
     def _show_context_menu(self, tree: QTableView, point: object) -> None:
         index = tree.indexAt(point)
         if not index.isValid():
@@ -1237,6 +1254,7 @@ class FlatComparisonView(QWidget):
         row = self.model.row_data(index.row())
         menu, actions = self._build_context_menu(tree, path, change, row)
         selected = menu.exec(tree.viewport().mapToGlobal(point))
+        self._context_menu_closed_at = time.monotonic()
         if selected is actions["diff"]:
             self._request_diff(index)
         elif selected is actions["copy"] and path is not None:
@@ -1405,8 +1423,10 @@ class FlatComparisonView(QWidget):
                 tool_menu = menu.addMenu("Open with")
                 side = "destination" if tree is self.destination else "source"
                 is_directory = bool(getattr(row, "is_directory", False))
-                for tool in enabled:
+                for number, tool in enumerate(enabled[:8], 1):
                     action = tool_menu.addAction(tool.name)
+                    action.setShortcut(str(number))
+                    action.setToolTip(f"Shortcut: {number}")
                     action.setData((tool.name, path, side, is_directory))
                     actions["tools"].append(action)  # type: ignore[union-attr]
 

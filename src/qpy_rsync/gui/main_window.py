@@ -14,7 +14,9 @@ from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
+    QKeySequence,
     QPalette,
+    QShortcut,
     QTextCharFormat,
     QTextCursor,
 )
@@ -603,6 +605,7 @@ class MainWindow(QMainWindow):
         self.overview.stash_requested.connect(self._stash_path)
         self.overview.restore_requested.connect(self._restore_path)
         self.overview.filter_requested.connect(self._add_filter_phrase)
+        self._install_navigation_shortcuts()
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
         log_splitter.setStretchFactor(1, 0)
@@ -664,7 +667,7 @@ class MainWindow(QMainWindow):
             (self.filters_button, "F7"),
         ):
             button.setToolTip(with_shortcut(button.toolTip(), shortcut))
-        self.profile_button.setToolTip("Manage profiles (F2/F3)")
+        self.profile_button.setToolTip("Manage profiles (F2/F3, edit F4)")
         self.show_unchanged.setToolTip(with_shortcut(self.show_unchanged.toolTip(), "F6"))
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
@@ -1458,8 +1461,9 @@ class MainWindow(QMainWindow):
         modified = loaded and self._profile_is_modified()
         self.profile_button.setIcon(profile_icon(loaded=loaded, modified=modified))
         name = self._profile_path.name if self._profile_path else "no profile"
+        state = " (changed)" if modified else ""
         self.profile_button.setToolTip(
-            f"Manage profiles — {name} (changed)" if modified else f"Manage profiles — {name}"
+            f"Manage profiles — {name}{state} (F2 save, F3 load, F4 edit)"
         )
 
     def _recent_profile_paths(self) -> list[Path]:
@@ -2554,14 +2558,71 @@ class MainWindow(QMainWindow):
         self._append_log(f"STATE comparison-complete changes={count}")
         self._end_bulk_logging()
 
+    def _add_shortcut(self, key: str, slot) -> None:
+        shortcut = QShortcut(QKeySequence(key), self)
+        shortcut.activated.connect(lambda: slot())
+
+    def _install_navigation_shortcuts(self) -> None:
+        for key, widget in (
+            ("Alt+S", self.source_edit),
+            ("Alt+D", self.destination_edit),
+            ("Alt+O", self.overview.tree),
+            ("Alt+L", self.comparison.source),
+            ("Alt+R", self.comparison.destination),
+            ("Alt+A", self.comparison.action),
+        ):
+            self._add_shortcut(
+                key,
+                lambda w=widget: (w.setFocus(), w.selectAll() if hasattr(w, "selectAll") else None),
+            )
+            if hasattr(widget, "setToolTip"):
+                widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key})")
+        for number in range(1, 9):
+            self._add_shortcut(
+                f"Alt+{number}",
+                lambda n=number: self.action_filters.toggle_shortcut(n),
+            )
+            self._add_shortcut(
+                f"Ctrl+{number}",
+                lambda n=number: self.action_filters.toggle_shortcut(n, inverted=True),
+            )
+        for key, button in (
+            ("Ctrl+S", self.source_open_button),
+            ("Ctrl+D", self.destination_open_button),
+            ("Ctrl+B", self.backup_open),
+            ("Ctrl+L", self.log_file_open),
+        ):
+            self._add_shortcut(key, button.click)
+            button.setToolTip(f"{button.toolTip()} (Shortcut: {key})")
+        for tree in (
+            self.comparison.source,
+            self.comparison.action,
+            self.comparison.destination,
+        ):
+            tree.setProperty("comparePane", True)
+            tree.installEventFilter(self)
+
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         from PySide6.QtCore import QEvent
 
         try:
-            if event is not None and event.type() == QEvent.Type.Enter:
+            if event is None:
+                return super().eventFilter(watched, event)
+            if event.type() == QEvent.Type.Enter:
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
+            if event.type() == QEvent.Type.KeyPress:
+                pane = (
+                    watched.property("comparePane")
+                    if hasattr(watched, "property")
+                    else None
+                )
+                if pane and int(event.key()) == 0x01000004 and (
+                    int(event.modifiers()) & int(Qt.KeyboardModifier.AltModifier)
+                ):
+                    self.comparison.show_context_menu_for_current(watched)
+                    return True
         except RuntimeError:
             # Qt may already have destroyed the watched widget during shutdown.
             return False

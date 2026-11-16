@@ -52,6 +52,29 @@ class ActionFilterBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        # The stashed items are the ones the user put aside. They affect the
+        # sync, so this is not just a display filter: it shows what is
+        # already excluded from the sync, the way the unchanged toggle shows
+        # what the comparison kept.
+        layout.addWidget(_separator())
+        self.stashed_box = QCheckBox(self)
+        self.stashed_box.setIcon(stashed_icon())
+        self.stashed_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.stashed_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
+        self.stashed_box.setToolTip(
+            self._stashed_tooltip(0)
+            + "\nAlt+1 clicks this checkbox; Ctrl+1 inverts it."
+        )
+        self.stashed_box.setAccessibleName("Show stashed items")
+        self.stashed_box.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.stashed_box.customContextMenuRequested.connect(
+            self._show_stashed_menu
+        )
+        self.stashed_box.toggled.connect(self.stashed_toggled.emit)
+        layout.addWidget(self.stashed_box)
+
         self._boxes: dict[ChangeAction, QCheckBox] = {}
         for index, action in enumerate(FILTERABLE_ACTIONS):
             box = QCheckBox(self)
@@ -82,31 +105,12 @@ class ActionFilterBar(QWidget):
             "Show the unchanged items of the comparison.\n"
             "The inventory lists both sides, so the unchanged items can be "
             "shown next to the changed ones.\n"
-            "Ctrl+click shows only the unchanged items."
+            "Ctrl+click shows only the unchanged items.\n"
+            "Alt+8 clicks this checkbox; Ctrl+8 inverts it."
         )
         self.unchanged_box.setAccessibleName("Show unchanged items")
         self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
         layout.addWidget(self.unchanged_box)
-
-        # The stashed items are the ones the user put aside. They affect the
-        # sync, so this is not just a display filter: it shows what is
-        # already excluded from the sync, the way the unchanged toggle shows
-        # what the comparison kept.
-        layout.addWidget(_separator())
-        self.stashed_box = QCheckBox(self)
-        self.stashed_box.setIcon(stashed_icon())
-        self.stashed_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.stashed_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
-        self.stashed_box.setToolTip(self._stashed_tooltip(0))
-        self.stashed_box.setAccessibleName("Show stashed items")
-        self.stashed_box.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu
-        )
-        self.stashed_box.customContextMenuRequested.connect(
-            self._show_stashed_menu
-        )
-        self.stashed_box.toggled.connect(self.stashed_toggled.emit)
-        layout.addWidget(self.stashed_box)
 
         # Breeze marks a focused icon-only checkbox with an underline. A
         # pointer click should not leave that marker behind, but Tab must
@@ -121,14 +125,31 @@ class ActionFilterBar(QWidget):
                 lambda point, b=box: self._show_box_menu(b, point)
             )
 
-    @staticmethod
-    def _tooltip(action: ChangeAction) -> str:
+    def toggle_shortcut(self, number: int, *, inverted: bool = False) -> None:
+        """Emulate a click on the checkbox with the given number (1-8)."""
+        boxes = self._numbered_boxes()
+        if 1 <= number <= len(boxes):
+            self.activate_box(boxes[number - 1], inverted=inverted)
+
+    def activate_box(self, box: QCheckBox, *, inverted: bool = False) -> None:
+        """Click a checkbox, with Ctrl held when ``inverted`` is set."""
+        if inverted:
+            self._apply_inverse(box)
+        else:
+            box.click()
+
+    def _numbered_boxes(self) -> list[QCheckBox]:
+        return [self.stashed_box, *self._boxes.values(), self.unchanged_box]
+
+    def _tooltip(self, action: ChangeAction) -> str:
         label = ACTION_LABELS.get(action, action.value)
+        number = list(FILTERABLE_ACTIONS).index(action) + 2
         return (
             f"Display only: {label}\n"
             "This checkbox filters the view and doesn't affect the sync. "
             "Use the sync mode selector or the action checkboxes below to "
             "control the sync.\n"
+            f"Alt+{number} clicks this checkbox; Ctrl+{number} inverts it.\n"
             "Ctrl+click shows only this action, and a second inverted click "
             "brings every action back. Right-click opens the same choices."
         )
@@ -167,7 +188,10 @@ class ActionFilterBar(QWidget):
         extra = self.stashed_box.fontMetrics().horizontalAdvance(text) + 10 if text else 0
         self.stashed_box.setFixedWidth(CONTROL_ICON_SIZE + 20 + extra)
         self.stashed_box.setVisible(True)
-        self.stashed_box.setToolTip(self._stashed_tooltip(count))
+        self.stashed_box.setToolTip(
+            self._stashed_tooltip(count)
+            + "\nAlt+1 clicks this checkbox; Ctrl+1 inverts it."
+        )
 
     def _show_stashed_menu(self, point: object) -> None:
         """Offer to restore every stashed item from the toggle."""

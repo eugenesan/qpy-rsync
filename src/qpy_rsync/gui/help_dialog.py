@@ -90,6 +90,29 @@ result.
     Examples: kate %d/%f, meld %D %d, scp %d/%f %U%V%R%W%D/%F.
     The diff tool command on the same page uses the same placeholders; an
     empty field keeps the tool that the system offers.
+
+11. Profiles
+    The toolbar's Manage profiles button opens a menu with Load, Save, the
+    recent profiles, Save As, Edit and Reset. Profile (F4 in the Edit menu)
+    opens the editor with the Transfer, Preservation, Backup and Filter
+    settings of the current profile. F2 saves the current profile and F3
+    loads one. Filters belong to the profile; they are no longer kept in the
+    application settings.
+
+12. Keyboard shortcuts
+    Alt+S / Alt+D  focus the Source / Destination location field
+    Alt+O / Alt+L / Alt+R / Alt+A  focus the Overview / Source / Destination /
+                   Actions pane
+    Alt+Enter      open the context menu of the current row
+    Alt+1..8       click the numbered checkbox in the actions bar
+    Ctrl+1..8      Ctrl-click (invert) the numbered checkbox
+    F2 / F3        save / load a profile
+    F4             edit the profile
+    F12            cycle the synchronization method
+    Ctrl+S / Ctrl+D  open the Source / Destination directory
+    Ctrl+B / Ctrl+L  open the Backup directory / the log file location
+    The external tools in the context menu of an item have numbered shortcuts
+    (1..8) that work while the menu is open.
 """
 
 
