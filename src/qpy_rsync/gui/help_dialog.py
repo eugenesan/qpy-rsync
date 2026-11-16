@@ -19,7 +19,7 @@ result.
    Enter a local path (/home/alice/data or ~/data) or one remote path in the
    form [user@]host:/absolute/path. At most one side may be remote.
 
-2. Method (F4)
+2. Method (F12)
    Update copies new and changed items and keeps items that exist only in
    the destination. Mirror makes the destination match the source, including
    deletions. New Only copies missing items and never updates or deletes.

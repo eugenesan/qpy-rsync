@@ -14,9 +14,7 @@ from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
-    QKeySequence,
     QPalette,
-    QShortcut,
     QTextCharFormat,
     QTextCursor,
 )
@@ -667,8 +665,6 @@ class MainWindow(QMainWindow):
         ):
             button.setToolTip(with_shortcut(button.toolTip(), shortcut))
         self.profile_button.setToolTip("Manage profiles (F2/F3)")
-        QShortcut(QKeySequence("F2"), self, activated=lambda: self._save_current_profile())
-        QShortcut(QKeySequence("F3"), self, activated=lambda: self._load_profile())
         self.show_unchanged.setToolTip(with_shortcut(self.show_unchanged.toolTip(), "F6"))
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
@@ -752,7 +748,7 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
         )
-        self._add_action(edit_menu, "Profile", "F12", self._edit_profile)
+        self._add_action(edit_menu, "Profile", "F4", self._edit_profile)
         self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 
         actions_menu = menu_bar.addMenu("&Actions")
@@ -763,7 +759,7 @@ class MainWindow(QMainWindow):
             self.comparison.reset_all_decisions,
         )
         self._add_action(
-            actions_menu, "Method", "F4", lambda: self.sync_mode.setFocus()
+            actions_menu, "Method", "F12", lambda: self.sync_mode.setFocus()
         )
         actions_menu.addSeparator()
         self._add_action(actions_menu, "Compare", "F5", self._compare)
