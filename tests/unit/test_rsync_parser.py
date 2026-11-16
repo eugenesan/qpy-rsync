@@ -78,7 +78,7 @@ def test_a_broken_itemized_code_is_rejected() -> None:
         )
 
 
-def test_the_action_follows_the_attributes_and_not_the_transfer_marker() -> None:
+def test_the_action_follows_the_transfer_marker() -> None:
     def action(code: str) -> str:
         change = parse_record(
             f"{code}|qpy-rsync|1|qpy-rsync|2026/11/14-21:22:50|qpy-rsync|file"
@@ -86,14 +86,13 @@ def test_the_action_follows_the_attributes_and_not_the_transfer_marker() -> None
         assert change is not None
         return change.action.value
 
-    # Only the modification time changed: the content is the same, so this is
-    # a metadata change even though rsync marks the file as transferred.
-    assert action(">f..t......") == "update_metadata"
-    # The size or the value changed: the content is different.
+    # A transfer marker means the file is being written.
+    assert action(">f..t......") == "update_content"
     assert action(">f.st......") == "update_content"
     assert action(">fc..t.....") == "update_content"
-    # The permissions changed: metadata.
-    assert action(">f..p......") == "update_metadata"
+    # Attribute-only differences without a transfer marker are metadata.
+    assert action(".f..t......") == "update_metadata"
+    assert action(".f..p......") == "update_metadata"
     # Nothing changed at all.
     assert action(".f.........") == "no_change"
     # A new file.
