@@ -2567,13 +2567,17 @@ class MainWindow(QMainWindow):
             ("Alt+S", self.source_edit),
             ("Alt+D", self.destination_edit),
             ("Ctrl+W", self.overview.tree),
-            ("Ctrl+S", self.comparison.source),
-            ("Ctrl+D", self.comparison.destination),
+            ("Ctrl+D", self.comparison.source),
+            ("Ctrl+S", self.comparison.destination),
             ("Ctrl+N", self.comparison.action),
         ):
             self._add_shortcut(key, lambda w=widget: w.setFocus())
             if hasattr(widget, "setToolTip"):
-                widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key})")
+                extra = " (Esc ends editing)" if widget in (
+                    self.source_edit,
+                    self.destination_edit,
+                ) else ""
+                widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key}){extra}")
         for number in range(1, 9):
             self._add_shortcut(
                 f"Alt+{number}",
@@ -2590,6 +2594,9 @@ class MainWindow(QMainWindow):
             self._add_shortcut(key, button.click)
             button.setToolTip(f"{button.toolTip()} (Shortcut: {key})")
         self._add_shortcut("Alt+Return", self._open_current_context_menu)
+        self._add_shortcut("Ctrl+T", self._open_current_context_menu)
+        for edit in (self.source_edit, self.destination_edit):
+            edit.installEventFilter(self)
 
     def _open_current_context_menu(self) -> None:
         from PySide6.QtWidgets import QApplication
@@ -2614,6 +2621,15 @@ class MainWindow(QMainWindow):
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
+            if (
+                event.type() == QEvent.Type.KeyPress
+                and watched in (self.source_edit, self.destination_edit)
+                and int(event.key()) == int(Qt.Key.Key_Escape)
+            ):
+                # End editing without consuming the key, so the main window's
+                # shortcuts work again on the next press.
+                watched.clearFocus()
+                return True
         except RuntimeError:
             # Qt may already have destroyed the watched widget during shutdown.
             return False

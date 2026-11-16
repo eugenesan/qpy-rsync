@@ -1387,7 +1387,8 @@ class FlatComparisonView(QWidget):
             )
         if not is_unchanged:
             menu.addSeparator()
-            actions["diff"] = menu.addAction("Open in Diff Tool")
+            actions["diff"] = menu.addAction("Open in Diff Tool\t1")
+            actions["diff"].setShortcut("1")
             actions["diff"].setEnabled(change is not None)  # type: ignore[union-attr]
             if tree is self.action and path is not None:
                 menu.addSeparator()
@@ -1430,7 +1431,7 @@ class FlatComparisonView(QWidget):
                 tool_menu = menu.addMenu("Open with")
                 side = "destination" if tree is self.destination else "source"
                 is_directory = bool(getattr(row, "is_directory", False))
-                for number, tool in enumerate(enabled[:8], 1):
+                for number, tool in enumerate(enabled[:8], 2):
                     action = tool_menu.addAction(tool.name)
                     action.setShortcut(str(number))
                     action.setToolTip(f"Shortcut: {number}")

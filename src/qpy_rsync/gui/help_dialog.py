@@ -102,17 +102,18 @@ result.
 12. Keyboard shortcuts
     Alt+S / Alt+D  focus the Source / Destination location field
     Ctrl+W         focus the Overview pane
-    Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
+    Ctrl+D / Ctrl+S  focus the Source / Destination compare tree
     Ctrl+N         focus the Actions column
-    Alt+Enter      open the context menu of the current row
+    Alt+Enter / Ctrl+T  open the context menu of the current row
     Alt+1..8       click the numbered checkbox in the actions bar
     Ctrl+1..8      Ctrl-click (invert) the numbered checkbox
     F2 / F3        save / load a profile
     F4             edit the profile
     F12            cycle the synchronization method
     Ctrl+B / Ctrl+L  open the Backup directory / the log file location
-    The external tools in the context menu of an item have numbered shortcuts
-    (1..8) that work while the menu is open.
+    In the context menu of an item, press 1 for the diff tool or 2..9 for the
+    configured external tools. Ctrl+T or Alt+Enter opens that menu, so a
+    shortcut such as Ctrl+T then 1 opens the diff tool.
 """
 
 
