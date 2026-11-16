@@ -160,9 +160,21 @@ class FilterEditorWidget(QWidget):
         self.preview_label.setWordWrap(True)
         self.editor.cursorPositionChanged.connect(self._update_preview)
         self._update_preview()
+        button_row = QHBoxLayout()
+        self.import_button = QPushButton("Import", self)
+        self.export_button = QPushButton("Export", self)
+        self.help_button = QPushButton("Help", self)
+        self.import_button.clicked.connect(self.import_file)
+        self.export_button.clicked.connect(self.export_file)
+        self.help_button.clicked.connect(self.show_help)
+        button_row.addWidget(self.import_button)
+        button_row.addWidget(self.export_button)
+        button_row.addWidget(self.help_button)
+        button_row.addStretch(1)
         layout = QVBoxLayout(self)
         layout.addWidget(self.editor, 1)
         layout.addWidget(self.preview_label)
+        layout.addLayout(button_row)
 
     def rules(self) -> list[FilterRule]:
         result: list[FilterRule] = []
@@ -252,26 +264,18 @@ class FilterEditorDialog(QDialog):
         self.text_editor = self.editor
         self.preview_label = self.widget.preview_label
         self._has_errors = self.widget.has_errors
-        import_button = QPushButton("Import", self)
-        export_button = QPushButton("Export", self)
-        help_button = QPushButton("Help", self)
-        import_button.clicked.connect(self.widget.import_file)
-        export_button.clicked.connect(self.widget.export_file)
-        help_button.clicked.connect(self.widget.show_help)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._accept_if_valid)
         buttons.rejected.connect(self.reject)
-        button_row = QHBoxLayout()
-        button_row.addWidget(import_button)
-        button_row.addWidget(export_button)
-        button_row.addWidget(help_button)
-        button_row.addStretch(1)
-        button_row.addWidget(buttons)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.widget, 1)
-        layout.addLayout(button_row)
+        widget_buttons = self.widget.findChildren(QHBoxLayout)
+        if widget_buttons:
+            widget_buttons[-1].addWidget(buttons)
+        else:
+            layout = QVBoxLayout(self)
+            layout.addWidget(self.widget, 1)
+            layout.addWidget(buttons)
 
     def rules(self) -> list[FilterRule]:
         return self.widget.rules()

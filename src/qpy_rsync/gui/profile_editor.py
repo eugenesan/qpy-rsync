@@ -23,7 +23,7 @@ from qpy_rsync.core.models import FilterRule, PreservationOptions, SyncProfile, 
 
 from .filter_editor import FilterEditorWidget
 
-SECTIONS = ("transfer", "options", "preservation", "backup", "policy", "filters")
+SECTIONS = ("options", "preservation", "backup", "filters")
 
 
 def _combo(values, current):
@@ -67,13 +67,18 @@ class ProfileEditorDialog(QDialog):
             (self.sparse, transfer.sparse),
         ):
             checkbox.setChecked(value)
-        transfer_tab = QWidget(self)
-        transfer_layout = QFormLayout(transfer_tab)
-        transfer_layout.addRow("Sync mode", self.sync_mode)
-        transfer_layout.addRow("Delete timing", self.delete_timing)
-
         options_tab = QWidget(self)
         options_layout = QVBoxLayout(options_tab)
+        from PySide6.QtWidgets import QGroupBox
+
+        transfer_group = QGroupBox("Transfer", options_tab)
+        transfer_layout = QFormLayout(transfer_group)
+        transfer_layout.addRow("Sync mode", self.sync_mode)
+        transfer_layout.addRow("Delete timing", self.delete_timing)
+        options_layout.addWidget(transfer_group)
+
+        behaviours_group = QGroupBox("Transfer options", options_tab)
+        behaviours_layout = QVBoxLayout(behaviours_group)
         for checkbox in (
             self.compress,
             self.fuzzy,
@@ -83,8 +88,8 @@ class ProfileEditorDialog(QDialog):
             self.ignore_times,
             self.sparse,
         ):
-            options_layout.addWidget(checkbox)
-        options_layout.addStretch(1)
+            behaviours_layout.addWidget(checkbox)
+        options_layout.addWidget(behaviours_group)
 
         self.archive = QCheckBox("Archive mode")
         self.hard_links = QCheckBox("Preserve hard links")
@@ -126,26 +131,26 @@ class ProfileEditorDialog(QDialog):
         backup_layout.addRow("", backup_hint)
 
         self.conflict_policy = _combo(ConflictPolicy, self._profile.conflict_policy)
-        policy_tab = QWidget(self)
-        policy_layout = QFormLayout(policy_tab)
-        policy_layout.addRow("Conflict policy", self.conflict_policy)
+        policy_group = QGroupBox("Conflict policy", options_tab)
+        policy_layout = QFormLayout(policy_group)
+        policy_layout.addRow("Policy", self.conflict_policy)
         policy_hint = QLabel(
             "The conflict policy controls what happens when a file changes on "
             "both sides between the comparison and the synchronization."
         )
         policy_hint.setWordWrap(True)
         policy_layout.addRow("", policy_hint)
+        options_layout.addWidget(policy_group)
+        options_layout.addStretch(1)
 
         self.filter_widget = FilterEditorWidget(self._profile.filters, self)
 
         from PySide6.QtWidgets import QTabWidget
 
         self.tabs = QTabWidget(self)
-        self.tabs.addTab(transfer_tab, "Transfer")
         self.tabs.addTab(options_tab, "Options")
         self.tabs.addTab(preservation_tab, "Preservation")
         self.tabs.addTab(backup_tab, "Backup")
-        self.tabs.addTab(policy_tab, "Conflict policy")
         self.tabs.addTab(self.filter_widget, "Filters")
         self.show_section(section)
 

@@ -430,7 +430,7 @@ class MainWindow(QMainWindow):
         self.profile_button.setAccessibleName("Manage Profiles")
         self.profile_button.setMenu(self.profile_menu)
         self.profile_button.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup
+            QToolButton.ToolButtonPopupMode.InstantPopup
         )
         # Backwards-compatible aliases for the buttons this one replaces.
         self.load_profile_button = self.profile_button
@@ -1275,7 +1275,7 @@ class MainWindow(QMainWindow):
     def _edit_filters(self) -> None:
         self._edit_profile("filters")
 
-    def _edit_profile(self, section: str = "transfer") -> None:
+    def _edit_profile(self, section: str = "options") -> None:
         from .profile_editor import ProfileEditorDialog
 
         dialog = ProfileEditorDialog(self._profile(), self, section)
@@ -1452,23 +1452,35 @@ class MainWindow(QMainWindow):
         modified = loaded and self._profile_is_modified()
         self.profile_button.setIcon(profile_icon(loaded=loaded, modified=modified))
         name = self._profile_path.name if self._profile_path else "no profile"
-        state = "modified" if modified else "saved"
-        self.profile_button.setToolTip(f"Manage profiles — {name} ({state})")
+        self.profile_button.setToolTip(
+            f"Manage profiles — {name} (changed)" if modified else f"Manage profiles — {name}"
+        )
 
     def _recent_profile_paths(self) -> list[Path]:
+        """Recently used profiles, then the ones found in the profile folder."""
         settings = app_settings()
         payload = decode_text(settings.value("profile/recent_paths", "")) or ""
-        paths: list[Path] = []
+        remembered: list[Path] = []
         if payload:
             try:
                 import json
 
                 raw = json.loads(payload)
                 if isinstance(raw, list):
-                    paths = [Path(str(item)).expanduser() for item in raw]
+                    remembered = [Path(str(item)).expanduser() for item in raw]
             except (ValueError, TypeError):
-                paths = []
-        return [path for path in paths if path.is_file()][:10]
+                remembered = []
+        directory = profiles_directory()
+        on_disk = sorted(
+            (path for path in directory.glob("*.json") if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        paths: list[Path] = []
+        for path in [*remembered, *on_disk]:
+            if path.is_file() and path not in paths:
+                paths.append(path)
+        return paths[:10]
 
     def _remember_profile_path(self, path: Path) -> None:
         self._profile_path = path

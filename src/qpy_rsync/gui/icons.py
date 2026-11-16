@@ -292,9 +292,9 @@ def restore_defaults_icon() -> QIcon:
 def profile_icon(*, loaded: bool = False, modified: bool = False) -> QIcon:
     """The profile icon, with a marker when a profile is loaded or modified."""
     base = _theme_icon(
-        "folder-bookmark",
+        "quickopen-file-symbolic",
+        "quickopen-file",
         "document-open",
-        "document-save",
         fallback=QStyle.StandardPixmap.SP_DialogOpenButton,
     )
     if not loaded and not modified:
