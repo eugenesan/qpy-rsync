@@ -2562,7 +2562,33 @@ class MainWindow(QMainWindow):
         shortcut = QShortcut(QKeySequence(key), self)
         shortcut.activated.connect(lambda: slot())
 
+    def _focus_compare_pane(self, tree) -> None:
+        """Focus a compare pane with a valid current item.
+
+        A QTableView that has never been clicked has no current index. Giving
+        it focus alone leaves arrow keys and further shortcuts inert, and the
+        first arrow press only parks the cursor on row zero without a real
+        selection. Set the current item explicitly first.
+        """
+        if not tree.currentIndex().isValid() and tree.model().rowCount() > 0:
+            from PySide6.QtCore import QItemSelectionModel
+
+            index = tree.model().index(0, 0)
+            tree.selectionModel().setCurrentIndex(
+                index,
+                QItemSelectionModel.SelectionFlag.Select
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
+            tree.scrollTo(index)
+        tree.setFocus()
+
     def _install_navigation_shortcuts(self) -> None:
+        panes = {
+            self.comparison.source,
+            self.comparison.destination,
+            self.comparison.action,
+            self.overview.tree,
+        }
         for key, widget in (
             ("Alt+S", self.source_edit),
             ("Alt+D", self.destination_edit),
@@ -2571,7 +2597,12 @@ class MainWindow(QMainWindow):
             ("Ctrl+]", self.comparison.destination),
             ("Ctrl+\\", self.comparison.action),
         ):
-            self._add_shortcut(key, lambda w=widget: w.setFocus())
+            self._add_shortcut(
+                key,
+                lambda w=widget: (
+                    self._focus_compare_pane(w) if w in panes else w.setFocus()
+                ),
+            )
             if hasattr(widget, "setToolTip"):
                 extra = " (Esc ends editing)" if widget in (
                     self.source_edit,
