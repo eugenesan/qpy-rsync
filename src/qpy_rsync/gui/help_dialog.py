@@ -102,7 +102,7 @@ result.
 12. Keyboard shortcuts
     Alt+S / Alt+D  focus the Source / Destination location field
     Ctrl+W         focus the Overview pane
-    Ctrl+D / Ctrl+S  focus the Source / Destination compare tree
+    Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
     Ctrl+N         focus the Actions column
     Alt+Enter / Ctrl+T  open the context menu of the current row
     Alt+1..8       click the numbered checkbox in the actions bar
