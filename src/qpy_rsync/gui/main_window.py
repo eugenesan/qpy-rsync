@@ -759,7 +759,7 @@ class MainWindow(QMainWindow):
             self.comparison.reset_all_decisions,
         )
         self._add_action(
-            actions_menu, "Method", "F12", lambda: self.sync_mode.setFocus()
+            actions_menu, "Method", "F12", self._cycle_sync_mode
         )
         actions_menu.addSeparator()
         self._add_action(actions_menu, "Compare", "F5", self._compare)
@@ -1254,6 +1254,12 @@ class MainWindow(QMainWindow):
             preservation=PreservationOptions(**asdict(self._profile_preservation)),
             conflict_policy=self._profile_conflict,
         )
+
+    def _cycle_sync_mode(self) -> None:
+        """Move to the next synchronization method."""
+        count = self.sync_mode.count()
+        if count:
+            self.sync_mode.setCurrentIndex((self.sync_mode.currentIndex() + 1) % count)
 
     def _sync_mode_changed(self) -> None:
         mode = self.sync_mode.currentData()
