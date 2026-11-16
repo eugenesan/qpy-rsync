@@ -92,6 +92,7 @@ class SyncProfile:
     transfer: TransferOptions = field(default_factory=TransferOptions)
     backup: BackupOptions = field(default_factory=BackupOptions)
     filters: list[FilterRule] = field(default_factory=list)
+    inventory_after_compare: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

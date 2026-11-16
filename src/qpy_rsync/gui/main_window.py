@@ -1256,6 +1256,7 @@ class MainWindow(QMainWindow):
             ),
             preservation=PreservationOptions(**asdict(self._profile_preservation)),
             conflict_policy=self._profile_conflict,
+            inventory_after_compare=self.inventory_after_compare_button.isChecked(),
         )
 
     def _cycle_sync_mode(self) -> None:
@@ -1294,6 +1295,9 @@ class MainWindow(QMainWindow):
         self._profile_transfer = deepcopy(updated.transfer)
         self._profile_preservation = deepcopy(updated.preservation)
         self._profile_conflict = updated.conflict_policy
+        self.inventory_after_compare_button.blockSignals(True)
+        self.inventory_after_compare_button.setChecked(updated.inventory_after_compare)
+        self.inventory_after_compare_button.blockSignals(False)
         self.backup_edit.setText(updated.backup.directory)
         self.protect_backup.setChecked(updated.backup.protect_nested)
         self._backup_changed()
@@ -1657,6 +1661,7 @@ class MainWindow(QMainWindow):
             self.sync_mode.setCurrentIndex(index)
         self.backup_edit.clear()
         self.protect_backup.setChecked(True)
+        self.inventory_after_compare_button.setChecked(False)
         self._backup = BackupOptions(directory="", protect_nested=True)
         self._filters = []
         self._update_filter_summary(stale=False)
@@ -1710,6 +1715,11 @@ class MainWindow(QMainWindow):
         self._profile_transfer = deepcopy(profile.transfer)
         self._profile_preservation = deepcopy(profile.preservation)
         self._profile_conflict = profile.conflict_policy
+        self.inventory_after_compare_button.blockSignals(True)
+        self.inventory_after_compare_button.setChecked(
+            profile.inventory_after_compare
+        )
+        self.inventory_after_compare_button.blockSignals(False)
         self._update_filter_summary(stale=False)
         self._update_backup_status()
         self._update_external_open_states()
@@ -3201,19 +3211,14 @@ class MainWindow(QMainWindow):
         preview_state = decode_binary(settings.value("command-preview/splitter"))
         if preview_state is not None:
             self.preview_log_splitter.restoreState(preview_state)
-        value = settings.value("comparison/inventory-after-compare", False)
-        checked = (
-            value
-            if isinstance(value, bool)
-            else str(value).strip().lower() in ("true", "1", "yes")
-        )
-        self.inventory_after_compare_button.setChecked(checked)
+        # The auto-inventory choice belongs to the profile now. Drop the old
+        # global value so it cannot be mistaken for the active state.
+        settings.remove("comparison/inventory-after-compare")
+        settings.sync()
 
     def _inventory_after_compare_changed(self, checked: bool) -> None:
-        """Remember whether the inventory runs automatically after a compare."""
-        settings = app_settings()
-        settings.setValue("comparison/inventory-after-compare", bool(checked))
-        settings.sync()
+        """The auto-inventory choice is now part of the current profile."""
+        self._refresh_profile_marker()
         if (
             checked
             and self._active_profile is not None

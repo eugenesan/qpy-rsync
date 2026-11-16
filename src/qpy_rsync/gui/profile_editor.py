@@ -57,6 +57,10 @@ class ProfileEditorDialog(QDialog):
         self.one_file_system = QCheckBox("Do not cross file-system boundaries")
         self.ignore_times = QCheckBox("Ignore modification times")
         self.sparse = QCheckBox("Transfer sparse files efficiently")
+        self.inventory_after_compare = QCheckBox(
+            "Fetch the unchanged inventory automatically after a comparison"
+        )
+        self.inventory_after_compare.setChecked(profile.inventory_after_compare)
         for checkbox, value in (
             (self.compress, transfer.compress),
             (self.fuzzy, transfer.fuzzy),
@@ -141,6 +145,10 @@ class ProfileEditorDialog(QDialog):
         policy_hint.setWordWrap(True)
         policy_layout.addRow("", policy_hint)
         options_layout.addWidget(policy_group)
+        comparison_group = QGroupBox("Comparison", options_tab)
+        comparison_layout = QVBoxLayout(comparison_group)
+        comparison_layout.addWidget(self.inventory_after_compare)
+        options_layout.addWidget(comparison_group)
         options_layout.addStretch(1)
 
         self.filter_widget = FilterEditorWidget(self._profile.filters, self)
@@ -197,6 +205,7 @@ class ProfileEditorDialog(QDialog):
             protect_nested=self.protect_backup.isChecked(),
         )
         profile.conflict_policy = self.conflict_policy.currentData()
+        profile.inventory_after_compare = self.inventory_after_compare.isChecked()
         profile.filters = self.filter_widget.rules()
         return profile
 
