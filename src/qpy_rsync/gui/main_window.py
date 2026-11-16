@@ -1130,7 +1130,7 @@ class MainWindow(QMainWindow):
     def _endpoint_text_changed(self) -> None:
         self._update_backup_browse_state()
         self._update_external_open_states()
-        if self.comparison.model.changes:
+        if self.comparison.model.changes and not self.comparison.model.stale:
             self.comparison.set_stale(True)
             self._invalidate_plan_context()
             self._set_status(
