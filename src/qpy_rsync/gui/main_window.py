@@ -749,6 +749,7 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Filter/Find", "Ctrl+F", self.comparison.focus_path_filter
         )
+        self._add_action(edit_menu, "Profile", "F12", self._edit_profile)
         self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 
         actions_menu = menu_bar.addMenu("&Actions")
