@@ -13,7 +13,9 @@ from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
+    QKeySequence,
     QPalette,
+    QShortcut,
     QTextCharFormat,
     QTextCursor,
 )
@@ -169,6 +171,7 @@ from .icons import (
     open_icon,
     pause_icon,
     save_icon,
+    profile_icon,
     restore_defaults_icon,
     settings_icon,
     swap_icon,
@@ -201,6 +204,7 @@ class MainWindow(QMainWindow):
         self._service.on_transient = self._append_transient_log
         self._service.on_items = self._comparison_items
         self._active_profile: SyncProfile | None = None
+        self._profile_path: Path | None = None
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
         self._validated_plan: ExecutionPlan | None = None
@@ -277,6 +281,7 @@ class MainWindow(QMainWindow):
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
+        self._refresh_profile_marker()
 
     def _build_backup_panel(self) -> None:
         """Build the backup settings shown in the Settings dialog."""
@@ -409,18 +414,20 @@ class MainWindow(QMainWindow):
         self.filters_button.setIcon(filters_icon())
         self.filters_button.setToolTip("Edit the persistent filter rules")
         self.filters_button.setAccessibleName("Filters")
-        self.load_profile_button = QToolButton()
-        self.load_profile_button.setIcon(open_icon())
-        self.load_profile_button.setToolTip("Load Profile...")
-        self.load_profile_button.setAccessibleName("Load Profile")
-        self.save_profile_button = QToolButton()
-        self.save_profile_button.setIcon(save_icon())
-        self.save_profile_button.setToolTip("Save Profile...")
-        self.save_profile_button.setAccessibleName("Save Profile")
-        self.unload_profile_button = QToolButton()
-        self.unload_profile_button.setIcon(restore_defaults_icon())
-        self.unload_profile_button.setToolTip("Unload Profile (restore defaults)")
-        self.unload_profile_button.setAccessibleName("Unload Profile")
+        self.profile_menu = QMenu(self)
+        self.profile_menu.aboutToShow.connect(self._update_profile_menu)
+        self.profile_button = QToolButton()
+        self.profile_button.setIcon(profile_icon())
+        self.profile_button.setToolTip("Manage profiles")
+        self.profile_button.setAccessibleName("Manage Profiles")
+        self.profile_button.setMenu(self.profile_menu)
+        self.profile_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup
+        )
+        # Backwards-compatible aliases for the buttons this one replaces.
+        self.load_profile_button = self.profile_button
+        self.save_profile_button = self.profile_button
+        self.unload_profile_button = self.profile_button
         self.backup_open = self._external_open_button(
             "backup-open-button",
             backup_icon(),
@@ -453,9 +460,7 @@ class MainWindow(QMainWindow):
             self.cancel_button,
             self.pause_button,
             self.filters_button,
-            self.load_profile_button,
-            self.save_profile_button,
-            self.unload_profile_button,
+            self.profile_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -474,9 +479,7 @@ class MainWindow(QMainWindow):
             self.pause_button,
             None,
             self.filters_button,
-            self.load_profile_button,
-            self.save_profile_button,
-            self.unload_profile_button,
+            self.profile_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -638,9 +641,6 @@ class MainWindow(QMainWindow):
         self.synchronize_button.clicked.connect(self._show_sync_confirmation)
         self.swap_button.clicked.connect(self._swap_endpoints)
         self.filters_button.clicked.connect(self._edit_filters)
-        self.save_profile_button.clicked.connect(self._save_profile)
-        self.unload_profile_button.clicked.connect(self._unload_profile)
-        self.load_profile_button.clicked.connect(self._load_profile)
         self.backup_browse.clicked.connect(self._browse_backup)
         for button, action in (
             (self.compare_button, "compare"),
@@ -656,10 +656,11 @@ class MainWindow(QMainWindow):
             (self.cancel_button, "F10"),
             (self.pause_button, "F11"),
             (self.filters_button, "F7"),
-            (self.save_profile_button, "F2"),
-            (self.load_profile_button, "F3"),
         ):
             button.setToolTip(with_shortcut(button.toolTip(), shortcut))
+        self.profile_button.setToolTip("Manage profiles (F2/F3)")
+        QShortcut(QKeySequence("F2"), self, activated=lambda: self._save_current_profile())
+        QShortcut(QKeySequence("F3"), self, activated=lambda: self._load_profile())
         self.show_unchanged.setToolTip(with_shortcut(self.show_unchanged.toolTip(), "F6"))
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
@@ -1130,6 +1131,7 @@ class MainWindow(QMainWindow):
     def _endpoint_text_changed(self) -> None:
         self._update_backup_browse_state()
         self._update_external_open_states()
+        self._refresh_profile_marker()
         if self.comparison.model.changes and not self.comparison.model.stale:
             self.comparison.set_stale(True)
             self._invalidate_plan_context()
@@ -1253,6 +1255,7 @@ class MainWindow(QMainWindow):
                 "error",
             )
         self._update_command_preview()
+        self._refresh_profile_marker()
 
     def _edit_filters(self) -> None:
         dialog = FilterEditorDialog(self._filters, self)
@@ -1270,6 +1273,7 @@ class MainWindow(QMainWindow):
             "Stale comparison: filter rules changed. Compare again to refresh results.",
             "warning",
         )
+        self._refresh_profile_marker()
 
     def _configure_open_button_menu(self, button: QToolButton, section: str) -> None:
         """Give an open button a right-click menu that leads to its settings."""
@@ -1396,23 +1400,180 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"Added rsync filter: {pattern}", severity="info")
 
-    def _save_profile(self) -> None:
+    # ------------------------------------------------------------------ #
+    # Profile management
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _same_profile(a, b) -> bool:
+        if a is None or b is None:
+            return False
+        left = a.to_dict()
+        right = b.to_dict()
+        for key in ("profile_id", "name"):
+            left.pop(key, None)
+            right.pop(key, None)
+        return left == right
+
+    def _profile_is_modified(self) -> bool:
+        try:
+            current = self._profile()
+        except (TypeError, ValueError):
+            return False
+        return not self._same_profile(current, getattr(self, "_baseline_profile", None))
+
+    def _refresh_profile_marker(self) -> None:
+        loaded = self._profile_path is not None
+        modified = loaded and self._profile_is_modified()
+        self.profile_button.setIcon(profile_icon(loaded=loaded, modified=modified))
+        name = self._profile_path.name if self._profile_path else "no profile"
+        state = "modified" if modified else "saved"
+        self.profile_button.setToolTip(f"Manage profiles — {name} ({state})")
+
+    def _recent_profile_paths(self) -> list[Path]:
+        settings = app_settings()
+        payload = decode_text(settings.value("profile/recent_paths", "")) or ""
+        paths: list[Path] = []
+        if payload:
+            try:
+                import json
+
+                raw = json.loads(payload)
+                if isinstance(raw, list):
+                    paths = [Path(str(item)).expanduser() for item in raw]
+            except (ValueError, TypeError):
+                paths = []
+        return [path for path in paths if path.is_file()][:10]
+
+    def _remember_profile_path(self, path: Path) -> None:
+        self._profile_path = path
+        import json
+
+        paths = [path] + [
+            existing for existing in self._recent_profile_paths() if existing != path
+        ]
+        settings = app_settings()
+        settings.setValue(
+            "profile/recent_paths",
+            encode_text(json.dumps([str(item) for item in paths[:10]])),
+        )
+        settings.setValue("profile/current_path", encode_text(str(path)))
+        settings.sync()
+        self._refresh_profile_marker()
+
+    def _update_profile_menu(self) -> None:
+        menu = self.profile_menu
+        menu.clear()
+        from PySide6.QtGui import QAction
+
+        load = menu.addAction("Load...")
+        load.triggered.connect(self._load_profile)
+        save = menu.addAction("Save")
+        save.triggered.connect(self._save_current_profile)
+        menu.addSeparator()
+        recent = self._recent_profile_paths()
+        if recent:
+            for path in recent:
+                action = menu.addAction(path.name)
+                action.setToolTip(str(path))
+                action.setCheckable(True)
+                action.setChecked(path == self._profile_path)
+                action.triggered.connect(
+                    lambda _checked=False, p=path: self._open_recent_profile(p)
+                )
+        else:
+            note = menu.addAction("No recent profiles")
+            note.setEnabled(False)
+        menu.addSeparator()
+        save_as = menu.addAction("Save As...")
+        save_as.triggered.connect(self._save_profile)
+        reset = menu.addAction("Reset")
+        reset.triggered.connect(self._unload_profile)
+
+    def _confirm_discard_profile(self) -> bool:
+        """Ask what to do with unsaved changes before switching profiles.
+
+        Returns True when the caller may load or reset, False when it must
+        stop. "Save" and "Save As" return True only after a successful save.
+        """
+        if not self._profile_is_modified():
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Unsaved profile changes")
+        box.setText(
+            "The current profile has unsaved changes. What should happen to them?"
+        )
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        save_as = box.addButton("Save As...", QMessageBox.ButtonRole.ActionRole)
+        discard = box.addButton("Ignore", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(discard)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is save:
+            if self._profile_path is None:
+                return self._save_profile() or False
+            self._save_current_profile()
+            return not self._profile_is_modified()
+        if clicked is save_as:
+            return bool(self._save_profile())
+        return clicked is discard
+
+    def _open_recent_profile(self, path: Path) -> None:
+        if not self._confirm_discard_profile():
+            return
+        try:
+            profile = load_profile(path)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            QMessageBox.warning(self, "Load profile", str(exc))
+            return
+        self._apply_profile(profile)
+        self._remember_profile_path(path)
+        self._baseline_profile = self._profile()
+        self._refresh_profile_marker()
+        self._append_log(f"Profile loaded: {path}")
+
+    def _save_current_profile(self) -> None:
+        if self._profile_path is None:
+            answer = QMessageBox.question(
+                self,
+                "Save profile",
+                "No profile is open. Save the current settings as a new profile?",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._save_profile()
+            return
+        try:
+            save_profile(self._profile_path, self._profile())
+        except OSError as exc:
+            QMessageBox.warning(self, "Save profile", str(exc))
+            return
+        self._remember_profile_path(self._profile_path)
+        self._baseline_profile = self._profile()
+        self._save_recent_profile()
+        self._refresh_profile_marker()
+        self._append_log(f"Profile saved: {self._profile_path}")
+
+    def _save_profile(self) -> bool:
         default_path = profiles_directory() / "qpy-rsync-profile.json"
         path, _selected = QFileDialog.getSaveFileName(
             self, "Save Profile", str(default_path), "JSON (*.json)"
         )
         if not path:
-            return
+            return False
         save_profile(Path(path), self._profile())
+        self._remember_profile_path(Path(path))
         self._save_recent_profile()
         try:
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
+        self._refresh_profile_marker()
+        self._append_log(f"Profile saved: {path}")
+        return True
 
     def _unload_profile(self) -> None:
-        from PySide6.QtWidgets import QMessageBox
-
+        if not self._confirm_discard_profile():
+            return
         answer = QMessageBox.question(
             self,
             "Unload profile",
@@ -1423,7 +1584,9 @@ class MainWindow(QMainWindow):
         settings = app_settings()
         settings.remove("profile/recent")
         settings.remove("profile/recent_path")
+        settings.remove("profile/current_path")
         settings.sync()
+        self._profile_path = None
         self.source_edit.clear()
         self.destination_edit.clear()
         index = self.sync_mode.findData(SyncMode.UPDATE)
@@ -1443,8 +1606,11 @@ class MainWindow(QMainWindow):
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
+        self._refresh_profile_marker()
 
     def _load_profile(self) -> None:
+        if not self._confirm_discard_profile():
+            return
         path, _selected = QFileDialog.getOpenFileName(
             self, "Load Profile", str(profiles_directory()), "JSON (*.json)"
         )
@@ -1452,8 +1618,10 @@ class MainWindow(QMainWindow):
             return
         profile = load_profile(Path(path))
         self._apply_profile(profile)
+        self._remember_profile_path(Path(path))
         self._save_recent_profile()
         self._baseline_profile = self._profile()
+        self._refresh_profile_marker()
         self._append_log(f"Profile loaded: {path}")
 
     def _apply_profile(self, profile: SyncProfile) -> None:
@@ -1532,6 +1700,7 @@ class MainWindow(QMainWindow):
                 "warning",
             )
         self._update_command_preview()
+        self._refresh_profile_marker()
 
     def _update_command_preview(self) -> None:
         """Refresh the command preview shown in the progress pane.
@@ -2772,6 +2941,17 @@ class MainWindow(QMainWindow):
 
     def _restore_recent_profile(self) -> bool:
         settings = app_settings()
+        current = decode_text(settings.value("profile/current_path", "")) or ""
+        if current:
+            path = Path(current).expanduser()
+            if path.is_file():
+                try:
+                    self._apply_profile(load_profile(path))
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+                else:
+                    self._profile_path = path
+                    return True
         payload = decode_text(settings.value("profile/recent", "")) or ""
         if payload:
             try:

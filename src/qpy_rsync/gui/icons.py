@@ -289,6 +289,27 @@ def restore_defaults_icon() -> QIcon:
     )
 
 
+def profile_icon(*, loaded: bool = False, modified: bool = False) -> QIcon:
+    """The profile icon, with a marker when a profile is loaded or modified."""
+    base = _theme_icon(
+        "folder-bookmark",
+        "document-open",
+        "document-save",
+        fallback=QStyle.StandardPixmap.SP_DialogOpenButton,
+    )
+    if not loaded and not modified:
+        return base
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    base.paint(painter, 0, 0, ICON_SIZE, ICON_SIZE)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor("#f59e0b") if modified else ACCENT))
+    painter.drawEllipse(QPointF(50.0, 50.0), 11.0, 11.0)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def folder_open_icon() -> QIcon:
     """The system icon for opening a directory externally."""
     return _theme_icon(
