@@ -102,7 +102,8 @@ result.
 12. Keyboard shortcuts
     Alt+S / Alt+D  focus the Source / Destination location field
     Alt+O / Alt+L / Alt+R / Alt+A  focus the Overview / Source / Destination /
-                   Actions pane
+                   Actions pane (Alt+C also focuses Actions where Alt+A is
+                   reserved by the desktop)
     Alt+Enter      open the context menu of the current row
     Alt+1..8       click the numbered checkbox in the actions bar
     Ctrl+1..8      Ctrl-click (invert) the numbered checkbox

@@ -1242,6 +1242,9 @@ class FlatComparisonView(QWidget):
                 collapse_all = menu.addAction("Collapse All Folders")
                 expand_all = menu.addAction("Expand All Folders")
                 selected = menu.exec(tree.viewport().mapToGlobal(point))
+                self._context_menu_closed_at = time.monotonic()
+                if selected is None:
+                    return
                 if selected is restore:
                     self.restore_all_requested.emit()
                 elif selected is collapse_all:
@@ -1255,6 +1258,10 @@ class FlatComparisonView(QWidget):
         menu, actions = self._build_context_menu(tree, path, change, row)
         selected = menu.exec(tree.viewport().mapToGlobal(point))
         self._context_menu_closed_at = time.monotonic()
+        if selected is None:
+            # A dismissed menu must never be mistaken for an unchanged action
+            # placeholder (several of the entries are still None here).
+            return
         if selected is actions["diff"]:
             self._request_diff(index)
         elif selected is actions["copy"] and path is not None:

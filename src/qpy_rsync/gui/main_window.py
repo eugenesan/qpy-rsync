@@ -2573,7 +2573,10 @@ class MainWindow(QMainWindow):
         ):
             self._add_shortcut(
                 key,
-                lambda w=widget: (w.setFocus(), w.selectAll() if hasattr(w, "selectAll") else None),
+                lambda w=widget: (
+                    w.selectAll() if hasattr(w, "selectAll") else None,
+                    w.setFocus(),
+                ),
             )
             if hasattr(widget, "setToolTip"):
                 widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key})")
@@ -2594,13 +2597,23 @@ class MainWindow(QMainWindow):
         ):
             self._add_shortcut(key, button.click)
             button.setToolTip(f"{button.toolTip()} (Shortcut: {key})")
+        self._add_shortcut("Alt+Return", self._open_current_context_menu)
+        # Alt+A is grabbed by some desktop environments, so keep an
+        # alternative binding for the Actions pane.
+        self._add_shortcut("Alt+C", self.comparison.action.setFocus)
+
+    def _open_current_context_menu(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        widget = QApplication.focusWidget()
         for tree in (
             self.comparison.source,
             self.comparison.action,
             self.comparison.destination,
         ):
-            tree.setProperty("comparePane", True)
-            tree.installEventFilter(self)
+            if widget is tree or tree.isAncestorOf(widget):
+                self.comparison.show_context_menu_for_current(tree)
+                return
 
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         from PySide6.QtCore import QEvent
@@ -2612,17 +2625,6 @@ class MainWindow(QMainWindow):
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
-            if event.type() == QEvent.Type.KeyPress:
-                pane = (
-                    watched.property("comparePane")
-                    if hasattr(watched, "property")
-                    else None
-                )
-                if pane and int(event.key()) == 0x01000004 and (
-                    int(event.modifiers()) & int(Qt.KeyboardModifier.AltModifier)
-                ):
-                    self.comparison.show_context_menu_for_current(watched)
-                    return True
         except RuntimeError:
             # Qt may already have destroyed the watched widget during shutdown.
             return False

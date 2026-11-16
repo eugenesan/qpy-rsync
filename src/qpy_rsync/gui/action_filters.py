@@ -56,7 +56,6 @@ class ActionFilterBar(QWidget):
         # sync, so this is not just a display filter: it shows what is
         # already excluded from the sync, the way the unchanged toggle shows
         # what the comparison kept.
-        layout.addWidget(_separator())
         self.stashed_box = QCheckBox(self)
         self.stashed_box.setIcon(stashed_icon())
         self.stashed_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -74,6 +73,7 @@ class ActionFilterBar(QWidget):
         )
         self.stashed_box.toggled.connect(self.stashed_toggled.emit)
         layout.addWidget(self.stashed_box)
+        layout.addWidget(_separator())
 
         self._boxes: dict[ChangeAction, QCheckBox] = {}
         for index, action in enumerate(FILTERABLE_ACTIONS):
