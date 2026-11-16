@@ -11,8 +11,10 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGroupBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -115,12 +117,18 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(backup_panel, "Backup")
         self.tabs.addTab(self.tools_panel, "Tools")
 
+        button_row = QHBoxLayout()
+        defaults_button = QPushButton("Defaults", self)
+        defaults_button.clicked.connect(self._reset_defaults)
+        button_row.addWidget(defaults_button)
+        button_row.addStretch(1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        button_row.addWidget(buttons)
+        layout.addLayout(button_row)
 
         self.show_section(section)
 
@@ -211,6 +219,19 @@ class SettingsDialog(QDialog):
         marked = self.colour_table.item(row, 2)
         if marked is not None and marked.checkState() != Qt.CheckState.Checked:
             marked.setCheckState(Qt.CheckState.Checked)
+
+    def _reset_defaults(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        answer = QMessageBox.question(
+            self,
+            "Restore defaults",
+            "Reset all settings to their default values?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.sound_checkbox.setChecked(True)
+        self.set_action_colours(None)
 
     def external_tools(self) -> list[ExternalTool]:
         """The tools the page describes."""

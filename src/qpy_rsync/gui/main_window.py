@@ -169,6 +169,7 @@ from .icons import (
     open_icon,
     pause_icon,
     save_icon,
+    restore_defaults_icon,
     settings_icon,
     swap_icon,
     synchronize_icon,
@@ -416,6 +417,10 @@ class MainWindow(QMainWindow):
         self.save_profile_button.setIcon(save_icon())
         self.save_profile_button.setToolTip("Save Profile...")
         self.save_profile_button.setAccessibleName("Save Profile")
+        self.unload_profile_button = QToolButton()
+        self.unload_profile_button.setIcon(restore_defaults_icon())
+        self.unload_profile_button.setToolTip("Unload Profile (restore defaults)")
+        self.unload_profile_button.setAccessibleName("Unload Profile")
         self.backup_open = self._external_open_button(
             "backup-open-button",
             backup_icon(),
@@ -450,6 +455,7 @@ class MainWindow(QMainWindow):
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
+            self.unload_profile_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -470,6 +476,7 @@ class MainWindow(QMainWindow):
             self.filters_button,
             self.load_profile_button,
             self.save_profile_button,
+            self.unload_profile_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -632,6 +639,7 @@ class MainWindow(QMainWindow):
         self.swap_button.clicked.connect(self._swap_endpoints)
         self.filters_button.clicked.connect(self._edit_filters)
         self.save_profile_button.clicked.connect(self._save_profile)
+        self.unload_profile_button.clicked.connect(self._unload_profile)
         self.load_profile_button.clicked.connect(self._load_profile)
         self.backup_browse.clicked.connect(self._browse_backup)
         for button, action in (
@@ -1397,6 +1405,40 @@ class MainWindow(QMainWindow):
             return
         save_profile(Path(path), self._profile())
         self._save_recent_profile()
+        try:
+            self._baseline_profile = self._profile()
+        except ValueError:
+            self._baseline_profile = None
+
+    def _unload_profile(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        answer = QMessageBox.question(
+            self,
+            "Unload profile",
+            "Reset all profile values to their defaults and forget the recent profile?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        settings = app_settings()
+        settings.remove("profile/recent")
+        settings.remove("profile/recent_path")
+        settings.sync()
+        self.source_edit.clear()
+        self.destination_edit.clear()
+        index = self.sync_mode.findData(SyncMode.UPDATE)
+        if index >= 0:
+            self.sync_mode.setCurrentIndex(index)
+        self.backup_edit.clear()
+        self.protect_backup.setChecked(True)
+        self._backup = BackupOptions(directory="", protect_nested=True)
+        self._filters = []
+        self._save_filters()
+        self._update_filter_summary(stale=False)
+        self._update_backup_status()
+        self._update_external_open_states()
+        self._update_command_preview()
+        self._update_startup_status()
         try:
             self._baseline_profile = self._profile()
         except ValueError:

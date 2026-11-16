@@ -280,6 +280,15 @@ def save_icon() -> QIcon:
     )
 
 
+def restore_defaults_icon() -> QIcon:
+    """The system icon for restoring the default values."""
+    return _theme_icon(
+        "kt-restore-defaults-symbolic",
+        "edit-undo",
+        fallback=QStyle.StandardPixmap.SP_DialogResetButton,
+    )
+
+
 def folder_open_icon() -> QIcon:
     """The system icon for opening a directory externally."""
     return _theme_icon(
