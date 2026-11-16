@@ -18,8 +18,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.backend.rsync_filters import export_filter_file, import_filter_file
-from qpy_rsync.backend.rsync_filters import validate_rule
+from qpy_rsync.backend.rsync_filters import (
+    export_filter_file,
+    import_filter_file,
+    is_advanced_rule,
+    parse_advanced_rule,
+    validate_rule,
+)
 from qpy_rsync.core.enums import FilterRuleType
 from qpy_rsync.core.models import FilterRule
 
@@ -33,12 +38,26 @@ Operator prefixes (rsync filter syntax):
   - pattern   exclude the matching path
   P pattern   protect (do not delete) the matching path
   R pattern   risk (allow deletion) of the matching path
-  H pattern   hide the matching path
-  S pattern   show the matching path
-  : pattern   send a rule to the daemon side
-  . pattern   merge a per-directory filter file
+  H pattern   hide (sender-only exclude)
+  S pattern   show (sender-only include)
+  . file      merge a rule file once
+  : file      merge a per-directory rule file
   !           clear the current list of rules
   (no prefix) treated as an exclusion: "- pattern"
+
+Long names work too: exclude, include, protect, risk, hide, show,
+merge, dir-merge and clear.
+
+Modifiers may follow the operator (with or without a comma), for example:
+  -s pattern   sender-side exclude: ignore on source, do not protect on dest
+  -p pattern   perishable exclude (does not block deleting empty dirs)
+  -r pattern   receiver-side exclude (protects from deletion)
+  +r pattern   receiver-side include (allows deletion)
+  -/ pattern   match against the absolute path
+  -! pattern   apply the rule when the pattern does NOT match
+  dir-merge,n- .rsync-filter
+With Mirror mode, "-s *.kate-swp" ignores those files on the source while
+letting --delete remove them from the destination.
 
 Lines without an operator are interpreted as exclusions.
 
@@ -86,7 +105,7 @@ def _line_to_rule(line: str) -> FilterRule | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
-    if stripped.startswith(_OPERATORS):
+    if is_advanced_rule(stripped):
         text = stripped
     else:
         text = f"- {stripped}"
@@ -131,12 +150,11 @@ class FilterSyntaxHighlighter(QSyntaxHighlighter):
         if not stripped or stripped.startswith("#"):
             self.setFormat(0, len(text), self.comment_format)
             return
-        if stripped.startswith(_OPERATORS):
-            op_len = 1
-            if len(stripped) > 1 and stripped[1] == " ":
-                op_len = 2
+        parsed = parse_advanced_rule(stripped)
+        if parsed is not None:
+            token = parsed[0]
             leading = len(text) - len(stripped)
-            self.setFormat(leading, op_len, self.operator_format)
+            self.setFormat(leading, len(token), self.operator_format)
         rule = _line_to_rule(text)
         if rule is not None and validate_rule(rule):
             self.setFormat(0, len(text), self.invalid_format)
@@ -210,7 +228,7 @@ class FilterEditorWidget(QWidget):
             self.preview_label.setText("Preview: (blank line, ignored)")
         elif stripped.startswith("#"):
             self.preview_label.setText("Preview: comment, ignored")
-        elif stripped.startswith(_OPERATORS):
+        elif is_advanced_rule(stripped):
             self.preview_label.setText(f"Preview: advanced rsync rule: {stripped}")
         else:
             self.preview_label.setText(
