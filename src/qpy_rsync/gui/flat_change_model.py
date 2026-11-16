@@ -34,6 +34,13 @@ from qpy_rsync.core.changes import (
 from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
+
+STALE_SUFFIX = "  [stale comparison]"
+STALE_HELP_TEXT = (
+    "A stale comparison is still browsable: you can move around the lists, "
+    "open tools and add more filters. Decisions are disabled and "
+    "synchronization is unavailable until you run Compare again."
+)
 from .paths import full_path
 from .icons import (
     ACTION_LABELS,
@@ -1163,6 +1170,8 @@ class FlatChangeModel(QAbstractTableModel):
         return file_type_icon(row.name)
 
     def _tooltip_for(self, row: FlatRow, column: int) -> str:
+        if not row.path and self.stale:
+            return STALE_HELP_TEXT
         source_full = full_path(self.source_root, row.path)
         destination_full = full_path(self.destination_root, row.path)
         destination_column = column in {

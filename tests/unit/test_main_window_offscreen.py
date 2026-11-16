@@ -124,9 +124,11 @@ def test_swap_marks_existing_comparison_outdated() -> None:
     assert window.source_edit.text() == "/dst/"
     assert window.destination_edit.text() == "/src/"
     assert not window.comparison.model.decisions_enabled
-    assert not window.comparison.source.isEnabled()
-    assert not window.comparison.action.isEnabled()
-    assert not window.comparison.destination.isEnabled()
+    # A stale comparison stays browsable; only decisions and the sync gate
+    # are disabled.
+    assert window.comparison.source.isEnabled()
+    assert window.comparison.action.isEnabled()
+    assert window.comparison.destination.isEnabled()
     assert "#0891B2" in window.source_edit.styleSheet()
     assert window._current_plan is None
     assert not window.validate_plan_button.isEnabled()

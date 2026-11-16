@@ -50,7 +50,13 @@ from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.services.external_tools import ExternalTool
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
-from .flat_change_model import STASHED_ROLE, STRIPE_ROLE, FlatChangeModel
+from .flat_change_model import (
+    STALE_HELP_TEXT,
+    STALE_SUFFIX,
+    STASHED_ROLE,
+    STRIPE_ROLE,
+    FlatChangeModel,
+)
 from .icons import app_menu_icon, search_icon, stashed_icon, unchanged_icon
 from .paths import full_path
 from qpy_rsync.storage.settings import app_settings
@@ -63,6 +69,7 @@ RULE_COLOR = QColor("#c8c8c8")
 # alternates its rows. Kept faint so the text stays the focus.
 STRIPE_COLOR = QColor(0, 0, 0, 22)
 STASHED_COLOR = QColor("#9ca3af")
+STALE_COLOR = QColor("#EA580C")
 
 
 class UniformRowDelegate(QStyledItemDelegate):
@@ -132,7 +139,12 @@ class ActionColumnDelegate(UniformRowDelegate):
 
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
-            super().paint(painter, option, index)  # type: ignore[arg-type]
+            styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+            if index.model().stale:
+                # Grey out the decision checkbox, not the whole cell: the
+                # stash marker on its right stays usable on a stale list.
+                styled.state &= ~QStyle.StateFlag.State_Enabled
+            super().paint(painter, styled, index)  # type: ignore[arg-type]
             self._paint_marker(painter, option, index)
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
@@ -181,6 +193,21 @@ class FlatPathDelegate(UniformRowDelegate):
         left = rect.left() + 4 + depth * cls.LEVEL_WIDTH
         top = rect.top() + (rect.height() - cls.CHEVRON_SIZE) // 2
         return QRect(left, top, cls.CHEVRON_SIZE, cls.CHEVRON_SIZE)
+
+    @staticmethod
+    def _is_stale_root(index: QModelIndex) -> bool:
+        model = index.model()
+        if not getattr(model, "stale", False):
+            return False
+        row = model.row_data(index.row())
+        return row is not None and not row.path
+
+    def sizeHint(self, option: object, index: QModelIndex) -> QSize:  # noqa: N802
+        size = super().sizeHint(option, index)
+        if self._is_stale_root(index):
+            extra = option.fontMetrics.horizontalAdvance(STALE_SUFFIX)  # type: ignore[attr-defined]
+            return QSize(size.width() + extra, size.height())
+        return size
 
     @classmethod
     def chevron_hit_rect(cls, rect: QRect, depth: int) -> QRect:
@@ -290,6 +317,10 @@ class FlatPathDelegate(UniformRowDelegate):
             )
             x += self.ICON_SIZE + 4
         painter.drawText(x, baseline, text)
+        if self._is_stale_root(index):
+            x += option.fontMetrics.horizontalAdvance(text)
+            painter.setPen(STALE_COLOR)
+            painter.drawText(x, baseline, STALE_SUFFIX)
         painter.restore()
 
 
@@ -1128,22 +1159,23 @@ class FlatComparisonView(QWidget):
             tree.setCurrentIndex(index)
             tree.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
 
-    def set_stale(self, stale: bool) -> None:
-        if stale:
-            for tree in (self.source, self.action, self.destination):
-                tree.setCurrentIndex(QModelIndex())
-                tree.selectionModel().clear()
+    def set_stale(self, stale: bool, *, block_views: bool = False) -> None:
+        """Mark the comparison stale.
+
+        A stale comparison stays browsable: selection, context menus, folding,
+        stashing and external tools all keep working. Only decisions are
+        disabled, and synchronization is gated elsewhere until Compare runs.
+        During a synchronization the views are blocked explicitly.
+        """
         self.model.decisions_enabled = not stale
         self.model.stale = stale
-        self.source.setEnabled(not stale)
-        self.action.setEnabled(not stale)
-        self.destination.setEnabled(not stale)
+        self.source.setEnabled(not block_views)
+        self.action.setEnabled(not block_views)
+        self.destination.setEnabled(not block_views)
         self.model.layoutAboutToBeChanged.emit()
         self.model.layoutChanged.emit()
         self.action.setToolTip(
-            "Comparison is stale; compare again before changing decisions."
-            if stale
-            else ""
+            STALE_HELP_TEXT if stale else ""
         )
 
     def focus_path_filter(self) -> None:

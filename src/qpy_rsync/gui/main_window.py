@@ -1197,7 +1197,12 @@ class MainWindow(QMainWindow):
     def _set_state(self, text: str, severity: str = "info") -> None:
         """Update the current operation state shown in the status bar."""
         severity = severity.lower()
-        colors = {"warning": "#0891B2", "error": "#B91C1C", "success": "#15803D"}
+        colors = {
+            "warning": "#0891B2",
+            "stale": "#EA580C",
+            "error": "#B91C1C",
+            "success": "#15803D",
+        }
         self.status_edit.setToolTip(text)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
@@ -1311,7 +1316,7 @@ class MainWindow(QMainWindow):
             self._invalidate_plan_context()
             self._set_state(
                 "Stale comparison: filter rules changed. Compare again to refresh results.",
-                "warning",
+                "stale",
             )
         self._refresh_profile_marker()
 
@@ -1435,7 +1440,7 @@ class MainWindow(QMainWindow):
         self._set_state(
             f"Stale comparison: added the filter {pattern}. "
             "Compare again to refresh the results.",
-            "warning",
+            "stale",
         )
         self._append_log(f"Added rsync filter: {pattern}", severity="info")
 
@@ -2189,7 +2194,7 @@ class MainWindow(QMainWindow):
         self._set_hovered_action("synchronize")
         self._execution_gate.execution_started()
         self._set_busy_controls(True)
-        self.comparison.set_stale(True)
+        self.comparison.set_stale(True, block_views=True)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -2250,7 +2255,7 @@ class MainWindow(QMainWindow):
             else "STATE synchronization-failed"
         )
         self._set_busy_controls(False)
-        self.comparison.set_stale(True)
+        self.comparison.set_stale(True, block_views=True)
         self._invalidate_plan_context()
         self._append_log(
             message, severity="warning" if cancelled else "error"

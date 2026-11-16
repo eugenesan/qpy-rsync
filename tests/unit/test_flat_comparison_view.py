@@ -771,3 +771,22 @@ def test_the_root_row_has_no_placeholder_name() -> None:
     )
     model.deleteLater()
     application.processEvents()
+
+
+def test_stale_root_carries_the_help_tooltip() -> None:
+    from qpy_rsync.gui.flat_change_model import STALE_HELP_TEXT
+
+    application = app()
+    model = FlatChangeModel()
+    model.source_root = "/home/user/Pictures"
+    model.destination_root = "/mnt/backup/Pictures"
+    model.set_changes([file_change("a.txt")])
+    model._build_rows()
+    model._apply_filters()
+    model.stale = True
+    tooltip = model.data(
+        model.index(0, model.SOURCE_NAME), Qt.ItemDataRole.ToolTipRole
+    )
+    assert tooltip == STALE_HELP_TEXT
+    model.deleteLater()
+    application.processEvents()

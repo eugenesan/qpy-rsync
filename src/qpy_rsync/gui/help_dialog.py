@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync.gui.flat_change_model import STALE_HELP_TEXT
+
 HOW_TO_TEXT = """\
 qpy-rsync compares two locations and only writes after you reviewed the
 result.
@@ -115,6 +117,8 @@ result.
     configured external tools. Ctrl+T or Alt+Enter opens that menu, so a
     shortcut such as Ctrl+T then 1 opens the diff tool.
 """
+
+HOW_TO_TEXT += "\n" + STALE_HELP_TEXT
 
 
 class HowToDialog(QDialog):
