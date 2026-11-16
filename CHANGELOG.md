@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0
+
+- Profiles are now managed from a single button with Load, Save, a list of up
+  to ten recent profiles, Save As, Edit and Reset. The profile editor holds
+  transfer, preservation, backup, conflict-policy and filter settings; filters
+  are no longer kept in the application state file.
+- The auto-inventory toggle is now part of the profile instead of the global
+  application state. Older profiles default to off and are updated on the next
+  save.
+- Added an application-wide shortcut set: Alt+S/D for the location fields,
+  Ctrl+S/D/N for the compare panes, Ctrl+W for the overview, Alt+Enter/Ctrl+T
+  for the item context menu, numbered action and tool shortcuts, and Esc to
+  leave a location field. The How-To documents them.
+- The comparison and synchronization progress bars are determinate, same-size
+  content changes are no longer mistaken for metadata-only updates, and
+  repeated location edits no longer mark the comparison stale on every key.
+- The filter editor gained a Help button; the profile menu marks unsaved
+  changes and Save now asks for confirmation before writing.
+- The CLI has a version flag and a runner script; packaging installs the
+  README and the full changelog.
+
 ## 2.0.1
 
 - The filter editor is now a single text editor using rsync filter syntax;
