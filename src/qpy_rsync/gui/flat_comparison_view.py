@@ -59,6 +59,7 @@ from .flat_change_model import (
 )
 from .icons import app_menu_icon, search_icon, stashed_icon, unchanged_icon
 from .paths import full_path
+from .text_elide import elide_path
 from qpy_rsync.storage.settings import app_settings
 
 # The colour of the dimmed path that precedes the name of a directory.
@@ -1332,6 +1333,12 @@ class FlatComparisonView(QWidget):
             self._request_diff(index)
         elif selected is actions["copy"] and path is not None:
             self._copy_path(tree, path)
+        elif selected is actions["copy_name"] and path is not None:
+            from pathlib import PurePosixPath
+
+            QApplication.clipboard().setText(PurePosixPath(path.rstrip("/")).name)
+        elif selected is actions["copy_relative"] and path is not None:
+            QApplication.clipboard().setText(path.strip("/"))
         elif selected is actions["open_file"] and path is not None:
             self._open_local(tree, path)
         elif selected is actions["open_directory"] and path is not None:
@@ -1421,6 +1428,8 @@ class FlatComparisonView(QWidget):
         menu = QMenu(tree)
         actions: dict[str, object] = {
             "copy": None,
+            "copy_name": None,
+            "copy_relative": None,
             "open_file": None,
             "open_directory": None,
             "diff": None,
@@ -1438,11 +1447,17 @@ class FlatComparisonView(QWidget):
             "tools": [],
         }
         if absolute_path:
-            heading = menu.addAction(absolute_path)
+            heading = menu.addAction(
+                elide_path(absolute_path, max(240, tree.columnWidth(tree.model().SOURCE_NAME)))
+            )
             heading.setEnabled(False)
             menu.addSeparator()
         actions["copy"] = menu.addAction("Copy Path")
         actions["copy"].setEnabled(path is not None)  # type: ignore[union-attr]
+        actions["copy_name"] = menu.addAction("Copy Filename")
+        actions["copy_name"].setEnabled(path is not None)  # type: ignore[union-attr]
+        actions["copy_relative"] = menu.addAction("Copy Relative Path")
+        actions["copy_relative"].setEnabled(path is not None)  # type: ignore[union-attr]
         if path is not None and self._side_is_local(tree):
             is_directory = bool(getattr(row, "is_directory", False))
             menu.addSeparator()

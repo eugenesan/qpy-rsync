@@ -35,6 +35,7 @@ from qpy_rsync.core.changes import (
 from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
+from .text_elide import elide_path
 
 STALE_SUFFIX = "  [stale comparison]"
 STALE_HELP_TEXT = (
@@ -1247,6 +1248,8 @@ class FlatChangeModel(QAbstractTableModel):
             return STALE_HELP_TEXT
         source_full = full_path(self.source_root, row.path)
         destination_full = full_path(self.destination_root, row.path)
+        source_display = elide_path(source_full)
+        destination_display = elide_path(destination_full)
         destination_column = column in {
             self.DESTINATION_NAME,
             self.DESTINATION_ITEMS,
@@ -1263,7 +1266,7 @@ class FlatChangeModel(QAbstractTableModel):
                     else ""
                 )
                 return (
-                    f"Source: {source_full}\nDestination: {destination_full}{extra}"
+                    f"Source: {source_display}\nDestination: {destination_display}{extra}"
                 )
             label = ACTION_LABELS.get(self.effective_action_of_change(row.change), "")
             if row.change.action is ChangeAction.NO_CHANGE:
@@ -1294,8 +1297,8 @@ class FlatChangeModel(QAbstractTableModel):
                     _size, destination_modified = self._destination_info(row.path)
                     destination_modified = destination_modified or ""
             tooltip = (
-                f"Source: {source_full}\n"
-                f"Destination: {destination_full}\n"
+                f"Source: {source_display}\n"
+                f"Destination: {destination_display}\n"
                 f"{details}"
             )
             if source_modified or destination_modified:
@@ -1306,8 +1309,8 @@ class FlatChangeModel(QAbstractTableModel):
                     tooltip += f", destination {destination_modified}"
             return tooltip
         if destination_column:
-            return destination_full
-        return source_full
+            return destination_display
+        return source_display
 
     # ------------------------------------------------------------------
     # Destination metadata

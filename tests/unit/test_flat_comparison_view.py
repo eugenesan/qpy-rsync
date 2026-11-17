@@ -812,3 +812,22 @@ def test_exact_byte_size_columns() -> None:
     )
     model.deleteLater()
     application.processEvents()
+
+
+def test_context_menu_copies_filename_and_relative_path() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("docs/a.txt")])
+    index = view.model.index_for_path("docs/a.txt")
+    row = view.model.row_data(index.row())
+    menu, actions = view._build_context_menu(
+        view.source, "docs/a.txt", index.data(Qt.ItemDataRole.UserRole), row
+    )
+    labels = [action.text() for action in menu.actions()]
+    assert "Copy Path" in labels
+    assert "Copy Filename" in labels
+    assert "Copy Relative Path" in labels
+    assert actions["copy_name"] is not None
+    assert actions["copy_relative"] is not None
+    view.close()
+    application.processEvents()
