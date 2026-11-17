@@ -790,3 +790,25 @@ def test_stale_root_carries_the_help_tooltip() -> None:
     assert tooltip == STALE_HELP_TEXT
     model.deleteLater()
     application.processEvents()
+
+
+def test_exact_byte_size_columns() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=12345)]
+    )
+    model._build_rows()
+    model._apply_filters()
+    assert (
+        model.data(model.index(1, model.SOURCE_SIZE_BYTES), Qt.ItemDataRole.DisplayRole)
+        == "12345"
+    )
+    model.set_destination_metadata({"a.txt": (6789, "2026/11/14-10:00:00")})
+    model._apply_filters()
+    assert (
+        model.data(model.index(1, model.DESTINATION_SIZE_BYTES), Qt.ItemDataRole.DisplayRole)
+        == "6789"
+    )
+    model.deleteLater()
+    application.processEvents()

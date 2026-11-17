@@ -602,11 +602,13 @@ class FlatComparisonView(QWidget):
         "source": (
             ("Items", 1),
             ("Size", 2),
+            ("Size (bytes)", 9),
             ("Modified", 3),
         ),
         "destination": (
             ("Items", 6),
             ("Size", 7),
+            ("Size (bytes)", 10),
             ("Modified", 8),
         ),
     }
@@ -620,8 +622,8 @@ class FlatComparisonView(QWidget):
         # column survives.
         if not app_settings().contains(key):
             if pane == "source":
-                return {self.model.SOURCE_TIME}
-            return {self.model.DESTINATION_TIME}
+                return {self.model.SOURCE_TIME, self.model.SOURCE_SIZE_BYTES}
+            return {self.model.DESTINATION_TIME, self.model.DESTINATION_SIZE_BYTES}
         stored = str(app_settings().value(key, "")).strip()
         hidden: set[int] = set()
         for value in stored.split(","):
@@ -649,6 +651,7 @@ class FlatComparisonView(QWidget):
                 self.model.SOURCE_ITEMS,
                 self.model.SOURCE_SIZE,
                 self.model.SOURCE_TIME,
+                self.model.SOURCE_SIZE_BYTES,
             } or column in source_hidden)
             self.action.setColumnHidden(column, column != self.model.ACTION)
             self.destination.setColumnHidden(column, column not in {
@@ -656,6 +659,7 @@ class FlatComparisonView(QWidget):
                 self.model.DESTINATION_ITEMS,
                 self.model.DESTINATION_SIZE,
                 self.model.DESTINATION_TIME,
+                self.model.DESTINATION_SIZE_BYTES,
             } or column in destination_hidden)
 
     def _show_column_menu(self, pane: str, tree: QTableView, point: object) -> None:
@@ -676,6 +680,16 @@ class FlatComparisonView(QWidget):
             return
         if selected.isChecked():
             hidden.discard(column)
+            # The exact-byte column is an alternative to the formatted size,
+            # not an extra one: showing it replaces the size column.
+            if column == self.model.SOURCE_SIZE_BYTES:
+                hidden.add(self.model.SOURCE_SIZE)
+            elif column == self.model.SOURCE_SIZE:
+                hidden.add(self.model.SOURCE_SIZE_BYTES)
+            elif column == self.model.DESTINATION_SIZE_BYTES:
+                hidden.add(self.model.DESTINATION_SIZE)
+            elif column == self.model.DESTINATION_SIZE:
+                hidden.add(self.model.DESTINATION_SIZE_BYTES)
         else:
             hidden.add(column)
         self._save_hidden_columns(pane, hidden)
@@ -696,15 +710,18 @@ class FlatComparisonView(QWidget):
             header._auto_resizing = True
         metrics = self.source.fontMetrics()
         size_width = metrics.horizontalAdvance("0" * 11) + 8
+        bytes_width = metrics.horizontalAdvance("0" * 12) + 8
         time_width = metrics.horizontalAdvance("0" * 16) + 8
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_NAME, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_ITEMS, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_TIME, QHeaderView.ResizeMode.Interactive)
+        self.source.horizontalHeader().setSectionResizeMode(self.model.SOURCE_SIZE_BYTES, QHeaderView.ResizeMode.Interactive)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_NAME, 240)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_ITEMS, 60)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_SIZE, size_width)
         self.source.horizontalHeader().resizeSection(self.model.SOURCE_TIME, time_width)
+        self.source.horizontalHeader().resizeSection(self.model.SOURCE_SIZE_BYTES, bytes_width)
         self.action.horizontalHeader().setSectionResizeMode(
             self.model.ACTION, QHeaderView.ResizeMode.Interactive
         )
@@ -721,10 +738,14 @@ class FlatComparisonView(QWidget):
         self.destination.horizontalHeader().setSectionResizeMode(
             self.model.DESTINATION_TIME, QHeaderView.ResizeMode.Interactive
         )
+        self.destination.horizontalHeader().setSectionResizeMode(
+            self.model.DESTINATION_SIZE_BYTES, QHeaderView.ResizeMode.Interactive
+        )
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_NAME, 240)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_ITEMS, 60)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE, size_width)
         self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_TIME, time_width)
+        self.destination.horizontalHeader().resizeSection(self.model.DESTINATION_SIZE_BYTES, bytes_width)
         for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
             header._auto_resizing = False
         self.source.horizontalHeader()._grow()

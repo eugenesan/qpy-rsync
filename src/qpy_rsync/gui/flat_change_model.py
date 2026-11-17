@@ -133,7 +133,9 @@ class FlatChangeModel(QAbstractTableModel):
     DESTINATION_ITEMS = 6
     DESTINATION_SIZE = 7
     DESTINATION_TIME = 8
-    COLUMN_COUNT = 9
+    SOURCE_SIZE_BYTES = 9
+    DESTINATION_SIZE_BYTES = 10
+    COLUMN_COUNT = 11
     HEADERS = (
         "Item",
         "Items",
@@ -144,6 +146,8 @@ class FlatChangeModel(QAbstractTableModel):
         "Items",
         "Size",
         "Modified",
+        "Size (bytes)",
+        "Size (bytes)",
     )
 
     def __init__(self, parent: object | None = None) -> None:
@@ -442,10 +446,15 @@ class FlatChangeModel(QAbstractTableModel):
                 return (0, name, row.path)
             if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
                 return (directory.subtree_items, name, row.path)
-            if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
+            if column in (
+                self.SOURCE_SIZE,
+                self.DESTINATION_SIZE,
+                self.SOURCE_SIZE_BYTES,
+                self.DESTINATION_SIZE_BYTES,
+            ):
                 size = (
                     directory.subtree_size
-                    if column == self.SOURCE_SIZE
+                    if column in (self.SOURCE_SIZE, self.SOURCE_SIZE_BYTES)
                     else directory.subtree_destination_size
                 )
                 return (size, name, row.path)
@@ -466,14 +475,29 @@ class FlatChangeModel(QAbstractTableModel):
         column = self._sort_column
         if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
             return (directory.subtree_items if directory else 0, name.casefold())
-        if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
-            return (directory.subtree_size if directory else 0, name.casefold())
+        if column in (
+            self.SOURCE_SIZE,
+            self.DESTINATION_SIZE,
+            self.SOURCE_SIZE_BYTES,
+            self.DESTINATION_SIZE_BYTES,
+        ):
+            size = (
+                directory.subtree_size
+                if column in (self.SOURCE_SIZE, self.SOURCE_SIZE_BYTES)
+                else directory.subtree_destination_size
+            )
+            return (size if directory else 0, name.casefold())
         return (name.casefold(),)
 
     def _item_sort_key(self, index: int, column: int) -> tuple:
         change = self.changes[index]
         name = self._change_folded[index]
-        if column in (self.SOURCE_SIZE, self.DESTINATION_SIZE):
+        if column in (
+            self.SOURCE_SIZE,
+            self.DESTINATION_SIZE,
+            self.SOURCE_SIZE_BYTES,
+            self.DESTINATION_SIZE_BYTES,
+        ):
             return (int(change.size or 0), name)
         if column in (self.SOURCE_TIME, self.DESTINATION_TIME):
             return (str(change.modified_time or ""), name)
@@ -991,6 +1015,26 @@ class FlatChangeModel(QAbstractTableModel):
                 if directory is not None:
                     return self._size(directory.subtree_destination_size)
                 return self._size(self._destination_size(change) if change else None)
+            if index.column() == self.SOURCE_SIZE_BYTES:
+                if not source_present:
+                    return ""
+                return str(
+                    int(
+                        directory.subtree_size
+                        if directory is not None
+                        else (change.size if change else 0) or 0
+                    )
+                )
+            if index.column() == self.DESTINATION_SIZE_BYTES:
+                if not destination_present:
+                    return ""
+                return str(
+                    int(
+                        directory.subtree_destination_size
+                        if directory is not None
+                        else (self._destination_size(change) if change else 0) or 0
+                    )
+                )
             if change is None:
                 return ""
             if index.column() == self.SOURCE_TIME:
@@ -1179,6 +1223,7 @@ class FlatChangeModel(QAbstractTableModel):
             self.DESTINATION_ITEMS,
             self.DESTINATION_SIZE,
             self.DESTINATION_TIME,
+            self.DESTINATION_SIZE_BYTES,
         }
         if column == self.ACTION:
             directory = self._directories.get(row.path) if row.is_directory else None
