@@ -35,4 +35,6 @@ else
     export QT_LOGGING_RULES="qt.glx.warning=false"
 fi
 export PYTHONPATH="$SCRIPT_DIR/src"
+# Print a Python stack trace if Qt or the interpreter crashes natively.
+export PYTHONFAULTHANDLER=1
 exec "$PYTHON" -m qpy_rsync.app "$@"
