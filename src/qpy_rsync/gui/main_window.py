@@ -51,7 +51,7 @@ from qpy_rsync.backend.inventory import (
 )
 from qpy_rsync.backend.process_runner import ProcessState
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
-from qpy_rsync.backend.rsync_filters import filter_text_to_rules, rules_to_filter_text
+from qpy_rsync.backend.rsync_filters import filter_text_to_rules
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import (
@@ -1792,7 +1792,7 @@ class MainWindow(QMainWindow):
             directory=profile.backup.directory,
             protect_nested=profile.backup.protect_nested,
         )
-        self._filters_text = profile.filter_text or rules_to_filter_text(profile.filters)
+        self._filters_text = profile.filter_text
         self._filters = filter_text_to_rules(self._filters_text)
         self._profile_transfer = deepcopy(profile.transfer)
         self._profile_preservation = deepcopy(profile.preservation)

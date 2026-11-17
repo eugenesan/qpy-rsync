@@ -14,17 +14,16 @@ def test_profile_round_trip(tmp_path: Path) -> None:
     assert loaded.destination.rsync_operand() == "me@nas:/backup/Documents/"
     assert loaded.profile_id == profile.profile_id
 
-from qpy_rsync.core.enums import FilterRuleType
-from qpy_rsync.core.models import FilterRule
 
-
-def test_profile_round_trip_preserves_typed_filters(tmp_path: Path) -> None:
+def test_profile_round_trip_derives_filters_from_the_text(tmp_path: Path) -> None:
     profile = SyncProfile(name="filters", source=Endpoint(EndpointKind.LOCAL, "/a"), destination=Endpoint(EndpointKind.LOCAL, "/b"))
-    profile.filters = [FilterRule("*.tmp", rule_type=FilterRuleType.EXCLUDE, comment="temporary")]
+    profile.filter_text = "# temporary\n*.tmp\n"
     path = tmp_path / "filters.json"
     save_profile(path, profile)
     loaded = load_profile(path)
-    assert loaded.filters == profile.filters
+    assert loaded.filter_text == profile.filter_text
+    assert [rule.rule for rule in loaded.filters] == ["- *.tmp"]
+    assert '"filter_lines"' in path.read_text(encoding="utf-8")
 
 from qpy_rsync.core.models import BackupOptions
 

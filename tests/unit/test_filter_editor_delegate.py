@@ -42,7 +42,12 @@ def test_filter_text_is_preserved_in_profiles() -> None:
         destination=Endpoint(EndpointKind.LOCAL, "/d/"),
         filter_text=text,
     )
-    loaded = profile_from_json(profile_to_json(profile))
+    payload = profile_to_json(profile)
+    assert "filter_text" not in payload
+    assert '"filters"' not in payload
+    assert '"filter_lines"' in payload
+    assert "\\n" not in payload
+    loaded = profile_from_json(payload)
     assert loaded.filter_text == text
 
 

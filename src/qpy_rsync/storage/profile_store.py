@@ -8,8 +8,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, EndpointKind, FilterRuleType, SyncMode
-from qpy_rsync.core.models import BackupOptions, Endpoint, FilterRule, PreservationOptions, SyncProfile, TransferOptions
+from qpy_rsync.backend.rsync_filters import filter_text_to_rules
+from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, EndpointKind, SyncMode
+from qpy_rsync.core.models import BackupOptions, Endpoint, PreservationOptions, SyncProfile, TransferOptions
 
 
 def _jsonable(value: Any) -> Any:
@@ -23,8 +24,17 @@ def _jsonable(value: Any) -> Any:
 
 
 def profile_to_json(profile: SyncProfile) -> str:
-    """Serialize a profile for storage in application settings."""
-    return json.dumps(_jsonable(profile), indent=2, sort_keys=True) + "\n"
+    """Serialize a profile with the filter text as a list of lines.
+
+    Storing the editor text as ``filter_lines`` keeps it human-editable and
+    avoids backslash-n escapes in the JSON file. The derived ``filters`` list
+    is rebuilt from those lines when the profile is loaded.
+    """
+    data = _jsonable(profile)
+    text = str(data.pop("filter_text", ""))
+    data.pop("filters", None)
+    data["filter_lines"] = text.split("\n")
+    return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 
 def save_profile(path: Path, profile: SyncProfile) -> None:
@@ -79,9 +89,7 @@ def _profile_from_dict(raw: dict[str, Any]) -> SyncProfile:
         directory=backup_directory,
         protect_nested=bool(backup_raw.get("protect_nested", True)),
     )
-    filters = []
-    for item in raw.get("filters", []):
-        value = item.copy()
-        value["rule_type"] = FilterRuleType(value.get("rule_type", "advanced"))
-        filters.append(FilterRule(**value))
-    return SyncProfile(name=raw["name"], description=raw.get("description", ""), source=source, destination=destination, profile_id=raw.get("profile_id", ""), schema_version=raw.get("schema_version", 1), conflict_policy=ConflictPolicy(raw.get("conflict_policy", "override")), preservation=preservation, transfer=transfer, backup=backup, filters=filters, filter_text=str(raw.get("filter_text", "")), inventory_after_compare=bool(raw.get("inventory_after_compare", False)))
+    filter_lines = raw.get("filter_lines", [])
+    filter_text = "\n".join(str(line) for line in filter_lines) if filter_lines else ""
+    filters = filter_text_to_rules(filter_text)
+    return SyncProfile(name=raw["name"], description=raw.get("description", ""), source=source, destination=destination, profile_id=raw.get("profile_id", ""), schema_version=raw.get("schema_version", 1), conflict_policy=ConflictPolicy(raw.get("conflict_policy", "override")), preservation=preservation, transfer=transfer, backup=backup, filters=filters, filter_text=filter_text, inventory_after_compare=bool(raw.get("inventory_after_compare", False)))

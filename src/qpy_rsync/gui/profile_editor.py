@@ -165,7 +165,7 @@ class ProfileEditorDialog(QDialog):
         options_layout.addStretch(1)
 
         self.filter_widget = FilterEditorWidget(
-            self._profile.filters, self, text=self._profile.filter_text or None
+            self._profile.filters, self, text=self._profile.filter_text
         )
 
         self._apply_tooltips()
