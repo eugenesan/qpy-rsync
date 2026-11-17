@@ -47,6 +47,11 @@ class CommandPreview(QPlainTextEdit):
         layout.endLayout()
         return max(1, lines)
 
+    # The preview grows for short commands, but a long command must not force
+    # the journal out of the window. Beyond this many lines the vertical
+    # scrollbar does the work.
+    MAX_VISIBLE_LINES = 3
+
     def _preferred_height(self, lines: int = 1) -> int:
         return self.fontMetrics().lineSpacing() * lines + 12
 
@@ -55,7 +60,8 @@ class CommandPreview(QPlainTextEdit):
             return
         self._resizing = True
         try:
-            self.setMinimumHeight(self._preferred_height(self._line_count()))
+            lines = min(self._line_count(), self.MAX_VISIBLE_LINES)
+            self.setMinimumHeight(self._preferred_height(lines))
         finally:
             self._resizing = False
 

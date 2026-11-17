@@ -100,3 +100,13 @@ def test_the_colour_page_carries_the_colours_of_the_actions() -> None:
     dialog.set_action_colours(colours)
     assert dialog.action_colours()[ChangeAction.REPLACE] is None
     assert dialog.action_colours()[ChangeAction.CREATE] is not None
+
+
+def test_command_preview_does_not_grow_with_long_commands() -> None:
+    from qpy_rsync.gui.command_preview import CommandPreview
+
+    app()
+    preview = CommandPreview()
+    preview.setText("rsync " + " ".join(f"--option-{i}" for i in range(200)))
+    cap = preview.fontMetrics().lineSpacing() * preview.MAX_VISIBLE_LINES + 12
+    assert preview.minimumHeight() <= cap
