@@ -186,6 +186,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._directories_only = False
         self._visible_actions: set[ChangeAction] | None = None
         self.filter_directories: bool = False
+        self.tooltip_width: int = 256
         self._directories: dict[str, FlatDirectory] = {}
         # The parsed path of every change. The paths are split once, so the
         # filters and the sort do not repeat the work for every row.
@@ -1248,8 +1249,8 @@ class FlatChangeModel(QAbstractTableModel):
             return STALE_HELP_TEXT
         source_full = full_path(self.source_root, row.path)
         destination_full = full_path(self.destination_root, row.path)
-        source_display = elide_path(source_full)
-        destination_display = elide_path(destination_full)
+        source_display = elide_path(source_full, self.tooltip_width)
+        destination_display = elide_path(destination_full, self.tooltip_width)
         destination_column = column in {
             self.DESTINATION_NAME,
             self.DESTINATION_ITEMS,

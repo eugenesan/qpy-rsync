@@ -54,3 +54,23 @@ def test_unchanged_changes_honor_exclude_filters(tmp_path: Path) -> None:
     assert change.modified_time
     assert change.destination_size == 4
     assert change.destination_time
+
+
+def test_destination_metadata_retries_without_filters_for_deletions(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.backend.inventory import gather_destination_metadata
+    from qpy_rsync.core.changes import Change
+
+    profile = _profile(tmp_path)
+    calls: list[object] = []
+
+    def fake(endpoint, prof=None, progress=None):
+        calls.append(prof)
+        if prof is not None and prof.filters:
+            return {}
+        return {"old": InventoryEntry(ObjectKind.FILE, 321, "t")}
+
+    monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
+    change = Change("old", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")
+    result = gather_destination_metadata(profile, [change])
+    assert result.destination_metadata["old"][0] == 321
+    assert len(calls) == 2

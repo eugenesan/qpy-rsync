@@ -361,7 +361,7 @@ class StatisticsBar(QWidget):
         for key, value in values.items():
             self._rows[key].setText(f"{value:,}")
         size = getattr(summary, "deleted_size", 0)
-        self.deleted_size_label.setText(format_size(size) if size else "")
+        self.deleted_size_label.setText(f"({format_size(size)})")
 
 
 class OverviewPane(QWidget):

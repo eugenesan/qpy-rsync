@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
@@ -173,4 +174,19 @@ def gather_destination_metadata(
     metadata = {
         path: (entry.size, entry.modified_time) for path, entry in entries.items()
     }
+    # Deletions are reported by rsync with placeholder sizes. If the filtered
+    # listing did not return one of them, repeat it without filters so the
+    # deleted objects still get a real size from the destination.
+    missing = [
+        change
+        for change in changed
+        if change.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}
+        and change.path.rstrip("/") not in metadata
+    ]
+    if missing:
+        unfiltered = deepcopy(profile)
+        unfiltered.filters = []
+        extra = inventory_paths(profile.destination, unfiltered, callback)
+        for path, entry in extra.items():
+            metadata.setdefault(path, (entry.size, entry.modified_time))
     return InventoryResult(unchanged=[], destination_metadata=metadata)

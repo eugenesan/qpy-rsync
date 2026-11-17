@@ -672,6 +672,14 @@ class FlatComparisonView(QWidget):
                 self.model.DESTINATION_SIZE_BYTES,
             } or column in destination_hidden)
 
+    def _update_tooltip_width(self) -> None:
+        """Match tooltip eliding to the widest visible Item column."""
+        self.model.tooltip_width = max(
+            256,
+            self.source.columnWidth(self.model.SOURCE_NAME),
+            self.destination.columnWidth(self.model.DESTINATION_NAME),
+        )
+
     def _show_column_menu(self, pane: str, tree: QTableView, point: object) -> None:
         """Offer the optional columns of a pane as a checkable menu."""
         menu = QMenu(tree)
@@ -760,6 +768,9 @@ class FlatComparisonView(QWidget):
             header._auto_resizing = False
         self.source.horizontalHeader()._grow()
         self.destination.horizontalHeader()._grow()
+        for header in (self.source.horizontalHeader(), self.destination.horizontalHeader()):
+            header.sectionResized.connect(self._update_tooltip_width)
+        self._update_tooltip_width()
 
     def _synchronize(self) -> None:
         trees = (self.source, self.action, self.destination)
