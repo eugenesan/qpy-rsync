@@ -23,6 +23,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
+from qpy_rsync.backend.destination_sizes import destination_size
 from qpy_rsync.core.changes import (
     Change,
     ChangeAction,
@@ -1311,6 +1312,9 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Destination metadata
     # ------------------------------------------------------------------
+    def destination_metadata(self) -> dict[str, tuple[int | None, str | None]]:
+        return self._destination_metadata
+
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
@@ -1322,23 +1326,16 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _refresh_destination_sizes(self) -> None:
         """Cache the size of every change on the destination side."""
-        sizes: list[int] = []
-        for change in self.changes:
-            if change.destination_size is not None:
-                sizes.append(int(change.destination_size))
-            else:
-                size, _time = self._destination_info(str(change.path).rstrip("/"))
-                sizes.append(int(size or 0))
-        self._change_destination_sizes = sizes
+        self._change_destination_sizes = [
+            destination_size(change, self._destination_metadata)
+            for change in self.changes
+        ]
 
     def _destination_info(self, path: str) -> tuple[int | None, str | None]:
         return self._destination_metadata.get(path, (None, None))
 
     def _destination_size(self, change: Change) -> int:
-        if change.destination_size is not None:
-            return int(change.destination_size)
-        size, _time = self._destination_info(str(change.path).rstrip("/"))
-        return int(size or 0)
+        return destination_size(change, self._destination_metadata)
 
     @staticmethod
     def _size(size: int | None) -> str:

@@ -331,6 +331,10 @@ class StatisticsBar(QWidget):
             actions_row.addWidget(icon)
             actions_row.addWidget(value)
             self._rows[key] = value
+            if key == "deleted":
+                self.deleted_size_label = QLabel("")
+                self.deleted_size_label.setToolTip("Total size of deleted items")
+                actions_row.addWidget(self.deleted_size_label)
         actions_row.addStretch(1)
         layout.addLayout(actions_row)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -341,6 +345,7 @@ class StatisticsBar(QWidget):
             self.summary.setText("")
             for label in self._rows.values():
                 label.setText("0")
+            self.deleted_size_label.setText("")
             return
         self.summary.setText(
             f"{summary.included:,} item(s), {format_size(summary.included_size)}"
@@ -355,6 +360,8 @@ class StatisticsBar(QWidget):
         }
         for key, value in values.items():
             self._rows[key].setText(f"{value:,}")
+        size = getattr(summary, "deleted_size", 0)
+        self.deleted_size_label.setText(format_size(size) if size else "")
 
 
 class OverviewPane(QWidget):

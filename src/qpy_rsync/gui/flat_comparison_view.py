@@ -316,7 +316,16 @@ class FlatPathDelegate(UniformRowDelegate):
                 QRect(x, (option.rect.height() - self.ICON_SIZE) // 2, self.ICON_SIZE, self.ICON_SIZE),
             )
             x += self.ICON_SIZE + 4
-        painter.drawText(x, baseline, text)
+        reserved = (
+            option.fontMetrics.horizontalAdvance(STALE_SUFFIX)
+            if self._is_stale_root(index)
+            else 0
+        )
+        available = max(0, option.rect.right() - x - 4 - reserved)
+        shown = option.fontMetrics.elidedText(
+            text, Qt.TextElideMode.ElideRight, available
+        )
+        painter.drawText(x, baseline, shown)
         if self._is_stale_root(index):
             x += option.fontMetrics.horizontalAdvance(text)
             painter.setPen(STALE_COLOR)

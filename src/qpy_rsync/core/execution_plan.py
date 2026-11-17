@@ -5,6 +5,8 @@ from hashlib import sha256
 import json
 from typing import Iterable
 
+from qpy_rsync.backend.destination_sizes import destination_size
+
 from .changes import (
     Change,
     ChangeAction,
@@ -53,7 +55,8 @@ class PlanSummary:
     metadata: int
     replacements: int
     deletions: int
-    backup_enabled: bool
+    deleted_size: int = 0
+    backup_enabled: bool = False
     total_size: int = 0
     # The size of every included item, whether or not its content is
     # transferred. This is the number the overview shows as "Selected".
@@ -89,17 +92,30 @@ def build_execution_plan(
     changes: Iterable[Change],
     decisions: ChangeDecisions,
     stashed: StashedItems | None = None,
+    destination_metadata: dict[str, tuple[int | None, str | None]] | None = None,
 ) -> ExecutionPlan:
     changes_list = list(changes)
     items: list[PlanItem] = []
-    creates = updates = metadata = replacements = deletions = 0
+    creates = updates = metadata_count = replacements = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
     total_size = 0
     included_size = 0
+    deleted_size = 0
+    metadata = destination_metadata or {}
     modified = decisions.modified_count(changes_list)
     stashed_paths = (
         {path.strip("/") for path in stashed.paths()} if stashed else set()
     )
+    selected_delete_paths: set[str] = set()
+    for change in changes_list:
+        if not decisions.selectable(change):
+            continue
+        if stashed_paths and _is_stashed(str(change.path), stashed_paths):
+            continue
+        if decisions.effective(change) is ChangeDecision.EXCLUDE:
+            continue
+        if change.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}:
+            selected_delete_paths.add(change.path.rstrip("/"))
     for change in changes_list:
         if not decisions.selectable(change):
             continue
@@ -151,11 +167,19 @@ def build_execution_plan(
             elif effective_action is ChangeAction.UPDATE_CONTENT:
                 updates += 1
             elif effective_action is ChangeAction.UPDATE_METADATA:
-                metadata += 1
+                metadata_count += 1
             elif effective_action is ChangeAction.REPLACE:
                 replacements += 1
             elif effective_action is ChangeAction.DELETE:
                 deletions += 1
+                clean = change.path.rstrip("/")
+                covered = any(
+                    clean.startswith(parent + "/")
+                    for parent in selected_delete_paths
+                    if parent != clean
+                )
+                if not covered:
+                    deleted_size += destination_size(change, metadata)
         else:
             if change.action is ChangeAction.DESTINATION_ONLY:
                 retained_destination_only += 1
@@ -169,9 +193,10 @@ def build_execution_plan(
         destructive=destructive,
         creates=creates,
         updates=updates,
-        metadata=metadata,
+        metadata=metadata_count,
         replacements=replacements,
         deletions=deletions,
+        deleted_size=deleted_size,
         backup_enabled=profile.backup.enabled,
         total_size=total_size,
         included_size=included_size,

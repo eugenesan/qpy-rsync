@@ -104,3 +104,23 @@ def test_plan_summary_reports_the_included_size() -> None:
     assert plan.summary.included == 2
     # Only the data that is transferred counts; the deletion frees space.
     assert plan.summary.total_size == 1000
+
+
+
+def test_deleted_size_uses_destination_metadata_without_double_counting() -> None:
+    changes = [
+        Change("old/", ChangeAction.DELETE, ObjectKind.DIRECTORY, "*deleting"),
+        Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("old/b", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("lone.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+    ]
+    metadata = {
+        "old": (4096, "t"),
+        "old/a": (1000, "t"),
+        "old/b": (2000, "t"),
+        "lone.txt": (500, "t"),
+    }
+    plan = build_execution_plan(
+        profile(), changes, ChangeDecisions(), None, metadata
+    )
+    assert plan.summary.deleted_size == 3500

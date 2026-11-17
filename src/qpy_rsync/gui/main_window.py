@@ -1966,6 +1966,7 @@ class MainWindow(QMainWindow):
             self.comparison.model.changes,
             self.comparison.model.decisions,
             getattr(self.comparison.model, "stash", None),
+            self.comparison.model.destination_metadata(),
         )
         summary = self._current_plan.summary
         noun = "item" if summary.included == 1 else "items"
