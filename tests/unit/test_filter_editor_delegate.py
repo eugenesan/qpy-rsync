@@ -65,3 +65,15 @@ def test_line_number_gutter_repaints_long_lines() -> None:
         application.processEvents()
     widget.close()
     application.processEvents()
+
+
+def test_rule_preview_defaults_to_two_lines() -> None:
+    from qpy_rsync.gui.filter_editor import FilterEditorWidget
+
+    application = app()
+    widget = FilterEditorWidget()
+    expected = widget.preview_label.fontMetrics().height() * 2 + 6
+    assert widget.preview_label.sizeHint().height() == expected
+    assert widget.preview_label.minimumSizeHint().height() == expected
+    widget.close()
+    application.processEvents()

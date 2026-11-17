@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -17,10 +17,10 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
-    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -167,6 +167,16 @@ class FilterSyntaxHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), self.invalid_format)
 
 
+class _RulePreview(QPlainTextEdit):
+    """The rule explanation box: two lines by default, manually resizable."""
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(80, self.fontMetrics().height() * 2 + 6)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(200, self.fontMetrics().height() * 2 + 6)
+
+
 class _LineNumberArea(QWidget):
     def __init__(self, editor: QPlainTextEdit) -> None:
         super().__init__(editor)
@@ -262,9 +272,8 @@ class FilterEditorWidget(QWidget):
         self.text_editor = self.editor
         self.editor.setPlainText(text)
         self.highlighter = FilterSyntaxHighlighter(self.editor.document())
-        self.preview_label = QLineEdit(self)
+        self.preview_label = _RulePreview(self)
         self.preview_label.setReadOnly(True)
-        self.preview_label.setFrame(False)
         self.preview_label.setPlaceholderText("Line preview")
         self.editor.cursorPositionChanged.connect(self._update_preview)
         self._update_preview()
@@ -279,9 +288,17 @@ class FilterEditorWidget(QWidget):
         button_row.addWidget(self.export_button)
         button_row.addWidget(self.help_button)
         button_row.addStretch(1)
+        splitter = QSplitter(Qt.Orientation.Vertical, self)
+        splitter.addWidget(self.editor)
+        splitter.addWidget(self.preview_label)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
+        splitter.setCollapsible(1, False)
+        two_lines = self.preview_label.fontMetrics().height() * 2 + 8
+        splitter.setSizes([360, two_lines])
+        self.splitter = splitter
         layout = QVBoxLayout(self)
-        layout.addWidget(self.editor, 1)
-        layout.addWidget(self.preview_label)
+        layout.addWidget(splitter, 1)
         layout.addLayout(button_row)
 
     def rules(self) -> list[FilterRule]:
@@ -333,7 +350,7 @@ class FilterEditorWidget(QWidget):
             message = validate_rule(rule)
             if message:
                 text = f"Line {number}: ERROR: {message}"
-        self.preview_label.setText(text)
+        self.preview_label.setPlainText(text)
         self.preview_label.setToolTip(text)
 
     def reveal_error(self) -> None:
