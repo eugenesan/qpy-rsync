@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.2
+
+- Added three compare layouts — Normal, Compare only and Compare with overview —
+  with a toolbar button, a View menu and Ctrl+Tab / Ctrl+Shift+Tab shortcuts.
+  Each layout keeps its own splitter sizes.
+- The profile editor now exposes --checksum, --partial-dir=.rsync-partial and
+  --inplace, and every setting that adds an rsync option shows that option and
+  a brief explanation in its tooltip.
+- The filter editor keeps the raw filter text (including comments) in the
+  profile, has a line-number gutter, a resizable two-line rule preview and
+  reports the first invalid line on close.
+- Added optional hidden "Size (bytes)" columns that replace the formatted Size
+  column. An action-bar toggle also applies the action filters to reported
+  directories, showing filtered directories as faded parents.
+- Fixed the line-number gutter painting and stopped long rules from resizing
+  the filter dialog.
+
 ## 0.3.1
 
 - Fixed the "Exclude via Filter" entries of the item context menu: the
