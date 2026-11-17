@@ -283,6 +283,13 @@ class MainWindow(QMainWindow):
         if not self._restore_recent_profile():
             self._restore_backup()
         self._restore_logging_settings()
+        filter_directories = app_settings().value(
+            "comparison/filter-directories", False, type=bool
+        )
+        self.action_filters.directory_filter_box.blockSignals(True)
+        self.action_filters.directory_filter_box.setChecked(filter_directories)
+        self.action_filters.directory_filter_box.blockSignals(False)
+        self.comparison.set_filter_directories(filter_directories)
         self._sound_enabled = app_settings().value(
             "sound/enabled", True, type=bool
         )
@@ -510,6 +517,9 @@ class MainWindow(QMainWindow):
         self.action_filters.changed.connect(self._apply_action_filters)
         self.action_filters.stashed_toggled.connect(self._apply_show_stashed)
         self.action_filters.restore_all_requested.connect(self._restore_all_stashed)
+        self.action_filters.directory_filter_toggled.connect(
+            self._filter_directories_changed
+        )
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -2686,6 +2696,12 @@ class MainWindow(QMainWindow):
             # Qt may already have destroyed the watched widget during shutdown.
             return False
         return super().eventFilter(watched, event)
+
+    def _filter_directories_changed(self, checked: bool) -> None:
+        settings = app_settings()
+        settings.setValue("comparison/filter-directories", bool(checked))
+        settings.sync()
+        self.comparison.set_filter_directories(checked)
 
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None

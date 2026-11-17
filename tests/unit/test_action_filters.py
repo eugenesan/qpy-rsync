@@ -69,7 +69,11 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
     boxes = [
         box
         for box in bar.findChildren(QCheckBox)
-        if box not in (bar.stashed_box, bar.unchanged_box)
+        if box not in (
+            bar.stashed_box,
+            bar.unchanged_box,
+            bar.directory_filter_box,
+        )
     ]
     tooltips = [child.toolTip() for child in boxes]
     assert tooltips
@@ -142,7 +146,7 @@ def test_the_bar_separates_every_pair_of_checkboxes() -> None:
     ]
     # One line between every pair of checkboxes, so it is clear which
     # indicator belongs to which glyph.
-    boxes = len(FILTERABLE_ACTIONS) + 2
+    boxes = len(FILTERABLE_ACTIONS) + 3
     assert len(lines) == boxes - 1
 
 

@@ -13,7 +13,13 @@ from PySide6.QtWidgets import (
 from qpy_rsync.core.changes import ChangeAction
 
 from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
-from .icons import ACTION_LABELS, action_icon, stashed_icon, unchanged_icon
+from .icons import (
+    ACTION_LABELS,
+    action_icon,
+    folder_icon,
+    stashed_icon,
+    unchanged_icon,
+)
 
 def _separator() -> QFrame:
     """A thin line that groups the checkboxes of the bar."""
@@ -42,6 +48,7 @@ class ActionFilterBar(QWidget):
     stashed_toggled = Signal(bool)
     unchanged_toggled = Signal(bool)
     restore_all_requested = Signal()
+    directory_filter_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -73,6 +80,21 @@ class ActionFilterBar(QWidget):
         )
         self.stashed_box.toggled.connect(self.stashed_toggled.emit)
         layout.addWidget(self.stashed_box)
+        layout.addWidget(_separator())
+
+        self.directory_filter_box = QCheckBox(self)
+        self.directory_filter_box.setIcon(folder_icon())
+        self.directory_filter_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.directory_filter_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
+        self.directory_filter_box.setToolTip(
+            "Apply the action filters to reported directories too.\n"
+            "A directory whose own action is filtered out stays as a faded "
+            "parent when it holds visible items, and is not counted."
+        )
+        self.directory_filter_box.setAccessibleName("Apply filters to directories")
+        self.directory_filter_box.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.directory_filter_box.toggled.connect(self.directory_filter_toggled.emit)
+        layout.addWidget(self.directory_filter_box)
         layout.addWidget(_separator())
 
         self._boxes: dict[ChangeAction, QCheckBox] = {}
@@ -289,6 +311,7 @@ class ActionFilterBar(QWidget):
         wanted[self.unchanged_box] = False
         wanted[self.stashed_box] = False
         self._set_states(wanted)
+        self.directory_filter_box.setChecked(False)
 
     def _show_box_menu(self, box: QCheckBox, point: object) -> None:
         """Offer the inverted choice for one checkbox."""

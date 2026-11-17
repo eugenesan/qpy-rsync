@@ -90,6 +90,9 @@ class FlatDirectory:
     path_ok: bool = False
     action_ok: bool = False
     visible: bool = False
+    # The directory's own action is filtered out, but it is still needed as
+    # the parent of visible items.
+    faded: bool = False
 
 
 @dataclass(slots=True)
@@ -180,6 +183,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._include_directory_contents = False
         self._directories_only = False
         self._visible_actions: set[ChangeAction] | None = None
+        self.filter_directories: bool = False
         self._directories: dict[str, FlatDirectory] = {}
         # The parsed path of every change. The paths are split once, so the
         # filters and the sort do not repeat the work for every row.
@@ -545,6 +549,13 @@ class FlatChangeModel(QAbstractTableModel):
     def visible_actions(self) -> set[ChangeAction] | None:
         return None if self._visible_actions is None else set(self._visible_actions)
 
+    def set_filter_directories(self, enabled: bool) -> None:
+        """Apply the action filters to the reported directories as well."""
+        if self.filter_directories == bool(enabled):
+            return
+        self.filter_directories = bool(enabled)
+        self._refresh_filters()
+
     def _refresh_filters(self) -> None:
         self.beginResetModel()
         self._apply_filters()
@@ -736,12 +747,18 @@ class FlatChangeModel(QAbstractTableModel):
                 index = directory.own_change_index
                 child_path_ok = child_path_ok or self._change_path_ok[index]
                 child_action_ok = child_action_ok or self._change_action_ok[index]
-            directory.path_ok = path_ok or child_path_ok
-            directory.action_ok = (
+            own_action_ok = (
                 self._action_allowed(directory.own_change)
                 if directory.own_change is not None
                 else False
-            ) or child_action_ok
+            )
+            directory.path_ok = path_ok or child_path_ok
+            directory.action_ok = own_action_ok or child_action_ok
+            directory.faded = (
+                self.filter_directories
+                and directory.own_change is not None
+                and not own_action_ok
+            )
             directory.visible = directory.path_ok and directory.action_ok
 
         # The compared folder is always shown, so its totals and its
@@ -768,7 +785,11 @@ class FlatChangeModel(QAbstractTableModel):
                         continue
                 elif not directory.visible:
                     continue
-                if directory.own_change_index >= 0 and not row_is_stashed:
+                if (
+                    directory.own_change_index >= 0
+                    and not row_is_stashed
+                    and not directory.faded
+                ):
                     visible_change_indices.add(directory.own_change_index)
             else:
                 if row_is_stashed:
@@ -846,7 +867,7 @@ class FlatChangeModel(QAbstractTableModel):
                 items += child.subtree_items
                 size += child.subtree_size
                 destination_size += child.subtree_destination_size
-                if child.own_change is not None:
+                if child.own_change is not None and not child.faded:
                     # A reported directory is an object of its own, so it
                     # counts once for the directory above it.
                     items += 1
@@ -1064,6 +1085,13 @@ class FlatChangeModel(QAbstractTableModel):
                 return font
         if role == Qt.ItemDataRole.ToolTipRole:
             return self._tooltip_for(row, index.column())
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and index.column() != self.ACTION
+            and row.is_directory
+            and (directory is not None and directory.faded)
+        ):
+            return QColor("#9ca3af")
         if (
             role == Qt.ItemDataRole.ForegroundRole
             and change is not None

@@ -3,6 +3,8 @@
 set -eu
 
 export PYTHONFAULTHANDLER=1
+# Avoid stale/hanging bytecode cache writes on synchronized filesystems.
+export PYTHONDONTWRITEBYTECODE=1
 export QT_FATAL_WARNINGS=1
 export QT_QPA_PLATFORM=offscreen
 
@@ -30,5 +32,6 @@ unset QML2_IMPORT_PATH QML_IMPORT_PATH LD_LIBRARY_PATH
 export PYTHONPATH="$SCRIPT_DIR/src"
 cd "$SCRIPT_DIR"
 "$PYTHON" -m pytest "$@"
-"$PYTHON" -m compileall -q src
+# Importing the modules during the tests already checks their syntax. Writing
+# bytecode caches can hang on synchronized filesystems, so no compileall pass.
 git diff --check

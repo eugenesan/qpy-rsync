@@ -489,3 +489,33 @@ def test_the_stashed_items_are_shown_even_when_the_action_filter_excludes_them()
     assert "created.txt" in paths
     model.deleteLater()
     application.processEvents()
+
+
+def test_action_filters_can_apply_to_directories() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs/", ChangeAction.UPDATE_METADATA, ObjectKind.DIRECTORY, ".d...p......"),
+            Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
+        ]
+    )
+    model._build_rows()
+    model._apply_filters()
+    before = [c.path for c in model.visible_changes()]
+    assert "docs/" in before
+
+    model.set_visible_actions({ChangeAction.UPDATE_CONTENT})
+    assert "docs/" in [c.path for c in model.visible_changes()]
+    directory = model._directories["docs"]
+    assert not directory.faded
+
+    model.set_filter_directories(True)
+    after = [c.path for c in model.visible_changes()]
+    assert "docs/" not in after
+    assert model._directories["docs"].faded
+    assert "docs" in [model.row_path(r) for r in range(model.rowCount())]
+    model.deleteLater()

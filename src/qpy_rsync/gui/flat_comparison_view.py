@@ -1180,6 +1180,10 @@ class FlatComparisonView(QWidget):
             tree.setCurrentIndex(index)
             tree.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
 
+    def set_filter_directories(self, enabled: bool) -> None:
+        """Apply the action filters to the reported directories as well."""
+        self.model.set_filter_directories(enabled)
+
     def set_stale(self, stale: bool, *, block_views: bool = False) -> None:
         """Mark the comparison stale.
 
