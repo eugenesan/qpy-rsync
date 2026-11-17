@@ -2982,6 +2982,9 @@ class MainWindow(QMainWindow):
         merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
         merged.update(result.destination_metadata)
         self.comparison.set_destination_metadata(merged)
+        # The plan was first built before this asynchronous listing arrived;
+        # rebuild it so deleted sizes and the overview stats are correct.
+        self._refresh_plan_summary()
         self._append_log(
             f"Destination metadata: {len(result.destination_metadata)} object(s)."
         )
@@ -3049,6 +3052,7 @@ class MainWindow(QMainWindow):
         # The listing knows the destination of every object, so the tree can
         # show its size and date.
         self.comparison.set_destination_metadata(result.destination_metadata)
+        self._refresh_plan_summary()
         if self.show_unchanged.isChecked():
             self._populate_unchanged(
                 changed + list(result.unchanged), len(result.unchanged)

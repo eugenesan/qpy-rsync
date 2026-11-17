@@ -1433,3 +1433,31 @@ def test_profile_menu_offers_profiles_directory() -> None:
     assert "Open profiles directory" in labels
     window.close()
     application.processEvents()
+
+
+def test_deleted_size_updates_after_metadata_arrives() -> None:
+    from qpy_rsync.backend.inventory import InventoryEntry, InventoryResult
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    change = Change("old.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")
+    window._comparison_finished(
+        CompareResult(ParseResult([change], []), "", 0)
+    )
+    assert window.overview.statistics.deleted_size_label.text() == "(0 B)"
+
+    window._metadata_token = 7
+    result = InventoryResult(
+        [], {"old.txt": (12345, "2026/11/16-10:00:00")}
+    )
+    window._metadata_finished(7, result)
+    assert window.overview.statistics.deleted_size_label.text() == "(12.1 KiB)"
+    window.close()
+    application.processEvents()
