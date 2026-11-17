@@ -44,3 +44,24 @@ def test_filter_text_is_preserved_in_profiles() -> None:
     )
     loaded = profile_from_json(profile_to_json(profile))
     assert loaded.filter_text == text
+
+
+def test_line_number_gutter_repaints_long_lines() -> None:
+    from qpy_rsync.gui.filter_editor import FilterEditorWidget
+
+    application = app()
+    widget = FilterEditorWidget()
+    long_line = "- " + "x" * 500
+    widget.set_text("\n".join([long_line, "*.tmp", long_line]))
+    from PySide6.QtGui import QImage
+
+    widget.resize(600, 300)
+    image = QImage(80, 300, QImage.Format.Format_ARGB32)
+    for position in (0, 250, 510, 520):
+        cursor = widget.editor.textCursor()
+        cursor.setPosition(position)
+        widget.editor.setTextCursor(cursor)
+        widget.editor._numbers.render(image)
+        application.processEvents()
+    widget.close()
+    application.processEvents()

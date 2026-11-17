@@ -8,6 +8,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QPainter,
+    QPalette,
     QSyntaxHighlighter,
     QTextCharFormat,
 )
@@ -170,6 +171,8 @@ class _LineNumberArea(QWidget):
     def __init__(self, editor: QPlainTextEdit) -> None:
         super().__init__(editor)
         self.editor = editor
+        self.setAutoFillBackground(True)
+        self.setBackgroundRole(QPalette.ColorRole.Base)
 
     def sizeHint(self):  # noqa: N802
         from PySide6.QtCore import QSize
@@ -179,28 +182,37 @@ class _LineNumberArea(QWidget):
     def paintEvent(self, event: object) -> None:  # noqa: N802
         editor = self.editor
         painter = QPainter(self)
-        painter.setFont(editor.font())
-        painter.fillRect(self.rect(), QColor("#f0f0f0"))
-        block = editor.firstVisibleBlock()
-        top = int(block.geometry().top() - editor.contentOffset().y())
-        bottom = top + int(block.boundingRect().height())
-        number = block.blockNumber() + 1
-        while block.isValid() and top <= self.height():
-            if block.isVisible() and bottom >= 0:
-                painter.setPen(QColor("#8a8a8a"))
-                painter.drawText(
-                    0,
-                    top,
-                    editor.line_number_width() - 4,
-                    int(block.boundingRect().height()),
-                    Qt.AlignmentFlag.AlignRight,
-                    str(number),
-                )
-            block = block.next()
-            top = bottom
-            bottom = top + int(block.boundingRect().height())
-            number += 1
-        painter.end()
+        try:
+            palette = self.palette()
+            painter.fillRect(
+                self.rect(), palette.color(self.backgroundRole())
+            )
+            painter.setFont(editor.font())
+            painter.setPen(palette.color(palette.ColorRole.Text))
+            layout = editor.document().documentLayout()
+            block = editor.firstVisibleBlock()
+            rect = layout.blockBoundingRect(block)
+            top = int(rect.top() - editor.contentOffset().y())
+            height = int(rect.height())
+            number = block.blockNumber() + 1
+            while block.isValid() and top <= self.height():
+                if block.isVisible() and top + height >= 0:
+                    painter.drawText(
+                        0,
+                        top,
+                        editor.line_number_width() - 4,
+                        height,
+                        Qt.AlignmentFlag.AlignRight,
+                        str(number),
+                    )
+                block = block.next()
+                if not block.isValid():
+                    break
+                top += height
+                height = int(layout.blockBoundingRect(block).height())
+                number += 1
+        finally:
+            painter.end()
 
 
 class _NumberedTextEdit(QPlainTextEdit):
