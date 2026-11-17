@@ -1422,3 +1422,14 @@ def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
     assert index == menu_index - 1
     window.close()
     application.processEvents()
+
+
+def test_profile_menu_offers_profiles_directory() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.profile_menu.aboutToShow.emit()
+    labels = [action.text() for action in window.profile_menu.actions()]
+    assert "Open profiles directory" in labels
+    window.close()
+    application.processEvents()

@@ -1006,6 +1006,9 @@ class MainWindow(QMainWindow):
             Path(resolved.directory).expanduser(), "backup directory"
         )
 
+    def _open_profiles_directory(self) -> None:
+        self._open_path(profiles_directory(), "profiles directory")
+
     def _open_log_file(self) -> None:
         text = self.log_file_edit.text().strip()
         path = (Path(text).expanduser() if text else self._log_file_path)
@@ -1611,6 +1614,8 @@ class MainWindow(QMainWindow):
         edit.triggered.connect(self._edit_profile)
         save_as = menu.addAction("Save As...")
         save_as.triggered.connect(self._save_profile)
+        open_dir = menu.addAction("Open profiles directory")
+        open_dir.triggered.connect(self._open_profiles_directory)
         reset = menu.addAction("Reset")
         reset.triggered.connect(self._unload_profile)
 
