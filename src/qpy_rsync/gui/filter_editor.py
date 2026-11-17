@@ -4,7 +4,13 @@ from copy import deepcopy
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QPainter,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -160,22 +166,95 @@ class FilterSyntaxHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), self.invalid_format)
 
 
+class _LineNumberArea(QWidget):
+    def __init__(self, editor: QPlainTextEdit) -> None:
+        super().__init__(editor)
+        self.editor = editor
+
+    def sizeHint(self):  # noqa: N802
+        from PySide6.QtCore import QSize
+
+        return QSize(self.editor.line_number_width(), 0)
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        editor = self.editor
+        painter = QPainter(self)
+        painter.setFont(editor.font())
+        painter.fillRect(self.rect(), QColor("#f0f0f0"))
+        block = editor.firstVisibleBlock()
+        top = int(block.geometry().top() - editor.contentOffset().y())
+        bottom = top + int(block.boundingRect().height())
+        number = block.blockNumber() + 1
+        while block.isValid() and top <= self.height():
+            if block.isVisible() and bottom >= 0:
+                painter.setPen(QColor("#8a8a8a"))
+                painter.drawText(
+                    0,
+                    top,
+                    editor.line_number_width() - 4,
+                    int(block.boundingRect().height()),
+                    Qt.AlignmentFlag.AlignRight,
+                    str(number),
+                )
+            block = block.next()
+            top = bottom
+            bottom = top + int(block.boundingRect().height())
+            number += 1
+        painter.end()
+
+
+class _NumberedTextEdit(QPlainTextEdit):
+    """A plain text editor with a line-number gutter."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._numbers = _LineNumberArea(self)
+        self.blockCountChanged.connect(self._update_gutter)
+        self.updateRequest.connect(self._update_gutter_area)
+        self._update_gutter()
+
+    def line_number_width(self) -> int:
+        digits = max(1, len(str(max(1, self.blockCount()))))
+        return self.fontMetrics().horizontalAdvance("0") * digits + 12
+
+    def _update_gutter(self) -> None:
+        self.setViewportMargins(self.line_number_width(), 0, 0, 0)
+
+    def _update_gutter_area(self, rect, dy: int) -> None:
+        if dy:
+            self._numbers.scroll(0, dy)
+        else:
+            self._numbers.update(
+                0, rect.y(), self._numbers.width(), rect.height()
+            )
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._numbers.setGeometry(
+            0, 0, self.line_number_width(), self.height()
+        )
+
+
 class FilterEditorWidget(QWidget):
     """The text editor and its preview, usable standalone or in a dialog."""
 
-    def __init__(self, rules=None, parent=None) -> None:
+    def __init__(self, rules=None, parent=None, text: str | None = None) -> None:
         super().__init__(parent)
-        text = _rules_to_text(list(rules or []))
+        if text is None:
+            text = _rules_to_text(list(rules or []))
         if not text.strip():
             text = _EXAMPLE_TEXT
-        self.editor = QPlainTextEdit(self)
+        self.editor = _NumberedTextEdit(self)
         self.text_edit = self.editor
         self.plain_text_edit = self.editor
         self.text_editor = self.editor
         self.editor.setPlainText(text)
         self.highlighter = FilterSyntaxHighlighter(self.editor.document())
         self.preview_label = QLabel("", self)
-        self.preview_label.setWordWrap(True)
+        self.preview_label.setWordWrap(False)
+        self.preview_label.setFixedHeight(
+            self.preview_label.fontMetrics().height() + 6
+        )
         self.editor.cursorPositionChanged.connect(self._update_preview)
         self._update_preview()
         button_row = QHBoxLayout()
@@ -214,26 +293,49 @@ class FilterEditorWidget(QWidget):
     def toPlainText(self) -> str:  # noqa: N802
         return self.editor.toPlainText()
 
-    def has_errors(self) -> bool:
-        for line in self.editor.toPlainText().splitlines():
+    def first_error(self) -> tuple[int, str] | None:
+        for number, line in enumerate(self.text().splitlines(), 1):
             rule = _line_to_rule(line)
-            if rule is not None and validate_rule(rule):
-                return True
-        return False
+            if rule is not None:
+                message = validate_rule(rule)
+                if message:
+                    return number, message
+        return None
+
+    def has_errors(self) -> bool:
+        return self.first_error() is not None
 
     def _update_preview(self) -> None:
         line = self.editor.textCursor().block().text()
+        number = self.editor.textCursor().blockNumber() + 1
         stripped = line.strip()
         if not stripped:
-            self.preview_label.setText("Preview: (blank line, ignored)")
+            text = f"Line {number}: blank, ignored"
         elif stripped.startswith("#"):
-            self.preview_label.setText("Preview: comment, ignored")
+            text = f"Line {number}: comment, ignored"
         elif is_advanced_rule(stripped):
-            self.preview_label.setText(f"Preview: advanced rsync rule: {stripped}")
+            text = f"Line {number}: rsync rule: {stripped}"
         else:
-            self.preview_label.setText(
-                f"Preview: interpreted as exclusion: - {stripped}"
-            )
+            text = f"Line {number}: exclusion: - {stripped}"
+        rule = _line_to_rule(line)
+        if rule is not None:
+            message = validate_rule(rule)
+            if message:
+                text = f"Line {number}: ERROR: {message}"
+        self.preview_label.setText(text)
+        self.preview_label.setToolTip(text)
+
+    def reveal_error(self) -> None:
+        error = self.first_error()
+        if error is None:
+            return
+        number, _message = error
+        block = self.editor.document().findBlockByLineNumber(number - 1)
+        cursor = self.editor.textCursor()
+        cursor.setPosition(block.position())
+        self.editor.setTextCursor(cursor)
+        self.editor.centerCursor()
+        self._update_preview()
 
     def show_help(self) -> None:
         from PySide6.QtGui import QFontDatabase
@@ -311,9 +413,13 @@ class FilterEditorDialog(QDialog):
         return self.widget.text()
 
     def _accept_if_valid(self) -> None:
-        if self.widget.has_errors():
+        error = self.widget.first_error()
+        if error is not None:
+            self.widget.reveal_error()
             QMessageBox.warning(
-                self, "Invalid filters", "Correct the highlighted filter lines first."
+                self,
+                "Invalid filters",
+                f"Line {error[0]}: {error[1]}\n\nCorrect the highlighted line first.",
             )
             return
         self.accept()

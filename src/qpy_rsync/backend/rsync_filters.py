@@ -106,3 +106,40 @@ def export_filter_file(path: Path, rules: list[FilterRule]) -> None:
         else:
             lines.append(f"# disabled: {rule.rule_type.value}: {rule.rule}")
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def filter_text_to_rules(text: str) -> list[FilterRule]:
+    """Build the active rsync rules from the text editor's source of truth."""
+    rules: list[FilterRule] = []
+    for line in text.splitlines():
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        if is_advanced_rule(value):
+            rule = value
+        else:
+            rule = f"- {value}"
+        rules.append(FilterRule(rule, rule_type=FilterRuleType.ADVANCED))
+    return rules
+
+
+def rules_to_filter_text(rules: list[FilterRule]) -> str:
+    """Render older structured rules as editable filter text."""
+    lines: list[str] = []
+    for item in rules:
+        if item.rule_type is FilterRuleType.INCLUDE:
+            base = (
+                item.rule
+                if item.rule.lstrip().startswith("+")
+                else f"+ {item.rule}"
+            )
+        elif item.rule_type is FilterRuleType.EXCLUDE:
+            base = item.rule
+        else:
+            base = item.rule
+        if item.comment:
+            lines.append(f"# {item.comment}")
+        if not item.enabled:
+            base = f"# {base}"
+        lines.append(base)
+    return "\n".join(lines)

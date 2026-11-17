@@ -51,6 +51,7 @@ from qpy_rsync.backend.inventory import (
 )
 from qpy_rsync.backend.process_runner import ProcessState
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
+from qpy_rsync.backend.rsync_filters import filter_text_to_rules, rules_to_filter_text
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import (
@@ -262,6 +263,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_transient = self._append_transient_log
         self._last_plan_summary: str | None = None
         self._filters: list[FilterRule] = []
+        self._filters_text: str = ""
         self._sound_enabled = True
         self._backup = BackupOptions()
         self._hovered_action = "compare"
@@ -1249,6 +1251,7 @@ class MainWindow(QMainWindow):
             source=parse_endpoint(self.source_edit.text()),
             destination=parse_endpoint(self.destination_edit.text()),
             filters=list(self._filters),
+            filter_text=self._filters_text,
             backup=BackupOptions(
                 directory=self.backup_edit.text().strip(),
                 protect_nested=self.protect_backup.isChecked(),
@@ -1309,8 +1312,9 @@ class MainWindow(QMainWindow):
         index = self.sync_mode.findData(updated.transfer.sync_mode)
         if index >= 0:
             self.sync_mode.setCurrentIndex(index)
-        if updated.filters != self._filters:
-            self._filters = list(updated.filters)
+        if updated.filter_text != self._filters_text:
+            self._filters_text = updated.filter_text
+            self._filters = filter_text_to_rules(self._filters_text)
             self._update_filter_summary(stale=True)
             self.comparison.set_stale(True)
             self._invalidate_plan_context()
@@ -1422,18 +1426,13 @@ class MainWindow(QMainWindow):
         pattern = label.strip()
         if not pattern:
             return
-        rule = FilterRule(
-            pattern,
-            rule_type=FilterRuleType.EXCLUDE,
-            comment=f"Added from {path}",
-        )
-        if any(
-            item.rule == rule.rule and item.rule_type is rule.rule_type
-            for item in self._filters
-        ):
+        if pattern in [line.strip() for line in self._filters_text.splitlines()]:
             self._append_log(f"Filter already present: {pattern}", severity="warning")
             return
-        self._filters.append(rule)
+        self._filters_text = self._filters_text.rstrip("\n")
+        prefix = "\n" if self._filters_text else ""
+        self._filters_text = f"{self._filters_text}{prefix}# Added from {path}\n{pattern}"
+        self._filters = filter_text_to_rules(self._filters_text)
         self._update_filter_summary(stale=True)
         self.comparison.set_stale(True)
         self._invalidate_plan_context()
@@ -1623,6 +1622,8 @@ class MainWindow(QMainWindow):
         self._baseline_profile = self._profile()
         self._save_recent_profile()
         self._refresh_profile_marker()
+        if not self.comparison.model.stale:
+            self._update_filter_summary(stale=False)
         self._append_log(f"Profile saved: {self._profile_path}")
 
     def _save_profile(self) -> bool:
@@ -1640,6 +1641,8 @@ class MainWindow(QMainWindow):
         except ValueError:
             self._baseline_profile = None
         self._refresh_profile_marker()
+        if not self.comparison.model.stale:
+            self._update_filter_summary(stale=False)
         self._append_log(f"Profile saved: {path}")
         return True
 
@@ -1669,6 +1672,7 @@ class MainWindow(QMainWindow):
         self.inventory_after_compare_button.setChecked(False)
         self._backup = BackupOptions(directory="", protect_nested=True)
         self._filters = []
+        self._filters_text = ""
         self._update_filter_summary(stale=False)
         self._update_backup_status()
         self._update_external_open_states()
@@ -1716,7 +1720,8 @@ class MainWindow(QMainWindow):
             directory=profile.backup.directory,
             protect_nested=profile.backup.protect_nested,
         )
-        self._filters = list(profile.filters)
+        self._filters_text = profile.filter_text or rules_to_filter_text(profile.filters)
+        self._filters = filter_text_to_rules(self._filters_text)
         self._profile_transfer = deepcopy(profile.transfer)
         self._profile_preservation = deepcopy(profile.preservation)
         self._profile_conflict = profile.conflict_policy
@@ -2560,6 +2565,7 @@ class MainWindow(QMainWindow):
         self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         self.comparison.set_stale(False)
+        self._update_filter_summary(stale=False)
         self._set_locations_stale(False)
         self._validated_plan = None
         self._refresh_plan_summary()

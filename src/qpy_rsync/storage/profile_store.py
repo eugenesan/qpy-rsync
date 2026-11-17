@@ -84,4 +84,4 @@ def _profile_from_dict(raw: dict[str, Any]) -> SyncProfile:
         value = item.copy()
         value["rule_type"] = FilterRuleType(value.get("rule_type", "advanced"))
         filters.append(FilterRule(**value))
-    return SyncProfile(name=raw["name"], description=raw.get("description", ""), source=source, destination=destination, profile_id=raw.get("profile_id", ""), schema_version=raw.get("schema_version", 1), conflict_policy=ConflictPolicy(raw.get("conflict_policy", "override")), preservation=preservation, transfer=transfer, backup=backup, filters=filters, inventory_after_compare=bool(raw.get("inventory_after_compare", False)))
+    return SyncProfile(name=raw["name"], description=raw.get("description", ""), source=source, destination=destination, profile_id=raw.get("profile_id", ""), schema_version=raw.get("schema_version", 1), conflict_policy=ConflictPolicy(raw.get("conflict_policy", "override")), preservation=preservation, transfer=transfer, backup=backup, filters=filters, filter_text=str(raw.get("filter_text", "")), inventory_after_compare=bool(raw.get("inventory_after_compare", False)))

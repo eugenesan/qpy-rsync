@@ -27,3 +27,20 @@ def test_filter_editor_empty_uses_examples() -> None:
     assert dialog.rules() == []
     dialog.close()
     application.processEvents()
+
+
+def test_filter_text_is_preserved_in_profiles() -> None:
+    from qpy_rsync.core.endpoints import Endpoint
+    from qpy_rsync.core.enums import EndpointKind
+    from qpy_rsync.core.models import SyncProfile
+    from qpy_rsync.storage.profile_store import profile_from_json, profile_to_json
+
+    text = "# a comment\n*.kate-swp\n+ keep.txt\n"
+    profile = SyncProfile(
+        name="x",
+        source=Endpoint(EndpointKind.LOCAL, "/s/"),
+        destination=Endpoint(EndpointKind.LOCAL, "/d/"),
+        filter_text=text,
+    )
+    loaded = profile_from_json(profile_to_json(profile))
+    assert loaded.filter_text == text

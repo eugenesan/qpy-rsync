@@ -1326,3 +1326,36 @@ def test_the_log_file_can_be_cleared(tmp_path) -> None:
     assert "cleared" in contents
     window.close()
     application.processEvents()
+
+
+def test_comparison_clears_the_stale_filter_indicator() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.core.models import FilterRule
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    window._filters = [FilterRule("*.tmp", enabled=True)]
+    window._update_filter_summary(stale=True)
+    stale = window.filters_button.icon().cacheKey()
+    assert "STALE" in window.filters_button.toolTip()
+
+    window._comparison_finished(
+        CompareResult(
+            ParseResult(
+                [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f")],
+                [],
+            ),
+            "",
+            0,
+        )
+    )
+    assert window.filters_button.icon().cacheKey() != stale
+    assert "STALE" not in window.filters_button.toolTip()
+    window.close()
+    application.processEvents()

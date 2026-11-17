@@ -151,7 +151,9 @@ class ProfileEditorDialog(QDialog):
         options_layout.addWidget(comparison_group)
         options_layout.addStretch(1)
 
-        self.filter_widget = FilterEditorWidget(self._profile.filters, self)
+        self.filter_widget = FilterEditorWidget(
+            self._profile.filters, self, text=self._profile.filter_text or None
+        )
 
         from PySide6.QtWidgets import QTabWidget
 
@@ -206,6 +208,7 @@ class ProfileEditorDialog(QDialog):
         )
         profile.conflict_policy = self.conflict_policy.currentData()
         profile.inventory_after_compare = self.inventory_after_compare.isChecked()
+        profile.filter_text = self.filter_widget.text()
         profile.filters = self.filter_widget.rules()
         return profile
 
@@ -213,12 +216,16 @@ class ProfileEditorDialog(QDialog):
         return self.filter_widget.rules()
 
     def _accept_if_valid(self) -> None:
-        if self.filter_widget.has_errors():
+        error = self.filter_widget.first_error()
+        if error is not None:
             self.show_section("filters")
+            self.filter_widget.reveal_error()
             from PySide6.QtWidgets import QMessageBox
 
             QMessageBox.warning(
-                self, "Invalid filters", "Correct the highlighted filter lines first."
+                self,
+                "Invalid filters",
+                f"Line {error[0]}: {error[1]}\n\nCorrect the highlighted line first.",
             )
             return
         self.accept()
