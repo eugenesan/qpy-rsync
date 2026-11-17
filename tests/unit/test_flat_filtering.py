@@ -519,3 +519,28 @@ def test_action_filters_can_apply_to_directories() -> None:
     assert model._directories["docs"].faded
     assert "docs" in [model.row_path(r) for r in range(model.rowCount())]
     model.deleteLater()
+
+
+def test_directory_sizes_only_count_affected_items() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+    from PySide6.QtCore import Qt
+
+    app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [Change("Temp/", ChangeAction.UPDATE_METADATA, ObjectKind.DIRECTORY, ".d..t......")]
+    )
+    model.source_root = "/src"
+    model.destination_root = "/dst"
+    model._build_rows()
+    model._apply_filters()
+    model.set_destination_metadata(
+        {"Temp": (4096, "t"), "Temp/big.bin": (10_000_000, "t")}
+    )
+    model._apply_filters()
+    row = model.index(1, model.SOURCE_NAME)
+    assert model.data(model.index(row.row(), model.SOURCE_ITEMS), Qt.ItemDataRole.DisplayRole) == "0"
+    assert model.data(model.index(row.row(), model.SOURCE_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
+    assert model.data(model.index(row.row(), model.DESTINATION_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
+    model.deleteLater()

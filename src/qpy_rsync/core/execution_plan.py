@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 from typing import Iterable
 
-from qpy_rsync.backend.destination_sizes import destination_size
+from qpy_rsync.backend.destination_sizes import destination_subtree_size
 
 from .changes import (
     Change,
@@ -106,16 +106,6 @@ def build_execution_plan(
     stashed_paths = (
         {path.strip("/") for path in stashed.paths()} if stashed else set()
     )
-    selected_delete_paths: set[str] = set()
-    for change in changes_list:
-        if not decisions.selectable(change):
-            continue
-        if stashed_paths and _is_stashed(str(change.path), stashed_paths):
-            continue
-        if decisions.effective(change) is ChangeDecision.EXCLUDE:
-            continue
-        if change.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}:
-            selected_delete_paths.add(change.path.rstrip("/"))
     for change in changes_list:
         if not decisions.selectable(change):
             continue
@@ -172,19 +162,32 @@ def build_execution_plan(
                 replacements += 1
             elif effective_action is ChangeAction.DELETE:
                 deletions += 1
-                clean = change.path.rstrip("/")
-                covered = any(
-                    clean.startswith(parent + "/")
-                    for parent in selected_delete_paths
-                    if parent != clean
-                )
-                if not covered:
-                    deleted_size += destination_size(change, metadata)
         else:
             if change.action is ChangeAction.DESTINATION_ONLY:
                 retained_destination_only += 1
             else:
                 excluded += 1
+
+    # The deleted size is the size of the selected deletions only. A deleted
+    # directory contributes the sizes of the selected items below it, and its
+    # children are not counted again when they are part of the same plan.
+    kinds = {str(change.path).rstrip("/"): change.kind for change in changes_list}
+    delete_paths = {
+        item.path for item in items if item.included and item.action is ChangeAction.DELETE
+    }
+    for path in delete_paths:
+        if any(
+            path.startswith(parent + "/")
+            for parent in delete_paths
+            if parent != path
+        ):
+            continue
+        # A directory's subtree size already includes its selected children;
+        # those children are skipped by the covered check above.
+        deleted_size += destination_subtree_size(
+            path, kinds.get(path, ObjectKind.FILE), metadata
+        )
+
     summary = PlanSummary(
         included=included,
         excluded=excluded,

@@ -870,17 +870,9 @@ class FlatChangeModel(QAbstractTableModel):
                 items += child.subtree_items
                 size += child.subtree_size
                 destination_size += child.subtree_destination_size
-                if child.own_change is not None and not child.faded:
-                    # A reported directory is an object of its own, so it
-                    # counts once for the directory above it.
-                    items += 1
-                    if not child.has_children:
-                        size += int(child.own_change.size or 0)
-                        destination_size += self._destination_size(child.own_change)
-            if directory.own_change is not None and not directory.has_children:
-                # A directory that holds nothing reports its own size.
-                size += int(directory.own_change.size or 0)
-                destination_size += self._destination_size(directory.own_change)
+            # A directory row carries the totals of the affected items inside
+            # it. Its own entry size (usually 4 KiB) is never shown, and a
+            # directory with no selected items has no size at all.
             directory.subtree_items = items
             directory.subtree_size = size
             directory.subtree_destination_size = destination_size
