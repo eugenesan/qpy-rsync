@@ -1389,3 +1389,36 @@ def test_compare_layout_modes() -> None:
     assert window.main_splitter.orientation() == Qt.Orientation.Vertical
     window.close()
     application.processEvents()
+
+
+def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    view_menu = None
+    for menu_action in window.menuBar().actions():
+        menu = menu_action.menu()
+        if menu is not None and menu.title() == "&View":
+            view_menu = menu
+            break
+    assert view_menu is not None
+    entries = {
+        action.text(): action.shortcut().toString()
+        for action in view_menu.actions()
+        if not action.isSeparator()
+    }
+    assert entries == {
+        "Normal": "",
+        "Compare only": "",
+        "Compare with overview": "",
+        "Next layout": "Ctrl+Tab",
+        "Previous layout": "Ctrl+Shift+Tab",
+    }
+    assert "Ctrl+Tab" in window.layout_button.toolTip()
+    index = window.comparison.controls.layout().indexOf(window.layout_button)
+    menu_index = window.comparison.controls.layout().indexOf(
+        window.comparison.menu_button
+    )
+    assert index == menu_index - 1
+    window.close()
+    application.processEvents()

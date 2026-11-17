@@ -276,6 +276,7 @@ class MainWindow(QMainWindow):
         self._hovered_action = "compare"
         self._closing = False
         self._layout_mode = "normal"
+        self._wide_overview_width: int | None = None
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
@@ -527,7 +528,6 @@ class MainWindow(QMainWindow):
             None,
             self.filters_button,
             self.profile_button,
-            self.layout_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -539,6 +539,13 @@ class MainWindow(QMainWindow):
                 controls.addWidget(widget)
         controls.addWidget(vertical_separator())
         controls.addWidget(self.comparison.controls, 1)
+        # The layout switch sits inside the comparison toolbar, immediately
+        # to the left of the application menu button.
+        comparison_layout = self.comparison.controls.layout()
+        comparison_layout.insertWidget(
+            comparison_layout.indexOf(self.comparison.menu_button),
+            self.layout_button,
+        )
         layout.addLayout(controls)
         self._controls_layout = controls
 
@@ -574,6 +581,7 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.main_splitter = splitter
+        splitter.splitterMoved.connect(self._main_splitter_moved)
         splitter.addWidget(self.comparison)
         self.log_panel = QWidget(self)
         log_panel = self.log_panel
@@ -798,6 +806,22 @@ class MainWindow(QMainWindow):
         )
         self._add_action(edit_menu, "Profile", "F4", self._edit_profile)
         self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
+
+        view_menu = menu_bar.addMenu("&View")
+        self.view_layout_actions: dict[str, object] = {}
+        for mode, label in LAYOUT_MODES:
+            action = self._add_action(
+                view_menu, label, "", lambda _checked=False, m=mode: self._set_layout_mode(m)
+            )
+            action.setCheckable(True)
+            self.view_layout_actions[mode] = action
+        view_menu.addSeparator()
+        self._add_action(
+            view_menu, "Next layout", "Ctrl+Tab", self._cycle_layout_forward
+        )
+        self._add_action(
+            view_menu, "Previous layout", "Ctrl+Shift+Tab", self._cycle_layout_backward
+        )
 
         actions_menu = menu_bar.addMenu("&Actions")
         self._add_action(
@@ -3263,6 +3287,17 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     # Compare layout
     # ------------------------------------------------------------------ #
+    def _main_splitter_moved(self, _position: int, _index: int) -> None:
+        if self._layout_mode == "wide" and self.main_splitter.count() == 2:
+            self._wide_overview_width = self.main_splitter.sizes()[1]
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)  # type: ignore[arg-type]
+        if self._layout_mode == "wide" and self._wide_overview_width:
+            total = sum(self.main_splitter.sizes())
+            width = min(self._wide_overview_width, max(200, total - 200))
+            self.main_splitter.setSizes([total - width, width])
+
     @staticmethod
     def _layout_state_key(mode: str) -> str:
         return f"main-window/layout-state-{mode}"
@@ -3280,9 +3315,28 @@ class MainWindow(QMainWindow):
             (text for mode, text in LAYOUT_MODES if mode == self._layout_mode),
             "Normal",
         )
-        self.layout_button.setToolTip(f"Compare layout: {label} — click to change")
+        self.layout_button.setToolTip(
+            f"Compare layout: {label} — click to change\n"
+            "Ctrl+Tab / Ctrl+Shift+Tab cycles the modes"
+        )
         for mode, action in self.layout_actions.items():
             action.setChecked(mode == self._layout_mode)  # type: ignore[union-attr]
+        for mode, action in getattr(self, "view_layout_actions", {}).items():
+            action.setChecked(mode == self._layout_mode)  # type: ignore[union-attr]
+
+    def _cycle_layout(self, delta: int) -> None:
+        names = [mode for mode, _ in LAYOUT_MODES]
+        try:
+            index = names.index(self._layout_mode)
+        except ValueError:
+            index = 0
+        self._set_layout_mode(names[(index + delta) % len(names)])
+
+    def _cycle_layout_forward(self) -> None:
+        self._cycle_layout(1)
+
+    def _cycle_layout_backward(self) -> None:
+        self._cycle_layout(-1)
 
     def _set_layout_mode(self, mode: str, *, restore: bool = True) -> None:
         """Switch between Normal, Compare-only and Compare+overview layouts."""
@@ -3290,6 +3344,8 @@ class MainWindow(QMainWindow):
             mode = "normal"
         if mode == self._layout_mode and restore:
             return
+        if self._layout_mode == "normal":
+            self._wide_overview_width = self.overview.width()
         self._save_current_layout_state()
         parent = self.centralWidget()
         # Park both widgets outside the splitters while the hierarchy changes.
@@ -3327,7 +3383,9 @@ class MainWindow(QMainWindow):
             self.main_splitter.setSizes([380, 250])
         elif mode == "wide":
             available = max(400, self.main_splitter.width())
-            self.main_splitter.setSizes([int(available * 0.6), int(available * 0.4)])
+            width = self._wide_overview_width or int(available * 0.4)
+            width = min(width, max(200, available - 200))
+            self.main_splitter.setSizes([available - width, width])
         self._refresh_layout_button()
         settings = app_settings()
         settings.setValue("main-window/layout-mode", mode)
