@@ -170,6 +170,7 @@ from .icons import (
     compare_icon,
     filters_icon,
     inventory_mode_icon,
+    layout_mode_icon,
     backup_icon,
     folder_add_icon,
     folder_open_icon,
@@ -191,6 +192,12 @@ from .overview import OverviewPane
 from .filter_editor import FilterEditorDialog
 from .backup_settings import decode_backup, encode_backup
 from .sync_confirmation import SyncConfirmationDialog
+
+LAYOUT_MODES = (
+    ("normal", "Normal"),
+    ("focus", "Compare only"),
+    ("wide", "Compare with overview"),
+)
 
 if TYPE_CHECKING:
     from qpy_rsync.app import StartupOptions
@@ -268,6 +275,7 @@ class MainWindow(QMainWindow):
         self._backup = BackupOptions()
         self._hovered_action = "compare"
         self._closing = False
+        self._layout_mode = "normal"
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
@@ -445,6 +453,27 @@ class MainWindow(QMainWindow):
         self.load_profile_button = self.profile_button
         self.save_profile_button = self.profile_button
         self.unload_profile_button = self.profile_button
+        self.layout_menu = QMenu(self)
+        self.layout_menu.aboutToShow.connect(self._refresh_layout_button)
+        self.layout_actions: dict[str, object] = {}
+        from PySide6.QtGui import QAction
+
+        for mode, label in LAYOUT_MODES:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.triggered.connect(
+                lambda _checked=False, m=mode: self._set_layout_mode(m)
+            )
+            self.layout_menu.addAction(action)
+            self.layout_actions[mode] = action
+        self.layout_button = QToolButton()
+        self.layout_button.setIcon(layout_mode_icon())
+        self.layout_button.setToolTip("Compare layout")
+        self.layout_button.setAccessibleName("Compare layout")
+        self.layout_button.setMenu(self.layout_menu)
+        self.layout_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
         self.backup_open = self._external_open_button(
             "backup-open-button",
             backup_icon(),
@@ -478,6 +507,7 @@ class MainWindow(QMainWindow):
             self.pause_button,
             self.filters_button,
             self.profile_button,
+            self.layout_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -497,6 +527,7 @@ class MainWindow(QMainWindow):
             None,
             self.filters_button,
             self.profile_button,
+            self.layout_button,
             self.backup_open,
             self.log_file_open,
             self.settings_button,
@@ -544,11 +575,13 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.main_splitter = splitter
         splitter.addWidget(self.comparison)
-        log_panel = QWidget(self)
+        self.log_panel = QWidget(self)
+        log_panel = self.log_panel
         log_layout = QHBoxLayout(log_panel)
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(4)
         log_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.log_splitter = log_splitter
         log_splitter.setChildrenCollapsible(False)
         log_splitter.setHandleWidth(6)
         log_column = QWidget(self)
@@ -3227,6 +3260,79 @@ class MainWindow(QMainWindow):
         else:
             self._set_state("Ready for compare")
 
+    # ------------------------------------------------------------------ #
+    # Compare layout
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _layout_state_key(mode: str) -> str:
+        return f"main-window/layout-state-{mode}"
+
+    def _save_current_layout_state(self) -> None:
+        settings = app_settings()
+        settings.setValue(
+            self._layout_state_key(self._layout_mode),
+            encode_binary(self.main_splitter.saveState()),
+        )
+        settings.sync()
+
+    def _refresh_layout_button(self) -> None:
+        label = next(
+            (text for mode, text in LAYOUT_MODES if mode == self._layout_mode),
+            "Normal",
+        )
+        self.layout_button.setToolTip(f"Compare layout: {label} — click to change")
+        for mode, action in self.layout_actions.items():
+            action.setChecked(mode == self._layout_mode)  # type: ignore[union-attr]
+
+    def _set_layout_mode(self, mode: str, *, restore: bool = True) -> None:
+        """Switch between Normal, Compare-only and Compare+overview layouts."""
+        if mode not in {name for name, _ in LAYOUT_MODES}:
+            mode = "normal"
+        if mode == self._layout_mode and restore:
+            return
+        self._save_current_layout_state()
+        parent = self.centralWidget()
+        # Park both widgets outside the splitters while the hierarchy changes.
+        self.log_panel.setParent(parent)
+        self.overview.setParent(parent)
+        self.log_panel.hide()
+        self.overview.hide()
+
+        if mode == "focus":
+            self.main_splitter.setOrientation(Qt.Orientation.Vertical)
+            self.log_panel.setParent(parent)
+            self.log_panel.hide()
+        elif mode == "wide":
+            self.main_splitter.setOrientation(Qt.Orientation.Horizontal)
+            self.main_splitter.addWidget(self.overview)
+            self.overview.show()
+        else:
+            self.log_splitter.addWidget(self.overview)
+            self.overview.show()
+            self.main_splitter.setOrientation(Qt.Orientation.Vertical)
+            self.main_splitter.addWidget(self.log_panel)
+            self.log_panel.show()
+
+        self._layout_mode = mode
+        state = (
+            decode_binary(
+                app_settings().value(self._layout_state_key(mode), "")
+            )
+            if restore
+            else None
+        )
+        if state is not None:
+            self.main_splitter.restoreState(state)
+        elif mode == "normal":
+            self.main_splitter.setSizes([380, 250])
+        elif mode == "wide":
+            available = max(400, self.main_splitter.width())
+            self.main_splitter.setSizes([int(available * 0.6), int(available * 0.4)])
+        self._refresh_layout_button()
+        settings = app_settings()
+        settings.setValue("main-window/layout-mode", mode)
+        settings.sync()
+
     def _restore_window_state(self) -> None:
         settings = app_settings()
         geometry = decode_binary(settings.value("main-window/geometry"))
@@ -3238,6 +3344,18 @@ class MainWindow(QMainWindow):
         preview_state = decode_binary(settings.value("command-preview/splitter"))
         if preview_state is not None:
             self.preview_log_splitter.restoreState(preview_state)
+        mode = str(settings.value("main-window/layout-mode", "normal"))
+        # The normal hierarchy is already in place; switching is only needed
+        # for a remembered Focus or Wide mode.
+        if mode != "normal":
+            self._set_layout_mode(mode)
+        else:
+            state = decode_binary(
+                settings.value(self._layout_state_key("normal"), "")
+            )
+            if state is not None:
+                self.main_splitter.restoreState(state)
+        self._refresh_layout_button()
         # The auto-inventory choice belongs to the profile now. Drop the old
         # global value so it cannot be mistaken for the active state.
         settings.remove("comparison/inventory-after-compare")
@@ -3286,6 +3404,7 @@ class MainWindow(QMainWindow):
             "main-window/geometry", encode_binary(self.saveGeometry())
         )
         settings.setValue("main-window/state", encode_binary(self.saveState()))
+        self._save_current_layout_state()
         settings.setValue(
             "command-preview/splitter",
             encode_binary(self.preview_log_splitter.saveState()),

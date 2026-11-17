@@ -280,6 +280,16 @@ def save_icon() -> QIcon:
     )
 
 
+def layout_mode_icon() -> QIcon:
+    """The system icon for switching the compare-pane layout."""
+    return _theme_icon(
+        "view-fullscreen",
+        "view-restore",
+        "window-maximize",
+        fallback=QStyle.StandardPixmap.SP_ComputerIcon,
+    )
+
+
 def restore_defaults_icon() -> QIcon:
     """The system icon for restoring the default values."""
     return _theme_icon(

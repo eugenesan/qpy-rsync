@@ -1359,3 +1359,33 @@ def test_comparison_clears_the_stale_filter_indicator() -> None:
     assert "STALE" not in window.filters_button.toolTip()
     window.close()
     application.processEvents()
+
+
+def test_compare_layout_modes() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.resize(1200, 800)
+    application.processEvents()
+
+    window._set_layout_mode("focus")
+    application.processEvents()
+    assert window.main_splitter.count() == 1
+    assert window.log_panel.parent() is not window.main_splitter
+    assert window.overview.parent() is not window.log_splitter
+
+    window._set_layout_mode("wide")
+    application.processEvents()
+    assert window.main_splitter.count() == 2
+    assert window.log_panel.parent() is not window.main_splitter
+    assert window.overview.parent() is window.main_splitter
+    assert window.main_splitter.orientation() == Qt.Orientation.Horizontal
+
+    window._set_layout_mode("normal")
+    application.processEvents()
+    assert window.main_splitter.count() == 2
+    assert window.log_panel.parent() is window.main_splitter
+    assert window.overview.parent() is window.log_splitter
+    assert window.main_splitter.orientation() == Qt.Orientation.Vertical
+    window.close()
+    application.processEvents()
