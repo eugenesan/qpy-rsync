@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
+    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -262,11 +262,10 @@ class FilterEditorWidget(QWidget):
         self.text_editor = self.editor
         self.editor.setPlainText(text)
         self.highlighter = FilterSyntaxHighlighter(self.editor.document())
-        self.preview_label = QLabel("", self)
-        self.preview_label.setWordWrap(False)
-        self.preview_label.setFixedHeight(
-            self.preview_label.fontMetrics().height() + 6
-        )
+        self.preview_label = QLineEdit(self)
+        self.preview_label.setReadOnly(True)
+        self.preview_label.setFrame(False)
+        self.preview_label.setPlaceholderText("Line preview")
         self.editor.cursorPositionChanged.connect(self._update_preview)
         self._update_preview()
         button_row = QHBoxLayout()
