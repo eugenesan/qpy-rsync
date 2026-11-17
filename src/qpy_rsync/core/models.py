@@ -47,6 +47,8 @@ class TransferOptions:
     whole_file: bool = False
     relative: bool = False
     compress: bool = False
+    checksum: bool = False
+    partial_dir: str = ""
     inplace: bool = False
     one_file_system: bool = False
     sparse: bool = False

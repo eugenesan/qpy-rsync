@@ -60,6 +60,12 @@ def _common_arguments(profile: SyncProfile, *, filter_file: Path | None = None) 
     if transfer.relative:
         args.append("--relative")
     args.append("--compress" if transfer.compress else "--no-compress")
+    if transfer.checksum:
+        args.append("--checksum")
+    if transfer.partial_dir:
+        args.append(f"--partial-dir={transfer.partial_dir}")
+        # rsync implies --partial here, but stating it keeps the preview clear.
+        args.append("--partial")
     if transfer.inplace:
         args.append("--inplace")
     if transfer.one_file_system:

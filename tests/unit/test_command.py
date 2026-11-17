@@ -129,3 +129,15 @@ def test_the_comparison_reports_progress_without_breaking_the_records() -> None:
     # no longer be glued to the following record.
     assert "--info=progress2" in arguments
     assert "--info=progress2" in list(build_sync_spec(profile()).arguments)
+
+
+def test_new_transfer_options_reach_the_command() -> None:
+    from qpy_rsync.core.models import TransferOptions
+
+    item = profile()
+    item.transfer = TransferOptions(checksum=True, partial_dir=".rsync-partial", inplace=True)
+    arguments = build_sync_spec(item).arguments
+    assert "--checksum" in arguments
+    assert "--partial-dir=.rsync-partial" in arguments
+    assert "--partial" in arguments
+    assert "--inplace" in arguments

@@ -36,6 +36,10 @@ def _combo(values, current):
     return combo
 
 
+def _rsync_tip(widget, option: str, explanation: str) -> None:
+    widget.setToolTip(f"{option}\n{explanation}")
+
+
 class ProfileEditorDialog(QDialog):
     """Edit the settings a profile owns that the main toolbar cannot show."""
 
@@ -51,6 +55,9 @@ class ProfileEditorDialog(QDialog):
         self.sync_mode = _combo(SyncMode, transfer.sync_mode)
         self.delete_timing = _combo(DeleteTiming, transfer.delete_timing)
         self.compress = QCheckBox("Compress data during transfer")
+        self.checksum = QCheckBox("Compare files by checksum")
+        self.partial_dir = QCheckBox("Keep partial files in .rsync-partial")
+        self.inplace = QCheckBox("Update files in place")
         self.fuzzy = QCheckBox("Use fuzzy transfers")
         self.whole_file = QCheckBox("Use whole-file transfers")
         self.copy_links = QCheckBox("Copy symlinks as copies")
@@ -63,6 +70,9 @@ class ProfileEditorDialog(QDialog):
         self.inventory_after_compare.setChecked(profile.inventory_after_compare)
         for checkbox, value in (
             (self.compress, transfer.compress),
+            (self.checksum, transfer.checksum),
+            (self.partial_dir, bool(transfer.partial_dir)),
+            (self.inplace, transfer.inplace),
             (self.fuzzy, transfer.fuzzy),
             (self.whole_file, transfer.whole_file),
             (self.copy_links, transfer.copy_links),
@@ -85,6 +95,9 @@ class ProfileEditorDialog(QDialog):
         behaviours_layout = QVBoxLayout(behaviours_group)
         for checkbox in (
             self.compress,
+            self.checksum,
+            self.partial_dir,
+            self.inplace,
             self.fuzzy,
             self.whole_file,
             self.copy_links,
@@ -155,6 +168,8 @@ class ProfileEditorDialog(QDialog):
             self._profile.filters, self, text=self._profile.filter_text or None
         )
 
+        self._apply_tooltips()
+
         from PySide6.QtWidgets import QTabWidget
 
         self.tabs = QTabWidget(self)
@@ -173,6 +188,44 @@ class ProfileEditorDialog(QDialog):
         layout.addWidget(self.tabs, 1)
         layout.addWidget(buttons)
 
+    def _apply_tooltips(self) -> None:
+        """Show the rsync option behind every setting that adds one."""
+        _rsync_tip(
+            self.sync_mode,
+            "--delete-* / --ignore-existing",
+            "Update transfers changes, Mirror also deletes destination-only "
+            "items, New Only copies missing items and never updates.",
+        )
+        _rsync_tip(
+            self.delete_timing,
+            "--delete-before / --delete-during / --delete-delay / --delete-after",
+            "When rsync removes destination-only items during a Mirror sync.",
+        )
+        for widget, option, explanation in (
+            (self.compress, "--compress / --no-compress", "Compress transfer data."),
+            (self.checksum, "--checksum", "Compare whole-file checksums instead of size and time."),
+            (
+                self.partial_dir,
+                "--partial-dir=.rsync-partial and --partial",
+                "Keep interrupted transfers in a side folder so they can resume.",
+            ),
+            (self.inplace, "--inplace", "Write updated files directly instead of replacing them."),
+            (self.fuzzy, "--fuzzy", "Use a similar local file as the transfer basis."),
+            (self.whole_file, "--whole-file", "Copy whole files instead of using delta transfer."),
+            (self.copy_links, "--copy-links", "Copy symlink targets as files or folders."),
+            (self.one_file_system, "--one-file-system", "Do not cross mounted file-system boundaries."),
+            (self.ignore_times, "--ignore-times", "Transfer files even when size and time match."),
+            (self.sparse, "--sparse", "Store sequences of zeroes efficiently."),
+            (self.archive, "--archive", "Recurse and preserve permissions, times, links and devices."),
+            (self.hard_links, "--hard-links", "Preserve hard links between files."),
+            (self.acls, "--acls", "Preserve POSIX access control lists."),
+            (self.xattrs, "--xattrs", "Preserve extended attributes."),
+            (self.numeric_ids, "--numeric-ids", "Keep numeric owner and group IDs."),
+            (self.backup_dir, "--backup and --backup-dir=DIRECTORY", "Keep replaced files in a destination-side backup folder."),
+            (self.protect_backup, "P /.backup/***", "Protect the nested backup folder from deletion."),
+        ):
+            _rsync_tip(widget, option, explanation)
+
     def show_section(self, section: str) -> None:
         try:
             index = SECTIONS.index(section)
@@ -186,6 +239,9 @@ class ProfileEditorDialog(QDialog):
             sync_mode=self.sync_mode.currentData(),
             delete_timing=self.delete_timing.currentData(),
             compress=self.compress.isChecked(),
+            checksum=self.checksum.isChecked(),
+            partial_dir=".rsync-partial" if self.partial_dir.isChecked() else "",
+            inplace=self.inplace.isChecked(),
             fuzzy=self.fuzzy.isChecked(),
             whole_file=self.whole_file.isChecked(),
             copy_links=self.copy_links.isChecked(),
