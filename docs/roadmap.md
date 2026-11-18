@@ -157,7 +157,9 @@ Remaining work, in priority order:
    flags are applied inside the single row rebuild pass instead of a separate
    O(n) loop. A show/hide toggle on a 31k-folder tree dropped from ~500 ms to
    ~330 ms.
-4. **Indexed incremental search — delivered.** Folded names and paths are
+4. **Indexed incremental search — delivered.** Search uses the path-filter
+   matching rules (name, path, globs, trailing slash for folders), so a name
+   such as `.git` finds only that folder and not its whole hierarchy. Folded names and paths are
    cached on the model, the match list is built once per search text, and
    Enter/Shift+Enter step through it in O(1). Typing searches after a 250 ms
    debounce, a `n/total` counter is shown, and Ctrl+G / Ctrl+Shift+G repeat the

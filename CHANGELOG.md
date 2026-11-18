@@ -26,6 +26,10 @@
 - The Overview applies only changed folder counts and propagates total deltas
   up the tree, so a single decision updates in ~20 ms on a 31k-folder tree
   instead of rebuilding every folder total.
+- Search now follows the Find/Filter rules: a bare name matches only the
+  item's own name, a pattern with a slash matches the relative path, globs
+  work in both forms, and a trailing slash restricts the search to folders.
+  Searching for `.git` no longer matches every file below that directory.
 - Search is now indexed: folded names and paths are cached, the match list is
   built once per search text, and Enter/Shift+Enter step through it in O(1).
   Typing searches after a short debounce and a counter shows the match number.

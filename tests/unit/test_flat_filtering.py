@@ -362,6 +362,37 @@ def test_search_matches_are_cached_and_follow_the_visible_rows() -> None:
     application.processEvents()
 
 
+def test_search_follows_the_find_and_filter_rules() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change(".git/config", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change(".git/objects/id", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("src/main.py", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        ]
+    )
+
+    def found(text: str) -> list[str]:
+        return [model.row_path(row) for row in model.search_matches(text)]
+
+    # A bare name matches the directory itself, not its whole hierarchy.
+    assert found(".git") == [".git"]
+    assert found("config") == [".git/config"]
+    # A slash searches the relative path; a trailing slash means directories.
+    assert found(".git/") == [".git"]
+    assert found("src/") == ["src"]
+    assert found(".git/config") == [".git/config"]
+    # Globs follow the same rules in both forms.
+    assert found("*.py") == ["src/main.py"]
+    assert found("src/*.py") == ["src/main.py"]
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_search_navigates_matches_without_changing_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView

@@ -1241,25 +1241,43 @@ class FlatChangeModel(QAbstractTableModel):
         return list(self._directories)
 
     def search_matches(self, text: str) -> list[int]:
-        """Visible model rows whose name or path contains ``text``.
+        """Visible rows matching ``text`` with the usual Find/Filter rules.
 
-        The result is cached by text and layout generation, so typing or
-        stepping through matches never pays for a second scan.
+        A name without a slash matches only the item's own name, so looking
+        for ``.git`` finds the directory and not everything below it. A
+        pattern with a slash matches the relative path, globs work in both
+        forms, and a trailing slash searches directories only. Searching
+        never changes the visible set.
         """
-        needle = text.strip().casefold()
-        key = (needle, self.layout_token)
+        value = text.strip().casefold()
+        key = (value, self.layout_token)
         if key == self._search_cache_key:
             return self._search_cache
-        if not needle:
+        if not value:
             matches: list[int] = []
         else:
+            directories_only = value.endswith("/")
+            pattern = value.rstrip("/") if directories_only else value
+            is_glob = any(character in pattern for character in "*?[")
+            by_path = "/" in pattern
             names = self._row_names_folded
             paths = self._row_paths_folded
-            matches = [
-                row
-                for row in self._visible_rows
-                if needle in names[row] or needle in paths[row]
-            ]
+            is_dir = self._row_is_dir
+            if is_glob:
+                matches = [
+                    row
+                    for row in self._visible_rows
+                    if (not directories_only or is_dir[row])
+                    and fnmatchcase(paths[row] if by_path else names[row], pattern)
+                ]
+            else:
+                candidate_source = paths if by_path else names
+                matches = [
+                    row
+                    for row in self._visible_rows
+                    if (not directories_only or is_dir[row])
+                    and pattern in candidate_source[row]
+                ]
         self._search_cache_key = key
         self._search_cache = matches
         return matches

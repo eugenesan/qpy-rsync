@@ -438,10 +438,13 @@ class FlatComparisonView(QWidget):
             self.search_edit.sizePolicy().verticalPolicy(),
         )
         self.search_edit.setToolTip(
-            "Find items whose name or path contains the text. Matches are "
-            "indexed as you type; Enter jumps to the next match and "
-            "Shift+Enter to the previous one. Searching does not change "
-            "the list."
+            "Find items whose name contains the text; use a slash to match "
+            "the path, a trailing slash for directories only, and * ? [ ] as "
+            "globs. For example '.git' finds only the directory named .git, "
+            "while '.git/config' finds that file. Enter jumps to the next "
+            "match, Shift+Enter "
+            "to the previous one, Ctrl+G repeats it from anywhere. Searching "
+            "does not change the list."
         )
 
         self.inventory_button = QToolButton()
