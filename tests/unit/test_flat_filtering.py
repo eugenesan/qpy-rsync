@@ -115,6 +115,35 @@ def test_stashing_an_item_removes_it_from_the_list() -> None:
     application.processEvents()
 
 
+def test_stashing_a_directory_removes_its_destination_removals_too() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    changes = [
+        Change("dir/new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+        Change("dir/old.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("dir/sub/gone.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("other/keep.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++"),
+    ]
+    model = FlatChangeModel()
+    model.set_changes(changes)
+    before = set(_paths(model))
+
+    # The incremental refresh used by the space bar and the context menu has
+    # to hide every descendant, not just the directory row itself.
+    model.set_stashed("dir", True)
+    assert set(_paths(model)) == {"other", "other/keep.txt"}
+    assert [change.path for change in model.visible_changes()] == ["other/keep.txt"]
+
+    model.set_stashed("dir", False)
+    assert set(_paths(model)) == before
+    assert len(model.visible_changes()) == len(changes)
+
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_the_stashed_items_can_be_shown_again_in_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView

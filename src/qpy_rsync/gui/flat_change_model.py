@@ -942,14 +942,17 @@ class FlatChangeModel(QAbstractTableModel):
         return excluded
 
     def _update_excluded_rows(self, paths: set[str]) -> None:
-        """Refresh the per-row excluded state for the given paths."""
+        """Refresh the per-row excluded state for the given paths.
+
+        Stashing a directory covers everything below it, so the affected
+        rows are the path and all of its descendants, not just the row of
+        the path itself. Only updating the latter leaves the children of a
+        stashed directory in the list.
+        """
         excluded = self._excluded_paths()
-        for path in paths:
-            clean = path.rstrip("/")
-            if clean not in self._row_of_path:
-                continue
-            index = self._row_of_path[clean]
-            self._rows[index].excluded = excluded.get(clean, False)
+        for row_index in self._affected_rows(paths):
+            row = self._rows[row_index]
+            row.excluded = excluded.get(row.path, False)
 
     def _collapsed_map(self) -> dict[str, bool]:
         pattern_active = bool(self._pattern) and self._pattern != "*"
