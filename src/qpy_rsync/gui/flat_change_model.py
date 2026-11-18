@@ -215,7 +215,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._directory_order: list[str] | None = None
         self._rows: list[FlatRow] = []
         self._visible_rows: list[int] = []
-        self._visible_row_of_path: dict[str, int] = {}
+        self._visible_position_of_row: list[int] = []
         self._row_of_path: dict[str, int] = {}
         self._sorted_paths: list[str] = []
         self._visible_changes: list[Change] = []
@@ -817,7 +817,6 @@ class FlatChangeModel(QAbstractTableModel):
         # The rows of the visible directories.
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
-        visible_row_of_path: dict[str, int] = {}
         stash = self.stash
         check_stashed = bool(stash) and not self.show_stashed
         for index, row in enumerate(self._rows):
@@ -864,7 +863,6 @@ class FlatChangeModel(QAbstractTableModel):
             # item are two rows, so they never share a stripe, and a group of
             # any size still reads as alternating lines.
             row.alternate = len(visible_rows) % 2 == 0
-            visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         debug_timing("model.filter_phase", phase="rows_done")
         self._visible_rows = visible_rows
@@ -872,7 +870,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._visible_changes = [
             self.changes[index] for index in sorted(visible_change_indices)
         ]
-        self._visible_row_of_path = visible_row_of_path
+        self._visible_position_of_row = self._position_array()
         self._total_up_directories()
         debug_timing("model.filter_phase", phase="totals_done")
         self.layout_token += 1
@@ -992,7 +990,6 @@ class FlatChangeModel(QAbstractTableModel):
                 )
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
-        visible_row_of_path: dict[str, int] = {}
         for index, row in enumerate(self._rows):
             if row.excluded and not self.show_stashed:
                 continue
@@ -1020,15 +1017,20 @@ class FlatChangeModel(QAbstractTableModel):
             ):
                 continue
             row.alternate = len(visible_rows) % 2 == 0
-            visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows
         self._visible_change_indices = visible_change_indices
         self._visible_changes = [
             self.changes[index] for index in sorted(visible_change_indices)
         ]
-        self._visible_row_of_path = visible_row_of_path
+        self._visible_position_of_row = self._position_array()
         self.layout_token += 1
+
+    def _position_array(self) -> list[int]:
+        positions = [-1] * len(self._rows)
+        for position, index in enumerate(self._visible_rows):
+            positions[index] = position
+        return positions
 
     def _patch_visible_rows(self, paths: set[str]) -> None:
         """Update only the rows affected by a decision change."""
@@ -1077,10 +1079,7 @@ class FlatChangeModel(QAbstractTableModel):
                 self.changes[index] for index in sorted(self._visible_change_indices)
             ]
         with timed("model.patch_rowmap"):
-            self._visible_row_of_path = {
-                self._rows[index].path: position
-                for position, index in enumerate(self._visible_rows)
-            }
+            self._visible_position_of_row = self._position_array()
         with timed("model.patch_stripes"):
             for index, row in enumerate(self._visible_rows):
                 self._rows[row].alternate = index % 2 == 0
@@ -1248,10 +1247,13 @@ class FlatChangeModel(QAbstractTableModel):
 
     def index_for_path(self, path: str) -> QModelIndex:
         """Return the index of the row with the given path."""
-        row = self._visible_row_of_path.get(path.rstrip("/"))
-        if row is None:
+        model_row = self._row_of_path.get(path.rstrip("/"))
+        if model_row is None:
             return QModelIndex()
-        return self.createIndex(row, 0)
+        position = self._visible_position_of_row[model_row]
+        if position < 0:
+            return QModelIndex()
+        return self.createIndex(position, 0)
 
     def row_path(self, row: int) -> str | None:
         """Return the comparison path of a visible row."""
