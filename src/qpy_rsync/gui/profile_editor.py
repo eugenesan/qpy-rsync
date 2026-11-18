@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +25,7 @@ from qpy_rsync.core.enums import ConflictPolicy, DeleteTiming, SyncMode
 from qpy_rsync.core.models import FilterRule, PreservationOptions, SyncProfile, TransferOptions
 
 from .filter_editor import FilterEditorWidget
+from .icons import folder_open_icon, open_icon
 
 SECTIONS = ("options", "preservation", "backup", "filters")
 
@@ -134,11 +138,26 @@ class ProfileEditorDialog(QDialog):
         preservation_layout.addStretch(1)
 
         self.backup_dir = QLineEdit(self._profile.backup.directory)
+        self.backup_browse = QToolButton(self)
+        self.backup_browse.setIcon(open_icon())
+        self.backup_browse.setToolTip("Browse for the backup directory")
+        self.backup_browse.setAccessibleName("Browse backup directory")
+        self.backup_browse.clicked.connect(self._browse_backup_dir)
+        self.backup_open = QToolButton(self)
+        self.backup_open.setIcon(folder_open_icon())
+        self.backup_open.setToolTip("Open the backup directory")
+        self.backup_open.setAccessibleName("Open backup directory")
+        self.backup_open.clicked.connect(self._open_backup_dir)
+        self.backup_dir.textChanged.connect(self._update_backup_buttons)
+        backup_row = QHBoxLayout()
+        backup_row.addWidget(self.backup_dir, 1)
+        backup_row.addWidget(self.backup_browse)
+        backup_row.addWidget(self.backup_open)
         self.protect_backup = QCheckBox("Protect nested backup directory")
         self.protect_backup.setChecked(self._profile.backup.protect_nested)
         backup_tab = QWidget(self)
         backup_layout = QFormLayout(backup_tab)
-        backup_layout.addRow("Backup directory", self.backup_dir)
+        backup_layout.addRow("Backup directory", backup_row)
         backup_layout.addRow("", self.protect_backup)
         backup_hint = QLabel(
             "An empty directory disables backups. The same directory is used "
@@ -146,6 +165,7 @@ class ProfileEditorDialog(QDialog):
         )
         backup_hint.setWordWrap(True)
         backup_layout.addRow("", backup_hint)
+        self._update_backup_buttons()
 
         self.conflict_policy = _combo(ConflictPolicy, self._profile.conflict_policy)
         policy_group = QGroupBox("Conflict policy", options_tab)
@@ -187,6 +207,33 @@ class ProfileEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(self.tabs, 1)
         layout.addWidget(buttons)
+
+    def _backup_path(self) -> Path | None:
+        text = self.backup_dir.text().strip()
+        if not text:
+            return None
+        from pathlib import Path
+
+        return Path(text).expanduser()
+
+    def _update_backup_buttons(self) -> None:
+        path = self._backup_path()
+        self.backup_open.setEnabled(path is not None and path.is_dir())
+
+    def _browse_backup_dir(self) -> None:
+        path = self._backup_path()
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Choose backup directory",
+            str(path) if path is not None and path.is_dir() else "",
+        )
+        if chosen:
+            self.backup_dir.setText(chosen)
+
+    def _open_backup_dir(self) -> None:
+        path = self._backup_path()
+        if path is not None and path.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def _apply_tooltips(self) -> None:
         """Show the rsync option behind every setting that adds one."""

@@ -1423,7 +1423,10 @@ class MainWindow(QMainWindow):
         elif selected is clear:
             self._clear_log()
         elif selected is configure:
-            self._edit_settings(section)
+            if section == "backup":
+                self._edit_profile("backup")
+            else:
+                self._edit_settings(section)
 
     def _clear_log(self) -> None:
         """Empty the session log file and keep logging into it."""

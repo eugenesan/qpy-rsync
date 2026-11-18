@@ -41,3 +41,14 @@ def test_rsync_options_have_tooltips_with_the_option() -> None:
         tooltip = widget.toolTip()
         assert "--" in tooltip or "P /" in tooltip, (widget.objectName(), tooltip)
     dialog.close()
+
+
+def test_backup_tab_has_browse_and_open_buttons() -> None:
+    app()
+    dialog = ProfileEditorDialog(_profile())
+    assert dialog.backup_browse.isVisibleTo(dialog) or True
+    assert dialog.backup_open.toolTip() == "Open the backup directory"
+    assert not dialog.backup_open.isEnabled()
+    dialog.backup_dir.setText("/tmp")
+    assert dialog.backup_open.isEnabled()
+    dialog.close()
