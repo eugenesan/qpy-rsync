@@ -2784,6 +2784,10 @@ class MainWindow(QMainWindow):
         with timed("ui.overview_update"):
             # The comparison model collected these totals during its own
             # filter pass, so the overview never rescans the whole list.
+            if kind == "new":
+                self.overview.set_paths(
+                    self.comparison.model.all_folder_paths(), root_name
+                )
             self.overview.set_aggregates(
                 self.comparison.model.overview_aggregates(), root_name
             )

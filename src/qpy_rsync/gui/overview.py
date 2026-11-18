@@ -87,6 +87,10 @@ class OverviewModel(QAbstractItemModel):
         self._files_node: OverviewNode | None = None
         self._sort_column = OverviewModel.SIZE
         self._sort_order = Qt.SortOrder.DescendingOrder
+        # Folders with no visible objects stay in the tree but are hidden
+        # from the view. Cached per parent so rowCount and index stay cheap.
+        self._visible_children: dict[int, list[OverviewNode]] = {}
+        self._full_structure = False
 
     def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""
@@ -117,31 +121,52 @@ class OverviewModel(QAbstractItemModel):
             root_name,
         )
 
+    def set_paths(self, paths: list[str], root_name: str = "") -> None:
+        """Build the complete folder tree once for a new comparison.
+
+        With every folder already in the tree, a filter only changes counts.
+        Empty folders are hidden by the model instead of being removed and
+        recreated on every filter change.
+        """
+        structure = {path: (0, 0) for path in paths}
+        structure.setdefault("", (0, 0))
+        self._build_structure(structure, root_name)
+        self._structure_signature = (root_name, "*")
+        self._full_structure = True
+        self._finish_totals()
+        self.layoutChanged.emit()
+
     def set_aggregates(
         self, aggregates: dict[str, tuple[int, int]], root_name: str = ""
     ) -> None:
         """Apply per-folder totals without rebuilding the tree every time.
 
-        The folder structure only depends on which folders contain visible
-        items, so a filter change usually needs no new nodes at all. When the
-        structure does change, only the handful of folder nodes are rebuilt
-        instead of walking every item of the comparison.
+        A new comparison builds the full tree with :meth:`set_paths`, so a
+        filter change only updates counts on the existing nodes.
         """
-        signature = (root_name, frozenset(aggregates))
-        if signature != getattr(self, "_structure_signature", None):
-            self._build_structure(aggregates, root_name)
-            self._structure_signature = signature
+        if not (
+            self._full_structure
+            and self._structure_signature == (root_name, "*")
+        ):
+            signature = (root_name, frozenset(aggregates))
+            if signature != getattr(self, "_structure_signature", None):
+                self._build_structure(aggregates, root_name)
+                self._structure_signature = signature
+            self._update_counts(aggregates)
         else:
-            folders = self._folder_nodes
-            files = self._files_node
-            for path, (count, size) in aggregates.items():
-                node = folders[path]
-                if path == "" and files is not None:
-                    node = files
-                node.count = count
-                node.size = size
+            self._update_counts(aggregates)
         self._finish_totals()
         self.layoutChanged.emit()
+
+    def _update_counts(self, aggregates: dict[str, tuple[int, int]]) -> None:
+        folders = self._folder_nodes
+        files = self._files_node
+        for path, node in folders.items():
+            count, size = aggregates.get(path, (0, 0))
+            if path == "" and files is not None:
+                node = files
+            node.count = count
+            node.size = size
 
     def _build_structure(
         self, aggregates: dict[str, tuple[int, int]], root_name: str
@@ -182,6 +207,7 @@ class OverviewModel(QAbstractItemModel):
         if total is not None:
             total.compute_totals()
         self._sort_all()
+        self._refresh_visible_children()
         self._level_totals = {}
         for node in self._folder_nodes.values():
             self._level_totals[id(node)] = sum(
@@ -242,19 +268,7 @@ class OverviewModel(QAbstractItemModel):
             node.size = size
         for path in sorted(affected, key=len, reverse=True):
             self._folder_nodes[path].compute_totals()
-        total = self.root.children[0] if self.root.children else None
-        if total is not None:
-            total.compute_totals()
-        for path in affected:
-            node = self._folder_nodes[path]
-            self._level_totals[id(node)] = sum(
-                child.total_size for child in node.children
-            )
-        if total is not None:
-            self._level_totals[id(total)] = sum(
-                child.total_size for child in total.children
-            )
-            self._level_totals[id(self.root)] = total.total_size
+        self._finish_totals()
         self.layoutChanged.emit()
         return True
 
@@ -269,11 +283,15 @@ class OverviewModel(QAbstractItemModel):
         folders[path] = node
         return node
 
+    def _children(self, node: OverviewNode) -> list[OverviewNode]:
+        return self._visible_children.get(id(node), [])
+
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
         parent_node = parent.internalPointer() if parent.isValid() else self.root
-        if not 0 <= row < len(parent_node.children):
+        children = self._children(parent_node)
+        if not 0 <= row < len(children):
             return QModelIndex()
-        return self.createIndex(row, column, parent_node.children[row])
+        return self.createIndex(row, column, children[row])
 
     def parent(self, index: QModelIndex) -> QModelIndex:
         if not index.isValid():
@@ -282,13 +300,14 @@ class OverviewModel(QAbstractItemModel):
         parent = node.parent
         if parent is None or parent is self.root:
             return QModelIndex()
-        return self.createIndex(parent.parent.children.index(parent), 0, parent)  # type: ignore[union-attr]
+        row = self._children(parent.parent).index(parent)  # type: ignore[union-attr]
+        return self.createIndex(row, 0, parent)
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008, N802
         if parent.isValid() and parent.column() != 0:
             return 0
         node = parent.internalPointer() if parent.isValid() else self.root
-        return len(node.children)
+        return len(self._children(node))
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: ARG002, B008, N802
         return self.COLUMN_COUNT
@@ -350,7 +369,18 @@ class OverviewModel(QAbstractItemModel):
         # the accessibility interface with a stale row count.
         self.beginResetModel()
         self._sort_all()
+        self._refresh_visible_children()
         self.endResetModel()
+
+    def _refresh_visible_children(self) -> None:
+        nodes = [self.root, *self._folder_nodes.values()]
+        total = self.root.children[0] if self.root.children else None
+        if total is not None:
+            nodes.append(total)
+        self._visible_children = {
+            id(node): [child for child in node.children if child.total_count]
+            for node in nodes
+        }
 
     def _sort_key(self):
         if self._sort_column == self.FOLDER:
@@ -623,6 +653,11 @@ class OverviewPane(QWidget):
             order = Qt.SortOrder.DescendingOrder
         self.model.set_changes(changes, root_name)
         self.tree.sortByColumn(column, order)
+        self.tree.expandToDepth(0)
+
+    def set_paths(self, paths: list[str], root_name: str = "") -> None:
+        """Build the folder tree of a new comparison once."""
+        self.model.set_paths(paths, root_name)
         self.tree.expandToDepth(0)
 
     def set_aggregates(

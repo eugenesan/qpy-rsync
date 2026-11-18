@@ -11,9 +11,11 @@
 - The result filter and the row delegates use precomputed row arrays and fixed
   row heights, cutting a full filter refresh on 1.2M items to about 1.0–1.3s.
 - The filtered rows, directory totals and overview totals are now collected in
-  a single pass. The overview updates its existing folder nodes in place, so a
-  global filter change on 500k items takes about 0.6s end to end instead of
-  roughly 1.7s; single-item decisions stay around 0.2–0.4s.
+  a single pass. The overview keeps its folder tree and only updates counts and
+  visibility, so a global filter change no longer rebuilds 30k folder nodes.
+  Decision effects and per-folder totals are cached and updated incrementally
+  as well. On a 520k-item comparison this roughly halves the filter time and
+  removes most of the overview cost; single-item decisions stay around 0.2–0.4s.
 
 ## 0.3.3
 
