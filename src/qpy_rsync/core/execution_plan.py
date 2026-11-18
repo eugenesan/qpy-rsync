@@ -5,6 +5,7 @@ from hashlib import sha256
 import json
 from typing import Iterable
 
+from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_subtree_size,
@@ -109,64 +110,82 @@ def build_execution_plan(
     stashed_paths = (
         {path.strip("/") for path in stashed.paths()} if stashed else set()
     )
-    for change in changes_list:
-        if not decisions.selectable(change):
-            continue
-        if stashed_paths and _is_stashed(str(change.path), stashed_paths):
-            # A stashed item is not part of the sync. The state only lives in
-            # memory, so it is gone after the next comparison.
-            excluded += 1
+    has_explicit = decisions.has_explicit()
+    has_stash = bool(stashed_paths)
+    kinds: dict[str, ObjectKind] = {}
+    delete_paths: set[str] = set()
+
+    with timed("plan.loop", changes=len(changes_list)):
+        for change in changes_list:
+            action = change.action
+            if action in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}:
+                continue
+            clean = str(change.path).rstrip("/")
+            if has_stash and _is_stashed(clean, stashed_paths):
+                # A stashed item is not part of the sync. The state only lives
+                # in memory, so it is gone after the next comparison.
+                excluded += 1
+                items.append(
+                    PlanItem(
+                        path=clean,
+                        action=action,
+                        comparison_action=action,
+                        kind=change.kind,
+                        included=False,
+                        destructive=False,
+                        size=change.size,
+                    )
+                )
+                continue
+            selected = (
+                decisions.effective(change) is not ChangeDecision.EXCLUDE
+                if has_explicit
+                else action is not ChangeAction.DESTINATION_ONLY
+            )
+            effective_action = (
+                ChangeAction.DELETE
+                if action is ChangeAction.DESTINATION_ONLY and selected
+                else action
+            )
+            is_destructive = selected and effective_action in {
+                ChangeAction.DELETE,
+                ChangeAction.REPLACE,
+            }
             items.append(
                 PlanItem(
-                    path=change.path.rstrip("/"),
-                    action=change.action,
-                    comparison_action=change.action,
+                    path=clean,
+                    action=effective_action,
+                    comparison_action=action,
                     kind=change.kind,
-                    included=False,
-                    destructive=False,
+                    included=selected,
+                    destructive=is_destructive,
                     size=change.size,
                 )
             )
-            continue
-        selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
-        effective_action = (
-            ChangeAction.DELETE
-            if change.action is ChangeAction.DESTINATION_ONLY and selected
-            else change.action
-        )
-        is_destructive = selected and effective_action in {ChangeAction.DELETE, ChangeAction.REPLACE}
-        item = PlanItem(
-            path=change.path.rstrip("/"),
-            action=effective_action,
-            comparison_action=change.action,
-            kind=change.kind,
-            included=selected,
-            destructive=is_destructive,
-            size=change.size,
-        )
-        items.append(item)
-        if selected:
-            included += 1
-            destructive += int(is_destructive)
-            included_size += int(change.size or 0)
-            if effective_action in {
-                ChangeAction.CREATE,
-                ChangeAction.UPDATE_CONTENT,
-                ChangeAction.REPLACE,
-            }:
-                total_size += int(change.size or 0)
-            if effective_action is ChangeAction.CREATE:
-                creates += 1
-            elif effective_action is ChangeAction.UPDATE_CONTENT:
-                updates += 1
-            elif effective_action is ChangeAction.UPDATE_METADATA:
-                metadata_count += 1
-            elif effective_action is ChangeAction.REPLACE:
-                replacements += 1
-            elif effective_action is ChangeAction.DELETE:
-                deletions += 1
-        else:
-            if change.action is ChangeAction.DESTINATION_ONLY:
+            if selected:
+                included += 1
+                destructive += int(is_destructive)
+                size = int(change.size or 0)
+                included_size += size
+                if effective_action in {
+                    ChangeAction.CREATE,
+                    ChangeAction.UPDATE_CONTENT,
+                    ChangeAction.REPLACE,
+                }:
+                    total_size += size
+                if effective_action is ChangeAction.CREATE:
+                    creates += 1
+                elif effective_action is ChangeAction.UPDATE_CONTENT:
+                    updates += 1
+                elif effective_action is ChangeAction.UPDATE_METADATA:
+                    metadata_count += 1
+                elif effective_action is ChangeAction.REPLACE:
+                    replacements += 1
+                elif effective_action is ChangeAction.DELETE:
+                    deletions += 1
+                    delete_paths.add(clean)
+                    kinds[clean] = change.kind
+            elif action is ChangeAction.DESTINATION_ONLY:
                 retained_destination_only += 1
             else:
                 excluded += 1
@@ -174,10 +193,6 @@ def build_execution_plan(
     # The deleted size is the size of the selected deletions only. A deleted
     # directory contributes the sizes of the selected items below it, and its
     # children are not counted again when they are part of the same plan.
-    kinds = {str(change.path).rstrip("/"): change.kind for change in changes_list}
-    delete_paths = {
-        item.path for item in items if item.included and item.action is ChangeAction.DELETE
-    }
     def has_delete_ancestor(path: str) -> bool:
         parent = path.rpartition("/")[0]
         while parent:
@@ -186,14 +201,13 @@ def build_execution_plan(
             parent = parent.rpartition("/")[0]
         return False
 
-    for path in delete_paths:
-        if has_delete_ancestor(path):
-            continue
-        # A directory's subtree size already includes its selected children;
-        # those children are skipped by the covered check above.
-        deleted_size += destination_subtree_size(
-            path, kinds.get(path, ObjectKind.FILE), metadata
-        )
+    with timed("plan.deleted_sizes", paths=len(delete_paths)):
+        for path in delete_paths:
+            if has_delete_ancestor(path):
+                continue
+            deleted_size += destination_subtree_size(
+                path, kinds.get(path, ObjectKind.FILE), metadata
+            )
 
     summary = PlanSummary(
         included=included,

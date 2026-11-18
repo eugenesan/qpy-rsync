@@ -1,0 +1,17 @@
+[qpy-rsync timing] 2026-11-17T23:31:40.544-07:00 ui.overview_update ms=821.4
+[qpy-rsync timing] 2026-11-17T23:31:43.746-07:00 ui.plan_rebuild ms=3202.1
+[qpy-rsync timing] 2026-11-17T23:31:46.782-07:00 ui.plan_rebuild ms=2436.7
+[qpy-rsync timing] 2026-11-17T23:31:57.630-07:00 ui.plan_rebuild ms=2223.7
+[qpy-rsync timing] 2026-11-17T23:32:45.964-07:00 ui.overview_update ms=642.3
+[qpy-rsync timing] 2026-11-17T23:32:47.869-07:00 ui.plan_rebuild ms=1904.7
+[qpy-rsync timing] 2026-11-17T23:33:20.183-07:00 ui.plan_rebuild ms=2008.0
+[qpy-rsync timing] 2026-11-17T23:33:35.577-07:00 ui.overview_update ms=1582.4
+[qpy-rsync timing] 2026-11-17T23:33:39.406-07:00 ui.plan_rebuild ms=3828.7
+[qpy-rsync timing] 2026-11-17T23:34:00.387-07:00 ui.overview_update ms=621.1
+[qpy-rsync timing] 2026-11-17T23:34:02.325-07:00 ui.plan_rebuild ms=1938.5
+[qpy-rsync timing] 2026-11-17T23:34:11.232-07:00 model.filter_refresh ms=2336.8
+[qpy-rsync timing] 2026-11-17T23:34:11.861-07:00 ui.overview_update ms=622.7
+[qpy-rsync timing] 2026-11-17T23:34:14.796-07:00 ui.plan_rebuild ms=2935.1
+[qpy-rsync timing] 2026-11-17T23:34:27.654-07:00 model.filter_refresh ms=2311.3
+[qpy-rsync timing] 2026-11-17T23:34:28.267-07:00 ui.overview_update ms=608.1
+[qpy-rsync timing] 2026-11-17T23:34:30.436-07:00 ui.plan_rebuild ms=2168.8
