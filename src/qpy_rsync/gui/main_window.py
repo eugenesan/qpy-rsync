@@ -129,6 +129,7 @@ from qpy_rsync.core.execution_plan import (
     ExecutionPlan,
     build_execution_plan,
     check_plan_freshness,
+    decision_signature,
     profile_fingerprint,
 )
 from qpy_rsync.core.models import (
@@ -230,6 +231,7 @@ class MainWindow(QMainWindow):
         self._profile_conflict = ConflictPolicy.OVERRIDE
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
+        self._plan_stale: bool = False
         self._plan_paths: list[str] = []
         self._plan_item_indices: list[int] = []
         self._plan_items: dict[str, object] = {}
@@ -301,6 +303,10 @@ class MainWindow(QMainWindow):
         self._log_flush_timer.setSingleShot(True)
         self._log_flush_timer.setInterval(100)
         self._log_flush_timer.timeout.connect(self._flush_log)
+        self._stale_summary_timer = QTimer(self)
+        self._stale_summary_timer.setSingleShot(True)
+        self._stale_summary_timer.setInterval(100)
+        self._stale_summary_timer.timeout.connect(self._refresh_estimated_summary)
         self._build_ui()
         self._restore_window_state()
         if not self._restore_recent_profile():
@@ -1988,7 +1994,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self._set_verify_state("idle")
         if self._active_profile is not None and self.comparison.model.changes:
-            self._refresh_plan_summary()
+            self._mark_plan_stale()
 
     @staticmethod
     def _item_contribution(item, included: bool) -> dict[str, int]:
@@ -2133,6 +2139,110 @@ class MainWindow(QMainWindow):
             parent = parent.rpartition("/")[0]
         return parents
 
+    def _mark_plan_stale(self) -> None:
+        """Defer the plan rebuild until Verify Actions is pressed."""
+        if self._plan_stale and self._current_plan is None:
+            return
+        self._plan_stale = True
+        self._validated_plan = None
+        self.synchronize_button.setEnabled(False)
+        self._set_verify_state("idle")
+        self._refresh_verify_button()
+        # Coalesce rapid decision changes into one estimate pass.
+        self._stale_summary_timer.start()
+
+    def _refresh_estimated_summary(self) -> None:
+        if not self._plan_stale:
+            return
+        with timed("ui.estimated_summary"):
+            summary = self._estimated_plan_summary()
+        self.overview.set_statistics(summary, estimate=True)
+        self.validate_plan_button.setEnabled(summary.included > 0)
+
+    def _estimated_plan_summary(self):
+        """ cheap summary from the visible decisions, not an execution plan."""
+        from qpy_rsync.core.execution_plan import PlanSummary
+
+        changes = self.comparison.model.changes
+        decisions = self.comparison.model.decisions
+        stashed = set(self.comparison.stashed_paths())
+        counts = dict.fromkeys(
+            ("creates", "updates", "metadata", "replacements", "deletions", "kept"),
+            0,
+        )
+        included = excluded = destructive = 0
+        total_size = included_size = deleted_size = 0
+        for change in changes:
+            action = change.action
+            if action in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}:
+                continue
+            path = str(change.path).rstrip("/")
+            if any(
+                parent in stashed for parent in (path, *self._parent_paths(path))
+            ):
+                excluded += 1
+                continue
+            selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
+            if not selected:
+                if action is ChangeAction.DESTINATION_ONLY:
+                    counts["kept"] += 1
+                else:
+                    excluded += 1
+                continue
+            included += 1
+            size = int(change.size or 0)
+            included_size += size
+            if action in {
+                ChangeAction.CREATE,
+                ChangeAction.UPDATE_CONTENT,
+                ChangeAction.REPLACE,
+            }:
+                total_size += size
+            if action is ChangeAction.CREATE:
+                counts["creates"] += 1
+            elif action is ChangeAction.UPDATE_CONTENT:
+                counts["updates"] += 1
+            elif action is ChangeAction.UPDATE_METADATA:
+                counts["metadata"] += 1
+            elif action is ChangeAction.REPLACE:
+                counts["replacements"] += 1
+                destructive += 1
+            elif action is ChangeAction.DELETE:
+                counts["deletions"] += 1
+                destructive += 1
+                deleted_size += int(
+                    self.comparison.model._destination_size(change) or 0
+                )
+        return PlanSummary(
+            included=included,
+            excluded=excluded,
+            modified=decisions.modified_count(changes),
+            retained_destination_only=counts["kept"],
+            destructive=destructive,
+            creates=counts["creates"],
+            updates=counts["updates"],
+            metadata=counts["metadata"],
+            replacements=counts["replacements"],
+            deletions=counts["deletions"],
+            deleted_size=deleted_size,
+            backup_enabled=bool(
+                self._profile().backup.enabled if self._active_profile else False
+            ),
+            total_size=total_size,
+            included_size=included_size,
+        )
+
+    def _refresh_verify_button(self) -> None:
+        marker = "#EA580C" if self._plan_stale else ""
+        self.validate_plan_button.setStyleSheet(
+            f"background-color: {marker};" if marker else ""
+        )
+        self.validate_plan_button.setToolTip(
+            "Plan changed — press Verify Actions to rebuild and verify."
+            if self._plan_stale
+            else "Verify Actions"
+        )
+
     def _refresh_plan_summary(self) -> None:
         with timed("ui.plan_rebuild"):
             self._rebuild_plan_summary()
@@ -2170,6 +2280,9 @@ class MainWindow(QMainWindow):
             for change in self.comparison.model.changes
         }
         self._last_stash_paths = set(self.comparison.stashed_paths())
+        self._plan_stale = False
+        self._stale_summary_timer.stop()
+        self._refresh_verify_button()
         self._show_plan_summary()
 
     def _show_plan_summary(self) -> None:
@@ -2198,12 +2311,19 @@ class MainWindow(QMainWindow):
 
     def _validate_selected_plan(self) -> None:
         self._backup_changed()
+        if self._plan_stale:
+            self._refresh_plan_summary()
         if self._current_plan is None or self._active_profile is None:
             return
+        signature = decision_signature(
+            self.comparison.model.decisions,
+            set(self.comparison.stashed_paths()),
+        )
         freshness = check_plan_freshness(
             self._current_plan,
             self._profile(),
             self.comparison.model.changes,
+            signature,
         )
         if not freshness.fresh:
             self._validated_plan = None
@@ -2607,7 +2727,7 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
-    def _overview_updated(self, changes: object, affects_plan: bool = True) -> None:
+    def _overview_updated(self, changes: object, kind: str = "new") -> None:
         """Refresh the overview with the items the filters show."""
         root_name = ""
         if self._active_profile is not None:
@@ -2616,15 +2736,12 @@ class MainWindow(QMainWindow):
             visible = self.comparison.visible_changes()
             self.overview.set_changes(list(visible), root_name)
             self._update_stashed_count()
-        if not affects_plan:
+        if kind == "display":
             return
-        current_stash = set(self.comparison.stashed_paths())
-        added = current_stash - self._last_stash_paths
-        removed = self._last_stash_paths - current_stash
-        if (added or removed) and self._apply_stash_to_plan(added, removed):
-            self._show_plan_summary()
-        else:
+        if kind == "new":
             self._refresh_plan_summary()
+            return
+        self._mark_plan_stale()
 
     def _overview_folder_activated(self, path: str) -> None:
         """Select a folder of the overview in the tree panes."""

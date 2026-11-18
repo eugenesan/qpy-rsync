@@ -413,7 +413,7 @@ class FlatComparisonView(QWidget):
     diff_requested = Signal(object)
     decision_changed = Signal()
     inventory_toggled = Signal(bool)
-    changes_updated = Signal(object, bool)
+    changes_updated = Signal(object, str)
     restore_all_requested = Signal()
     # A tool the user wants to run on the row: name, path, side, is a folder.
     tool_requested = Signal(str, str, str, bool)
@@ -1012,7 +1012,7 @@ class FlatComparisonView(QWidget):
             for path in paths:
                 stash.toggle(path)
             self.model.refresh_stashed()
-        self.changes_updated.emit(list(self.model.changes), True)
+        self.changes_updated.emit(list(self.model.changes), "decision")
         return True
 
     def _selected_paths(self) -> list[str]:
@@ -1093,14 +1093,14 @@ class FlatComparisonView(QWidget):
         """Show or hide the items the user stashed."""
         with timed("view.show_stashed", show=show):
             self.model.show_stashed = show
-            self._refresh_stashed(affects_plan=False)
+            self._refresh_stashed(kind="display")
 
-    def _refresh_stashed(self, *, affects_plan: bool = True) -> None:
+    def _refresh_stashed(self, *, kind: str = "decision") -> None:
         """Update the list after the stashed items changed."""
         with timed("view.model_refresh"):
             self.model.refresh_stashed()
         with timed("view.emit_changes"):
-            self.changes_updated.emit(list(self.model.changes), affects_plan)
+            self.changes_updated.emit(list(self.model.changes), kind)
 
     @staticmethod
     def _set_current(tree: QTableView, index: QModelIndex) -> None:
@@ -1153,7 +1153,7 @@ class FlatComparisonView(QWidget):
             tree.setCurrentIndex(QModelIndex())
             tree.selectionModel().clear()
         self.model.set_changes(changes)  # type: ignore[arg-type]
-        self.changes_updated.emit(list(self.model.changes), True)
+        self.changes_updated.emit(list(self.model.changes), "new")
 
     def set_external_tools(self, tools: list[ExternalTool]) -> None:
         """The tools the context menu offers on an item."""
@@ -1169,7 +1169,7 @@ class FlatComparisonView(QWidget):
         with self._keeping_the_selection():
             self.model.set_visible_actions(actions, apply=apply)
         if apply:
-            self.changes_updated.emit(list(self.model.changes), False)
+            self.changes_updated.emit(list(self.model.changes), "display")
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]
@@ -1241,7 +1241,7 @@ class FlatComparisonView(QWidget):
         self._filter_timer.stop()
         with self._keeping_the_selection():
             self.model.set_path_filter(self.filter_edit.text())
-        self.changes_updated.emit(list(self.model.changes), False)
+        self.changes_updated.emit(list(self.model.changes), "display")
 
     def set_path_filter(self, text: str) -> None:
         """Apply a path filter right away, for callers other than the field."""

@@ -74,6 +74,7 @@ class ExecutionPlan:
     destination_operand: str
     items: tuple[PlanItem, ...]
     summary: PlanSummary
+    decision_signature: str = ""
 
     @property
     def included_items(self) -> tuple[PlanItem, ...]:
@@ -89,6 +90,20 @@ def profile_fingerprint(profile: SyncProfile) -> str:
         value.pop(field, None)
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def decision_signature(decisions, stashed_paths: set[str]) -> str:
+    """Fingerprint the decisions that affect the execution plan."""
+    return sha256(
+        json.dumps(
+            {
+                "decisions": sorted(decisions.explicit_items()),
+                "stashed": sorted(stashed_paths),
+            },
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def build_execution_plan(
@@ -225,7 +240,9 @@ def build_execution_plan(
         total_size=total_size,
         included_size=included_size,
     )
+    signature = decision_signature(decisions, stashed_paths)
     return ExecutionPlan(
+        decision_signature=signature,
         profile_fingerprint=profile_fingerprint(profile),
         source_operand=profile.source.rsync_operand(),
         destination_operand=profile.destination.rsync_operand(),
@@ -243,6 +260,7 @@ def check_plan_freshness(
     plan: ExecutionPlan,
     profile: SyncProfile,
     changes: Iterable[Change],
+    decision_signature: str | None = None,
 ) -> PlanFreshness:
     reasons: list[str] = []
     if plan.profile_fingerprint != profile_fingerprint(profile):
@@ -251,6 +269,8 @@ def check_plan_freshness(
         reasons.append("source endpoint changed")
     if plan.destination_operand != profile.destination.rsync_operand():
         reasons.append("destination endpoint changed")
+    if decision_signature is not None and plan.decision_signature != decision_signature:
+        reasons.append("decisions changed")
     current = {
         (change.path.rstrip("/"), change.action, change.kind)
         for change in changes

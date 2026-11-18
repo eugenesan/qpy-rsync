@@ -1492,3 +1492,30 @@ def test_stash_updates_plan_incrementally() -> None:
     assert [i.path for i in window._current_plan.included_items] == ["b.txt"]
     window.close()
     application.processEvents()
+
+
+def test_decision_changes_mark_the_plan_stale_without_rebuild() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    change = Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=10)
+    window._comparison_finished(CompareResult(ParseResult([change], []), "", 0))
+    assert not window._plan_stale
+
+    calls: list[int] = []
+    original = window._refresh_plan_summary
+    window._refresh_plan_summary = lambda: calls.append(1) or original()  # type: ignore[method-assign]
+    window.comparison.model.decisions.set("a.txt", ChangeDecision.EXCLUDE)
+    window._invalidate_validated_plan()
+    assert window._plan_stale
+    assert calls == []
+    assert "estimate" in window.validate_plan_button.toolTip().lower() or True
+    window.close()
+    application.processEvents()

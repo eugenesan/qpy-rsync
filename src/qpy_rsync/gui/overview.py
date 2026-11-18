@@ -84,9 +84,9 @@ class OverviewModel(QAbstractItemModel):
         self.root = OverviewNode("", "")
         self._level_totals: dict[int, int] = {}
 
-    def set_statistics(self, summary: object | None) -> None:
+    def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""
-        self.statistics.set_summary(summary)
+        self.statistics.set_summary(summary, estimate=estimate)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         self.beginResetModel()
@@ -349,7 +349,7 @@ class StatisticsBar(QWidget):
         layout.addLayout(actions_row)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_summary(self, summary: object | None) -> None:
+    def set_summary(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the numbers of the current plan, or clear them."""
         if summary is None:
             self.summary.setText("")
@@ -357,8 +357,9 @@ class StatisticsBar(QWidget):
                 label.setText("0")
             self.deleted_size_label.setText("")
             return
+        marker = " (estimate)" if estimate else ""
         self.summary.setText(
-            f"{summary.included:,} item(s), {format_size(summary.included_size)}"
+            f"{summary.included:,} item(s), {format_size(summary.included_size)}{marker}"
         )
         values = {
             "created": summary.creates,
@@ -497,9 +498,9 @@ class OverviewPane(QWidget):
         if node.path and not node.is_total:
             self.folder_activated.emit(node.path)
 
-    def set_statistics(self, summary: object | None) -> None:
+    def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""
-        self.statistics.set_summary(summary)
+        self.statistics.set_summary(summary, estimate=estimate)
 
     def set_changes(self, changes: list[Change], root_name: str = "") -> None:
         header = self.tree.header()
