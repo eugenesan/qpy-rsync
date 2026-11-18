@@ -56,7 +56,7 @@ def test_unchanged_changes_honor_exclude_filters(tmp_path: Path) -> None:
     assert change.destination_time
 
 
-def test_destination_metadata_retries_without_filters_for_deletions(tmp_path, monkeypatch) -> None:
+def test_destination_metadata_uses_a_single_narrow_listing(tmp_path, monkeypatch) -> None:
     from qpy_rsync.backend.inventory import gather_destination_metadata
     from qpy_rsync.core.changes import Change
 
@@ -65,12 +65,34 @@ def test_destination_metadata_retries_without_filters_for_deletions(tmp_path, mo
 
     def fake(endpoint, prof=None, progress=None):
         calls.append(prof)
-        if prof is not None and prof.filters:
-            return {}
         return {"old": InventoryEntry(ObjectKind.FILE, 321, "t")}
 
     monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
     change = Change("old", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")
     result = gather_destination_metadata(profile, [change])
     assert result.destination_metadata["old"][0] == 321
-    assert len(calls) == 2
+    assert len(calls) == 1
+
+
+def test_destination_metadata_lists_only_deleted_paths(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.backend.inventory import gather_destination_metadata
+    from qpy_rsync.core.changes import Change
+
+    profile = _profile(tmp_path)
+    captured: list[object] = []
+
+    def fake(endpoint, prof=None, progress=None):
+        captured.append(prof)
+        return {"old/a": InventoryEntry(ObjectKind.FILE, 12, "t")}
+
+    monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
+    changes = [
+        Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("keep.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+    ]
+    result = gather_destination_metadata(profile, changes)
+    assert result.destination_metadata["old/a"][0] == 12
+    rules = [rule.rule for rule in captured[0].filters]
+    assert "+ /old/" in rules
+    assert "+ /old/a" in rules
+    assert "- *" in rules

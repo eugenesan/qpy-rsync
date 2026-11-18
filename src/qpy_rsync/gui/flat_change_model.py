@@ -16,6 +16,7 @@ work with the flat rows without a change.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from typing import Any
@@ -216,6 +217,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._visible_rows: list[int] = []
         self._visible_row_of_path: dict[str, int] = {}
         self._row_of_path: dict[str, int] = {}
+        self._sorted_paths: list[str] = []
         self._visible_changes: list[Change] = []
         self._override_paths: set[str] = set()
         # Bumped whenever the layout changes, so a delegate can drop its
@@ -430,6 +432,7 @@ class FlatChangeModel(QAbstractTableModel):
             )
         self._rows = rows
         self._row_of_path = {row.path: index for index, row in enumerate(rows)}
+        self._sorted_paths = sorted(self._row_of_path)
 
     # ------------------------------------------------------------------
     # Sorting
@@ -868,16 +871,51 @@ class FlatChangeModel(QAbstractTableModel):
         debug_timing("model.filter_phase", phase="totals_done")
         self.layout_token += 1
 
+    def _mark_excluded(self, excluded: dict[str, bool], path: str, value: bool) -> None:
+        """Mark a path and its descendants in the excluded map."""
+        base = path.rstrip("/")
+        if not base:
+            return
+        index = bisect_left(self._sorted_paths, base)
+        while index < len(self._sorted_paths):
+            key = self._sorted_paths[index]
+            if key == base or key.startswith(base + "/"):
+                excluded[key] = value
+                index += 1
+                continue
+            if key > base + "/":
+                break
+            index += 1
+
+    def _excluded_paths(self) -> dict[str, bool]:
+        """Compute effective exclusion per path from explicit decisions.
+
+        Only explicit decisions are walked, so this is cheap even for half a
+        million rows. Deeper decisions override their ancestors.
+        """
+        excluded: dict[str, bool] = {}
+        items = sorted(
+            self.decisions.explicit_items(),
+            key=lambda item: item[0].count("/"),
+        )
+        for path, decision in items:
+            self._mark_excluded(
+                excluded, path, decision is ChangeDecision.EXCLUDE
+            )
+        if self.stash:
+            for path in self.stash.paths():
+                self._mark_excluded(excluded, path, True)
+        return excluded
+
     def _update_excluded_rows(self, paths: set[str]) -> None:
         """Refresh the per-row excluded state for the given paths."""
+        excluded = self._excluded_paths()
         for path in paths:
             clean = path.rstrip("/")
             if clean not in self._row_of_path:
                 continue
             index = self._row_of_path[clean]
-            self._rows[index].excluded = (
-                bool(self.stash) and self.stash.is_stashed(clean)
-            ) or self._effective_row(self._rows[index]) is ChangeDecision.EXCLUDE
+            self._rows[index].excluded = excluded.get(clean, False)
 
     def _rebuild_visible_rows(self) -> None:
         """Rebuild the visible row list from the cached per-row state.
@@ -948,10 +986,9 @@ class FlatChangeModel(QAbstractTableModel):
         """Show or hide every excluded row with one optimized pass."""
         with timed("model.excluded_refresh"):
             self.beginResetModel()
+            excluded = self._excluded_paths()
             for row in self._rows:
-                row.excluded = (
-                    bool(self.stash) and self.stash.is_stashed(row.path)
-                ) or self._effective_row(row) is ChangeDecision.EXCLUDE
+                row.excluded = excluded.get(row.path, False)
             self._rebuild_visible_rows()
             self._total_up_directories()
             self.endResetModel()

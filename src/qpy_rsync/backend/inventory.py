@@ -8,7 +8,8 @@ from typing import Callable, Iterable
 
 from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-from qpy_rsync.core.models import SyncProfile
+from qpy_rsync.core.enums import FilterRuleType
+from qpy_rsync.core.models import FilterRule, SyncProfile
 
 from .rsync_command import build_inventory_spec
 
@@ -170,23 +171,32 @@ def gather_destination_metadata(
     callback = (
         (lambda count: progress("Destination", count)) if progress is not None else None
     )
-    entries = inventory_paths(profile.destination, profile, callback)
+    # Only deletions need destination metadata: rsync gives no size for a
+    # *deleting record. Listing the whole destination (hundreds of thousands
+    # of objects) just to size a few thousand deletions freezes the GUI when
+    # the result is merged. List only the deleted paths and their ancestors.
+    paths: set[str] = set()
+    for change in changed:
+        if change.action not in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}:
+            continue
+        clean = str(change.path).rstrip("/")
+        if not clean:
+            continue
+        paths.add(clean)
+        parent = clean.rpartition("/")[0]
+        while parent:
+            paths.add(parent + "/")
+            parent = parent.rpartition("/")[0]
+    if not paths:
+        return InventoryResult(unchanged=[], destination_metadata={})
+
+    rules = [f"+ /{path}" for path in sorted(paths)] + ["- *"]
+    narrow = deepcopy(profile)
+    narrow.filters = [
+        FilterRule(rule, rule_type=FilterRuleType.ADVANCED) for rule in rules
+    ]
+    entries = inventory_paths(profile.destination, narrow, callback)
     metadata = {
         path: (entry.size, entry.modified_time) for path, entry in entries.items()
     }
-    # Deletions are reported by rsync with placeholder sizes. If the filtered
-    # listing did not return one of them, repeat it without filters so the
-    # deleted objects still get a real size from the destination.
-    missing = [
-        change
-        for change in changed
-        if change.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}
-        and change.path.rstrip("/") not in metadata
-    ]
-    if missing:
-        unfiltered = deepcopy(profile)
-        unfiltered.filters = []
-        extra = inventory_paths(profile.destination, unfiltered, callback)
-        for path, entry in extra.items():
-            metadata.setdefault(path, (entry.size, entry.modified_time))
     return InventoryResult(unchanged=[], destination_metadata=metadata)

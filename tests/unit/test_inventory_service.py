@@ -116,6 +116,11 @@ def test_destination_metadata_is_listed_on_its_own(monkeypatch) -> None:
         source=parse_endpoint("/tmp/a"),
         destination=parse_endpoint("/tmp/b"),
     )
-    result = inv.gather_destination_metadata(profile, [])
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    changes = [
+        Change("gone.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")
+    ]
+    result = inv.gather_destination_metadata(profile, changes)
     assert result.unchanged == []
     assert result.destination_metadata["gone.txt"] == (1234, "2024-01-02-03:04:05")

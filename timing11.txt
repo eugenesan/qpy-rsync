@@ -1,0 +1,103 @@
+[qpy-rsync timing] 2026-11-18T12:12:00.366-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.366-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.366-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.366-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.366-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.367-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.367-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.367-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.367-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.367-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.376-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.376-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.376-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.376-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.376-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.377-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.377-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.377-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.377-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.377-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.379-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.386-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.386-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.386-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.386-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.386-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:00.387-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:05.964-07:00 model.filter_phase phase='start' changes=0
+[qpy-rsync timing] 2026-11-18T12:12:05.964-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:05.964-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:05.964-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:05.964-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:38.646-07:00 model.filter_phase phase='start' changes=520835
+[qpy-rsync timing] 2026-11-18T12:12:38.902-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:39.172-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:40.718-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:41.040-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:12:42.239-07:00 ui.overview_update ms=1172.7
+[qpy-rsync timing] 2026-11-18T12:12:44.318-07:00 plan.loop ms=2073.0 changes=520835
+[qpy-rsync timing] 2026-11-18T12:12:44.350-07:00 plan.deleted_sizes ms=32.0 paths=30649
+[qpy-rsync timing] 2026-11-18T12:12:45.101-07:00 ui.plan_rebuild ms=2861.7
+[qpy-rsync timing] 2026-11-18T12:12:53.955-07:00 model.filter_phase phase='start' changes=520835
+[qpy-rsync timing] 2026-11-18T12:12:54.111-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:12:54.283-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:12:55.285-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:12:55.589-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:14:58.318-07:00 model.decision_refresh ms=712.0
+[qpy-rsync timing] 2026-11-18T12:14:58.972-07:00 ui.overview_update ms=638.0
+[qpy-rsync timing] 2026-11-18T12:15:07.822-07:00 model.excluded_refresh ms=2991.6
+[qpy-rsync timing] 2026-11-18T12:15:08.451-07:00 ui.overview_update ms=624.0
+[qpy-rsync timing] 2026-11-18T12:15:08.461-07:00 view.show_stashed ms=3631.1 show=True
+[qpy-rsync timing] 2026-11-18T12:15:12.684-07:00 model.decision_refresh ms=757.3
+[qpy-rsync timing] 2026-11-18T12:15:13.354-07:00 ui.overview_update ms=653.6
+[qpy-rsync timing] 2026-11-18T12:15:16.763-07:00 model.filter_phase phase='start' changes=520835
+[qpy-rsync timing] 2026-11-18T12:15:17.062-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:15:17.274-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:15:19.935-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:15:20.219-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:15:20.223-07:00 model.filter_refresh ms=3460.5
+[qpy-rsync timing] 2026-11-18T12:15:20.855-07:00 ui.overview_update ms=626.8
+[qpy-rsync timing] 2026-11-18T12:15:22.971-07:00 model.filter_phase phase='start' changes=520835
+[qpy-rsync timing] 2026-11-18T12:15:23.271-07:00 model.filter_phase phase='changes_done'
+[qpy-rsync timing] 2026-11-18T12:15:23.461-07:00 model.filter_phase phase='directories_done'
+[qpy-rsync timing] 2026-11-18T12:15:26.052-07:00 model.filter_phase phase='rows_done'
+[qpy-rsync timing] 2026-11-18T12:15:26.335-07:00 model.filter_phase phase='totals_done'
+[qpy-rsync timing] 2026-11-18T12:15:26.339-07:00 model.filter_refresh ms=3368.4
+[qpy-rsync timing] 2026-11-18T12:15:26.992-07:00 ui.overview_update ms=647.6
+[qpy-rsync timing] 2026-11-18T12:15:42.579-07:00 model.excluded_refresh ms=2948.6
+[qpy-rsync timing] 2026-11-18T12:15:43.235-07:00 ui.overview_update ms=650.7
+[qpy-rsync timing] 2026-11-18T12:15:43.245-07:00 view.show_stashed ms=3615.0 show=False
