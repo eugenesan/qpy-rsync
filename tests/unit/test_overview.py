@@ -150,3 +150,19 @@ def test_overview_headers_are_resizable_and_separate_the_share() -> None:
     assert pane.model.headerData(OverviewModel.ITEMS, Qt.Orientation.Horizontal) == "Items"
     pane.close()
     application.processEvents()
+
+
+def test_update_paths_matches_a_full_rebuild() -> None:
+    application = app()
+    changes = _changes()
+    model = OverviewModel()
+    model.set_changes(changes)
+    expected = OverviewModel()
+    expected.set_changes(changes[1:])
+
+    assert model.update_paths({"docs/a.txt"}, changes[1:])
+    assert model._folder_nodes[""].total_count == expected._folder_nodes[""].total_count
+    assert model._folder_nodes[""].total_size == expected._folder_nodes[""].total_size
+    model.deleteLater()
+    expected.deleteLater()
+    application.processEvents()

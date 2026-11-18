@@ -83,6 +83,8 @@ class OverviewModel(QAbstractItemModel):
         super().__init__(parent)
         self.root = OverviewNode("", "")
         self._level_totals: dict[int, int] = {}
+        self._folder_nodes: dict[str, OverviewNode] = {}
+        self._files_node: OverviewNode | None = None
 
     def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""
@@ -103,7 +105,76 @@ class OverviewModel(QAbstractItemModel):
             folder.count += 1
             folder.size += int(getattr(change, "size", None) or 0)
         self._prepare(folders)
+        self._folder_nodes = folders
+        self._files_node = next(
+            (child for child in base.children if child.is_files), None
+        )
         self.endResetModel()
+
+    def update_paths(self, paths: set[str], changes: list[Change]) -> bool:
+        """Update only the folders affected by the given decision changes.
+
+        Returns False when the tree would need structural changes, in which
+        case the caller should do a full rebuild.
+        """
+        if not paths or not self._folder_nodes:
+            return False
+        affected: set[str] = set()
+        for path in paths:
+            clean = str(path).rstrip("/")
+            parent = clean.rpartition("/")[0]
+            while True:
+                affected.add(parent)
+                if not parent:
+                    break
+                parent = parent.rpartition("/")[0]
+        if any(path not in self._folder_nodes for path in affected):
+            return False
+        counts: dict[str, list[int]] = {path: [0, 0] for path in affected}
+        for change in changes:
+            path = str(getattr(change, "path", "")).rstrip("/")
+            if not path:
+                continue
+            parent = path.rpartition("/")[0]
+            if parent not in self._folder_nodes:
+                # A decision added a folder that was not in the overview.
+                return False
+            values = counts.get(parent)
+            if values is None:
+                continue
+            values[0] += 1
+            values[1] += int(getattr(change, "size", None) or 0)
+        # A folder that loses its last direct object has to disappear from
+        # the tree; that is a structural change and needs a full rebuild.
+        for path, (count, _size) in counts.items():
+            node = self._folder_nodes[path]
+            if path == "" and self._files_node is not None:
+                node = self._files_node
+            if count == 0 and node.count > 0:
+                return False
+        for path, (count, size) in counts.items():
+            node = self._folder_nodes[path]
+            if path == "" and self._files_node is not None:
+                node = self._files_node
+            node.count = count
+            node.size = size
+        for path in sorted(affected, key=len, reverse=True):
+            self._folder_nodes[path].compute_totals()
+        total = self.root.children[0] if self.root.children else None
+        if total is not None:
+            total.compute_totals()
+        for path in affected:
+            node = self._folder_nodes[path]
+            self._level_totals[id(node)] = sum(
+                child.total_size for child in node.children
+            )
+        if total is not None:
+            self._level_totals[id(total)] = sum(
+                child.total_size for child in total.children
+            )
+            self._level_totals[id(self.root)] = total.total_size
+        self.layoutChanged.emit()
+        return True
 
     def _ensure_folder(self, folders: dict[str, OverviewNode], path: str) -> OverviewNode:
         node = folders.get(path)

@@ -137,7 +137,7 @@ class FlatChangeModel(QAbstractTableModel):
     anything.
     """
 
-    decision_changed = Signal()
+    decision_changed = Signal(object)
 
     SOURCE_NAME = 0
     SOURCE_ITEMS = 1
@@ -1528,7 +1528,7 @@ class FlatChangeModel(QAbstractTableModel):
             self._refresh_filters()
         else:
             self.refresh_decision_visibility(paths)
-        self.decision_changed.emit()
+        self.decision_changed.emit(paths)
         self._refresh_action_header()
 
     def decision_summary(self):

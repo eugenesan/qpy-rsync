@@ -409,7 +409,7 @@ class FlatComparisonView(QWidget):
     """Synchronized source/action/destination panes over a flat list."""
 
     diff_requested = Signal(object)
-    decision_changed = Signal()
+    decision_changed = Signal(object)
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object, str)
     restore_all_requested = Signal()

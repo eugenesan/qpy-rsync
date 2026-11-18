@@ -2003,8 +2003,11 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(False)
         self._set_verify_state("idle")
 
-    def _on_decision_changed(self) -> None:
-        self._overview_updated(list(self.comparison.visible_changes()), "decision")
+    def _on_decision_changed(self, paths: object) -> None:
+        affected = set(paths) if isinstance(paths, (set, list, tuple)) else None
+        self._overview_updated(
+            list(self.comparison.visible_changes()), "decision", paths=affected
+        )
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
@@ -2771,14 +2774,19 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
-    def _overview_updated(self, changes: object, kind: str = "new") -> None:
+    def _overview_updated(
+        self, changes: object, kind: str = "new", paths: set[str] | None = None
+    ) -> None:
         """Refresh the overview with the items the filters show."""
         root_name = ""
         if self._active_profile is not None:
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
         with timed("ui.overview_update"):
-            visible = self.comparison.visible_changes()
-            self.overview.set_changes(list(visible), root_name)
+            visible = list(changes)
+            if kind == "decision" and paths and self.overview.update_paths(paths, visible):
+                pass
+            else:
+                self.overview.set_changes(visible, root_name)
             self._update_stashed_count()
         if kind == "display":
             return
