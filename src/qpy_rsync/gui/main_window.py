@@ -3186,7 +3186,6 @@ class MainWindow(QMainWindow):
             self._append_log(
                 f"Hiding {total:,} stashed item(s) again.", severity="info"
             )
-        self._refresh_plan_summary()
 
     def _restore_all_stashed(self) -> None:
         """Put every stashed item back and report it."""
@@ -3211,7 +3210,6 @@ class MainWindow(QMainWindow):
         self.action_filters.set_stashed_count(
             self.comparison.model.stash.count()
         )
-        self._refresh_plan_summary()
 
     def _restore_path(self, path: str) -> None:
         """Restore a stashed folder or item."""
@@ -3221,7 +3219,6 @@ class MainWindow(QMainWindow):
         self.action_filters.set_stashed_count(
             self.comparison.model.stash.count()
         )
-        self._refresh_plan_summary()
 
     def _update_stashed_count(self) -> None:
         """Keep the stashed item count next to the toggle up to date."""
