@@ -46,7 +46,11 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
-from qpy_rsync.backend.diagnostics import timed
+from qpy_rsync.backend.destination_sizes import (
+    build_destination_size_index,
+    destination_subtree_size,
+)
+from qpy_rsync.backend.diagnostics import debug_timing, timed
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
@@ -1547,7 +1551,25 @@ class MainWindow(QMainWindow):
             current = self._profile()
         except (TypeError, ValueError):
             return False
-        return not self._same_profile(current, getattr(self, "_baseline_profile", None))
+        baseline = getattr(self, "_baseline_profile", None)
+        if self._same_profile(current, baseline):
+            return False
+        if baseline is not None:
+            left = current.to_dict()
+            right = baseline.to_dict()
+            for key in ("profile_id", "name"):
+                left.pop(key, None)
+                right.pop(key, None)
+            for key in left:
+                if left[key] != right.get(key):
+                    debug_timing(
+                        "profile.modified_field",
+                        field=key,
+                        current=repr(left[key]),
+                        baseline=repr(right.get(key)),
+                    )
+                    break
+        return True
 
     def _refresh_profile_marker(self) -> None:
         loaded = self._profile_path is not None
@@ -2013,6 +2035,37 @@ class MainWindow(QMainWindow):
             else:
                 delta["excluded"] = 1
         return delta
+
+    def _update_plan_deleted_size(self) -> bool:
+        """Refresh only the deleted-size summary after destination metadata."""
+        plan = self._current_plan
+        if plan is None or not self._plan_paths:
+            return False
+        metadata = self.comparison.model.destination_metadata()
+        if len(self._plan_changes) != len(self.comparison.model.changes):
+            return False
+        index = build_destination_size_index(metadata)
+        delete_paths = {
+            item.path
+            for item in plan.items
+            if item.included and item.action is ChangeAction.DELETE
+        }
+        total = 0
+        for path in delete_paths:
+            if any(
+                ancestor in delete_paths for ancestor in self._parent_paths(path)
+            ):
+                continue
+            change = self._plan_changes.get(path)
+            if change is None:
+                return False
+            total += destination_subtree_size(path, change.kind, index)
+        if total != plan.summary.deleted_size:
+            self._current_plan = replace(
+                plan, summary=replace(plan.summary, deleted_size=total)
+            )
+        self._show_plan_summary()
+        return True
 
     def _apply_stash_to_plan(self, added: set[str], removed: set[str]) -> bool:
         """Update the cached plan for stash changes without rebuilding it."""
@@ -3145,9 +3198,10 @@ class MainWindow(QMainWindow):
         merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
         merged.update(result.destination_metadata)
         self.comparison.set_destination_metadata(merged)
-        # The plan was first built before this asynchronous listing arrived;
-        # rebuild it so deleted sizes and the overview stats are correct.
-        self._refresh_plan_summary()
+        # The plan was first built before this asynchronous listing arrived.
+        # Only the deleted-size summary depends on it, so avoid a full rebuild.
+        if not self._update_plan_deleted_size():
+            self._refresh_plan_summary()
         self._append_log(
             f"Destination metadata: {len(result.destination_metadata)} object(s)."
         )

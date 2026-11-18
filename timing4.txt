@@ -1,0 +1,29 @@
+[qpy-rsync timing] 2026-11-18T00:15:29.225-07:00 ui.overview_update ms=1209.8
+[qpy-rsync timing] 2026-11-18T00:15:31.451-07:00 plan.loop ms=2220.3 changes=520444
+[qpy-rsync timing] 2026-11-18T00:15:31.486-07:00 plan.deleted_sizes ms=34.7 paths=30491
+[qpy-rsync timing] 2026-11-18T00:15:32.250-07:00 ui.plan_rebuild ms=3024.1
+[qpy-rsync timing] 2026-11-18T00:15:34.743-07:00 plan.loop ms=1544.2 changes=520444
+[qpy-rsync timing] 2026-11-18T00:15:34.774-07:00 plan.deleted_sizes ms=30.9 paths=30491
+[qpy-rsync timing] 2026-11-18T00:15:35.622-07:00 ui.plan_rebuild ms=2433.6
+[qpy-rsync timing] 2026-11-18T00:15:45.767-07:00 plan.loop ms=1074.7 changes=520444
+[qpy-rsync timing] 2026-11-18T00:15:45.798-07:00 plan.deleted_sizes ms=30.6 paths=30491
+[qpy-rsync timing] 2026-11-18T00:15:46.481-07:00 ui.plan_rebuild ms=2056.4
+[qpy-rsync timing] 2026-11-18T00:16:01.893-07:00 ui.overview_update ms=633.5
+[qpy-rsync timing] 2026-11-18T00:16:03.201-07:00 plan.loop ms=1068.4 changes=520444
+[qpy-rsync timing] 2026-11-18T00:16:03.232-07:00 plan.deleted_sizes ms=30.8 paths=30491
+[qpy-rsync timing] 2026-11-18T00:16:03.920-07:00 ui.plan_rebuild ms=2026.8
+[qpy-rsync timing] 2026-11-18T00:16:34.823-07:00 plan.loop ms=1081.4 changes=520444
+[qpy-rsync timing] 2026-11-18T00:16:34.855-07:00 plan.deleted_sizes ms=31.8 paths=30491
+[qpy-rsync timing] 2026-11-18T00:16:35.554-07:00 ui.plan_rebuild ms=2060.8
+[qpy-rsync timing] 2026-11-18T00:16:50.577-07:00 ui.overview_update ms=1144.7
+[qpy-rsync timing] 2026-11-18T00:16:51.978-07:00 plan.loop ms=1155.3 changes=958503
+[qpy-rsync timing] 2026-11-18T00:16:52.010-07:00 plan.deleted_sizes ms=32.1 paths=30491
+[qpy-rsync timing] 2026-11-18T00:16:52.981-07:00 ui.plan_rebuild ms=2404.0
+[qpy-rsync timing] 2026-11-18T00:17:09.399-07:00 ui.overview_update ms=621.8
+[qpy-rsync timing] 2026-11-18T00:17:10.746-07:00 plan.loop ms=1114.2 changes=520444
+[qpy-rsync timing] 2026-11-18T00:17:10.777-07:00 plan.deleted_sizes ms=30.7 paths=30491
+[qpy-rsync timing] 2026-11-18T00:17:11.476-07:00 ui.plan_rebuild ms=2077.2
+[qpy-rsync timing] 2026-11-18T00:17:18.578-07:00 model.filter_refresh ms=2115.6
+[qpy-rsync timing] 2026-11-18T00:17:19.194-07:00 ui.overview_update ms=609.9
+[qpy-rsync timing] 2026-11-18T00:17:27.424-07:00 model.filter_refresh ms=2038.6
+[qpy-rsync timing] 2026-11-18T00:17:28.527-07:00 ui.overview_update ms=1096.8
