@@ -3003,7 +3003,8 @@ class MainWindow(QMainWindow):
         self._update_filter_summary(stale=False)
         self._set_locations_stale(False)
         self._validated_plan = None
-        self._refresh_plan_summary()
+        # comparison.set_changes() below emits changes_updated and rebuilds
+        # the plan; avoid a second full rebuild here.
         for message in result.parsed.diagnostics:
             self._append_log(message)
         count = len(result.parsed.changes)

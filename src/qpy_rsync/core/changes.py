@@ -311,6 +311,8 @@ class StashedItems:
 
     def is_stashed(self, path: str) -> bool:
         """Return whether a path is stashed, directly or by a parent."""
+        if not self._paths:
+            return False
         clean = path.strip("/")
         if not clean:
             return False

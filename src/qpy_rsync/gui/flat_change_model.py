@@ -786,7 +786,7 @@ class FlatChangeModel(QAbstractTableModel):
         stash = self.stash
         check_stashed = bool(stash) and not self.show_stashed
         for index, row in enumerate(self._rows):
-            row_is_stashed = stash.is_stashed(row.path)
+            row_is_stashed = bool(stash) and stash.is_stashed(row.path)
             if row.is_directory:
                 directory = directories.get(row.path)
                 if directory is None:
