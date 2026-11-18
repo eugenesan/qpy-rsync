@@ -91,6 +91,7 @@ class OverviewModel(QAbstractItemModel):
         # from the view. Cached per parent so rowCount and index stay cheap.
         self._visible_children: dict[int, list[OverviewNode]] = {}
         self._full_structure = False
+        self._applied_counts: dict[str, tuple[int, int]] = {}
 
     def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""
@@ -133,8 +134,74 @@ class OverviewModel(QAbstractItemModel):
         self._build_structure(structure, root_name)
         self._structure_signature = (root_name, "*")
         self._full_structure = True
+        self._applied_counts = {}
         self._finish_totals()
         self.layoutChanged.emit()
+
+    def _node_for(self, path: str) -> OverviewNode:
+        if path == "" and self._files_node is not None:
+            return self._files_node
+        return self._folder_nodes[path]
+
+    def _apply_counts_incrementally(
+        self, aggregates: dict[str, tuple[int, int]]
+    ) -> bool:
+        """Update only the folders whose counts changed.
+
+        The subtree totals are propagated as deltas up the tree, so a single
+        decision touches its folder and the ancestors above it instead of
+        every folder of a large comparison.
+        """
+        previous = self._applied_counts
+        if previous == aggregates:
+            return False
+        changed = [
+            path
+            for path in aggregates.keys() | previous.keys()
+            if aggregates.get(path) != previous.get(path)
+        ]
+        if not changed:
+            return False
+        folders = self._folder_nodes
+        total = self.root.children[0] if self.root.children else None
+        affected: set[str] = set()
+        for path in changed:
+            node = self._node_for(path)
+            old_count, old_size = node.count, node.size
+            count, size = aggregates.get(path, (0, 0))
+            node.count = count
+            node.size = size
+            count_delta, size_delta = count - old_count, size - old_size
+            if not (count_delta or size_delta):
+                continue
+            # Every ancestor's total includes this folder's own count, so
+            # propagate only the own delta. Children send their own deltas
+            # separately; recomputing a parent from its children here would
+            # count the same change twice.
+            current = path
+            while True:
+                affected.add(current)
+                folder = folders[current]
+                folder._total_count += count_delta
+                folder._total_size += size_delta
+                if not current:
+                    break
+                current = current.rpartition("/")[0]
+            if path == "" and node is not folders[""]:
+                node._total_count += count_delta
+                node._total_size += size_delta
+            if total is not None:
+                total._total_count += count_delta
+                total._total_size += size_delta
+        for path in sorted(affected, key=lambda item: item.count("/"), reverse=True):
+            self._sort_node(folders[path])
+        nodes = [folders[path] for path in affected]
+        if total is not None:
+            nodes.extend((total, self.root))
+        self._refresh_visible_children(nodes)
+        self._refresh_level_totals(nodes, total)
+        self._applied_counts = dict(aggregates)
+        return True
 
     def set_aggregates(
         self, aggregates: dict[str, tuple[int, int]], root_name: str = ""
@@ -152,11 +219,13 @@ class OverviewModel(QAbstractItemModel):
             if signature != getattr(self, "_structure_signature", None):
                 self._build_structure(aggregates, root_name)
                 self._structure_signature = signature
+                self._applied_counts = {}
             self._update_counts(aggregates)
-        else:
-            self._update_counts(aggregates)
-        self._finish_totals()
-        self.layoutChanged.emit()
+            self._applied_counts = dict(aggregates)
+            self._finish_totals()
+            self.layoutChanged.emit()
+        elif self._apply_counts_incrementally(aggregates):
+            self.layoutChanged.emit()
 
     def _update_counts(self, aggregates: dict[str, tuple[int, int]]) -> None:
         folders = self._folder_nodes
@@ -207,17 +276,11 @@ class OverviewModel(QAbstractItemModel):
         if total is not None:
             total.compute_totals()
         self._sort_all()
-        self._refresh_visible_children()
-        self._level_totals = {}
-        for node in self._folder_nodes.values():
-            self._level_totals[id(node)] = sum(
-                child.total_size for child in node.children
-            )
+        nodes = [self.root, *self._folder_nodes.values()]
         if total is not None:
-            self._level_totals[id(total)] = sum(
-                child.total_size for child in total.children
-            )
-            self._level_totals[id(self.root)] = total.total_size
+            nodes.append(total)
+        self._refresh_visible_children(nodes)
+        self._refresh_level_totals(nodes, total)
 
     def update_paths(self, paths: set[str], changes: list[Change]) -> bool:
         """Update only the folders affected by the given decision changes.
@@ -372,15 +435,31 @@ class OverviewModel(QAbstractItemModel):
         self._refresh_visible_children()
         self.endResetModel()
 
-    def _refresh_visible_children(self) -> None:
-        nodes = [self.root, *self._folder_nodes.values()]
-        total = self.root.children[0] if self.root.children else None
-        if total is not None:
-            nodes.append(total)
+    def _refresh_visible_children(
+        self, nodes: list[OverviewNode] | None = None
+    ) -> None:
+        if nodes is None:
+            nodes = [self.root, *self._folder_nodes.values()]
+            total = self.root.children[0] if self.root.children else None
+            if total is not None:
+                nodes.append(total)
         self._visible_children = {
             id(node): [child for child in node.children if child.total_count]
             for node in nodes
         }
+
+    def _refresh_level_totals(
+        self, nodes: list[OverviewNode], total: OverviewNode | None
+    ) -> None:
+        for node in nodes:
+            self._level_totals[id(node)] = sum(
+                child.total_size for child in node.children
+            )
+        if total is not None:
+            self._level_totals[id(total)] = sum(
+                child.total_size for child in total.children
+            )
+            self._level_totals[id(self.root)] = total.total_size
 
     def _sort_key(self):
         if self._sort_column == self.FOLDER:
@@ -389,11 +468,18 @@ class OverviewModel(QAbstractItemModel):
             return lambda child: child.total_count  # noqa: E731
         return lambda child: child.total_size  # noqa: E731
 
+    def _sort_node(self, node: OverviewNode) -> None:
+        # A stable name sort first makes ties deterministic, so an incremental
+        # update produces the same order as a full rebuild.
+        node.children.sort(key=lambda child: child.name.casefold())
+        node.children.sort(
+            key=self._sort_key(),
+            reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
+        )
+
     def _sort_all(self) -> None:
-        key = self._sort_key()
-        reverse = self._sort_order == Qt.SortOrder.DescendingOrder
         for node in [self.root, *self._folder_nodes.values()]:
-            node.children.sort(key=key, reverse=reverse)
+            self._sort_node(node)
 
 
 class OverviewBarDelegate(QStyledItemDelegate):

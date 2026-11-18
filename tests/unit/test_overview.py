@@ -210,6 +210,40 @@ def test_set_aggregates_reuses_the_folder_nodes() -> None:
     application.processEvents()
 
 
+def test_incremental_aggregates_match_a_rebuild() -> None:
+    application = app()
+    paths = ["docs", "docs/sub", "pics", ""]
+    first = {"docs": (2, 200), "docs/sub": (1, 50), "pics": (1, 10), "": (1, 5)}
+    second = {"docs": (1, 100), "pics": (3, 30), "": (1, 5)}
+    model = OverviewModel()
+    model.set_paths(paths, "source")
+    model.set_aggregates(first, "source")
+    model.set_aggregates(second, "source")
+    expected = OverviewModel()
+    expected.set_paths(paths, "source")
+    expected.set_aggregates(second, "source")
+
+    for name in ("docs", "pics"):
+        node = model._folder_nodes[name]
+        other = expected._folder_nodes[name]
+        assert (node.count, node.total_count, node.total_size) == (
+            other.count,
+            other.total_count,
+            other.total_size,
+        )
+    total = model.index(0, 0)
+    expected_total = expected.index(0, 0)
+    assert model.data(total.siblingAtColumn(2)) == expected.data(
+        expected_total.siblingAtColumn(2)
+    )
+    assert model.data(total.siblingAtColumn(3)) == expected.data(
+        expected_total.siblingAtColumn(3)
+    )
+    model.deleteLater()
+    expected.deleteLater()
+    application.processEvents()
+
+
 def test_update_paths_matches_a_full_rebuild() -> None:
     application = app()
     changes = _changes()

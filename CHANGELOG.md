@@ -16,6 +16,9 @@
   Decision effects and per-folder totals are cached and updated incrementally
   as well. On a 520k-item comparison this roughly halves the filter time and
   removes most of the overview cost; single-item decisions stay around 0.2–0.4s.
+- The Overview applies only changed folder counts and propagates total deltas
+  up the tree, so a single decision updates in ~20 ms on a 31k-folder tree
+  instead of rebuilding every folder total.
 - Search is now indexed: folded names and paths are cached, the match list is
   built once per search text, and Enter/Shift+Enter step through it in O(1).
   Typing searches after a short debounce and a counter shows the match number.

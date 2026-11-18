@@ -142,12 +142,14 @@ nodes are reused across filter changes.
 
 Remaining work, in priority order:
 
-1. **Incremental Overview totals.** `ui.overview_update` is still 260–290 ms
+1. **Incremental Overview totals — delivered.** `ui.overview_update` was 260–290 ms
    for a single decision. `set_aggregates()` currently recomputes every folder
    total, sort order and visible-child list. Compare the new counts with the
    old ones and update only the changed folders and their ancestors; rebuild
    the view lists only where a folder actually becomes empty or non-empty.
-   Target: under ~40 ms for a decision, under ~100 ms for a global filter.
+   Target: under ~40 ms for a decision, under ~100 ms for a global filter —
+   measured at 19–21 ms for a single folder on a 31k-folder tree, 49 ms for
+   half the folders.
 2. **Remove the change-list copy in `view.emit_changes`.** Every stash sends
    `list(model.changes)` (~337 ms in `timing19`) through a Qt signal to a slot
    that no longer uses the list. Pass the model or an empty token and let the
