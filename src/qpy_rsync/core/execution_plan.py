@@ -178,12 +178,16 @@ def build_execution_plan(
     delete_paths = {
         item.path for item in items if item.included and item.action is ChangeAction.DELETE
     }
+    def has_delete_ancestor(path: str) -> bool:
+        parent = path.rpartition("/")[0]
+        while parent:
+            if parent in delete_paths:
+                return True
+            parent = parent.rpartition("/")[0]
+        return False
+
     for path in delete_paths:
-        if any(
-            path.startswith(parent + "/")
-            for parent in delete_paths
-            if parent != path
-        ):
+        if has_delete_ancestor(path):
             continue
         # A directory's subtree size already includes its selected children;
         # those children are skipped by the covered check above.

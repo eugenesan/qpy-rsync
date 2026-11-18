@@ -3139,9 +3139,47 @@ class MainWindow(QMainWindow):
             return
         entries = self._log_buffer
         self._log_buffer = []
-        for line, rsync, severity, timestamp in entries:
-            self._append_journal_line(line, timestamp, rsync, severity)
-            self._write_session_log(line)
+        # One cursor movement and one ensureCursorVisible for the whole batch.
+        # Doing this per rsync record dominates comparisons of large trees.
+        cursor = QTextCursor(self.log.document())
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if not self.log.document().isEmpty():
+            cursor.insertBlock()
+        time_format = QTextCharFormat()
+        time_format.setForeground(QColor("#6b7280"))
+        formats: dict[tuple[bool, str], QTextCharFormat] = {}
+        session_lines: list[str] = []
+        for index, (line, rsync, severity, timestamp) in enumerate(entries):
+            key = (rsync, severity)
+            content_format = formats.get(key)
+            if content_format is None:
+                content_format = self._journal_format(rsync, severity)
+                formats[key] = content_format
+            if index:
+                cursor.insertBlock()
+            cursor.insertText(f"{timestamp} ", time_format)
+            cursor.insertText(line, content_format)
+            session_lines.append(line)
+        self.log.setTextCursor(cursor)
+        self.log.ensureCursorVisible()
+        if session_lines:
+            self._write_session_log("\n".join(session_lines))
+
+    @staticmethod
+    def _journal_format(rsync: bool, severity: str) -> QTextCharFormat:
+        content_format = QTextCharFormat()
+        if rsync:
+            color = QColor("#9ca3af")
+        elif severity == "warning":
+            color = QColor("#0891B2")
+        elif severity == "error":
+            color = QColor("#B91C1C")
+        elif severity == "success":
+            color = QColor("#15803D")
+        else:
+            color = QColor("#111827")
+        content_format.setForeground(color)
+        return content_format
 
     def _append_journal_line(
         self, text: str, timestamp: str, rsync: bool, severity: str

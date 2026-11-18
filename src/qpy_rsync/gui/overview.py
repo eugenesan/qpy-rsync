@@ -42,16 +42,24 @@ class OverviewNode:
     size: int = 0
     is_files: bool = False
     is_total: bool = False
+    # Filled bottom-up once after the tree is built. Sorting compares these
+    # repeatedly, so recomputing recursively on every access is expensive.
+    _total_count: int = 0
+    _total_size: int = 0
 
     @property
     def total_count(self) -> int:
-        """The number of objects of the folder including its subfolders."""
-        return self.count + sum(child.total_count for child in self.children)
+        return self._total_count
 
     @property
     def total_size(self) -> int:
-        """The size of the folder including its subfolders."""
-        return self.size + sum(child.total_size for child in self.children)
+        return self._total_size
+
+    def compute_totals(self) -> None:
+        for child in self.children:
+            child.compute_totals()
+        self._total_count = self.count + sum(c.total_count for c in self.children)
+        self._total_size = self.size + sum(c.total_size for c in self.children)
 
 
 class OverviewModel(QAbstractItemModel):
@@ -125,6 +133,7 @@ class OverviewModel(QAbstractItemModel):
             )
             base.count = 0
             base.size = 0
+        base.compute_totals()
         for node in folders.values():
             node.children.sort(
                 key=lambda child: (
@@ -140,6 +149,7 @@ class OverviewModel(QAbstractItemModel):
         total.children = base.children
         for child in total.children:
             child.parent = total
+        total.compute_totals()
         self.root.children = [total] if total.children else []
         self._level_totals = {}
         for node in folders.values():
