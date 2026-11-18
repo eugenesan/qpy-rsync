@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
 
 from qpy_rsync.backend.rsync_patterns import phrases_for
 from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.services.external_tools import ExternalTool
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
@@ -1046,19 +1047,19 @@ class FlatComparisonView(QWidget):
 
     def toggle_collapsed(self, path: str) -> None:
         """Fold or unfold a directory."""
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), timed("view.fold", path=path):
             self.model.toggle_collapsed(path)
             self.model.refresh_collapsed()
 
     def collapse_all(self) -> None:
         """Fold every directory that has children."""
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), timed("view.collapse_all"):
             self.model.collapse_all()
             self.model.refresh_collapsed()
 
     def expand_all(self) -> None:
         """Unfold every directory."""
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), timed("view.expand_all"):
             self.model.expand_all()
             self.model.refresh_collapsed()
 
@@ -1068,20 +1069,21 @@ class FlatComparisonView(QWidget):
 
     def stash_path(self, path: str) -> None:
         """Stash a path and everything below it."""
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), timed("view.stash", path=path):
             self.model.stash.add(path)
             self._refresh_stashed()
 
     def restore_path(self, path: str) -> None:
         """Restore a path and everything below it."""
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), timed("view.restore", path=path):
             self.model.stash.restore(path)
             self._refresh_stashed()
 
     def restore_all_stashed(self) -> None:
         """Restore every stashed item."""
-        self.model.stash.clear()
-        self._refresh_stashed()
+        with timed("view.restore_all_stashed"):
+            self.model.stash.clear()
+            self._refresh_stashed()
 
     def stashed_paths(self) -> set[str]:
         """The paths that the user stashed."""
@@ -1089,13 +1091,16 @@ class FlatComparisonView(QWidget):
 
     def set_show_stashed(self, show: bool) -> None:
         """Show or hide the items the user stashed."""
-        self.model.show_stashed = show
-        self._refresh_stashed()
+        with timed("view.show_stashed", show=show):
+            self.model.show_stashed = show
+            self._refresh_stashed()
 
     def _refresh_stashed(self) -> None:
         """Update the list after the stashed items changed."""
-        self.model.refresh_stashed()
-        self.changes_updated.emit(list(self.model.changes))
+        with timed("view.model_refresh"):
+            self.model.refresh_stashed()
+        with timed("view.emit_changes"):
+            self.changes_updated.emit(list(self.model.changes))
 
     @staticmethod
     def _set_current(tree: QTableView, index: QModelIndex) -> None:

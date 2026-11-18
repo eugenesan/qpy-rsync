@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
+from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
@@ -277,6 +278,7 @@ class MainWindow(QMainWindow):
         self._closing = False
         self._layout_mode = "normal"
         self._wide_overview_width: int | None = None
+        self._overview_min_width: int | None = None
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path()
         self._log_initialized = False
@@ -656,6 +658,7 @@ class MainWindow(QMainWindow):
         log_splitter.addWidget(log_column)
         # The overview summarises the comparison next to the journal.
         self.overview = OverviewPane(self)
+        self._overview_min_width = self.overview.minimumWidth()
         self.overview.folder_activated.connect(self._overview_folder_activated)
         self.overview.stash_requested.connect(self._stash_path)
         self.overview.restore_requested.connect(self._restore_path)
@@ -1960,6 +1963,10 @@ class MainWindow(QMainWindow):
             self._refresh_plan_summary()
 
     def _refresh_plan_summary(self) -> None:
+        with timed("ui.plan_rebuild"):
+            self._rebuild_plan_summary()
+
+    def _rebuild_plan_summary(self) -> None:
         if self._active_profile is None:
             self._current_plan = None
             self._last_plan_summary = None
@@ -2410,9 +2417,10 @@ class MainWindow(QMainWindow):
         root_name = ""
         if self._active_profile is not None:
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
-        visible = self.comparison.visible_changes()
-        self.overview.set_changes(list(visible), root_name)
-        self._update_stashed_count()
+        with timed("ui.overview_update"):
+            visible = self.comparison.visible_changes()
+            self.overview.set_changes(list(visible), root_name)
+            self._update_stashed_count()
         self._refresh_plan_summary()
 
     def _overview_folder_activated(self, path: str) -> None:
@@ -3406,8 +3414,13 @@ class MainWindow(QMainWindow):
         elif mode == "wide":
             self.main_splitter.setOrientation(Qt.Orientation.Horizontal)
             self.main_splitter.addWidget(self.overview)
+            # Side-by-side, the overview keeps its current width but can be
+            # dragged narrower; the wide minimum is much smaller.
+            self.overview.setMinimumWidth(180)
             self.overview.show()
         else:
+            if self._overview_min_width is not None:
+                self.overview.setMinimumWidth(self._overview_min_width)
             self.log_splitter.addWidget(self.overview)
             self.overview.show()
             self.main_splitter.setOrientation(Qt.Orientation.Vertical)

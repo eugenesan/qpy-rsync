@@ -23,6 +23,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
+from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_size,
@@ -564,15 +565,17 @@ class FlatChangeModel(QAbstractTableModel):
         self._refresh_filters()
 
     def _refresh_filters(self) -> None:
-        self.beginResetModel()
-        self._apply_filters()
-        self.endResetModel()
+        with timed("model.filter_refresh"):
+            self.beginResetModel()
+            self._apply_filters()
+            self.endResetModel()
 
     def refresh_stashed(self) -> None:
         """Show the rows again after the user stashed or restored items."""
-        self.beginResetModel()
-        self._apply_filters()
-        self.endResetModel()
+        with timed("model.stash_refresh"):
+            self.beginResetModel()
+            self._apply_filters()
+            self.endResetModel()
 
     def action_colours_changed(self) -> None:
         """Repaint the rows after the colours of the actions changed."""
@@ -632,9 +635,10 @@ class FlatChangeModel(QAbstractTableModel):
 
     def refresh_collapsed(self) -> None:
         """Show the rows again after a fold or an unfold."""
-        self.beginResetModel()
-        self._apply_filters()
-        self.endResetModel()
+        with timed("model.fold_refresh"):
+            self.beginResetModel()
+            self._apply_filters()
+            self.endResetModel()
 
     def _matches(
         self,
