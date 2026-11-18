@@ -12,3 +12,4 @@ dist/
 *debug.log
 /crash
 crash-info*.txt
+timing*.txt

@@ -124,6 +124,8 @@ class FlatRow:
     excluded: bool = False
     # Whether a directory row has anything below it to fold.
     has_children: bool = False
+    # The directory object for directory rows.
+    directory: object | None = None
 
 
 class FlatChangeModel(QAbstractTableModel):
@@ -375,6 +377,7 @@ class FlatChangeModel(QAbstractTableModel):
                         ),
                         group=path,
                         has_children=directory.has_children,
+                        directory=directory,
                     )
                 )
             for index in sorted(
@@ -419,6 +422,7 @@ class FlatChangeModel(QAbstractTableModel):
                     self._directories.get("")
                     and self._directories[""].has_children
                 ),
+                directory=self._directories.get(""),
             )
         )
         walk("")
@@ -818,14 +822,18 @@ class FlatChangeModel(QAbstractTableModel):
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
         stash = self.stash
-        check_stashed = bool(stash) and not self.show_stashed
-        for index, row in enumerate(self._rows):
-            row_is_stashed = bool(stash) and stash.is_stashed(row.path)
-            row.excluded = row_is_stashed or (
-                self._effective_row(row) is ChangeDecision.EXCLUDE
-            )
+        has_stash = bool(stash)
+        check_stashed = has_stash and not self.show_stashed
+        excluded = self._excluded_paths()
+        change_visible = self._change_visible
+        change_path_ok = self._change_path_ok
+        excluded_get = excluded.get
+        rows = self._rows
+        for index, row in enumerate(rows):
+            row_is_stashed = has_stash and stash.is_stashed(row.path)
+            row.excluded = excluded_get(row.path, False)
             if row.is_directory:
-                directory = directories.get(row.path)
+                directory = row.directory
                 if directory is None:
                     continue
                 if row_is_stashed:
@@ -845,9 +853,9 @@ class FlatChangeModel(QAbstractTableModel):
                 if row_is_stashed:
                     # The same goes for a stashed item: the action filters
                     # do not hide what the user asked to see.
-                    if check_stashed or not self._change_path_ok[row.change_index]:
+                    if check_stashed or not change_path_ok[row.change_index]:
                         continue
-                elif not self._change_visible[row.change_index]:
+                elif not change_visible[row.change_index]:
                     continue
                 if not row_is_stashed:
                     visible_change_indices.add(row.change_index)
