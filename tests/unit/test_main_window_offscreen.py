@@ -1516,6 +1516,7 @@ def test_decision_changes_mark_the_plan_stale_without_rebuild() -> None:
     window._invalidate_validated_plan()
     assert window._plan_stale
     assert calls == []
-    assert "estimate" in window.validate_plan_button.toolTip().lower() or True
+    assert not window._stale_summary_timer.isActive()
+    assert not window._current_plan.items[0].included
     window.close()
     application.processEvents()

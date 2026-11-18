@@ -237,6 +237,7 @@ class MainWindow(QMainWindow):
         self._plan_items: dict[str, object] = {}
         self._plan_changes: dict[str, object] = {}
         self._last_stash_paths: set[str] = set()
+        self._last_explicit_decisions: tuple[tuple[str, ChangeDecision], ...] = ()
         self._validated_plan: ExecutionPlan | None = None
         self._execution_gate = ExecutionGate()
         self._plan_validation = PlanValidationService(self)
@@ -2073,13 +2074,15 @@ class MainWindow(QMainWindow):
         self._show_plan_summary()
         return True
 
-    def _apply_stash_to_plan(self, added: set[str], removed: set[str]) -> bool:
-        """Update the cached plan for stash changes without rebuilding it."""
+    def _apply_plan_changes(
+        self, paths: set[str], *, decisions_changed: bool = False
+    ) -> bool:
+        """Update the cached plan for stash/decision changes incrementally."""
         plan = self._current_plan
         if plan is None or not self._plan_items:
             return False
         candidates: set[int] = set()
-        for path in added | removed:
+        for path in paths:
             start = bisect_left(self._plan_paths, path)
             if start < len(self._plan_paths) and self._plan_paths[start] == path:
                 candidates.add(start)
@@ -2128,6 +2131,10 @@ class MainWindow(QMainWindow):
         summary = replace(plan.summary, **fields) if fields else plan.summary
         self._current_plan = replace(plan, items=tuple(items), summary=summary)
         self._last_stash_paths = current_stash
+        if decisions_changed:
+            self._last_explicit_decisions = (
+                self.comparison.model.decisions.explicit_items()
+            )
         return True
 
     @staticmethod
@@ -2140,16 +2147,34 @@ class MainWindow(QMainWindow):
         return parents
 
     def _mark_plan_stale(self) -> None:
-        """Defer the plan rebuild until Verify Actions is pressed."""
-        if self._plan_stale and self._current_plan is None:
+        """Mark the plan unverified and update its summary incrementally."""
+        if self._current_plan is None:
             return
+        current_stash = set(self.comparison.stashed_paths())
+        stash_paths = current_stash ^ self._last_stash_paths
+        current_decisions = self.comparison.model.decisions.explicit_items()
+        before = dict(self._last_explicit_decisions)
+        after = dict(current_decisions)
+        decision_paths = {
+            path
+            for path in before.keys() | after.keys()
+            if before.get(path) != after.get(path)
+        }
+        changed = bool(stash_paths or decision_paths)
+        if changed and self._apply_plan_changes(
+            stash_paths | decision_paths,
+            decisions_changed=bool(decision_paths),
+        ):
+            self._show_plan_summary()
+        else:
+            # Fall back to a full lightweight estimate only when the cached
+            # plan cannot be updated (for example after a new inventory).
+            self._stale_summary_timer.start()
         self._plan_stale = True
         self._validated_plan = None
         self.synchronize_button.setEnabled(False)
         self._set_verify_state("idle")
         self._refresh_verify_button()
-        # Coalesce rapid decision changes into one estimate pass.
-        self._stale_summary_timer.start()
 
     def _refresh_estimated_summary(self) -> None:
         if not self._plan_stale:
@@ -2280,6 +2305,9 @@ class MainWindow(QMainWindow):
             for change in self.comparison.model.changes
         }
         self._last_stash_paths = set(self.comparison.stashed_paths())
+        self._last_explicit_decisions = (
+            self.comparison.model.decisions.explicit_items()
+        )
         self._plan_stale = False
         self._stale_summary_timer.stop()
         self._refresh_verify_button()
