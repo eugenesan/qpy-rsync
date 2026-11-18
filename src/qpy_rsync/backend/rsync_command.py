@@ -79,6 +79,9 @@ def _common_arguments(profile: SyncProfile, *, filter_file: Path | None = None) 
 
     if transfer.mirror_enabled:
         timing = DeleteTiming.AFTER if transfer.fuzzy else transfer.delete_timing
+        # Older/hand-edited profiles can carry the enum as a plain string.
+        if not isinstance(timing, DeleteTiming):
+            timing = DeleteTiming(timing)
         args.append(f"--delete-{timing.value}")
     if transfer.new_only_enabled:
         args.append("--ignore-existing")

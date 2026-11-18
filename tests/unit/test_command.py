@@ -141,3 +141,13 @@ def test_new_transfer_options_reach_the_command() -> None:
     assert "--partial-dir=.rsync-partial" in arguments
     assert "--partial" in arguments
     assert "--inplace" in arguments
+
+
+def test_string_delete_timing_is_accepted() -> None:
+    from qpy_rsync.core.enums import SyncMode
+    from qpy_rsync.core.models import TransferOptions
+
+    item = profile()
+    item.transfer = TransferOptions(sync_mode=SyncMode.MIRROR, delete_timing="delay")  # type: ignore[arg-type]
+    arguments = build_compare_spec(item).arguments
+    assert "--delete-delay" in arguments
