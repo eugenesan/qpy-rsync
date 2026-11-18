@@ -121,7 +121,13 @@ def _inventory_result(payload: object) -> InventoryResult:
         unchanged=list(payload),  # type: ignore[call-overload]
         destination_metadata={},
     )
-from qpy_rsync.core.enums import ConflictPolicy, EndpointKind, Severity, SyncMode
+from qpy_rsync.core.enums import (
+    ConflictPolicy,
+    DeleteTiming,
+    EndpointKind,
+    Severity,
+    SyncMode,
+)
 from qpy_rsync.core.backup_paths import resolve_backup
 from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
 from qpy_rsync.core.units import format_size
@@ -1353,6 +1359,9 @@ class MainWindow(QMainWindow):
                 **{
                     **asdict(self._profile_transfer),
                     "sync_mode": SyncMode(self.sync_mode.currentData()),
+                    "delete_timing": DeleteTiming(
+                        self._profile_transfer.delete_timing
+                    ),
                 }
             ),
             preservation=PreservationOptions(**asdict(self._profile_preservation)),
@@ -1546,8 +1555,12 @@ class MainWindow(QMainWindow):
     def _same_profile(a, b) -> bool:
         if a is None or b is None:
             return False
-        left = a.to_dict()
-        right = b.to_dict()
+        import json
+
+        # Compare the serialized form so enums and their string values compare
+        # equal, the way they are stored in a profile.
+        left = json.loads(profile_to_json(a))
+        right = json.loads(profile_to_json(b))
         for key in ("profile_id", "name"):
             left.pop(key, None)
             right.pop(key, None)
