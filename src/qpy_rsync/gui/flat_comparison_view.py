@@ -81,12 +81,11 @@ class UniformRowDelegate(QStyledItemDelegate):
     """
 
     def sizeHint(self, option: object, index: QModelIndex) -> QSize:  # noqa: N802
-        # The default implementation asks the model for every role and walks
-        # the style, which is far too expensive for a large list.
-        text = index.data(Qt.ItemDataRole.DisplayRole)
-        metrics = option.fontMetrics  # type: ignore[attr-defined]
-        width = metrics.horizontalAdvance(str(text or "")) + 24
-        return QSize(width, ROW_HEIGHT)
+        # Row height is fixed and the header owns the column widths. Asking
+        # the model for the text of every row here costs seconds on large
+        # comparisons, because Qt calls sizeHint for all visible rows after a
+        # model reset.
+        return QSize(0, ROW_HEIGHT)
 
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]

@@ -220,6 +220,15 @@ class FlatChangeModel(QAbstractTableModel):
         self._visible_position_of_row: list[int] = []
         self._row_of_path: dict[str, int] = {}
         self._sorted_paths: list[str] = []
+        # Parallel arrays for the hot filter loops. Python object attribute
+        # access in a half-million-row loop costs more than the filtering
+        # itself, so the repeated fields are kept in flat arrays.
+        self._row_paths: list[str] = []
+        self._row_is_dir: list[bool] = []
+        self._row_change_index: list[int] = []
+        self._row_parent: list[str] = []
+        self._row_excluded: list[bool] = []
+        self._row_directory: list[object | None] = []
         self._visible_changes: list[Change] = []
         self._visible_change_indices: set[int] = set()
         self._override_paths: set[str] = set()
@@ -438,6 +447,12 @@ class FlatChangeModel(QAbstractTableModel):
         self._rows = rows
         self._row_of_path = {row.path: index for index, row in enumerate(rows)}
         self._sorted_paths = sorted(self._row_of_path)
+        self._row_paths = [row.path for row in rows]
+        self._row_is_dir = [row.is_directory for row in rows]
+        self._row_change_index = [row.change_index for row in rows]
+        self._row_parent = [row.parent for row in rows]
+        self._row_excluded = [False] * len(rows)
+        self._row_directory = [row.directory for row in rows]
 
     # ------------------------------------------------------------------
     # Sorting
@@ -829,11 +844,20 @@ class FlatChangeModel(QAbstractTableModel):
         change_path_ok = self._change_path_ok
         excluded_get = excluded.get
         rows = self._rows
-        for index, row in enumerate(rows):
-            row_is_stashed = has_stash and stash.is_stashed(row.path)
-            row.excluded = excluded_get(row.path, False)
-            if row.is_directory:
-                directory = row.directory
+        paths = self._row_paths
+        is_dir = self._row_is_dir
+        change_index = self._row_change_index
+        row_excluded = self._row_excluded
+        row_directory = self._row_directory
+        stashed_fn = stash.is_stashed
+        for index in range(len(rows)):
+            path = paths[index]
+            row_is_stashed = has_stash and stashed_fn(path)
+            value = excluded_get(path, False)
+            row_excluded[index] = value
+            rows[index].excluded = value
+            if is_dir[index]:
+                directory = row_directory[index]
                 if directory is None:
                     continue
                 if row_is_stashed:
@@ -850,27 +874,25 @@ class FlatChangeModel(QAbstractTableModel):
                 ):
                     visible_change_indices.add(directory.own_change_index)
             else:
+                ci = change_index[index]
                 if row_is_stashed:
                     # The same goes for a stashed item: the action filters
                     # do not hide what the user asked to see.
-                    if check_stashed or not change_path_ok[row.change_index]:
+                    if check_stashed or not change_path_ok[ci]:
                         continue
-                elif not change_visible[row.change_index]:
+                elif not change_visible[ci]:
                     continue
                 if not row_is_stashed:
-                    visible_change_indices.add(row.change_index)
+                    visible_change_indices.add(ci)
             # The rows below a folded directory are out of the list, but
             # they stay in the totals and in the overview.
             if (
                 collapse_active
-                and row.path
-                and directory_folded.get(row.parent, False)
+                and path
+                and directory_folded.get(self._row_parent[index], False)
             ):
                 continue
-            # The stripes alternate row by row. A directory and its first
-            # item are two rows, so they never share a stripe, and a group of
-            # any size still reads as alternating lines.
-            row.alternate = len(visible_rows) % 2 == 0
+            rows[index].alternate = len(visible_rows) % 2 == 0
             visible_rows.append(index)
         debug_timing("model.filter_phase", phase="rows_done")
         self._visible_rows = visible_rows
