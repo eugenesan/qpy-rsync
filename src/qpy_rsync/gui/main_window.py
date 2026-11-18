@@ -2084,7 +2084,7 @@ class MainWindow(QMainWindow):
             self._current_plan = replace(
                 plan, summary=replace(plan.summary, deleted_size=total)
             )
-        self._show_plan_summary()
+        self._show_plan_summary(log=False)
         return True
 
     def _apply_plan_changes(
@@ -2178,7 +2178,7 @@ class MainWindow(QMainWindow):
             stash_paths | decision_paths,
             decisions_changed=bool(decision_paths),
         ):
-            self._show_plan_summary()
+            self._show_plan_summary(log=False)
         else:
             # Fall back to a full lightweight estimate only when the cached
             # plan cannot be updated (for example after a new inventory).
@@ -2326,7 +2326,7 @@ class MainWindow(QMainWindow):
         self._refresh_verify_button()
         self._show_plan_summary()
 
-    def _show_plan_summary(self) -> None:
+    def _show_plan_summary(self, *, log: bool = True) -> None:
         plan = self._current_plan
         if plan is None:
             return
@@ -2342,7 +2342,7 @@ class MainWindow(QMainWindow):
             f"modified {summary.modified}, destructive {summary.destructive}; "
             f"backup {'on' if summary.backup_enabled else 'off'}"
         )
-        if text != self._last_plan_summary:
+        if log and text != self._last_plan_summary:
             self._last_plan_summary = text
             self._append_log(text)
         self.overview.set_statistics(summary)
