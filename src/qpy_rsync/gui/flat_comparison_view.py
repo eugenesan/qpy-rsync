@@ -70,7 +70,7 @@ RULE_COLOR = QColor("#c8c8c8")
 # The shade of every second directory group, the way a printed table
 # alternates its rows. Kept faint so the text stays the focus.
 STRIPE_COLOR = QColor(0, 0, 0, 22)
-STASHED_COLOR = QColor("#9ca3af")
+EXCLUDED_COLOR = QColor("#9ca3af")
 STALE_COLOR = QColor("#EA580C")
 
 
@@ -247,7 +247,7 @@ class FlatPathDelegate(UniformRowDelegate):
                 color = foreground
             if is_excluded:
                 # A excluded row stays readable but is clearly marked.
-                color = STASHED_COLOR
+                color = EXCLUDED_COLOR
         if row.is_directory:
             if row.has_children and row.path:
                 # A folded directory points right, an open one points down,
