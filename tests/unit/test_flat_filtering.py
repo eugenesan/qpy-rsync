@@ -256,7 +256,7 @@ def test_the_filter_matches_a_relative_path() -> None:
     application.processEvents()
 
 
-def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
+def test_search_jumps_without_changing_the_visible_set() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
@@ -268,13 +268,11 @@ def test_the_filter_field_waits_for_a_pause_and_enter_applies_it() -> None:
             Change("pics/b.jpg", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.filter_edit.setText("docs/")
-    # Typing does not re-filter right away.
-    assert view.model.rowCount() == 5
-    view.filter_edit.returnPressed.emit()
-    paths = set(_paths(view.model))
-    assert "docs/a.txt" in paths
-    assert "pics/b.jpg" not in paths
+    before = view.model.rowCount()
+    view.search_edit.setText("a.txt")
+    view.find_next()
+    assert view.model.rowCount() == before
+    assert view.model.row_path(view.source.currentIndex().row()) == "docs/a.txt"
     view.close()
     application.processEvents()
 

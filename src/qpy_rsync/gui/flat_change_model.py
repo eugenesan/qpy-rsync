@@ -567,6 +567,10 @@ class FlatChangeModel(QAbstractTableModel):
     def visible_actions(self) -> set[ChangeAction] | None:
         return None if self._visible_actions is None else set(self._visible_actions)
 
+    def visible_rows(self) -> list[int]:
+        """The model row indices currently shown in the panes."""
+        return list(self._visible_rows)
+
     def set_filter_directories(self, enabled: bool) -> None:
         """Apply the action filters to the reported directories as well."""
         if self.filter_directories == bool(enabled):
@@ -982,7 +986,7 @@ class FlatChangeModel(QAbstractTableModel):
             with timed("model.decision_rows"):
                 self._rebuild_visible_rows()
             with timed("model.decision_totals"):
-                self._total_up_directories()
+                self._total_up_directories_for(paths)
             self.endResetModel()
 
     def refresh_excluded_visibility(self) -> None:
@@ -1000,56 +1004,56 @@ class FlatChangeModel(QAbstractTableModel):
                 self._total_up_directories()
             self.endResetModel()
 
-    def _total_up_directories(self) -> None:
-        """Total the visible items of every directory.
+    def _recompute_directory(self, path: str, excluded: dict[str, bool]) -> None:
+        directory = self._directories.get(path)
+        if directory is None:
+            return
+        items = 0
+        size = 0
+        destination_size = 0
+        for index in directory.files:
+            if not self._change_visible[index]:
+                continue
+            if excluded.get(self._change_paths[index], False):
+                continue
+            change = self.changes[index]
+            items += 1
+            size += int(change.size or 0)
+            destination_size += self._change_destination_sizes[index]
+        for child_path in directory.child_directories:
+            child = self._directories[child_path]
+            if not child.visible or excluded.get(child_path, False):
+                continue
+            items += child.subtree_items
+            size += child.subtree_size
+            destination_size += child.subtree_destination_size
+        directory.subtree_items = items
+        directory.subtree_size = size
+        directory.subtree_destination_size = destination_size
 
-        The tree computed these totals by walking its nodes. The flat model
-        walks the directories instead, which gives the same numbers in a
-        fraction of the time.
-        """
+    def _total_up_directories(self) -> None:
+        """Total the visible items of every directory."""
+        excluded = self._excluded_paths()
         for directory in self._directories.values():
             directory.subtree_items = 0
             directory.subtree_size = 0
             directory.subtree_destination_size = 0
-
-        # The directories from the deepest one upwards, so a directory knows
-        # the totals of the directories below it.
-        stash = self.stash
-        check_stashed = bool(stash) and not self.show_stashed
-        # The compared folder comes last, after the directories below it.
         for path in [*self._ordered_directories(), ""]:
-            directory = self._directories.get(path)
-            if directory is None:
-                # The view sorts once while it is built, before any
-                # comparison exists.
-                continue
-            items = 0
-            size = 0
-            destination_size = 0
-            for index in directory.files:
-                if not self._change_visible[index]:
-                    continue
-                change = self.changes[index]
-                if check_stashed and stash.is_stashed(self._change_paths[index]):
-                    continue
-                items += 1
-                size += int(change.size or 0)
-                destination_size += self._change_destination_sizes[index]
-            for child_path in directory.child_directories:
-                child = self._directories[child_path]
-                if not child.visible:
-                    continue
-                if check_stashed and stash.is_stashed(child_path):
-                    continue
-                items += child.subtree_items
-                size += child.subtree_size
-                destination_size += child.subtree_destination_size
-            # A directory row carries the totals of the affected items inside
-            # it. Its own entry size (usually 4 KiB) is never shown, and a
-            # directory with no selected items has no size at all.
-            directory.subtree_items = items
-            directory.subtree_size = size
-            directory.subtree_destination_size = destination_size
+            self._recompute_directory(path, excluded)
+
+    def _total_up_directories_for(self, paths: set[str]) -> None:
+        """Recompute only the directories affected by the given paths."""
+        excluded = self._excluded_paths()
+        affected: set[str] = {"", *paths}
+        for path in paths:
+            parent = path.rpartition("/")[0]
+            while parent:
+                affected.add(parent)
+                parent = parent.rpartition("/")[0]
+        for path in self._ordered_directories():
+            if path in affected:
+                self._recompute_directory(path, excluded)
+        self._recompute_directory("", excluded)
 
     def _ordered_directories(self) -> list[str]:
         """The directories from the deepest one upwards."""

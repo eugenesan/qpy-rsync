@@ -24,8 +24,8 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     assert window.validate_plan_button.accessibleName() == "Verify Actions"
     assert window.swap_button.accessibleName() == "Swap Source and Destination"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
-    assert window.comparison.filter_edit.minimumWidth() == 180
-    assert window.comparison.filter_edit.maximumWidth() > 1000
+    assert window.comparison.search_edit.minimumWidth() == 180
+    assert window.comparison.search_edit.maximumWidth() > 1000
     assert window.comparison.controls.sizePolicy().horizontalPolicy().name == "Expanding"
     assert not window.comparison.inventory_button.icon().isNull()
     # The toolbar actions are icon buttons of the common control size.
@@ -144,14 +144,14 @@ def test_browse_start_uses_existing_parent(tmp_path) -> None:
     assert MainWindow._browse_start_directory("nas:/remote/path") == str(Path.home())
 
 
-def test_filter_find_focus_and_ui_labels() -> None:
+def test_search_and_ui_labels() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window.comparison.filter_edit.setText("*.jpg")
-    window.comparison.filter_button.click()
+    window.comparison.search_edit.setText("*.jpg")
+    window.comparison.find_button.click()
     application.processEvents()
-    assert window.comparison.filter_edit.selectedText() == "*.jpg"
+    assert window.comparison.search_edit.text() == "*.jpg"
     assert window.comparison.model.HEADERS[0] == "Item"
     assert window.comparison.model.HEADERS[1] == "Items"
     assert window.comparison.model.HEADERS[5] == "Item"

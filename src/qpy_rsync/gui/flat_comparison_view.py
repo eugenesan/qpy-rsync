@@ -21,7 +21,6 @@ from PySide6.QtCore import (
     QModelIndex,
     QRect,
     QSize,
-    QTimer,
     Qt,
     Signal,
 )
@@ -458,18 +457,17 @@ class FlatComparisonView(QWidget):
         self.splitter.setStretchFactor(1, 0)
         self.splitter.setStretchFactor(2, 1)
 
-        self.filter_edit = QLineEdit()
-        self.filter_edit.setPlaceholderText("Pictures/, Documents, School-Report-202*, *.jpg")
-        self.filter_edit.setClearButtonEnabled(True)
-        self.filter_edit.setMinimumWidth(180)
-        self.filter_edit.setSizePolicy(
-            self.filter_edit.sizePolicy().horizontalPolicy(),
-            self.filter_edit.sizePolicy().verticalPolicy(),
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Search the list...")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setMinimumWidth(180)
+        self.search_edit.setSizePolicy(
+            self.search_edit.sizePolicy().horizontalPolicy(),
+            self.search_edit.sizePolicy().verticalPolicy(),
         )
-        self.filter_edit.setToolTip(
-            "Temporarily filter paths shown in the current comparison. "
-            "This does not change rsync include or exclude rules. "
-            "Collapsed folders are expanded while a filter is active."
+        self.search_edit.setToolTip(
+            "Find the next item whose name or path contains the text. "
+            "Searching does not change the list."
         )
 
         self.inventory_button = QToolButton()
@@ -493,15 +491,15 @@ class FlatComparisonView(QWidget):
         self.controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls = QHBoxLayout(self.controls)
         controls.setContentsMargins(0, 0, 0, 0)
-        self.filter_button = QToolButton()
-        self.filter_button.setIcon(search_icon())
-        self.filter_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.filter_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-        self.filter_button.setToolTip("Filter/Find (Ctrl+F)")
-        self.filter_button.setAccessibleName("Filter/Find")
-        self.filter_button.clicked.connect(self.focus_path_filter)
-        controls.addWidget(self.filter_button)
-        controls.addWidget(self.filter_edit, 1)
+        self.find_button = QToolButton()
+        self.find_button.setIcon(search_icon())
+        self.find_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.find_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.find_button.setToolTip("Find next (Ctrl+F)")
+        self.find_button.setAccessibleName("Find next")
+        self.find_button.clicked.connect(self.find_next)
+        controls.addWidget(self.find_button)
+        controls.addWidget(self.search_edit, 1)
         self.menu_button = QToolButton()
         self.menu_button.setIcon(app_menu_icon())
         self.menu_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -518,14 +516,7 @@ class FlatComparisonView(QWidget):
         layout.addWidget(self.splitter)
 
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
-        # Re-filtering a large comparison costs a few hundred milliseconds,
-        # so typing waits for a short pause and Enter applies immediately.
-        self._filter_timer = QTimer(self)
-        self._filter_timer.setSingleShot(True)
-        self._filter_timer.setInterval(300)
-        self._filter_timer.timeout.connect(self._apply_path_filter)
-        self.filter_edit.textChanged.connect(self._filter_changed)
-        self.filter_edit.returnPressed.connect(self._apply_path_filter)
+        self.search_edit.returnPressed.connect(self.find_next)
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.horizontalHeader().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.horizontalHeader().sectionResized.connect(
@@ -1235,24 +1226,34 @@ class FlatComparisonView(QWidget):
             STALE_HELP_TEXT if stale else ""
         )
 
-    def focus_path_filter(self) -> None:
-        self.filter_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
-        self.filter_edit.selectAll()
+    def focus_search(self) -> None:
+        self.search_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self.search_edit.selectAll()
 
-    def _filter_changed(self, _text: str) -> None:
-        """Re-filter after the typing pauses, or when Enter is pressed."""
-        self._filter_timer.start()
-
-    def _apply_path_filter(self) -> None:
-        self._filter_timer.stop()
-        with self._keeping_the_selection():
-            self.model.set_path_filter(self.filter_edit.text())
-        self.changes_updated.emit(list(self.model.changes), "display")
-
-    def set_path_filter(self, text: str) -> None:
-        """Apply a path filter right away, for callers other than the field."""
-        self._filter_timer.stop()
-        self.model.set_path_filter(text)
+    def find_next(self) -> None:
+        """Jump to the next visible row matching the search text."""
+        text = self.search_edit.text().strip().casefold()
+        if not text:
+            self.focus_search()
+            return
+        rows = self.model.visible_rows()
+        if not rows:
+            return
+        current = self._current_path()
+        start = 0
+        if current:
+            for position, row in enumerate(rows):
+                if self.model.row_path(row) == current:
+                    start = position + 1
+                    break
+        for offset in range(len(rows)):
+            index = rows[(start + offset) % len(rows)]
+            row = self.model._row_data(index)
+            if row is None:
+                continue
+            if text in row.path.casefold() or text in row.name.casefold():
+                self.select_path(row.path)
+                return
 
     # ------------------------------------------------------------------
     # Sorting
