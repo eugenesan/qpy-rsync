@@ -21,6 +21,8 @@
   Decision effects and per-folder totals are cached and updated incrementally
   as well. On a 520k-item comparison this roughly halves the filter time and
   removes most of the overview cost; single-item decisions stay around 0.2–0.4s.
+- Exclude/show toggles no longer copy the full change list through a Qt signal,
+  and the excluded-state update is merged into the single row rebuild pass.
 - The Overview applies only changed folder counts and propagates total deltas
   up the tree, so a single decision updates in ~20 ms on a 31k-folder tree
   instead of rebuilding every folder total.

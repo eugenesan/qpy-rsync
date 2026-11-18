@@ -384,7 +384,7 @@ class FlatComparisonView(QWidget):
     diff_requested = Signal(object)
     decision_changed = Signal(object)
     inventory_toggled = Signal(bool)
-    changes_updated = Signal(object, str)
+    changes_updated = Signal(str)
     reset_exclusions_requested = Signal()
     # A tool the user wants to run on the row: name, path, side, is a folder.
     tool_requested = Signal(str, str, str, bool)
@@ -966,7 +966,7 @@ class FlatComparisonView(QWidget):
         with self._keeping_the_selection():
             for path in paths:
                 self.model.set_excluded(path, not self.model.exclusions.is_excluded(path))
-        self.changes_updated.emit(list(self.model.changes), "decision")
+        self.changes_updated.emit("decision")
         return True
 
     _toggle_exclusion = _toggle_excluded
@@ -1050,7 +1050,7 @@ class FlatComparisonView(QWidget):
         with timed("view.show_excluded", show=show):
             self.model.show_excluded = show
             self.model.refresh_excluded_visibility()
-            self.changes_updated.emit(list(self.model.changes), "display")
+            self.changes_updated.emit("display")
 
     def _refresh_exclusions(
         self, *, kind: str = "decision", model_refreshed: bool = True
@@ -1060,7 +1060,7 @@ class FlatComparisonView(QWidget):
             with timed("view.model_refresh"):
                 self.model.refresh_exclusions()
         with timed("view.emit_changes"):
-            self.changes_updated.emit(list(self.model.changes), kind)
+            self.changes_updated.emit(kind)
 
     @staticmethod
     def _set_current(tree: QTableView, index: QModelIndex) -> None:
@@ -1113,7 +1113,7 @@ class FlatComparisonView(QWidget):
             tree.setCurrentIndex(QModelIndex())
             tree.selectionModel().clear()
         self.model.set_changes(changes)  # type: ignore[arg-type]
-        self.changes_updated.emit(list(self.model.changes), "new")
+        self.changes_updated.emit("new")
 
     def set_external_tools(self, tools: list[ExternalTool]) -> None:
         """The tools the context menu offers on an item."""
@@ -1129,7 +1129,7 @@ class FlatComparisonView(QWidget):
         with self._keeping_the_selection():
             self.model.set_visible_actions(actions, apply=apply)
         if apply:
-            self.changes_updated.emit(list(self.model.changes), "display")
+            self.changes_updated.emit("display")
 
     def set_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]]

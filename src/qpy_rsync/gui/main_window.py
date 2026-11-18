@@ -2011,9 +2011,7 @@ class MainWindow(QMainWindow):
 
     def _on_decision_changed(self, paths: object) -> None:
         affected = set(paths) if isinstance(paths, (set, list, tuple)) else None
-        self._overview_updated(
-            list(self.comparison.visible_changes()), "decision", paths=affected
-        )
+        self._overview_updated("decision", paths=affected)
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
@@ -2777,7 +2775,7 @@ class MainWindow(QMainWindow):
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
     def _overview_updated(
-        self, changes: object, kind: str = "new", paths: set[str] | None = None
+        self, kind: str = "new", paths: set[str] | None = None
     ) -> None:
         """Refresh the overview with the items the filters show."""
         root_name = ""

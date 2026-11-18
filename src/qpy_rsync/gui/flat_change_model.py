@@ -1133,7 +1133,9 @@ class FlatChangeModel(QAbstractTableModel):
                 index += 1
         return rows
 
-    def _rebuild_visible_rows(self) -> None:
+    def _rebuild_visible_rows(
+        self, excluded: dict[str, bool] | None = None
+    ) -> None:
         """Rebuild the visible row list from the cached per-row state.
 
         This deliberately skips the expensive action/directory passes in
@@ -1155,7 +1157,15 @@ class FlatChangeModel(QAbstractTableModel):
         aggregates: list[list[int]] = [[0, 0] for _ in self._dir_paths]
         row_dir_index = self._row_dir_index
         change_sizes = self._change_sizes
+        paths = self._row_paths
+        row_excluded = self._row_excluded
+        excluded_get = excluded.get if excluded is not None else None
         for index, row in enumerate(self._rows):
+            if excluded_get is not None:
+                path = paths[index]
+                value = excluded_get(path, False)
+                row_excluded[index] = value
+                row.excluded = value
             if row.excluded and not self.show_excluded and row.path:
                 continue
             if row.is_directory:
@@ -1337,11 +1347,8 @@ class FlatChangeModel(QAbstractTableModel):
             self.beginResetModel()
             with timed("model.excluded_map"):
                 excluded = self._excluded_paths()
-            with timed("model.excluded_rows"):
-                for row in self._rows:
-                    row.excluded = excluded.get(row.path, False)
             with timed("model.excluded_rows_rebuild"):
-                self._rebuild_visible_rows()
+                self._rebuild_visible_rows(excluded)
             with timed("model.excluded_totals"):
                 self._total_up_directories_for(
                     {path for path, value in excluded.items() if value}

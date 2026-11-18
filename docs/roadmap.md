@@ -150,22 +150,23 @@ Remaining work, in priority order:
    Target: under ~40 ms for a decision, under ~100 ms for a global filter —
    measured at 19–21 ms for a single folder on a 31k-folder tree, 49 ms for
    half the folders.
-2. **Remove the change-list copy in `view.emit_changes`.** Every stash sends
-   `list(model.changes)` (~337 ms in `timing19`) through a Qt signal to a slot
-   that no longer uses the list. Pass the model or an empty token and let the
-   slot pull only what it needs.
-3. **Speed up `refresh_excluded_visibility()`.** The show-stashed toggle
-   spends ~413 ms in `excluded_rows_rebuild`. The row loop can use the same
-   flat arrays and list slicing as the main filter pass, and the overview
-   update can be coalesced with it.
+2. **Remove the change-list copy in `view.emit_changes` — delivered.** The
+   `changes_updated` signal now carries only the reason string; the slot pulls
+   aggregates from the model. No 520k-element list is copied on every action.
+3. **Speed up `refresh_excluded_visibility()` — delivered.** The excluded
+   flags are applied inside the single row rebuild pass instead of a separate
+   O(n) loop. A show/hide toggle on a 31k-folder tree dropped from ~500 ms to
+   ~330 ms.
 4. **Indexed incremental search — delivered.** Folded names and paths are
    cached on the model, the match list is built once per search text, and
    Enter/Shift+Enter step through it in O(1). Typing searches after a 250 ms
    debounce, a `n/total` counter is shown, and Ctrl+G / Ctrl+Shift+G repeat the
    search from anywhere in the window. F3 stays with Load Profile. Search never
    changes the visible set.
-5. **Coalesce UI refreshes.** Several signals each trigger an Overview update
-   in one action. A short debounce would let the UI paint once.
+5. **Coalesce UI refreshes — deferred.** After the items above, one user
+   action triggers one Overview update in the current signal graph. A timer
+   debounce would help only with rapid repeated clicks, at the cost of
+   asynchronous state in the tests; revisit if `timing` shows duplicated work.
 
 Acceptance: every compare-view action, including search and global filters,
 under ~1 s on the 1.2M-item tree; initial load unchanged.
