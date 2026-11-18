@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import shlex
 import shutil
 import os
@@ -53,7 +54,7 @@ from qpy_rsync.backend.inventory import (
 from qpy_rsync.backend.process_runner import ProcessState
 from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
 from qpy_rsync.backend.rsync_filters import filter_text_to_rules
-from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.core.changes import ChangeAction, ChangeDecision
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import (
     load_profile,
@@ -225,6 +226,11 @@ class MainWindow(QMainWindow):
         self._profile_conflict = ConflictPolicy.OVERRIDE
         self._comparison_profile: SyncProfile | None = None
         self._current_plan: ExecutionPlan | None = None
+        self._plan_paths: list[str] = []
+        self._plan_item_indices: list[int] = []
+        self._plan_items: dict[str, object] = {}
+        self._plan_changes: dict[str, object] = {}
+        self._last_stash_paths: set[str] = set()
         self._validated_plan: ExecutionPlan | None = None
         self._execution_gate = ExecutionGate()
         self._plan_validation = PlanValidationService(self)
@@ -1962,6 +1968,118 @@ class MainWindow(QMainWindow):
         if self._active_profile is not None and self.comparison.model.changes:
             self._refresh_plan_summary()
 
+    @staticmethod
+    def _item_contribution(item, included: bool) -> dict[str, int]:
+        """The summary deltas of one plan item in the given state."""
+        size = int(item.size or 0)
+        if included:
+            delta = {
+                "included": 1,
+                "destructive": int(item.destructive),
+                "included_size": size,
+                "total_size": size
+                if item.action
+                in {
+                    ChangeAction.CREATE,
+                    ChangeAction.UPDATE_CONTENT,
+                    ChangeAction.REPLACE,
+                }
+                else 0,
+                "creates": int(item.action is ChangeAction.CREATE),
+                "updates": int(item.action is ChangeAction.UPDATE_CONTENT),
+                "metadata": int(item.action is ChangeAction.UPDATE_METADATA),
+                "replacements": int(item.action is ChangeAction.REPLACE),
+                "deletions": int(item.action is ChangeAction.DELETE),
+                "excluded": 0,
+                "retained_destination_only": 0,
+            }
+        else:
+            delta = dict.fromkeys(
+                (
+                    "included",
+                    "destructive",
+                    "included_size",
+                    "total_size",
+                    "creates",
+                    "updates",
+                    "metadata",
+                    "replacements",
+                    "deletions",
+                ),
+                0,
+            )
+            if item.comparison_action is ChangeAction.DESTINATION_ONLY:
+                delta["retained_destination_only"] = 1
+            else:
+                delta["excluded"] = 1
+        return delta
+
+    def _apply_stash_to_plan(self, added: set[str], removed: set[str]) -> bool:
+        """Update the cached plan for stash changes without rebuilding it."""
+        plan = self._current_plan
+        if plan is None or not self._plan_items:
+            return False
+        candidates: set[int] = set()
+        for path in added | removed:
+            start = bisect_left(self._plan_paths, path)
+            if start < len(self._plan_paths) and self._plan_paths[start] == path:
+                candidates.add(start)
+            prefix = path + "/"
+            index = bisect_left(self._plan_paths, prefix)
+            while index < len(self._plan_paths) and self._plan_paths[index].startswith(
+                prefix
+            ):
+                candidates.add(index)
+                index += 1
+        if not candidates:
+            return True
+        current_stash = set(self.comparison.stashed_paths())
+        deltas: dict[str, int] = {}
+        items = list(plan.items)
+        decisions = self.comparison.model.decisions
+        for position in candidates:
+            path = self._plan_paths[position]
+            item_index = self._plan_item_indices[position]
+            item = items[item_index]
+            change = self._plan_changes.get(path)
+            if change is None:
+                return False
+            stashed = any(
+                parent in current_stash
+                for parent in [path, *self._parent_paths(path)]
+            )
+            included = (
+                not stashed
+                and decisions.effective(change) is not ChangeDecision.EXCLUDE
+            )
+            if included == item.included:
+                continue
+            old = self._item_contribution(item, item.included)
+            new = self._item_contribution(item, included)
+            for key, value in old.items():
+                deltas[key] = deltas.get(key, 0) - value
+            for key, value in new.items():
+                deltas[key] = deltas.get(key, 0) + value
+            items[item_index] = replace(item, included=included)
+        fields = {
+            key: getattr(plan.summary, key) + value
+            for key, value in deltas.items()
+            if hasattr(plan.summary, key) and value
+        }
+        summary = replace(plan.summary, **fields) if fields else plan.summary
+        self._current_plan = replace(plan, items=tuple(items), summary=summary)
+        self._last_stash_paths = current_stash
+        return True
+
+    @staticmethod
+    def _parent_paths(path: str) -> list[str]:
+        parents: list[str] = []
+        parent = path.rpartition("/")[0]
+        while parent:
+            parents.append(parent)
+            parent = parent.rpartition("/")[0]
+        return parents
+
     def _refresh_plan_summary(self) -> None:
         with timed("ui.plan_rebuild"):
             self._rebuild_plan_summary()
@@ -1969,6 +2087,11 @@ class MainWindow(QMainWindow):
     def _rebuild_plan_summary(self) -> None:
         if self._active_profile is None:
             self._current_plan = None
+            self._plan_paths = []
+            self._plan_item_indices = []
+            self._plan_items = {}
+            self._plan_changes = {}
+            self._last_stash_paths = set()
             self._last_plan_summary = None
             self.overview.set_statistics(None)
             self.validate_plan_button.setEnabled(False)
@@ -1981,7 +2104,26 @@ class MainWindow(QMainWindow):
             getattr(self.comparison.model, "stash", None),
             self.comparison.model.destination_metadata(),
         )
-        summary = self._current_plan.summary
+        entries = sorted(
+            (item.path, index) for index, item in enumerate(self._current_plan.items)
+        )
+        self._plan_paths = [path for path, _index in entries]
+        self._plan_item_indices = [index for _path, index in entries]
+        self._plan_items = {
+            item.path: item for item in self._current_plan.items
+        }
+        self._plan_changes = {
+            str(change.path).rstrip("/"): change
+            for change in self.comparison.model.changes
+        }
+        self._last_stash_paths = set(self.comparison.stashed_paths())
+        self._show_plan_summary()
+
+    def _show_plan_summary(self) -> None:
+        plan = self._current_plan
+        if plan is None:
+            return
+        summary = plan.summary
         noun = "item" if summary.included == 1 else "items"
         text = (
             f"Selected: {summary.included} {noun}, "
@@ -2421,7 +2563,13 @@ class MainWindow(QMainWindow):
             visible = self.comparison.visible_changes()
             self.overview.set_changes(list(visible), root_name)
             self._update_stashed_count()
-        self._refresh_plan_summary()
+        current_stash = set(self.comparison.stashed_paths())
+        added = current_stash - self._last_stash_paths
+        removed = self._last_stash_paths - current_stash
+        if (added or removed) and self._apply_stash_to_plan(added, removed):
+            self._show_plan_summary()
+        else:
+            self._refresh_plan_summary()
 
     def _overview_folder_activated(self, path: str) -> None:
         """Select a folder of the overview in the tree panes."""

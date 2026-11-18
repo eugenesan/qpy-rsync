@@ -1465,3 +1465,30 @@ def test_deleted_size_updates_after_metadata_arrives() -> None:
     assert window.overview.statistics.deleted_size_label.text() == "(12.1 KiB)"
     window.close()
     application.processEvents()
+
+
+def test_stash_updates_plan_incrementally() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=10),
+        Change("b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++", size=20),
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+    before = window._current_plan.summary.included
+    assert before == 2
+
+    window.comparison.model.stash.add("a.txt")
+    window._overview_updated([])
+    assert window._current_plan.summary.included == 1
+    assert [i.path for i in window._current_plan.included_items] == ["b.txt"]
+    window.close()
+    application.processEvents()
