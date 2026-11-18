@@ -219,6 +219,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._row_of_path: dict[str, int] = {}
         self._sorted_paths: list[str] = []
         self._visible_changes: list[Change] = []
+        self._visible_change_indices: set[int] = set()
         self._override_paths: set[str] = set()
         # Bumped whenever the layout changes, so a delegate can drop its
         # cached measurements.
@@ -867,6 +868,7 @@ class FlatChangeModel(QAbstractTableModel):
             visible_rows.append(index)
         debug_timing("model.filter_phase", phase="rows_done")
         self._visible_rows = visible_rows
+        self._visible_change_indices = visible_change_indices
         self._visible_changes = [
             self.changes[index] for index in sorted(visible_change_indices)
         ]
@@ -921,6 +923,56 @@ class FlatChangeModel(QAbstractTableModel):
             index = self._row_of_path[clean]
             self._rows[index].excluded = excluded.get(clean, False)
 
+    def _collapsed_map(self) -> dict[str, bool]:
+        pattern_active = bool(self._pattern) and self._pattern != "*"
+        if not self.collapsed or pattern_active:
+            return {"": False}
+        folded: dict[str, bool] = {"": False}
+        for path, directory in self._directories.items():
+            folded[path] = (
+                folded.get(directory.parent, False) or path in self.collapsed
+            )
+        return folded
+
+    def _is_row_visible(self, row: FlatRow, folded: dict[str, bool]) -> bool:
+        pattern_active = bool(self._pattern) and self._pattern != "*"
+        if row.excluded and not self.show_stashed:
+            return False
+        if row.is_directory:
+            directory = self._directories.get(row.path)
+            if directory is None or not (directory.visible or row.excluded):
+                return False
+        elif not row.excluded and not self._change_visible[row.change_index]:
+            return False
+        if (
+            self.collapsed
+            and not pattern_active
+            and row.path
+            and folded.get(row.parent, False)
+        ):
+            return False
+        return True
+
+    def _affected_rows(self, paths: set[str]) -> set[int]:
+        rows: set[int] = set()
+        for path in paths:
+            base = path.rstrip("/")
+            if not base:
+                return set(self._row_of_path.values())
+            index = bisect_left(self._sorted_paths, base)
+            while index < len(self._sorted_paths):
+                key = self._sorted_paths[index]
+                if key == base or key.startswith(base + "/"):
+                    row = self._row_of_path.get(key)
+                    if row is not None:
+                        rows.add(row)
+                    index += 1
+                    continue
+                if key > base + "/":
+                    break
+                index += 1
+        return rows
+
     def _rebuild_visible_rows(self) -> None:
         """Rebuild the visible row list from the cached per-row state.
 
@@ -971,10 +1023,64 @@ class FlatChangeModel(QAbstractTableModel):
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
         self._visible_rows = visible_rows
+        self._visible_change_indices = visible_change_indices
         self._visible_changes = [
             self.changes[index] for index in sorted(visible_change_indices)
         ]
         self._visible_row_of_path = visible_row_of_path
+        self.layout_token += 1
+
+    def _patch_visible_rows(self, paths: set[str]) -> None:
+        """Update only the rows affected by a decision change."""
+        affected = self._affected_rows(paths)
+        if not affected:
+            return
+        folded = self._collapsed_map()
+        for row_index in affected:
+            change_index = self._rows[row_index].change_index
+            if change_index >= 0:
+                self._visible_change_indices.discard(change_index)
+            directory = self._directories.get(self._rows[row_index].path)
+            if directory is not None and directory.own_change_index >= 0:
+                self._visible_change_indices.discard(directory.own_change_index)
+        positions = [
+            position
+            for position, row_index in enumerate(self._visible_rows)
+            if row_index in affected
+        ]
+        for position in sorted(positions, reverse=True):
+            del self._visible_rows[position]
+        additions: list[int] = []
+        for row_index in sorted(affected):
+            row = self._rows[row_index]
+            if not self._is_row_visible(row, folded):
+                continue
+            additions.append(row_index)
+            if row.excluded:
+                continue
+            change_index = row.change_index
+            if change_index >= 0:
+                self._visible_change_indices.add(change_index)
+            elif row.is_directory:
+                directory = self._directories.get(row.path)
+                if (
+                    directory is not None
+                    and directory.own_change_index >= 0
+                    and not directory.faded
+                ):
+                    self._visible_change_indices.add(directory.own_change_index)
+        for row_index in additions:
+            position = bisect_left(self._visible_rows, row_index)
+            self._visible_rows.insert(position, row_index)
+        self._visible_changes = [
+            self.changes[index] for index in sorted(self._visible_change_indices)
+        ]
+        self._visible_row_of_path = {
+            self._rows[index].path: position
+            for position, index in enumerate(self._visible_rows)
+        }
+        for index, row in enumerate(self._visible_rows):
+            self._rows[row].alternate = index % 2 == 0
         self.layout_token += 1
 
     def refresh_decision_visibility(self, paths: set[str]) -> None:
@@ -984,7 +1090,7 @@ class FlatChangeModel(QAbstractTableModel):
             with timed("model.decision_excluded"):
                 self._update_excluded_rows(paths)
             with timed("model.decision_rows"):
-                self._rebuild_visible_rows()
+                self._patch_visible_rows(paths)
             with timed("model.decision_totals"):
                 self._total_up_directories_for(paths)
             self.endResetModel()
@@ -1001,7 +1107,9 @@ class FlatChangeModel(QAbstractTableModel):
             with timed("model.excluded_rows_rebuild"):
                 self._rebuild_visible_rows()
             with timed("model.excluded_totals"):
-                self._total_up_directories()
+                self._total_up_directories_for(
+                    {path for path, value in excluded.items() if value}
+                )
             self.endResetModel()
 
     def _recompute_directory(self, path: str, excluded: dict[str, bool]) -> None:
