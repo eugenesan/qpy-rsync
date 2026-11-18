@@ -977,20 +977,27 @@ class FlatChangeModel(QAbstractTableModel):
         """Apply decision changes without a full filter recalculation."""
         with timed("model.decision_refresh"):
             self.beginResetModel()
-            self._update_excluded_rows(paths)
-            self._rebuild_visible_rows()
-            self._total_up_directories()
+            with timed("model.decision_excluded"):
+                self._update_excluded_rows(paths)
+            with timed("model.decision_rows"):
+                self._rebuild_visible_rows()
+            with timed("model.decision_totals"):
+                self._total_up_directories()
             self.endResetModel()
 
     def refresh_excluded_visibility(self) -> None:
         """Show or hide every excluded row with one optimized pass."""
         with timed("model.excluded_refresh"):
             self.beginResetModel()
-            excluded = self._excluded_paths()
-            for row in self._rows:
-                row.excluded = excluded.get(row.path, False)
-            self._rebuild_visible_rows()
-            self._total_up_directories()
+            with timed("model.excluded_map"):
+                excluded = self._excluded_paths()
+            with timed("model.excluded_rows"):
+                for row in self._rows:
+                    row.excluded = excluded.get(row.path, False)
+            with timed("model.excluded_rows_rebuild"):
+                self._rebuild_visible_rows()
+            with timed("model.excluded_totals"):
+                self._total_up_directories()
             self.endResetModel()
 
     def _total_up_directories(self) -> None:

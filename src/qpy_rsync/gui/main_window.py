@@ -3354,13 +3354,15 @@ class MainWindow(QMainWindow):
         result = _inventory_result(extra)
         if not result.destination_metadata:
             return
-        merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
-        merged.update(result.destination_metadata)
-        self.comparison.set_destination_metadata(merged)
+        with timed("metadata.merge", entries=len(result.destination_metadata)):
+            merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
+            merged.update(result.destination_metadata)
+            self.comparison.set_destination_metadata(merged)
         # The plan was first built before this asynchronous listing arrived.
         # Only the deleted-size summary depends on it, so avoid a full rebuild.
-        if not self._update_plan_deleted_size():
-            self._refresh_plan_summary()
+        with timed("metadata.plan"):
+            if not self._update_plan_deleted_size():
+                self._refresh_plan_summary()
         self._append_log(
             f"Destination metadata: {len(result.destination_metadata)} object(s)."
         )
