@@ -1411,6 +1411,24 @@ def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
         for action in view_menu.actions()
         if not action.isSeparator()
     }
+    # The search repeats from anywhere in the window; F3 belongs to profiles.
+    edit_menu = None
+    for menu_action in window.menuBar().actions():
+        menu = menu_action.menu()
+        if menu is not None and menu.title() == "&Edit":
+            edit_menu = menu
+            break
+    assert edit_menu is not None
+    find_actions = {
+        action.text(): action.shortcut().toString()
+        for action in edit_menu.actions()
+        if action.text() in {"Find in List", "Find Next", "Find Previous"}
+    }
+    assert find_actions == {
+        "Find in List": "Ctrl+F",
+        "Find Next": "Ctrl+G",
+        "Find Previous": "Ctrl+Shift+G",
+    }
     assert entries == {
         "Normal": "",
         "Compare only": "",

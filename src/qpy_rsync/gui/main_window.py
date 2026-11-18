@@ -833,6 +833,12 @@ class MainWindow(QMainWindow):
         self._add_action(
             edit_menu, "Find in List", "Ctrl+F", self.comparison.focus_search
         )
+        self._add_action(
+            edit_menu, "Find Next", "Ctrl+G", self.comparison.find_next
+        )
+        self._add_action(
+            edit_menu, "Find Previous", "Ctrl+Shift+G", self.comparison.find_previous
+        )
         self._add_action(edit_menu, "Profile", "F4", self._edit_profile)
         self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
 

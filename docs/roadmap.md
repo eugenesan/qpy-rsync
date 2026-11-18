@@ -39,6 +39,7 @@ each. In short:
 | 1.15am – 1.15ap | the flat comparison list that replaced the tree |
 | 1.15aq – 1.15az | one comparison view, the settings, the statistics, the columns, the stash and the folding |
 | 1.15ba – 1.15bd | the quiet terminal, the parent folder, the external tools and the inverted action filter |
+| 1.16 | profiles, recent profiles and the profile editor; desktop integration and launcher scripts; packaging dependencies. The original 1.16 goals were met along the way and need no separate milestone. |
 
 ## Milestone validation notes
 
@@ -155,27 +156,55 @@ Remaining work, in priority order:
    spends ~413 ms in `excluded_rows_rebuild`. The row loop can use the same
    flat arrays and list slicing as the main filter pass, and the overview
    update can be coalesced with it.
-4. **Indexed incremental search.** `find_next()` currently scans up to 520k
-   visible rows on every Enter and does a fresh `casefold()` per row. Cache
-   folded names and paths on the model, build a match list once per search
-   text/layout generation, and navigate it in O(1). Add debounced as-you-type
-   search, a match counter, and previous-match navigation. Search must never
-   change the visible set.
+4. **Indexed incremental search — delivered.** Folded names and paths are
+   cached on the model, the match list is built once per search text, and
+   Enter/Shift+Enter step through it in O(1). Typing searches after a 250 ms
+   debounce, a `n/total` counter is shown, and Ctrl+G / Ctrl+Shift+G repeat the
+   search from anywhere in the window. F3 stays with Load Profile. Search never
+   changes the visible set.
 5. **Coalesce UI refreshes.** Several signals each trigger an Overview update
    in one action. A short debounce would let the UI paint once.
 
 Acceptance: every compare-view action, including search and global filters,
 under ~1 s on the 1.2M-item tree; initial load unchanged.
 
-### Milestone 1.16: profiles and the Ubuntu packaging
+### Milestone 1.15bf: finish the unified lists
 
-- complete the profile persistence and the recent-profile handling
-- install the desktop file, the icon, the documentation and the launcher
-- build a Debian package on Ubuntu's system Python and PySide6
-- declare the rsync, OpenSSH, util-linux and optional askpass dependencies
-- add the package installation and the smoke tests
+The stash was a useful stepping stone, but it is a second exclusion system
+next to the per-item decisions. The remaining work is to remove it and leave
+one model of "this item is not part of this run".
 
-### After 1.16
+1. **Remove the stash and unify it with decisions.**
+   - Space, the context menu and the overview keep working, but they set the
+     existing EXCLUDE decision instead of adding to `StashedItems`.
+   - The "Show stashed" toggle becomes "Show excluded" and uses the same
+     per-row `excluded` state as the decisions. "Restore All Stashed" becomes
+     "Reset Excluded Decisions" (or is removed if the existing *reset all*
+     already covers it).
+   - `StashedItems`, `stash_path`, `stashed_paths`, `set_show_stashed` and the
+     stash arguments of `build_execution_plan` are removed once all callers
+     use the decisions. The plan fingerprint then has one source of truth.
+   - Keep the regression tests: excluding a directory hides its descendants
+     and protects its destination contents; excluded items stay out of the
+     plan and the overview totals.
+2. **Clean up the central action column.** The crossed-eye marker now paints
+   the same state as the checkbox. Remove the duplicate marker and its click
+   target; keep the checkbox as the single affordance for include/exclude.
+   The action column should show only the action icon, label and checkbox.
+   Update the delegate painting, the hit tests, the tooltips, the help text
+   and the design document.
+3. **Finish the unified list details.**
+   - One selection path shared by all three panes, with no separate stash
+     selection state.
+   - The overview's hide/restore action uses the same decision API as the list.
+   - The journal and statistics describe exclusions with one vocabulary.
+   - No stale "stashed" strings in the UI, docs or tests.
+
+Acceptance: the full suite passes, the help and design documents match the UI,
+and a manual smoke test confirms that Space excludes a directory, all of its
+children disappear from the list, and the destination is never touched.
+
+### After 1.15bf
 
 - review the removal of the `/tmp/qpy-rsync-smoke` execution restriction
 - harden the synchronization further and validate it on real trees
