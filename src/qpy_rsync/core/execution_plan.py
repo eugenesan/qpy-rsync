@@ -5,7 +5,10 @@ from hashlib import sha256
 import json
 from typing import Iterable
 
-from qpy_rsync.backend.destination_sizes import destination_subtree_size
+from qpy_rsync.backend.destination_sizes import (
+    build_destination_size_index,
+    destination_subtree_size,
+)
 
 from .changes import (
     Change,
@@ -101,7 +104,7 @@ def build_execution_plan(
     total_size = 0
     included_size = 0
     deleted_size = 0
-    metadata = destination_metadata or {}
+    metadata = build_destination_size_index(destination_metadata or {})
     modified = decisions.modified_count(changes_list)
     stashed_paths = (
         {path.strip("/") for path in stashed.paths()} if stashed else set()

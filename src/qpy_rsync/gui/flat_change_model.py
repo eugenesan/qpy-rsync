@@ -23,7 +23,10 @@ from typing import Any
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
-from qpy_rsync.backend.destination_sizes import destination_size
+from qpy_rsync.backend.destination_sizes import (
+    build_destination_size_index,
+    destination_size,
+)
 from qpy_rsync.core.changes import (
     Change,
     ChangeAction,
@@ -178,6 +181,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._action_header_tooltip = "Actions"
         self._modified_count = 0
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
+        self._destination_index = build_destination_size_index({})
         self._sort_column = self.SOURCE_NAME
         self._sort_order = Qt.SortOrder.AscendingOrder
         self._pattern = ""
@@ -1315,6 +1319,9 @@ class FlatChangeModel(QAbstractTableModel):
         self, metadata: dict[str, tuple[int | None, str | None]]
     ) -> None:
         self._destination_metadata = dict(metadata)
+        self._destination_index = build_destination_size_index(
+            self._destination_metadata
+        )
         self._refresh_destination_sizes()
         self.layoutAboutToBeChanged.emit()
         self._apply_filters()
@@ -1323,7 +1330,7 @@ class FlatChangeModel(QAbstractTableModel):
     def _refresh_destination_sizes(self) -> None:
         """Cache the size of every change on the destination side."""
         self._change_destination_sizes = [
-            destination_size(change, self._destination_metadata)
+            destination_size(change, self._destination_index)
             for change in self.changes
         ]
 
@@ -1331,7 +1338,7 @@ class FlatChangeModel(QAbstractTableModel):
         return self._destination_metadata.get(path, (None, None))
 
     def _destination_size(self, change: Change) -> int:
-        return destination_size(change, self._destination_metadata)
+        return destination_size(change, self._destination_index)
 
     @staticmethod
     def _size(size: int | None) -> str:
