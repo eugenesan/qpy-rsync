@@ -127,14 +127,16 @@ class CompareService:
             self._diagnostics.append(cleaned)
             return
         self._changes.append(change)
-        # The comparison reports what it found, so the window can show the
-        # progress of the dry run.
-        self.on_items(len(self._changes))
+        # Updating the label for every record is visible work in the GUI;
+        # a thousand-record cadence is still live but far cheaper.
+        if len(self._changes) % 1000 == 0:
+            self.on_items(len(self._changes))
 
     def _finish(self, process: ProcessResult) -> None:
         if self._buffer:
             self._emit_line(self._buffer)
             self._buffer = ""
+        self.on_items(len(self._changes))
         debug("compare.finish", exit_code=process.exit_code, stdout=repr(process.stdout[:2000]), stderr=repr(process.stderr[:2000]))
         if self._cancelled:
             self.on_cancelled()

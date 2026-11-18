@@ -283,6 +283,8 @@ class MainWindow(QMainWindow):
         self._log_handle = None
         self._log_buffer: list[str] = []
         self._bulk_logging = False
+        self._bulk_rsync = False
+        self._bulk_record_count = 0
         self._log_flush_timer = QTimer(self)
         self._log_flush_timer.setSingleShot(True)
         self._log_flush_timer.setInterval(100)
@@ -3139,8 +3141,18 @@ class MainWindow(QMainWindow):
             return
         entries = self._log_buffer
         self._log_buffer = []
-        # One cursor movement and one ensureCursorVisible for the whole batch.
-        # Doing this per rsync record dominates comparisons of large trees.
+        # Every line goes to the session log. During a large comparison the
+        # itemized rsync records go only there: inserting hundreds of
+        # thousands of blocks into the journal widget costs minutes even when
+        # batched, and the session log is the complete record.
+        self._write_session_log("\n".join(line for line, _r, _s, _t in entries))
+        journal_entries = [
+            entry for entry in entries if not (self._bulk_rsync and entry[1])
+        ]
+        if self._bulk_rsync:
+            self._bulk_record_count += sum(1 for entry in entries if entry[1])
+        if not journal_entries:
+            return
         cursor = QTextCursor(self.log.document())
         cursor.movePosition(QTextCursor.MoveOperation.End)
         if not self.log.document().isEmpty():
@@ -3148,8 +3160,7 @@ class MainWindow(QMainWindow):
         time_format = QTextCharFormat()
         time_format.setForeground(QColor("#6b7280"))
         formats: dict[tuple[bool, str], QTextCharFormat] = {}
-        session_lines: list[str] = []
-        for index, (line, rsync, severity, timestamp) in enumerate(entries):
+        for index, (line, rsync, severity, timestamp) in enumerate(journal_entries):
             key = (rsync, severity)
             content_format = formats.get(key)
             if content_format is None:
@@ -3159,11 +3170,8 @@ class MainWindow(QMainWindow):
                 cursor.insertBlock()
             cursor.insertText(f"{timestamp} ", time_format)
             cursor.insertText(line, content_format)
-            session_lines.append(line)
         self.log.setTextCursor(cursor)
         self.log.ensureCursorVisible()
-        if session_lines:
-            self._write_session_log("\n".join(session_lines))
 
     @staticmethod
     def _journal_format(rsync: bool, severity: str) -> QTextCharFormat:
@@ -3223,12 +3231,21 @@ class MainWindow(QMainWindow):
 
     def _begin_bulk_logging(self) -> None:
         self._bulk_logging = True
+        self._bulk_rsync = True
+        self._bulk_record_count = 0
 
     def _end_bulk_logging(self) -> None:
         self._bulk_logging = False
         if self._log_flush_timer.isActive():
             self._log_flush_timer.stop()
         self._flush_log()
+        count = self._bulk_record_count
+        self._bulk_rsync = False
+        self._bulk_record_count = 0
+        if count:
+            self._append_log(
+                f"{count:,} rsync record(s) written to the session log."
+            )
 
     @staticmethod
     def _legacy_recent_profile_path() -> Path:

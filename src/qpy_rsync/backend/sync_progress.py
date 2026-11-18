@@ -21,6 +21,10 @@ class SyncProgress:
 
 
 def parse_sync_progress(text: str) -> SyncProgress | None:
+    # Each itemized record goes through this function; the regex is only
+    # relevant for progress lines, so avoid it for the common case.
+    if "to-chk=" not in text and "ir-chk=" not in text:
+        return None
     match = _PROGRESS_RE.search(text)
     if match is None:
         return None

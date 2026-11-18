@@ -29,6 +29,9 @@ def test_compare_service_streams_records_and_progress() -> None:
     assert len(progress) == 1
     assert progress[0].files_completed == 1
     assert progress[0].percent == 50
+    # Progress counts are batched and emitted once when the stream finishes.
+    assert counts == []
+    service._finish(ProcessResult(0, "", ""))
     assert counts == [1]
 
 
