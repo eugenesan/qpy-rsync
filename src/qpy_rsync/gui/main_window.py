@@ -2554,7 +2554,7 @@ class MainWindow(QMainWindow):
         )
         self._append_log(f"STATE comparison-sorted column={column} order={direction}")
 
-    def _overview_updated(self, changes: object) -> None:
+    def _overview_updated(self, changes: object, affects_plan: bool = True) -> None:
         """Refresh the overview with the items the filters show."""
         root_name = ""
         if self._active_profile is not None:
@@ -2563,6 +2563,8 @@ class MainWindow(QMainWindow):
             visible = self.comparison.visible_changes()
             self.overview.set_changes(list(visible), root_name)
             self._update_stashed_count()
+        if not affects_plan:
+            return
         current_stash = set(self.comparison.stashed_paths())
         added = current_stash - self._last_stash_paths
         removed = self._last_stash_paths - current_stash

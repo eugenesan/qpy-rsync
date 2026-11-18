@@ -1,0 +1,35 @@
+[qpy-rsync timing] 2026-11-18T00:03:22.865-07:00 ui.overview_update ms=931.1
+[qpy-rsync timing] 2026-11-18T00:03:25.281-07:00 plan.loop ms=2120.6 changes=520443
+[qpy-rsync timing] 2026-11-18T00:03:25.316-07:00 plan.deleted_sizes ms=34.4 paths=30491
+[qpy-rsync timing] 2026-11-18T00:03:26.117-07:00 ui.plan_rebuild ms=2962.8
+[qpy-rsync timing] 2026-11-18T00:03:28.402-07:00 plan.loop ms=1469.7 changes=520443
+[qpy-rsync timing] 2026-11-18T00:03:28.446-07:00 plan.deleted_sizes ms=42.8 paths=30491
+[qpy-rsync timing] 2026-11-18T00:03:29.288-07:00 ui.plan_rebuild ms=2366.8
+[qpy-rsync timing] 2026-11-18T00:03:39.825-07:00 plan.loop ms=1085.5 changes=520443
+[qpy-rsync timing] 2026-11-18T00:03:39.855-07:00 plan.deleted_sizes ms=30.4 paths=30491
+[qpy-rsync timing] 2026-11-18T00:03:40.538-07:00 ui.plan_rebuild ms=2052.9
+[qpy-rsync timing] 2026-11-18T00:03:55.455-07:00 ui.overview_update ms=674.2
+[qpy-rsync timing] 2026-11-18T00:03:56.792-07:00 plan.loop ms=1094.6 changes=520443
+[qpy-rsync timing] 2026-11-18T00:03:56.823-07:00 plan.deleted_sizes ms=30.6 paths=30491
+[qpy-rsync timing] 2026-11-18T00:03:57.509-07:00 ui.plan_rebuild ms=2053.8
+[qpy-rsync timing] 2026-11-18T00:04:28.292-07:00 plan.loop ms=1081.1 changes=520443
+[qpy-rsync timing] 2026-11-18T00:04:28.323-07:00 plan.deleted_sizes ms=30.7 paths=30491
+[qpy-rsync timing] 2026-11-18T00:04:29.030-07:00 ui.plan_rebuild ms=2064.5
+[qpy-rsync timing] 2026-11-18T00:04:44.367-07:00 ui.overview_update ms=1163.7
+[qpy-rsync timing] 2026-11-18T00:04:45.839-07:00 plan.loop ms=1212.9 changes=958502
+[qpy-rsync timing] 2026-11-18T00:04:45.870-07:00 plan.deleted_sizes ms=30.8 paths=30491
+[qpy-rsync timing] 2026-11-18T00:04:46.873-07:00 ui.plan_rebuild ms=2506.4
+[qpy-rsync timing] 2026-11-18T00:05:02.863-07:00 ui.overview_update ms=618.1
+[qpy-rsync timing] 2026-11-18T00:05:05.537-07:00 plan.loop ms=2447.4 changes=520443
+[qpy-rsync timing] 2026-11-18T00:05:05.569-07:00 plan.deleted_sizes ms=31.1 paths=30491
+[qpy-rsync timing] 2026-11-18T00:05:06.325-07:00 ui.plan_rebuild ms=3461.7
+[qpy-rsync timing] 2026-11-18T00:05:19.699-07:00 model.filter_refresh ms=2097.3
+[qpy-rsync timing] 2026-11-18T00:05:20.337-07:00 ui.overview_update ms=632.6
+[qpy-rsync timing] 2026-11-18T00:05:21.665-07:00 plan.loop ms=1097.7 changes=520443
+[qpy-rsync timing] 2026-11-18T00:05:21.696-07:00 plan.deleted_sizes ms=31.2 paths=30491
+[qpy-rsync timing] 2026-11-18T00:05:22.474-07:00 ui.plan_rebuild ms=2136.4
+[qpy-rsync timing] 2026-11-18T00:05:31.362-07:00 model.filter_refresh ms=2122.4
+[qpy-rsync timing] 2026-11-18T00:05:32.013-07:00 ui.overview_update ms=645.2
+[qpy-rsync timing] 2026-11-18T00:05:33.916-07:00 plan.loop ms=1676.3 changes=520443
+[qpy-rsync timing] 2026-11-18T00:05:33.947-07:00 plan.deleted_sizes ms=30.8 paths=30491
+[qpy-rsync timing] 2026-11-18T00:05:34.676-07:00 ui.plan_rebuild ms=2662.6
