@@ -1072,15 +1072,18 @@ class FlatChangeModel(QAbstractTableModel):
         for row_index in additions:
             position = bisect_left(self._visible_rows, row_index)
             self._visible_rows.insert(position, row_index)
-        self._visible_changes = [
-            self.changes[index] for index in sorted(self._visible_change_indices)
-        ]
-        self._visible_row_of_path = {
-            self._rows[index].path: position
-            for position, index in enumerate(self._visible_rows)
-        }
-        for index, row in enumerate(self._visible_rows):
-            self._rows[row].alternate = index % 2 == 0
+        with timed("model.patch_changes"):
+            self._visible_changes = [
+                self.changes[index] for index in sorted(self._visible_change_indices)
+            ]
+        with timed("model.patch_rowmap"):
+            self._visible_row_of_path = {
+                self._rows[index].path: position
+                for position, index in enumerate(self._visible_rows)
+            }
+        with timed("model.patch_stripes"):
+            for index, row in enumerate(self._visible_rows):
+                self._rows[row].alternate = index % 2 == 0
         self.layout_token += 1
 
     def refresh_decision_visibility(self, paths: set[str]) -> None:
