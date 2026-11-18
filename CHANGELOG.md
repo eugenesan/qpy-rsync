@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.3
+
+- Profiles now store filter rules as a single editable list of text lines;
+  `tools/convert-profiles.py` converts older profiles. The Manage profiles
+  menu can also open the profiles directory.
+- Added three compare layouts (Normal, Compare only, Compare with overview)
+  with a toolbar button, a View menu and Ctrl+Tab / Ctrl+Shift+Tab shortcuts.
+- The profile editor exposes --checksum, --partial-dir and --inplace, with
+  rsync option tooltips on every setting that adds one.
+- Deleted files and directories now show their real destination sizes, and
+  the Overview pane reports the total deleted size. Directory rows show only
+  the sizes of affected items inside them.
+- Long names are elided in the panes, context menus and tooltips; added
+  Copy Filename and Copy Relative Path actions. The overview is wider and
+  the command preview no longer squeezes the journal.
+- Fixed a native crash in the inventory worker by passing only a token across
+  the Qt thread boundary; the runner now enables Python faulthandler.
+
 ## 0.3.2
 
 - Added three compare layouts — Normal, Compare only and Compare with overview —
