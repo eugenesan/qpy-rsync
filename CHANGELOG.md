@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Fixed stashing a directory in the comparison view: the directory row
+  disappeared but all of its children, including destination removals, stayed
+  in the list. The incremental refresh now marks every descendant as excluded.
+- The Overview updates only the folders affected by a decision instead of
+  rebuilding the whole tree. Single-item decisions are roughly ten times
+  faster on large comparisons.
+- The result filter and the row delegates use precomputed row arrays and fixed
+  row heights, cutting a full filter refresh on 1.2M items to about 1.0–1.3s.
+
 ## 0.3.3
 
 - Profiles now store filter rules as a single editable list of text lines;
