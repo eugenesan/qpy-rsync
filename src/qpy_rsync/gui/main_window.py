@@ -3132,6 +3132,14 @@ class MainWindow(QMainWindow):
         self._flush_log()
 
     def _append_rsync_log(self, text: str) -> None:
+        if self._bulk_logging or self._bulk_rsync:
+            # Never let an itemized record reach the journal widget during a
+            # bulk comparison, including late lines after the final flush.
+            lines = text.rstrip("\r\n").splitlines()
+            if lines:
+                self._write_session_log("\n".join(lines))
+                self._bulk_record_count += len(lines)
+            return
         self._append_log(text, rsync=True)
 
     def _flush_log(self) -> None:
@@ -3173,55 +3181,23 @@ class MainWindow(QMainWindow):
         self.log.setTextCursor(cursor)
         self.log.ensureCursorVisible()
 
-    @staticmethod
-    def _journal_format(rsync: bool, severity: str) -> QTextCharFormat:
+    def _journal_format(self, rsync: bool, severity: str) -> QTextCharFormat:
         content_format = QTextCharFormat()
+        palette = self.log.palette()
+        dark = palette.color(QPalette.ColorRole.Base).lightness() < 128
         if rsync:
-            color = QColor("#9ca3af")
+            color = QColor("#cbd5e1" if dark else "#6b7280")
         elif severity == "warning":
-            color = QColor("#0891B2")
+            color = QColor("#22d3ee" if dark else "#0891B2")
         elif severity == "error":
-            color = QColor("#B91C1C")
+            color = QColor("#f87171" if dark else "#B91C1C")
         elif severity == "success":
-            color = QColor("#15803D")
+            color = QColor("#4ade80" if dark else "#15803D")
         else:
-            color = QColor("#111827")
+            # Use the theme's own text colour so dark themes stay readable.
+            color = palette.color(QPalette.ColorRole.Text)
         content_format.setForeground(color)
         return content_format
-
-    def _append_journal_line(
-        self, text: str, timestamp: str, rsync: bool, severity: str
-    ) -> None:
-        cursor = QTextCursor(self.log.document())
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        if not self.log.document().isEmpty():
-            cursor.insertBlock()
-        time_format = QTextCharFormat()
-        time_format.setForeground(QColor("#6b7280"))
-        cursor.insertText(f"{timestamp} ", time_format)
-
-        content_format = QTextCharFormat()
-        if rsync:
-            color = QColor("#9ca3af")
-        elif severity == "warning":
-            color = QColor("#0891B2")
-        elif severity == "error":
-            color = QColor("#B91C1C")
-        elif severity == "success":
-            color = QColor("#15803D")
-        else:
-            # Keep regular application text readable on the journal background:
-            # near-white on a dark background, near-black on a light one.
-            background = self.log.palette().color(QPalette.ColorRole.Base)
-            color = (
-                QColor("#f8fafc")
-                if background.lightness() < 128
-                else QColor("#111827")
-            )
-        content_format.setForeground(color)
-        cursor.insertText(text, content_format)
-        self.log.setTextCursor(cursor)
-        self.log.ensureCursorVisible()
 
     def _append_transient_log(self, text: str) -> None:
         """Keep rsync progress in the session log, not in the journal."""

@@ -1053,8 +1053,12 @@ def test_journal_lines_get_timestamps_and_severity_colors() -> None:
 
     assert colors(1)[-1] == "#0891b2"
     assert colors(2)[-1] == "#b91c1c"
-    assert colors(3)[-1] == "#9ca3af"
-    assert colors(0)[-1] != "#9ca3af"
+    from PySide6.QtGui import QPalette
+
+    assert colors(3)[-1] == "#6b7280"
+    assert colors(0)[-1] == window.log.palette().color(
+        QPalette.ColorRole.Text
+    ).name()
     window.close()
     application.processEvents()
 
