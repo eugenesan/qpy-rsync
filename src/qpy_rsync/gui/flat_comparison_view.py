@@ -426,6 +426,7 @@ class FlatComparisonView(QWidget):
         super().__init__(parent)
         self._context_menu_closed_at = 0.0
         self.model = FlatChangeModel(self)
+        self.model.decision_changed.connect(self.decision_changed.emit)
         self._source_root = ""
         self._destination_root = ""
         # Whether each side lives on this machine, so local items can be

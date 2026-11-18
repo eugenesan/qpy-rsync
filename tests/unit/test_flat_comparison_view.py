@@ -831,3 +831,18 @@ def test_context_menu_copies_filename_and_relative_path() -> None:
     assert actions["copy_relative"] is not None
     view.close()
     application.processEvents()
+
+
+def test_decision_change_is_forwarded_to_the_view() -> None:
+    from PySide6.QtCore import Qt
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("a.txt")])
+    fired: list[bool] = []
+    view.decision_changed.connect(lambda: fired.append(True))
+    index = view.model.index(1, view.model.ACTION)
+    assert view.model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert fired
+    view.close()
+    application.processEvents()
