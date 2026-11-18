@@ -115,6 +115,39 @@ def test_stashing_an_item_removes_it_from_the_list() -> None:
     application.processEvents()
 
 
+def test_overview_aggregates_match_the_visible_changes() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    changes = [
+        Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=100),
+        Change("docs/sub/b.txt", ChangeAction.DELETE, ObjectKind.FILE, "*del", size=50),
+        Change("root.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=25),
+    ]
+    model = FlatChangeModel()
+    model.set_changes(changes)
+
+    def expected() -> dict[str, tuple[int, int]]:
+        counts: dict[str, list[int]] = {}
+        for change in model.visible_changes():
+            path = str(change.path).rstrip("/")
+            parent = path.rpartition("/")[0]
+            values = counts.get(parent, [0, 0])
+            values[0] += 1
+            values[1] += int(change.size or 0)
+            counts[parent] = values
+        return {path: (values[0], values[1]) for path, values in counts.items()}
+
+    assert model.overview_aggregates() == expected()
+    model.set_visible_actions({ChangeAction.CREATE})
+    assert model.overview_aggregates() == expected()
+    model.set_stashed("docs", True)
+    assert model.overview_aggregates() == expected()
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_stashing_a_directory_removes_its_destination_removals_too() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_change_model import FlatChangeModel

@@ -152,6 +152,64 @@ def test_overview_headers_are_resizable_and_separate_the_share() -> None:
     application.processEvents()
 
 
+def test_set_aggregates_matches_a_full_rebuild() -> None:
+    application = app()
+    changes = _changes()
+    expected = OverviewModel()
+    expected.set_changes(changes, "source")
+
+    # The comparison model sends only the per-folder totals it collected
+    # during its filter pass. The overview must look identical.
+    aggregates: dict[str, list[int]] = {}
+    for change in changes:
+        path = str(change.path).rstrip("/")
+        parent = path.rpartition("/")[0]
+        values = aggregates.get(parent, [0, 0])
+        values[0] += 1
+        values[1] += int(change.size or 0)
+        aggregates[parent] = values
+    model = OverviewModel()
+    model.set_aggregates(
+        {path: (values[0], values[1]) for path, values in aggregates.items()},
+        "source",
+    )
+
+    assert model.rowCount() == expected.rowCount()
+    total = model.index(0, 0)
+    expected_total = expected.index(0, 0)
+    assert model.data(total.siblingAtColumn(2)) == expected.data(
+        expected_total.siblingAtColumn(2)
+    )
+    assert model.data(total.siblingAtColumn(3)) == expected.data(
+        expected_total.siblingAtColumn(3)
+    )
+    assert [
+        model.data(model.index(row, 0, total), Qt.ItemDataRole.DisplayRole)
+        for row in range(model.rowCount(total))
+    ] == [
+        expected.data(expected.index(row, 0, expected_total), Qt.ItemDataRole.DisplayRole)
+        for row in range(expected.rowCount(expected_total))
+    ]
+    model.deleteLater()
+    expected.deleteLater()
+    application.processEvents()
+
+
+def test_set_aggregates_reuses_the_folder_nodes() -> None:
+    application = app()
+    model = OverviewModel()
+    model.set_changes(_changes(), "source")
+    nodes = dict(model._folder_nodes)
+
+    # A filter change keeps the same folder structure, so no node is rebuilt.
+    model.set_aggregates({"docs": (1, 100), "": (2, 50)}, "source")
+    assert model._folder_nodes.keys() == nodes.keys()
+    assert all(model._folder_nodes[path] is node for path, node in nodes.items())
+    assert model._folder_nodes["docs"].total_count == 1
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_update_paths_matches_a_full_rebuild() -> None:
     application = app()
     changes = _changes()

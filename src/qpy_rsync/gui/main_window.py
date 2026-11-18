@@ -2782,11 +2782,11 @@ class MainWindow(QMainWindow):
         if self._active_profile is not None:
             root_name = self._active_profile.source.path.rstrip("/").rsplit("/", 1)[-1]
         with timed("ui.overview_update"):
-            visible = list(changes)
-            if kind == "decision" and paths and self.overview.update_paths(paths, visible):
-                pass
-            else:
-                self.overview.set_changes(visible, root_name)
+            # The comparison model collected these totals during its own
+            # filter pass, so the overview never rescans the whole list.
+            self.overview.set_aggregates(
+                self.comparison.model.overview_aggregates(), root_name
+            )
             self._update_stashed_count()
         if kind == "display":
             return

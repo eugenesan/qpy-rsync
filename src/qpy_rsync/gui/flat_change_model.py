@@ -212,6 +212,12 @@ class FlatChangeModel(QAbstractTableModel):
         self._change_path_ok: list[bool] = []
         self._change_action_ok: list[bool] = []
         self._change_destination_sizes: list[int] = []
+        # Sizes of the changes, kept flat for the filter pass that also
+        # collects the overview aggregates.
+        self._change_sizes: list[int] = []
+        # Per-folder (count, size) of the rows the filters show. The overview
+        # consumes this instead of rescanning every change.
+        self._overview_aggregates: dict[str, tuple[int, int]] = {}
         # The directories from the deepest one upwards. The order only
         # changes when the comparison changes.
         self._directory_order: list[str] | None = None
@@ -265,6 +271,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._change_path_ok = []
         self._change_action_ok = []
         self._change_destination_sizes = []
+        self._change_sizes = [int(change.size or 0) for change in self.changes]
 
         def ensure(path: str) -> FlatDirectory:
             existing = self._directories.get(path)
@@ -836,6 +843,17 @@ class FlatChangeModel(QAbstractTableModel):
         # The rows of the visible directories.
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
+        # Collect the overview totals while walking the rows. The overview
+        # used to rescan every change after this pass, which dominated the
+        # cost of a global filter change on large comparisons.
+        aggregate_counts: dict[str, list[int]] = {}
+        # The same totals without the excluded items feed the directory rows.
+        # They are collected here so the end of the pass no longer has to
+        # walk every change a second time.
+        total_counts: dict[str, list[int]] = {}
+        change_sizes = self._change_sizes
+        change_destination_sizes = self._change_destination_sizes
+        row_parent = self._row_parent
         stash = self.stash
         has_stash = bool(stash)
         check_stashed = has_stash and not self.show_stashed
@@ -872,7 +890,16 @@ class FlatChangeModel(QAbstractTableModel):
                     and not row_is_stashed
                     and not directory.faded
                 ):
-                    visible_change_indices.add(directory.own_change_index)
+                    ci = directory.own_change_index
+                    visible_change_indices.add(ci)
+                    parent = row_parent[index]
+                    values = aggregate_counts.get(parent)
+                    size = change_sizes[ci]
+                    if values is None:
+                        aggregate_counts[parent] = [1, size]
+                    else:
+                        values[0] += 1
+                        values[1] += size
             else:
                 ci = change_index[index]
                 if row_is_stashed:
@@ -884,6 +911,23 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 if not row_is_stashed:
                     visible_change_indices.add(ci)
+                    parent = row_parent[index]
+                    size = change_sizes[ci]
+                    values = aggregate_counts.get(parent)
+                    if values is None:
+                        aggregate_counts[parent] = [1, size]
+                    else:
+                        values[0] += 1
+                        values[1] += size
+                    if not row_excluded[index]:
+                        destination_size = change_destination_sizes[ci]
+                        totals = total_counts.get(parent)
+                        if totals is None:
+                            total_counts[parent] = [1, size, destination_size]
+                        else:
+                            totals[0] += 1
+                            totals[1] += size
+                            totals[2] += destination_size
             # The rows below a folded directory are out of the list, but
             # they stay in the totals and in the overview.
             if (
@@ -901,7 +945,11 @@ class FlatChangeModel(QAbstractTableModel):
             self.changes[index] for index in sorted(visible_change_indices)
         ]
         self._visible_position_of_row = self._position_array()
-        self._total_up_directories()
+        self._overview_aggregates = {
+            parent: (values[0], values[1])
+            for parent, values in aggregate_counts.items()
+        }
+        self._total_up_from_aggregates(total_counts)
         debug_timing("model.filter_phase", phase="totals_done")
         self.layout_token += 1
 
@@ -1065,6 +1113,28 @@ class FlatChangeModel(QAbstractTableModel):
             positions[index] = position
         return positions
 
+    def _refresh_overview_aggregates(self) -> None:
+        """Recollect the overview totals after an incremental row update."""
+        counts: dict[str, list[int]] = {}
+        parents = self._change_parents
+        sizes = self._change_sizes
+        for index in self._visible_change_indices:
+            parent = parents[index]
+            values = counts.get(parent)
+            size = sizes[index]
+            if values is None:
+                counts[parent] = [1, size]
+            else:
+                values[0] += 1
+                values[1] += size
+        self._overview_aggregates = {
+            parent: (values[0], values[1]) for parent, values in counts.items()
+        }
+
+    def overview_aggregates(self) -> dict[str, tuple[int, int]]:
+        """The per-folder totals of the items the filters show."""
+        return self._overview_aggregates
+
     def _patch_visible_rows(self, paths: set[str]) -> None:
         """Update only the rows affected by a decision change."""
         affected = self._affected_rows(paths)
@@ -1128,6 +1198,8 @@ class FlatChangeModel(QAbstractTableModel):
                 self._patch_visible_rows(paths)
             with timed("model.decision_totals"):
                 self._total_up_directories_for(paths)
+            with timed("model.decision_aggregates"):
+                self._refresh_overview_aggregates()
             self.endResetModel()
 
     def refresh_excluded_visibility(self) -> None:
@@ -1145,6 +1217,8 @@ class FlatChangeModel(QAbstractTableModel):
                 self._total_up_directories_for(
                     {path for path, value in excluded.items() if value}
                 )
+            with timed("model.excluded_aggregates"):
+                self._refresh_overview_aggregates()
             self.endResetModel()
 
     def _recompute_directory(self, path: str, excluded: dict[str, bool]) -> None:
@@ -1174,15 +1248,39 @@ class FlatChangeModel(QAbstractTableModel):
         directory.subtree_size = size
         directory.subtree_destination_size = destination_size
 
-    def _total_up_directories(self) -> None:
-        """Total the visible items of every directory."""
-        excluded = self._excluded_paths()
-        for directory in self._directories.values():
+    def _total_up_from_aggregates(
+        self, counts: dict[str, list[int]]
+    ) -> None:
+        """Total the visible items of every directory in one short walk.
+
+        The filter pass already collected the per-folder counts, so only the
+        folders have to be visited here instead of every change.
+        """
+        directories = self._directories
+        for directory in directories.values():
             directory.subtree_items = 0
             directory.subtree_size = 0
             directory.subtree_destination_size = 0
-        for path in [*self._ordered_directories(), ""]:
-            self._recompute_directory(path, excluded)
+        for path in self._ordered_directories():
+            directory = directories[path]
+            values = counts.get(path)
+            if values is not None:
+                directory.subtree_items += values[0]
+                directory.subtree_size += values[1]
+                directory.subtree_destination_size += values[2]
+            parent = directories.get(directory.parent)
+            if parent is not None:
+                parent.subtree_items += directory.subtree_items
+                parent.subtree_size += directory.subtree_size
+                parent.subtree_destination_size += directory.subtree_destination_size
+        root = directories.get("")
+        if root is None:
+            return
+        values = counts.get("")
+        if values is not None:
+            root.subtree_items += values[0]
+            root.subtree_size += values[1]
+            root.subtree_destination_size += values[2]
 
     def _total_up_directories_for(self, paths: set[str]) -> None:
         """Recompute only the directories affected by the given paths."""
