@@ -242,7 +242,7 @@ class MainWindow(QMainWindow):
         self._plan_item_indices: list[int] = []
         self._plan_items: dict[str, object] = {}
         self._plan_changes: dict[str, object] = {}
-        self._last_stash_paths: set[str] = set()
+        self._last_excluded_paths: set[str] = set()
         self._last_explicit_decisions: tuple[tuple[str, ChangeDecision], ...] = ()
         self._validated_plan: ExecutionPlan | None = None
         self._execution_gate = ExecutionGate()
@@ -388,7 +388,7 @@ class MainWindow(QMainWindow):
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._on_decision_changed)
         self.comparison.changes_updated.connect(self._overview_updated)
-        self.comparison.restore_all_requested.connect(self._restore_all_stashed)
+        self.comparison.reset_exclusions_requested.connect(self._reset_exclusions)
         self.comparison.tool_requested.connect(self._run_external_tool)
         self.comparison.set_external_tools(self._external_tools)
         self.comparison.sort_changed.connect(self._comparison_sorted)
@@ -580,8 +580,8 @@ class MainWindow(QMainWindow):
         source_panel = self._location_panel("Source", self.source_edit, trailing=True)
         self.action_filters = ActionFilterBar(self)
         self.action_filters.changed.connect(self._apply_action_filters)
-        self.action_filters.stashed_toggled.connect(self._apply_show_stashed)
-        self.action_filters.restore_all_requested.connect(self._restore_all_stashed)
+        self.action_filters.excluded_toggled.connect(self._apply_show_excluded)
+        self.action_filters.reset_exclusions_requested.connect(self._reset_exclusions)
         self.action_filters.directory_filter_toggled.connect(
             self._filter_directories_changed
         )
@@ -683,7 +683,7 @@ class MainWindow(QMainWindow):
         self.overview = OverviewPane(self)
         self._overview_min_width = self.overview.minimumWidth()
         self.overview.folder_activated.connect(self._overview_folder_activated)
-        self.overview.stash_requested.connect(self._stash_path)
+        self.overview.exclusion_requested.connect(self._exclude_path)
         self.overview.restore_requested.connect(self._restore_path)
         self.overview.filter_requested.connect(self._add_filter_phrase)
         self._install_navigation_shortcuts()
@@ -2102,7 +2102,7 @@ class MainWindow(QMainWindow):
     def _apply_plan_changes(
         self, paths: set[str], *, decisions_changed: bool = False
     ) -> bool:
-        """Update the cached plan for stash/decision changes incrementally."""
+        """Update the cached plan for exclusion/decision changes incrementally."""
         plan = self._current_plan
         if plan is None or not self._plan_items:
             return False
@@ -2120,7 +2120,7 @@ class MainWindow(QMainWindow):
                 index += 1
         if not candidates:
             return True
-        current_stash = set(self.comparison.stashed_paths())
+        current_excluded = set(self.comparison.excluded_paths())
         deltas: dict[str, int] = {}
         items = list(plan.items)
         decisions = self.comparison.model.decisions
@@ -2131,12 +2131,12 @@ class MainWindow(QMainWindow):
             change = self._plan_changes.get(path)
             if change is None:
                 return False
-            stashed = any(
-                parent in current_stash
+            excluded = any(
+                parent in current_excluded
                 for parent in [path, *self._parent_paths(path)]
             )
             included = (
-                not stashed
+                not excluded
                 and decisions.effective(change) is not ChangeDecision.EXCLUDE
             )
             if included == item.included:
@@ -2155,7 +2155,7 @@ class MainWindow(QMainWindow):
         }
         summary = replace(plan.summary, **fields) if fields else plan.summary
         self._current_plan = replace(plan, items=tuple(items), summary=summary)
-        self._last_stash_paths = current_stash
+        self._last_excluded_paths = current_excluded
         if decisions_changed:
             self._last_explicit_decisions = (
                 self.comparison.model.decisions.explicit_items()
@@ -2175,8 +2175,8 @@ class MainWindow(QMainWindow):
         """Mark the plan unverified and update its summary incrementally."""
         if self._current_plan is None:
             return
-        current_stash = set(self.comparison.stashed_paths())
-        stash_paths = current_stash ^ self._last_stash_paths
+        current_excluded = set(self.comparison.excluded_paths())
+        excluded_change_paths = current_excluded ^ self._last_excluded_paths
         current_decisions = self.comparison.model.decisions.explicit_items()
         before = dict(self._last_explicit_decisions)
         after = dict(current_decisions)
@@ -2185,9 +2185,9 @@ class MainWindow(QMainWindow):
             for path in before.keys() | after.keys()
             if before.get(path) != after.get(path)
         }
-        changed = bool(stash_paths or decision_paths)
+        changed = bool(excluded_change_paths or decision_paths)
         if changed and self._apply_plan_changes(
-            stash_paths | decision_paths,
+            excluded_change_paths | decision_paths,
             decisions_changed=bool(decision_paths),
         ):
             self._show_plan_summary(log=False)
@@ -2215,7 +2215,7 @@ class MainWindow(QMainWindow):
 
         changes = self.comparison.model.changes
         decisions = self.comparison.model.decisions
-        stashed = set(self.comparison.stashed_paths())
+        excluded = set(self.comparison.excluded_paths())
         counts = dict.fromkeys(
             ("creates", "updates", "metadata", "replacements", "deletions", "kept"),
             0,
@@ -2228,7 +2228,7 @@ class MainWindow(QMainWindow):
                 continue
             path = str(change.path).rstrip("/")
             if any(
-                parent in stashed for parent in (path, *self._parent_paths(path))
+                parent in excluded for parent in (path, *self._parent_paths(path))
             ):
                 excluded += 1
                 continue
@@ -2304,17 +2304,16 @@ class MainWindow(QMainWindow):
             self._plan_item_indices = []
             self._plan_items = {}
             self._plan_changes = {}
-            self._last_stash_paths = set()
+            self._last_excluded_paths = set()
             self._last_plan_summary = None
             self.overview.set_statistics(None)
             self.validate_plan_button.setEnabled(False)
             return
-        self._update_stashed_count()
+        self._update_excluded_count()
         self._current_plan = build_execution_plan(
             self._active_profile,
             self.comparison.model.changes,
             self.comparison.model.decisions,
-            getattr(self.comparison.model, "stash", None),
             self.comparison.model.destination_metadata(),
         )
         entries = sorted(
@@ -2329,7 +2328,7 @@ class MainWindow(QMainWindow):
             str(change.path).rstrip("/"): change
             for change in self.comparison.model.changes
         }
-        self._last_stash_paths = set(self.comparison.stashed_paths())
+        self._last_excluded_paths = set(self.comparison.excluded_paths())
         self._last_explicit_decisions = (
             self.comparison.model.decisions.explicit_items()
         )
@@ -2368,10 +2367,7 @@ class MainWindow(QMainWindow):
             self._refresh_plan_summary()
         if self._current_plan is None or self._active_profile is None:
             return
-        signature = decision_signature(
-            self.comparison.model.decisions,
-            set(self.comparison.stashed_paths()),
-        )
+        signature = decision_signature(self.comparison.model.decisions)
         freshness = check_plan_freshness(
             self._current_plan,
             self._profile(),
@@ -2394,7 +2390,7 @@ class MainWindow(QMainWindow):
             mismatch = compare_plan_to_changes(
                 self._current_plan,
                 self.comparison.model.changes,
-                getattr(self.comparison.model, "stash", None),
+                self.comparison.model.decisions,
             )
             self._append_log("STATE verification-reused-comparison")
             self._plan_validation_finished(
@@ -2797,7 +2793,7 @@ class MainWindow(QMainWindow):
             self.overview.set_aggregates(
                 self.comparison.model.overview_aggregates(), root_name
             )
-            self._update_stashed_count()
+            self._update_excluded_count()
         if kind == "display":
             return
         if kind == "new":
@@ -2965,13 +2961,13 @@ class MainWindow(QMainWindow):
         # The metadata of the previous comparison no longer describes the
         # destination.
         self.comparison.set_destination_metadata({})
-        # Stashed items and folds only live in memory, so a new comparison
-        # starts with an empty stash and every folder open.
-        stash = getattr(self.comparison.model, "stash", None)
-        if stash is not None:
-            stash.clear()
+        # Exclusions and folds only live in memory, so a new comparison
+        # starts with an empty exclusion and every folder open.
+        exclusion = getattr(self.comparison.model, "exclusion", None)
+        if exclusion is not None:
+            exclusion.clear()
         self.comparison.clear_collapsed()
-        self.action_filters.set_stashed_count(0)
+        self.action_filters.set_excluded_count(0)
         self.compare_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.pause_button.setEnabled(True)
@@ -3182,70 +3178,66 @@ class MainWindow(QMainWindow):
             return set(actions) | {ChangeAction.NO_CHANGE}
         return set(actions)
 
-    def _apply_show_stashed(self, show: bool) -> None:
-        """Show the stashed items, or put them aside again."""
-        if hasattr(self.comparison, "set_show_stashed"):
-            self.comparison.set_show_stashed(show)
-        count = getattr(self.comparison.model, "stash", None)
-        total = count.count() if count is not None else 0
+    def _apply_show_excluded(self, show: bool) -> None:
+        """Show the excluded items, or hide them again."""
+        self.comparison.set_show_excluded(show)
+        total = self.comparison.model.exclusions.count()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         if show:
             self.progress_label.setText(
-                f"Showing {total:,} stashed item(s); they are dimmed and marked "
-                "with a crossed eye."
+                f"Showing {total:,} excluded item(s); they are dimmed."
             )
             self._append_log(
-                f"Showing {total:,} stashed item(s).", severity="info"
+                f"Showing {total:,} excluded item(s).", severity="info"
             )
         else:
             self.progress_label.setText(
-                f"{total:,} stashed item(s) are put aside again."
+                f"{total:,} excluded item(s) are hidden again."
                 if total
-                else "No items are stashed."
+                else "No items are excluded."
             )
             self._append_log(
-                f"Hiding {total:,} stashed item(s) again.", severity="info"
+                f"Hiding {total:,} excluded item(s) again.", severity="info"
             )
 
-    def _restore_all_stashed(self) -> None:
-        """Put every stashed item back and report it."""
-        stash = getattr(self.comparison.model, "stash", None)
-        count = stash.count() if stash is not None else 0
+    def _reset_exclusions(self) -> None:
+        """Reset every exclusion and report it."""
+        count = self.comparison.model.exclusions.count()
         if not count:
-            self.progress_label.setText("No items are stashed.")
+            self.progress_label.setText("No items are excluded.")
             return
-        self.comparison.restore_all_stashed()
+        self.comparison.reset_exclusions()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText(
-            f"All {count:,} stashed item(s) are restored."
+            f"All {count:,} exclusion(s) are reset."
         )
-        self._append_log(f"Restored {count:,} stashed item(s).", severity="info")
+        self._append_log(f"Reset {count:,} exclusion(s).", severity="info")
 
-    def _stash_path(self, path: str) -> None:
-        """Stash a folder or an item from the comparison."""
-        if not hasattr(self.comparison, "stash_path"):
+    def _exclude_path(self, path: str) -> None:
+        """Exclude a folder or an item from the comparison."""
+        if not hasattr(self.comparison, "exclude_path"):
             return
-        self.comparison.stash_path(path)
-        self.action_filters.set_stashed_count(
-            self.comparison.model.stash.count()
+        self.comparison.exclude_path(path)
+        self.action_filters.set_excluded_count(
+            self.comparison.model.exclusion.count()
         )
 
     def _restore_path(self, path: str) -> None:
-        """Restore a stashed folder or item."""
+        """Restore a excluded folder or item."""
         if not hasattr(self.comparison, "restore_path"):
             return
         self.comparison.restore_path(path)
-        self.action_filters.set_stashed_count(
-            self.comparison.model.stash.count()
+        self.action_filters.set_excluded_count(
+            self.comparison.model.exclusion.count()
         )
 
-    def _update_stashed_count(self) -> None:
-        """Keep the stashed item count next to the toggle up to date."""
-        stash = getattr(self.comparison.model, "stash", None)
-        count = stash.count() if stash is not None else 0
-        self.action_filters.set_stashed_count(count)
+    def _update_excluded_count(self) -> None:
+        """Keep the excluded item count next to the toggle up to date."""
+        exclusion = getattr(self.comparison.model, "exclusion", None)
+        count = exclusion.count() if exclusion is not None else 0
+        self.action_filters.set_excluded_count(count)
 
     def _apply_inventory_after_compare(self) -> None:
         """Gather the unchanged items when the inventory runs automatically.
@@ -3348,7 +3340,7 @@ class MainWindow(QMainWindow):
         """Fill in the size and date of the destination-only objects."""
         if self._active_profile is None:
             return
-        if getattr(self.comparison.model, "stash", None) is None:
+        if getattr(self.comparison.model, "exclusion", None) is None:
             return
         # The inventory already knows the destination metadata.
         if self.inventory_after_compare_button.isChecked():

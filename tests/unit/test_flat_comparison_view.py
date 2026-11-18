@@ -403,7 +403,7 @@ def test_each_side_names_its_own_root_folder() -> None:
     application.processEvents()
 
 
-def test_the_row_context_menu_offers_restore_all_stashed() -> None:
+def test_the_row_context_menu_offers_reset_exclusions() -> None:
     application = app()
     view = FlatComparisonView()
     view.set_changes(
@@ -412,16 +412,16 @@ def test_the_row_context_menu_offers_restore_all_stashed() -> None:
             file_change("b.txt"),
         ]
     )
-    view.stash_path("a.txt")
-    view.set_show_stashed(True)
+    view.exclude_path("a.txt")
+    view.set_show_excluded(True)
     index = view.model.index_for_path("a.txt")
     row = view.model.row_data(index.row())
     _menu, actions = view._build_context_menu(
         view.action, "a.txt", index.data(Qt.ItemDataRole.UserRole), row
     )
-    entry = actions["restore_all_stashed"]
+    entry = actions["reset_exclusions"]
     assert entry is not None
-    assert entry.text() == "Restore All Stashed (1)"
+    assert entry.text() == "Reset All Exclusions (1)"
     view.close()
     application.processEvents()
 

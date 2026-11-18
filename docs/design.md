@@ -38,7 +38,7 @@ the execution always use the same rsync backend with equivalent options.
 - Local and SSH endpoints, one-way, source to destination
 - Dry-run comparison with a flat, sortable and filterable list
 - Per-object and per-subtree decisions
-- Stashing items for the duration of one comparison
+- Excluding items for the duration of one comparison
 - Ordered rsync include/exclude filters
 - Backup and versioning with a user-managed backup directory
 - An immutable execution plan, a second verification dry run, and a final
@@ -114,21 +114,23 @@ objects that are deselected are protected explicitly when deletion is enabled.
 Before the transfer, a second dry run recreates that filter and compares path,
 action and object kind with the included plan. A mismatch blocks the execution.
 
-### 3.5 Stashed items
+### 3.5 Excluded items
 
-An item can be **stashed** with the space bar, with the crossed-eye marker in
-the action column, or from the context menu. A stashed item
+An item can be **excluded** with the space bar, with the checkbox in the
+action column, or from the context menu. Exclusion is an ordinary EXCLUDE
+decision (see 3.4); there is no separate stash state. An excluded item
 
 - is left out of the execution plan,
 - stays in the comparison, so it can be restored,
 - is forgotten when the next comparison starts.
 
-The stash lives in memory only. The filter bar has a *Show stashed items*
-toggle, and its right-click menu offers *Restore All Stashed*. The context
-menu of the action pane offers the same for the whole list.
+Exclusions live in memory only. The filter bar has a *Show excluded items*
+toggle, and its right-click menu offers *Reset All Exclusions*. The context
+menu of the action pane offers the same for the whole list. The compared
+folder itself is never hidden, so a whole-list exclusion can always be undone.
 
-Stashing is deliberately distinct from folding (see 4.5) and from the rsync
-filters (see 6): it is a temporary, per-comparison exclusion.
+Excluding is deliberately distinct from folding (see 4.5) and from the rsync
+filters (see 6): it is a temporary, per-comparison decision.
 
 ### 3.6 Plan freshness
 
@@ -216,7 +218,7 @@ and is never folded.
 ### 4.6 The action filter bar
 
 The bar above the panes carries one checkbox per action, plus the *unchanged*
-and the *stashed* toggles. It filters the view only; it never changes what is
+and the *excluded* toggles. It filters the view only; it never changes what is
 synchronized.
 
 - A plain click toggles one action.
@@ -236,7 +238,7 @@ contents.
 
 The overview pane summarizes the comparison as a tree of folders with their
 share, item count and size, and carries the statistics of the current
-selection. It can hide and restore folders with the same stash semantics as
+selection. It can hide and restore folders with the same exclusion semantics as
 the comparison list.
 
 ## 5. Endpoints and transport

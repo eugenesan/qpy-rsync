@@ -55,11 +55,10 @@ from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HE
 from .flat_change_model import (
     STALE_HELP_TEXT,
     STALE_SUFFIX,
-    STASHED_ROLE,
     STRIPE_ROLE,
     FlatChangeModel,
 )
-from .icons import app_menu_icon, search_icon, stashed_icon, unchanged_icon
+from .icons import app_menu_icon, search_icon, unchanged_icon
 from .paths import full_path
 from .text_elide import elide_path
 from qpy_rsync.storage.settings import app_settings
@@ -106,48 +105,21 @@ class UniformRowDelegate(QStyledItemDelegate):
 
 
 class ActionColumnDelegate(UniformRowDelegate):
-    """Paint the action column, the stashed marker and the row background.
+    """Paint the action column and the row background.
 
     Rows that cannot be selected carry no check indicator, so the style
     draws their icon where the checkbox of the other rows sits. Painting
     the background first and shifting the content keeps the icons in one
-    column.
-
-    The crossed eye at the right marks a row that is stashed from the sync.
-    It is drawn for every row, filled for a stashed one and faded otherwise,
-    so it also works as the button that stashes and restores the row.
+    column. The checkbox is the single affordance for including or excluding
+    an item.
     """
-
-    MARKER_SIZE = 14
-    MARKER_RIGHT = 20
-
-    @classmethod
-    def marker_rect(cls, rect: QRect) -> QRect:
-        size = cls.MARKER_SIZE
-        return QRect(
-            rect.right() - cls.MARKER_RIGHT,
-            rect.top() + (rect.height() - size) // 2,
-            size,
-            size,
-        )
-
-    def _paint_marker(self, painter: object, option: object, index: QModelIndex) -> None:
-        icon = stashed_icon()
-        rect = self.marker_rect(option.rect)  # type: ignore[attr-defined]
-        if not index.data(STASHED_ROLE):
-            painter.setOpacity(0.25)  # type: ignore[attr-defined]
-        icon.paint(painter, rect)  # type: ignore[arg-type]
-        painter.setOpacity(1.0)  # type: ignore[attr-defined]
 
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
             styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
             if index.model().stale:
-                # Grey out the decision checkbox, not the whole cell: the
-                # stash marker on its right stays usable on a stale list.
                 styled.state &= ~QStyle.StateFlag.State_Enabled
             super().paint(painter, styled, index)  # type: ignore[arg-type]
-            self._paint_marker(painter, option, index)
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
@@ -171,7 +143,6 @@ class ActionColumnDelegate(UniformRowDelegate):
         )
         shifted.rect = shifted.rect.adjusted(offset, 0, 0, 0)
         super().paint(painter, shifted, index)  # type: ignore[arg-type]
-        self._paint_marker(painter, option, index)
 
 
 class FlatPathDelegate(UniformRowDelegate):
@@ -235,7 +206,7 @@ class FlatPathDelegate(UniformRowDelegate):
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         # A directory sits at its own depth, its items one level below it.
         depth = row.depth
-        is_stashed = model.stash.is_stashed(row.path)
+        is_excluded = model.exclusion.is_excluded(row.path)
 
         styled = QStyleOptionViewItem(option)
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
@@ -274,8 +245,8 @@ class FlatPathDelegate(UniformRowDelegate):
                 color = foreground.color()
             elif isinstance(foreground, QColor):
                 color = foreground
-            if is_stashed:
-                # A stashed row stays readable but is clearly marked.
+            if is_excluded:
+                # A excluded row stays readable but is clearly marked.
                 color = STASHED_COLOR
         if row.is_directory:
             if row.has_children and row.path:
@@ -414,7 +385,7 @@ class FlatComparisonView(QWidget):
     decision_changed = Signal(object)
     inventory_toggled = Signal(bool)
     changes_updated = Signal(object, str)
-    restore_all_requested = Signal()
+    reset_exclusions_requested = Signal()
     # A tool the user wants to run on the row: name, path, side, is a folder.
     tool_requested = Signal(str, str, str, bool)
     sort_changed = Signal(int, object)
@@ -851,16 +822,7 @@ class FlatComparisonView(QWidget):
                 None,
             )
             if clicked is not None:
-                if clicked is action:
-                    if event_type == QEvent.Type.MouseButtonPress:
-                        if self._toggle_stash_at(position):
-                            return True
-                    elif (
-                        event_type == QEvent.Type.MouseButtonDblClick
-                        and self._stash_target(position) is not None
-                    ):
-                        return True
-                elif event_type == QEvent.Type.MouseButtonPress:
+                if event_type == QEvent.Type.MouseButtonPress:
                     if self._toggle_collapse_at(clicked, position):
                         return True
                 elif (
@@ -872,7 +834,7 @@ class FlatComparisonView(QWidget):
             if event_type == QEvent.Type.KeyPress:
                 key = getattr(event, "key", lambda: None)()
                 if key == Qt.Key.Key_Space:
-                    if self._toggle_stash():
+                    if self._toggle_excluded():
                         return True
                 elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
                     if self._handle_collapse_key(watched, key):
@@ -957,23 +919,6 @@ class FlatComparisonView(QWidget):
             return
         self._request_diff(index)
 
-    def _stash_target(self, position: object) -> str | None:
-        """The stashed row whose crossed eye was hit, if any."""
-        index = self.action.indexAt(position)
-        if not index.isValid():
-            return None
-        rect = self.action.visualRect(index)
-        marker = ActionColumnDelegate.marker_rect(rect)
-        # A finger is not as precise as a pointer, so the marked area is
-        # widened to the full height of the row and a little to the left.
-        hit = marker.adjusted(-8, -(rect.height() - marker.height()) // 2, 0, 0)
-        hit.setTop(rect.top())
-        hit.setBottom(rect.bottom())
-        hit.setRight(rect.right())
-        if not hit.contains(position):
-            return None
-        return self.model.row_path(index.row()) or None
-
     def _current_path(self) -> str | None:
         """The path of the row that is selected in the panes."""
         index = self.source.currentIndex()
@@ -1013,28 +958,18 @@ class FlatComparisonView(QWidget):
         for pane in (self.source, self.action, self.destination):
             pane.viewport().update()
 
-    def _toggle_stash_at(self, position: object) -> bool:
-        """Toggle the stash state when the crossed eye is clicked or tapped."""
-        path = self._stash_target(position)
-        if path is None:
-            return False
-        stashed = not self.model.stash.is_stashed(path)
-        self.model.set_stashed(path, stashed)
-        self._refresh_stashed()
-        return True
-
-    def _toggle_stash(self) -> bool:
-        """Stash or restore the selected items. True when it handled them."""
+    def _toggle_excluded(self) -> bool:
+        """Exclude or include the selected items. True when it handled them."""
         paths = self._selected_paths()
         if not paths:
             return False
         with self._keeping_the_selection():
             for path in paths:
-                self.model.set_stashed(
-                    path, not self.model.stash.is_stashed(path)
-                )
+                self.model.set_excluded(path, not self.model.exclusions.is_excluded(path))
         self.changes_updated.emit(list(self.model.changes), "decision")
         return True
+
+    _toggle_exclusion = _toggle_excluded
 
     def _selected_paths(self) -> list[str]:
         """The paths of the selected rows, without their parents."""
@@ -1088,42 +1023,42 @@ class FlatComparisonView(QWidget):
         """Forget the folds, for a new comparison."""
         self.model.clear_collapsed()
 
-    def stash_path(self, path: str) -> None:
-        """Stash a path and everything below it."""
-        with self._keeping_the_selection(), timed("view.stash", path=path):
-            self.model.set_stashed(path, True)
-            self._refresh_stashed()
+    def exclude_path(self, path: str) -> None:
+        """Exclude a path and everything below it."""
+        with self._keeping_the_selection(), timed("view.exclusion", path=path):
+            self.model.set_excluded(path, True)
+            self._refresh_exclusions()
 
     def restore_path(self, path: str) -> None:
         """Restore a path and everything below it."""
         with self._keeping_the_selection(), timed("view.restore", path=path):
-            self.model.set_stashed(path, False)
-            self._refresh_stashed()
+            self.model.set_excluded(path, False)
+            self._refresh_exclusions()
 
-    def restore_all_stashed(self) -> None:
-        """Restore every stashed item."""
-        with timed("view.restore_all_stashed"):
-            self.model.clear_stash()
-            self._refresh_stashed()
+    def reset_exclusions(self) -> None:
+        """Restore every excluded item."""
+        with timed("view.reset_exclusions"):
+            self.model.clear_exclusion()
+            self._refresh_exclusions()
 
-    def stashed_paths(self) -> set[str]:
-        """The paths that the user stashed."""
-        return self.model.stash.paths()
+    def excluded_paths(self) -> set[str]:
+        """The paths excluded from the comparison by a manual decision."""
+        return self.model.exclusions.paths()
 
-    def set_show_stashed(self, show: bool) -> None:
-        """Show or hide the items the user stashed."""
-        with timed("view.show_stashed", show=show):
-            self.model.show_stashed = show
+    def set_show_excluded(self, show: bool) -> None:
+        """Show or hide the items the user excluded."""
+        with timed("view.show_excluded", show=show):
+            self.model.show_excluded = show
             self.model.refresh_excluded_visibility()
             self.changes_updated.emit(list(self.model.changes), "display")
 
-    def _refresh_stashed(
+    def _refresh_exclusions(
         self, *, kind: str = "decision", model_refreshed: bool = True
     ) -> None:
-        """Notify the window after the stashed items changed."""
+        """Notify the window after the excluded items changed."""
         if not model_refreshed:
             with timed("view.model_refresh"):
-                self.model.refresh_stashed()
+                self.model.refresh_exclusions()
         with timed("view.emit_changes"):
             self.changes_updated.emit(list(self.model.changes), kind)
 
@@ -1239,7 +1174,7 @@ class FlatComparisonView(QWidget):
         """Mark the comparison stale.
 
         A stale comparison stays browsable: selection, context menus, folding,
-        stashing and external tools all keep working. Only decisions are
+        exclusioning and external tools all keep working. Only decisions are
         disabled, and synchronization is gated elsewhere until Compare runs.
         During a synchronization the views are blocked explicitly.
         """
@@ -1391,9 +1326,9 @@ class FlatComparisonView(QWidget):
             if tree is self.action:
                 menu = QMenu(tree)
                 restore = None
-                if self.model.stash:
+                if self.model.exclusions:
                     restore = menu.addAction(
-                        f"Restore All Stashed ({self.model.stash.count()})"
+                        f"Reset All Exclusions ({self.model.exclusions.count()})"
                     )
                     menu.addSeparator()
                 collapse_all = menu.addAction("Collapse All Folders")
@@ -1403,7 +1338,7 @@ class FlatComparisonView(QWidget):
                 if selected is None:
                     return
                 if selected is restore:
-                    self.restore_all_requested.emit()
+                    self.reset_exclusions_requested.emit()
                 elif selected is collapse_all:
                     self.collapse_all()
                 elif selected is expand_all:
@@ -1439,12 +1374,12 @@ class FlatComparisonView(QWidget):
             self.model.reset_subtree_decisions(path)
         elif selected is actions["reset_all"]:
             self.reset_all_decisions()
-        elif selected is actions["stash"] and path is not None:
-            self.stash_path(path)
+        elif selected is actions["exclusion"] and path is not None:
+            self.exclude_path(path)
         elif selected is actions["restore"] and path is not None:
             self.restore_path(path)
-        elif selected is actions["restore_all_stashed"]:
-            self.restore_all_requested.emit()
+        elif selected is actions["reset_exclusions"]:
+            self.reset_exclusions_requested.emit()
         elif selected is actions["collapse"] and path is not None:
             self.collapse_path(path)
         elif selected is actions["expand"] and path is not None:
@@ -1526,9 +1461,9 @@ class FlatComparisonView(QWidget):
             "reset_one": None,
             "reset_subtree": None,
             "reset_all": None,
-            "stash": None,
+            "exclusion": None,
             "restore": None,
-            "restore_all_stashed": None,
+            "reset_exclusions": None,
             "collapse": None,
             "expand": None,
             "collapse_all": None,
@@ -1582,16 +1517,16 @@ class FlatComparisonView(QWidget):
                     action.setData(phrase.pattern)
                     actions["filters"].append(action)  # type: ignore[union-attr]
 
-        # Stashing items from the comparison.
+        # Excluding items from the run.
         menu.addSeparator()
-        stash = self.model.stash
-        if path and stash.is_stashed(path):
-            actions["restore"] = menu.addAction("Restore Item")
+        exclusions = self.model.exclusions
+        if path and exclusions.is_excluded(path):
+            actions["restore"] = menu.addAction("Include Item")
         elif path:
-            actions["stash"] = menu.addAction("Stash Item\tSpace")
-        if stash:
-            actions["restore_all_stashed"] = menu.addAction(
-                f"Restore All Stashed ({stash.count()})"
+            actions["exclusion"] = menu.addAction("Exclude Item\tSpace")
+        if exclusions:
+            actions["reset_exclusions"] = menu.addAction(
+                f"Reset All Exclusions ({exclusions.count()})"
             )
 
         # The tools the user configured for the items of the comparison.

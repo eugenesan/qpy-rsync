@@ -70,7 +70,7 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
         box
         for box in bar.findChildren(QCheckBox)
         if box not in (
-            bar.stashed_box,
+            bar.excluded_box,
             bar.unchanged_box,
             bar.directory_filter_box,
         )
@@ -87,13 +87,13 @@ def test_action_filter_tooltips_mention_display_only_and_mode() -> None:
         assert box.iconSize().width() == CONTROL_ICON_SIZE
 
 
-def test_the_stashed_toggle_says_it_affects_the_sync() -> None:
+def test_the_excluded_toggle_says_it_affects_the_sync() -> None:
     app()
     bar = ActionFilterBar()
-    bar.set_stashed_count(3)
-    assert "3 stashed item(s)" in bar.stashed_box.toolTip()
-    assert "not part of the sync" in bar.stashed_box.toolTip()
-    assert bar.stashed_box.text() == "3"
+    bar.set_excluded_count(3)
+    assert "3 excluded item(s)" in bar.excluded_box.toolTip()
+    assert "not part of the sync" in bar.excluded_box.toolTip()
+    assert bar.excluded_box.text() == "3"
 
 
 def test_action_filter_survives_model_reset() -> None:
@@ -111,14 +111,14 @@ def test_action_filter_survives_model_reset() -> None:
     assert model.visible_actions() == {ChangeAction.CREATE}
 
 
-def test_the_stashed_toggle_mentions_restore_all_in_its_tooltip() -> None:
+def test_the_excluded_toggle_mentions_restore_all_in_its_tooltip() -> None:
     app()
     bar = ActionFilterBar()
-    bar.set_stashed_count(0)
-    assert "Right-click to restore all stashed items" in bar.stashed_box.toolTip()
-    bar.set_stashed_count(3)
-    assert "3 stashed item(s)" in bar.stashed_box.toolTip()
-    assert "Right-click to restore all stashed items" in bar.stashed_box.toolTip()
+    bar.set_excluded_count(0)
+    assert "Right-click to reset all exclusions" in bar.excluded_box.toolTip()
+    bar.set_excluded_count(3)
+    assert "3 excluded item(s)" in bar.excluded_box.toolTip()
+    assert "Right-click to reset all exclusions" in bar.excluded_box.toolTip()
 
 
 def test_the_action_toggles_only_take_focus_from_the_keyboard() -> None:
@@ -127,7 +127,7 @@ def test_the_action_toggles_only_take_focus_from_the_keyboard() -> None:
     # A pointer click must not focus the toggle (Breeze draws a focus
     # underline under an icon-only checkbox), but TabFocus still includes
     # the keyboard.
-    for box in (*bar._boxes.values(), bar.unchanged_box, bar.stashed_box):
+    for box in (*bar._boxes.values(), bar.unchanged_box, bar.excluded_box):
         assert box.focusPolicy() == Qt.FocusPolicy.TabFocus
         assert box.focusPolicy() & Qt.FocusPolicy.TabFocus
 
@@ -227,22 +227,22 @@ def test_ctrl_click_on_a_switch_that_is_off_brings_every_action_back() -> None:
     assert seen[-1] == set(FILTERABLE_ACTIONS)
 
 
-def test_the_reversed_filter_leaves_the_unchanged_and_stashed_toggles_alone() -> None:
+def test_the_reversed_filter_leaves_the_unchanged_and_excluded_toggles_alone() -> None:
     app()
     bar = ActionFilterBar()
     create = bar._boxes[ChangeAction.CREATE]
-    bar.stashed_box.setChecked(True)
+    bar.excluded_box.setChecked(True)
 
     _click(create, ctrl=True)
     # The solo switches the other toggles off.
-    assert bar.stashed_box.isChecked() is False
+    assert bar.excluded_box.isChecked() is False
 
     _click(bar._boxes[ChangeAction.DELETE], ctrl=True)
 
-    # The reset restores the actions, but the stashed toggle keeps the state
+    # The reset restores the actions, but the excluded toggle keeps the state
     # it had.
     assert all(other.isChecked() for other in bar._boxes.values())
-    assert bar.stashed_box.isChecked() is False
+    assert bar.excluded_box.isChecked() is False
 
 
 def test_a_plain_click_still_toggles_the_box() -> None:
@@ -279,18 +279,18 @@ def test_ctrl_click_on_a_switch_that_is_off_reverses_the_operation() -> None:
     _click(create, ctrl=True)
     assert seen[-1] == {ChangeAction.CREATE}
 
-    # The stashed switch is off, so the inverted click reverses the solo.
-    _click(bar.stashed_box, ctrl=True)
+    # The excluded switch is off, so the inverted click reverses the solo.
+    _click(bar.excluded_box, ctrl=True)
 
     assert all(other.isChecked() for other in bar._boxes.values())
-    assert bar.stashed_box.isChecked() is False
+    assert bar.excluded_box.isChecked() is False
     assert seen[-1] == set(FILTERABLE_ACTIONS)
 
 
-def test_the_context_menu_can_still_show_only_the_stashed_items() -> None:
+def test_the_context_menu_can_still_show_only_the_excluded_items() -> None:
     app()
     bar = ActionFilterBar()
-    box = bar.stashed_box
+    box = bar.excluded_box
 
     bar._set_states({other: other is box for other in bar._all_boxes()})
 
@@ -307,11 +307,11 @@ def test_the_context_menu_can_reset_the_bar_to_its_default() -> None:
     _click(box, ctrl=True)
     assert box.isChecked() is True
     bar.unchanged_box.setChecked(True)
-    bar.stashed_box.setChecked(True)
+    bar.excluded_box.setChecked(True)
 
     bar.reset_defaults()
 
     # The default is every action and nothing else.
     assert all(other.isChecked() for other in bar._boxes.values())
     assert bar.unchanged_box.isChecked() is False
-    assert bar.stashed_box.isChecked() is False
+    assert bar.excluded_box.isChecked() is False

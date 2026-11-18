@@ -17,7 +17,7 @@ from .icons import (
     ACTION_LABELS,
     action_icon,
     folder_icon,
-    stashed_icon,
+    excluded_icon,
     unchanged_icon,
 )
 
@@ -42,44 +42,44 @@ FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (
 
 
 class ActionFilterBar(QWidget):
-    """Checkboxes that filter the view, and the stashed items toggle."""
+    """Checkboxes that filter the view, and the excluded items toggle."""
 
     changed = Signal(object)
-    stashed_toggled = Signal(bool)
+    excluded_toggled = Signal(bool)
     unchanged_toggled = Signal(bool)
-    restore_all_requested = Signal()
+    reset_exclusions_requested = Signal()
     directory_filter_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self._stashed_count = 0
+        self._excluded_count = 0
         # The checkbox whose inverted click is being handled.
         self._inverse_click: QCheckBox | None = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        # The stashed items are the ones the user put aside. They affect the
+        # The excluded items are the ones the user put aside. They affect the
         # sync, so this is not just a display filter: it shows what is
         # already excluded from the sync, the way the unchanged toggle shows
         # what the comparison kept.
-        self.stashed_box = QCheckBox(self)
-        self.stashed_box.setIcon(stashed_icon())
-        self.stashed_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.stashed_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
-        self.stashed_box.setToolTip(
-            self._stashed_tooltip(0)
+        self.excluded_box = QCheckBox(self)
+        self.excluded_box.setIcon(excluded_icon())
+        self.excluded_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.excluded_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
+        self.excluded_box.setToolTip(
+            self._excluded_tooltip(0)
             + "\nAlt+1 clicks this checkbox; Ctrl+1 inverts it."
         )
-        self.stashed_box.setAccessibleName("Show stashed items")
-        self.stashed_box.setContextMenuPolicy(
+        self.excluded_box.setAccessibleName("Show excluded items")
+        self.excluded_box.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu
         )
-        self.stashed_box.customContextMenuRequested.connect(
-            self._show_stashed_menu
+        self.excluded_box.customContextMenuRequested.connect(
+            self._show_excluded_menu
         )
-        self.stashed_box.toggled.connect(self.stashed_toggled.emit)
-        layout.addWidget(self.stashed_box)
+        self.excluded_box.toggled.connect(self.excluded_toggled.emit)
+        layout.addWidget(self.excluded_box)
         layout.addWidget(_separator())
 
         self.directory_filter_box = QCheckBox(self)
@@ -115,7 +115,7 @@ class ActionFilterBar(QWidget):
                 # which indicator belongs to which glyph.
                 layout.addWidget(_separator())
 
-        # The unchanged items and the stashed items are toggles rather than
+        # The unchanged items and the excluded items are toggles rather than
         # display filters, so they sit together at the end of the bar, behind
         # a separator that tells them apart from the action filters.
         layout.addWidget(_separator())
@@ -161,7 +161,7 @@ class ActionFilterBar(QWidget):
             box.click()
 
     def _numbered_boxes(self) -> list[QCheckBox]:
-        return [self.stashed_box, *self._boxes.values(), self.unchanged_box]
+        return [self.excluded_box, *self._boxes.values(), self.unchanged_box]
 
     def _tooltip(self, action: ChangeAction) -> str:
         label = ACTION_LABELS.get(action, action.value)
@@ -182,53 +182,53 @@ class ActionFilterBar(QWidget):
     def is_all_enabled(self) -> bool:
         return all(box.isChecked() for box in self._boxes.values())
 
-    def show_stashed(self) -> bool:
-        return self.stashed_box.isChecked()
+    def show_excluded(self) -> bool:
+        return self.excluded_box.isChecked()
 
     @staticmethod
-    def _stashed_tooltip(count: int) -> str:
+    def _excluded_tooltip(count: int) -> str:
         head = (
-            f"{count} stashed item(s)."
+            f"{count} excluded item(s)."
             if count
-            else "Show the items that were stashed from the comparison."
+            else "Show the items excluded from this comparison."
         )
         return (
             f"{head}\n"
-            "A stashed item is not part of the sync. The stash is kept in "
-            "memory only, so it is gone after the next comparison.\n"
-            "Right-click to restore all stashed items.\n"
-            "Ctrl+click shows only the stashed items."
+            "An excluded item is not part of the sync. Exclusions are kept "
+            "in memory only, so they are gone after the next comparison.\n"
+            "Right-click to reset all exclusions.\n"
+            "Ctrl+click shows only the excluded items."
         )
 
-    def set_stashed_count(self, count: int) -> None:
-        """Report how many items are stashed next to the toggle."""
-        self._stashed_count = count
+    def set_excluded_count(self, count: int) -> None:
+        """Report how many items are excluded next to the toggle."""
+        self._excluded_count = count
         text = str(count) if count else ""
-        self.stashed_box.setText(text)
+        self.excluded_box.setText(text)
         # The fixed size leaves room for the indicator and the glyph, so the
         # count needs its own width when there is one.
-        extra = self.stashed_box.fontMetrics().horizontalAdvance(text) + 10 if text else 0
-        self.stashed_box.setFixedWidth(CONTROL_ICON_SIZE + 20 + extra)
-        self.stashed_box.setVisible(True)
-        self.stashed_box.setToolTip(
-            self._stashed_tooltip(count)
+        extra = self.excluded_box.fontMetrics().horizontalAdvance(text) + 10 if text else 0
+        self.excluded_box.setFixedWidth(CONTROL_ICON_SIZE + 20 + extra)
+        self.excluded_box.setVisible(True)
+        self.excluded_box.setToolTip(
+            self._excluded_tooltip(count)
             + "\nAlt+1 clicks this checkbox; Ctrl+1 inverts it."
         )
 
-    def _show_stashed_menu(self, point: object) -> None:
-        """Offer to restore every stashed item from the toggle."""
+    def _show_excluded_menu(self, point: object) -> None:
+        """Offer to restore every excluded item from the toggle."""
         menu = QMenu(self)
         restore = menu.addAction(
-            f"Restore All Stashed ({self._stashed_count})"
-            if self._stashed_count
-            else "Restore All Stashed"
+            f"Reset All Exclusions ({self._excluded_count})"
+            if self._excluded_count
+            else "Reset All Exclusions"
         )
-        restore.setEnabled(self._stashed_count > 0)
+        restore.setEnabled(self._excluded_count > 0)
         selected = menu.exec(
-            self.stashed_box.mapToGlobal(point)  # type: ignore[arg-type]
+            self.excluded_box.mapToGlobal(point)  # type: ignore[arg-type]
         )
-        if selected is restore and self._stashed_count:
-            self.restore_all_requested.emit()
+        if selected is restore and self._excluded_count:
+            self.reset_exclusions_requested.emit()
 
     def _emit_change(self) -> None:
         self.changed.emit(self.visible_actions())
@@ -240,7 +240,7 @@ class ActionFilterBar(QWidget):
 
     def _all_boxes(self) -> list[QCheckBox]:
         """Every checkbox of the bar."""
-        return [*self._boxes.values(), self.unchanged_box, self.stashed_box]
+        return [*self._boxes.values(), self.unchanged_box, self.excluded_box]
 
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         """Handle the inverted click on a checkbox of the bar."""
@@ -265,7 +265,7 @@ class ActionFilterBar(QWidget):
 
         A box that is on becomes the only one that is shown. A box that is
         off, or one that is already the only one that is shown, reverses
-        that: every action comes back and the unchanged and the stashed
+        that: every action comes back and the unchanged and the excluded
         toggles keep their state.
         """
         boxes = self._all_boxes()
@@ -275,17 +275,17 @@ class ActionFilterBar(QWidget):
                 self._set_states({other: other is box for other in boxes})
                 return
         wanted = {other: True for other in self._boxes.values()}
-        # The unchanged and the stashed toggles are not part of the action
+        # The unchanged and the excluded toggles are not part of the action
         # filter, so the reset leaves them alone.
         wanted[self.unchanged_box] = self.unchanged_box.isChecked()
-        wanted[self.stashed_box] = self.stashed_box.isChecked()
+        wanted[self.excluded_box] = self.excluded_box.isChecked()
         self._set_states(wanted)
 
     def _set_states(self, wanted: dict[QCheckBox, bool]) -> None:
         """Set the checkboxes and report the change once."""
         action_changed = False
         unchanged_changed = False
-        stashed_changed = False
+        excluded_changed = False
         for box, value in wanted.items():
             if box.isChecked() == value:
                 continue
@@ -294,22 +294,22 @@ class ActionFilterBar(QWidget):
             box.blockSignals(False)
             if box is self.unchanged_box:
                 unchanged_changed = True
-            elif box is self.stashed_box:
-                stashed_changed = True
+            elif box is self.excluded_box:
+                excluded_changed = True
             else:
                 action_changed = True
         if action_changed:
             self._emit_change()
         if unchanged_changed:
             self.unchanged_toggled.emit(self.unchanged_box.isChecked())
-        if stashed_changed:
-            self.stashed_toggled.emit(self.stashed_box.isChecked())
+        if excluded_changed:
+            self.excluded_toggled.emit(self.excluded_box.isChecked())
 
     def reset_defaults(self) -> None:
         """The state the bar starts in: every action and nothing else."""
         wanted = {box: True for box in self._boxes.values()}
         wanted[self.unchanged_box] = False
-        wanted[self.stashed_box] = False
+        wanted[self.excluded_box] = False
         self._set_states(wanted)
         self.directory_filter_box.setChecked(False)
 

@@ -1236,7 +1236,7 @@ def test_a_finished_comparison_can_play_a_sound(monkeypatch) -> None:
     application.processEvents()
 
 
-def test_showing_stashed_items_is_reported() -> None:
+def test_showing_excluded_items_is_reported() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -1248,15 +1248,15 @@ def test_showing_stashed_items_is_reported() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    window.comparison.stash_path("a.txt")
-    window._apply_show_stashed(True)
+    window.comparison.exclude_path("a.txt")
+    window._apply_show_excluded(True)
     application.processEvents()
-    assert "stashed item(s)" in window.progress_label.text()
-    assert "Showing 1 stashed item(s)" in window.log.toPlainText()
+    assert "excluded item(s)" in window.progress_label.text()
+    assert "Showing 1 excluded item(s)" in window.log.toPlainText()
 
-    window._apply_show_stashed(False)
+    window._apply_show_excluded(False)
     application.processEvents()
-    assert "put aside again" in window.progress_label.text()
+    assert "hidden again" in window.progress_label.text()
     window.close()
     application.processEvents()
 
@@ -1273,7 +1273,7 @@ def test_the_backup_button_keeps_its_menu_when_unconfigured() -> None:
     application.processEvents()
 
 
-def test_restore_all_stashed_puts_every_stashed_item_back() -> None:
+def test_reset_exclusions_puts_every_excluded_item_back() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -1285,15 +1285,15 @@ def test_restore_all_stashed_puts_every_stashed_item_back() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    window.comparison.stash_path("a.txt")
-    window.comparison.stash_path("b.txt")
+    window.comparison.exclude_path("a.txt")
+    window.comparison.exclude_path("b.txt")
 
-    window.comparison.restore_all_requested.emit()
+    window.comparison.reset_exclusions_requested.emit()
     application.processEvents()
 
-    assert window.comparison.stashed_paths() == set()
-    assert "All 2 stashed item(s) are restored" in window.progress_label.text()
-    assert "Restored 2 stashed item(s)" in window.log.toPlainText()
+    assert window.comparison.excluded_paths() == set()
+    assert "All 2 exclusion(s) are reset" in window.progress_label.text()
+    assert "Reset 2 exclusion(s)" in window.log.toPlainText()
     window.close()
     application.processEvents()
 
@@ -1485,7 +1485,7 @@ def test_deleted_size_updates_after_metadata_arrives() -> None:
     application.processEvents()
 
 
-def test_stash_updates_plan_incrementally() -> None:
+def test_exclusion_updates_plan_incrementally() -> None:
     from qpy_rsync.backend.rsync_parser import ParseResult
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.services.compare_service import CompareResult
@@ -1504,7 +1504,7 @@ def test_stash_updates_plan_incrementally() -> None:
     before = window._current_plan.summary.included
     assert before == 2
 
-    window.comparison.model.stash.add("a.txt")
+    window.comparison.model.exclusion.add("a.txt")
     window._overview_updated([])
     assert window._current_plan.summary.included == 1
     assert [i.path for i in window._current_plan.included_items] == ["b.txt"]

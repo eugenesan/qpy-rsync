@@ -170,11 +170,11 @@ Remaining work, in priority order:
 Acceptance: every compare-view action, including search and global filters,
 under ~1 s on the 1.2M-item tree; initial load unchanged.
 
-### Milestone 1.15bf: finish the unified lists
+### Milestone 1.15bf: finish the unified lists — delivered
 
-The stash was a useful stepping stone, but it is a second exclusion system
-next to the per-item decisions. The remaining work is to remove it and leave
-one model of "this item is not part of this run".
+The stash was a useful stepping stone, but it was a second exclusion system
+next to the per-item decisions. It is gone; there is one model of "this item
+is not part of this run": an EXCLUDE decision.
 
 1. **Remove the stash and unify it with decisions.**
    - Space, the context menu and the overview keep working, but they set the
@@ -205,6 +205,8 @@ one model of "this item is not part of this run".
 Acceptance: the full suite passes, the help and design documents match the UI,
 and a manual smoke test confirms that Space excludes a directory, all of its
 children disappear from the list, and the destination is never touched.
+Status: code, documents and tests updated; 367 tests pass. The manual smoke
+test remains with the user, who is testing on real trees.
 
 ### After 1.15bf
 

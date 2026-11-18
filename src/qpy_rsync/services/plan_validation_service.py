@@ -11,7 +11,7 @@ from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.rsync_parser import parse_output
 from qpy_rsync.backend.sync_progress import parse_sync_progress
-from qpy_rsync.core.changes import Change, ChangeAction
+from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions
 from qpy_rsync.core.execution_plan import ExecutionPlan
 from qpy_rsync.core.models import SyncProfile
 
@@ -37,39 +37,27 @@ class PlanValidationResult:
 def compare_plan_to_changes(
     plan: ExecutionPlan,
     changes: list[Change],
-    stashed: object | None = None,
+    decisions: ChangeDecisions | None = None,
 ) -> PlanMismatch:
     expected = {
         (item.path, item.action, item.kind.value)
         for item in plan.included_items
     }
-    stashed_paths = (
-        {path.strip("/") for path in stashed.paths()}
-        if stashed is not None
-        else set()
-    )
     actual = {
         (change.path.rstrip("/"), change.action, change.kind.value)
         for change in changes
         if change.action not in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE, ChangeAction.DESTINATION_ONLY}
-        # A stashed item is deliberately not part of the sync, so a plan that
-        # leaves it out is still correct.
-        and not _is_stashed(str(change.path), stashed_paths)
+        # An excluded item is deliberately not part of the sync, so a plan
+        # that leaves it out is still correct.
+        and not (
+            decisions is not None
+            and decisions.inherited(str(change.path)) is ChangeDecision.EXCLUDE
+        )
     }
     return PlanMismatch(
         missing=tuple(sorted(expected - actual)),
         unexpected=tuple(sorted(actual - expected)),
     )
-
-
-def _is_stashed(path: str, stashed_paths: set[str]) -> bool:
-    """Whether the path, or one of its parents, is stashed."""
-    current = path.rstrip("/")
-    while current:
-        if current in stashed_paths:
-            return True
-        current = current.rpartition("/")[0]
-    return False
 
 
 class PlanValidationService:

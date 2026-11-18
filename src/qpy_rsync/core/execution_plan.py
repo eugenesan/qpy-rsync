@@ -16,20 +16,9 @@ from .changes import (
     ChangeAction,
     ChangeDecision,
     ChangeDecisions,
-    StashedItems,
     ObjectKind,
 )
 from .models import SyncProfile
-
-
-def _is_stashed(path: str, stashed_paths: set[str]) -> bool:
-    """Return whether a path is stashed, directly or by a parent directory."""
-    current = path.rstrip("/")
-    while current:
-        if current in stashed_paths:
-            return True
-        current = current.rpartition("/")[0]
-    return False
 
 
 @dataclass(slots=True, frozen=True)
@@ -92,14 +81,11 @@ def profile_fingerprint(profile: SyncProfile) -> str:
     return sha256(payload.encode("utf-8")).hexdigest()
 
 
-def decision_signature(decisions, stashed_paths: set[str]) -> str:
+def decision_signature(decisions) -> str:
     """Fingerprint the decisions that affect the execution plan."""
     return sha256(
         json.dumps(
-            {
-                "decisions": sorted(decisions.explicit_items()),
-                "stashed": sorted(stashed_paths),
-            },
+            sorted(decisions.explicit_items()),
             sort_keys=True,
             default=str,
         ).encode("utf-8")
@@ -110,7 +96,6 @@ def build_execution_plan(
     profile: SyncProfile,
     changes: Iterable[Change],
     decisions: ChangeDecisions,
-    stashed: StashedItems | None = None,
     destination_metadata: dict[str, tuple[int | None, str | None]] | None = None,
 ) -> ExecutionPlan:
     changes_list = list(changes)
@@ -122,11 +107,7 @@ def build_execution_plan(
     deleted_size = 0
     metadata = build_destination_size_index(destination_metadata or {})
     modified = decisions.modified_count(changes_list)
-    stashed_paths = (
-        {path.strip("/") for path in stashed.paths()} if stashed else set()
-    )
     has_explicit = decisions.has_explicit()
-    has_stash = bool(stashed_paths)
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
 
@@ -136,22 +117,6 @@ def build_execution_plan(
             if action in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}:
                 continue
             clean = str(change.path).rstrip("/")
-            if has_stash and _is_stashed(clean, stashed_paths):
-                # A stashed item is not part of the sync. The state only lives
-                # in memory, so it is gone after the next comparison.
-                excluded += 1
-                items.append(
-                    PlanItem(
-                        path=clean,
-                        action=action,
-                        comparison_action=action,
-                        kind=change.kind,
-                        included=False,
-                        destructive=False,
-                        size=change.size,
-                    )
-                )
-                continue
             selected = (
                 decisions.effective(change) is not ChangeDecision.EXCLUDE
                 if has_explicit
@@ -240,7 +205,7 @@ def build_execution_plan(
         total_size=total_size,
         included_size=included_size,
     )
-    signature = decision_signature(decisions, stashed_paths)
+    signature = decision_signature(decisions)
     return ExecutionPlan(
         decision_signature=signature,
         profile_fingerprint=profile_fingerprint(profile),

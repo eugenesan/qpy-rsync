@@ -74,16 +74,16 @@ def _two_files():
     ]
 
 
-def test_a_stashed_item_does_not_invalidate_the_plan() -> None:
-    from qpy_rsync.core.changes import StashedItems
+def test_a_excluded_item_does_not_invalidate_the_plan() -> None:
+    from qpy_rsync.core.changes import ChangeDecision
     from qpy_rsync.services.plan_validation_service import compare_plan_to_changes
 
-    stash = StashedItems()
-    stash.add("a.txt")
+    decisions = ChangeDecisions()
+    decisions.set("a.txt", ChangeDecision.EXCLUDE)
     profile = SyncProfile(
         "plan",
         Endpoint(EndpointKind.LOCAL, "/src/"),
         Endpoint(EndpointKind.LOCAL, "/dst/"),
     )
-    plan = build_execution_plan(profile, _two_files(), ChangeDecisions(), stash)
-    assert compare_plan_to_changes(plan, _two_files(), stash).valid
+    plan = build_execution_plan(profile, _two_files(), decisions)
+    assert compare_plan_to_changes(plan, _two_files(), decisions).valid

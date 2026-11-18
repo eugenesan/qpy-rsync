@@ -6,7 +6,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.backend.rsync_patterns import matches, phrases_for
-from qpy_rsync.core.changes import StashedItems
+from qpy_rsync.core.changes import ChangeDecisions
+from qpy_rsync.gui.flat_change_model import ExcludedPaths
 
 
 def app() -> QApplication:
@@ -49,49 +50,49 @@ def test_the_patterns_match_the_paths_they_name() -> None:
     assert matches("/docs/pictures/", "docs/pictures/photo.jpg")
 
 
-def test_a_stashed_directory_covers_the_items_below_it() -> None:
-    stash = StashedItems()
-    stash.add("docs/pictures")
-    assert stash.is_stashed("docs/pictures")
-    assert stash.is_stashed("docs/pictures/photo.jpg")
-    assert not stash.is_stashed("docs")
-    assert not stash.is_stashed("docs/notes.txt")
+def test_a_excluded_directory_covers_the_items_below_it() -> None:
+    exclusion = ExcludedPaths(ChangeDecisions())
+    exclusion.add("docs/pictures")
+    assert exclusion.is_excluded("docs/pictures")
+    assert exclusion.is_excluded("docs/pictures/photo.jpg")
+    assert not exclusion.is_excluded("docs")
+    assert not exclusion.is_excluded("docs/notes.txt")
 
 
-def test_a_stashed_item_can_be_restored() -> None:
-    stash = StashedItems()
-    stash.add("docs/pictures")
-    stash.restore("docs/pictures")
-    assert not stash.is_stashed("docs/pictures/photo.jpg")
+def test_a_excluded_item_can_be_restored() -> None:
+    exclusion = ExcludedPaths(ChangeDecisions())
+    exclusion.add("docs/pictures")
+    exclusion.restore("docs/pictures")
+    assert not exclusion.is_excluded("docs/pictures/photo.jpg")
 
 
 def test_restoring_a_path_also_restores_the_items_below_it() -> None:
-    stash = StashedItems()
-    stash.add("docs/pictures")
-    stash.add("docs/pictures/old")
-    stash.restore("docs/pictures")
-    assert not stash.is_stashed("docs/pictures/old")
+    exclusion = ExcludedPaths(ChangeDecisions())
+    exclusion.add("docs/pictures")
+    exclusion.add("docs/pictures/old")
+    exclusion.restore("docs/pictures")
+    assert not exclusion.is_excluded("docs/pictures/old")
 
 
 def test_toggling_reports_the_new_state() -> None:
-    stash = StashedItems()
-    assert stash.toggle("docs/a.txt") is True
-    assert stash.is_stashed("docs/a.txt")
-    assert stash.toggle("docs/a.txt") is False
-    assert not stash.is_stashed("docs/a.txt")
+    exclusion = ExcludedPaths(ChangeDecisions())
+    assert exclusion.toggle("docs/a.txt") is True
+    assert exclusion.is_excluded("docs/a.txt")
+    assert exclusion.toggle("docs/a.txt") is False
+    assert not exclusion.is_excluded("docs/a.txt")
 
 
-def test_the_stashed_items_can_be_cleared() -> None:
-    stash = StashedItems()
-    stash.add("a.txt")
-    stash.add("b.txt")
-    assert stash.count() == 2
-    stash.clear()
-    assert stash.count() == 0
-    assert not stash
+def test_the_excluded_items_can_be_cleared() -> None:
+    exclusion = ExcludedPaths(ChangeDecisions())
+    exclusion.add("a.txt")
+    exclusion.add("b.txt")
+    assert exclusion.count() == 2
+    exclusion.clear()
+    assert exclusion.count() == 0
+    assert not exclusion
 
 
-def test_stashing_an_item_removes_it_from_the_list() -> None:
+def test_exclusioning_an_item_removes_it_from_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
@@ -104,11 +105,11 @@ def test_stashing_an_item_removes_it_from_the_list() -> None:
         ]
     )
     assert view.model.rowCount() == 3
-    view.stash_path("a.txt")
+    view.exclude_path("a.txt")
     paths = set(_paths(view.model))
     assert "a.txt" not in paths
     assert "b.txt" in paths
-    view.restore_all_stashed()
+    view.reset_exclusions()
     paths = set(_paths(view.model))
     assert "a.txt" in paths
     view.close()
@@ -142,13 +143,13 @@ def test_overview_aggregates_match_the_visible_changes() -> None:
     assert model.overview_aggregates() == expected()
     model.set_visible_actions({ChangeAction.CREATE})
     assert model.overview_aggregates() == expected()
-    model.set_stashed("docs", True)
+    model.set_excluded("docs", True)
     assert model.overview_aggregates() == expected()
     model.deleteLater()
     application.processEvents()
 
 
-def test_stashing_a_directory_removes_its_destination_removals_too() -> None:
+def test_exclusioning_a_directory_removes_its_destination_removals_too() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_change_model import FlatChangeModel
 
@@ -165,11 +166,11 @@ def test_stashing_a_directory_removes_its_destination_removals_too() -> None:
 
     # The incremental refresh used by the space bar and the context menu has
     # to hide every descendant, not just the directory row itself.
-    model.set_stashed("dir", True)
+    model.set_excluded("dir", True)
     assert set(_paths(model)) == {"other", "other/keep.txt"}
     assert [change.path for change in model.visible_changes()] == ["other/keep.txt"]
 
-    model.set_stashed("dir", False)
+    model.set_excluded("dir", False)
     assert set(_paths(model)) == before
     assert len(model.visible_changes()) == len(changes)
 
@@ -177,7 +178,7 @@ def test_stashing_a_directory_removes_its_destination_removals_too() -> None:
     application.processEvents()
 
 
-def test_the_stashed_items_can_be_shown_again_in_the_list() -> None:
+def test_the_excluded_items_can_be_shown_again_in_the_list() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
@@ -188,10 +189,10 @@ def test_the_stashed_items_can_be_shown_again_in_the_list() -> None:
             Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.stash_path("a.txt")
+    view.exclude_path("a.txt")
     assert view.model.rowCount() == 1
-    # The toggle shows the stashed items again, dimmed.
-    view.set_show_stashed(True)
+    # The toggle shows the excluded items again, dimmed.
+    view.set_show_excluded(True)
     application.processEvents()
     assert view.model.rowCount() == 2
     view.close()
@@ -226,7 +227,7 @@ def test_the_space_bar_hides_the_selected_item() -> None:
     )
     assert view.eventFilter(view.source, event) is True
     application.processEvents()
-    assert view.stashed_paths() == {"a.txt"}
+    assert view.excluded_paths() == {"a.txt"}
     paths = set(_paths(view.model))
     assert paths == {"b.txt"}
     view.close()
@@ -234,7 +235,7 @@ def test_the_space_bar_hides_the_selected_item() -> None:
 
 
 def test_hiding_an_item_excludes_it_from_the_sync() -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions, ObjectKind
     from qpy_rsync.core.enums import EndpointKind
     from qpy_rsync.core.execution_plan import build_execution_plan
     from qpy_rsync.core.models import Endpoint, SyncProfile
@@ -248,16 +249,16 @@ def test_hiding_an_item_excludes_it_from_the_sync() -> None:
         Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=10),
         Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=20),
     ]
-    stash = StashedItems()
-    stash.add("a.txt")
-    plan = build_execution_plan(profile, changes, ChangeDecisions(), stash)
+    decisions = ChangeDecisions()
+    decisions.set("a.txt", ChangeDecision.EXCLUDE)
+    plan = build_execution_plan(profile, changes, decisions)
     included = {item.path for item in plan.items if item.included}
     assert included == {"b.txt"}
     assert plan.summary.excluded == 1
 
 
-def test_stashing_a_directory_excludes_the_items_below_it() -> None:
-    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ObjectKind
+def test_exclusioning_a_directory_excludes_the_items_below_it() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions, ObjectKind
     from qpy_rsync.core.enums import EndpointKind
     from qpy_rsync.core.execution_plan import build_execution_plan
     from qpy_rsync.core.models import Endpoint, SyncProfile
@@ -271,9 +272,9 @@ def test_stashing_a_directory_excludes_the_items_below_it() -> None:
         Change("docs/a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=10),
         Change("other/b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f", size=20),
     ]
-    stash = StashedItems()
-    stash.add("docs")
-    plan = build_execution_plan(profile, changes, ChangeDecisions(), stash)
+    decisions = ChangeDecisions()
+    decisions.set("docs", ChangeDecision.EXCLUDE)
+    plan = build_execution_plan(profile, changes, decisions)
     included = {item.path for item in plan.items if item.included}
     assert included == {"other/b.txt"}
 
@@ -355,7 +356,7 @@ def test_search_matches_are_cached_and_follow_the_visible_rows() -> None:
     assert [model.row_path(row) for row in matches] == ["docs/a.txt"]
     assert model.search_matches("a.txt") is matches
 
-    model.set_stashed("docs", True)
+    model.set_excluded("docs", True)
     assert model.search_matches("a.txt") == []
     model.deleteLater()
     application.processEvents()
@@ -393,7 +394,7 @@ def test_search_navigates_matches_without_changing_the_list() -> None:
     application.processEvents()
 
 
-def test_showing_stashed_items_does_not_change_the_visible_set() -> None:
+def test_showing_excluded_items_does_not_change_the_visible_set() -> None:
     """The overview and the statistics must not react to the show toggle."""
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
@@ -406,11 +407,11 @@ def test_showing_stashed_items_does_not_change_the_visible_set() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.stash_path("a.txt")
+    view.exclude_path("a.txt")
     before = [str(change.path) for change in view.visible_changes()]
-    view.set_show_stashed(True)
+    view.set_show_excluded(True)
     after = [str(change.path) for change in view.visible_changes()]
-    # The row is back in the list, but it is still stashed for the overview.
+    # The row is back in the list, but it is still excluded for the overview.
     assert any(view.model.row_path(row) == "a.txt" for row in range(view.model.rowCount()))
     assert before == after == ["b.txt"]
     view.close()
@@ -465,16 +466,9 @@ def test_a_trailing_slash_filters_directories_in() -> None:
     application.processEvents()
 
 
-def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
-    from PySide6.QtCore import QEvent, QPoint, QPointF
-    from PySide6.QtGui import QMouseEvent
-
+def test_the_checkbox_is_the_only_exclusion_control() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-    from qpy_rsync.gui.flat_change_model import STASHED_ROLE
-    from qpy_rsync.gui.flat_comparison_view import (
-        ActionColumnDelegate,
-        FlatComparisonView,
-    )
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
 
     application = app()
     view = FlatComparisonView()
@@ -484,42 +478,33 @@ def test_the_stashed_marker_reports_and_toggles_a_row() -> None:
             Change("b.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f"),
         ]
     )
-    view.stash_path("a.txt")
-    view.set_show_stashed(True)
-    application.processEvents()
+    # The crossed-eye marker and its dedicated hit target are gone.
+    assert not hasattr(view.action.itemDelegate(), "marker_rect")
+    assert not hasattr(view, "_exclusion_target")
 
+    index = view.model.index_for_path("a.txt")
+    view.model.setData(
+        view.model.index(index.row(), view.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    assert view.excluded_paths() == {"a.txt"}
+    assert "a.txt" not in _paths(view.model)
+
+    # The checkbox restores it; there is no second marker to click.
+    view.set_show_excluded(True)
+    application.processEvents()
     row = next(
-        row for row in range(view.model.rowCount())
+        row
+        for row in range(view.model.rowCount())
         if view.model.row_path(row) == "a.txt"
     )
-    index = view.model.index(row, view.model.ACTION)
-    assert view.model.data(index, STASHED_ROLE) is True
-
-    def marker_point() -> "QPoint":
-        rect = view.action.visualRect(index)
-        return ActionColumnDelegate.marker_rect(rect).center()
-
-    def tap(at: object) -> None:
-        event = QMouseEvent(
-            QEvent.Type.MouseButtonPress,
-            QPointF(at),
-            QPointF(view.action.viewport().mapToGlobal(at)),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        QApplication.sendEvent(view.action.viewport(), event)
-
-    # The click must reach the viewport and restore the stashed row.
-    tap(marker_point())
-    assert view.stashed_paths() == set()
-    # The same spot hides it again, so the marker toggles both ways.
-    tap(marker_point())
-    assert view.stashed_paths() == {"a.txt"}
-    # A finger is less precise than a pointer: the row edge is accepted too.
-    rect = view.action.visualRect(index)
-    tap(QPoint(marker_point().x(), rect.top() + 1))
-    assert view.stashed_paths() == set()
+    view.model.setData(
+        view.model.index(row, view.model.ACTION),
+        Qt.CheckState.Checked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    assert view.excluded_paths() == set()
     view.close()
     application.processEvents()
 
@@ -575,7 +560,7 @@ def test_the_unchanged_items_survive_the_action_filter() -> None:
     application.processEvents()
 
 
-def test_the_stashed_items_are_shown_even_when_the_action_filter_excludes_them() -> None:
+def test_the_excluded_items_are_shown_even_when_the_action_filter_excludes_them() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_change_model import FlatChangeModel
 
@@ -587,17 +572,17 @@ def test_the_stashed_items_are_shown_even_when_the_action_filter_excludes_them()
             Change("created.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
         ]
     )
-    model.stash.add("updated.txt")
+    model.exclusion.add("updated.txt")
     model.set_visible_actions({ChangeAction.CREATE})
-    model.refresh_stashed()
+    model.refresh_exclusions()
 
-    # The stashed item is put aside, so it is out of the list.
+    # The excluded item is put aside, so it is out of the list.
     assert "updated.txt" not in set(_paths(model))
 
-    # Asking for the stashed items shows them, whatever the action filters
+    # Asking for the excluded items shows them, whatever the action filters
     # say, because the toggle is about what was put aside.
-    model.show_stashed = True
-    model.refresh_stashed()
+    model.show_excluded = True
+    model.refresh_exclusions()
     paths = set(_paths(model))
     assert "updated.txt" in paths
     assert "created.txt" in paths

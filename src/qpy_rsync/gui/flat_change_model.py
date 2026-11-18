@@ -34,13 +34,57 @@ from qpy_rsync.core.changes import (
     ChangeAction,
     ChangeDecision,
     ChangeDecisions,
-    StashedItems,
     ObjectKind,
 )
 from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
 from .text_elide import elide_path
+
+class ExcludedPaths:
+    """The EXCLUDE decisions, exposed as the old exclusion API.
+
+    Excluding an item used to be two states: a temporary exclusion and a
+    persistent decision. Both now live in :class:`ChangeDecisions`; this view
+    keeps the callers that still speak about exclusioning working while they are
+    migrated.
+    """
+
+    def __init__(self, decisions: ChangeDecisions) -> None:
+        self._decisions = decisions
+
+    def __bool__(self) -> bool:
+        return bool(self.paths())
+
+    def paths(self) -> set[str]:
+        return {
+            path
+            for path, decision in self._decisions.explicit_items()
+            if decision is ChangeDecision.EXCLUDE
+        }
+
+    def count(self) -> int:
+        return len(self.paths())
+
+    def is_excluded(self, path: str) -> bool:
+        return self._decisions.inherited(path) is ChangeDecision.EXCLUDE
+
+    def add(self, path: str) -> None:
+        self._decisions.set(path, ChangeDecision.EXCLUDE)
+
+    def restore(self, path: str) -> None:
+        self._decisions.reset_subtree(path)
+
+    def toggle(self, path: str) -> bool:
+        if self.is_excluded(path):
+            self.restore(path)
+            return False
+        self.add(path)
+        return True
+
+    def clear(self) -> None:
+        self._decisions.clear()
+
 
 STALE_SUFFIX = "  [stale comparison]"
 STALE_HELP_TEXT = (
@@ -67,8 +111,8 @@ ACTION_HEADER_ACCENT = "#0891B2"
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 # Whether a row is drawn with the alternating background.
 STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
-# Whether the row is stashed, for the crossed-eye marker in the action column.
-STASHED_ROLE = Qt.ItemDataRole.UserRole + 4
+# Whether the row is excluded, for the crossed-eye marker in the action column.
+EXCLUDED_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 @dataclass(slots=True)
@@ -120,7 +164,7 @@ class FlatRow:
     # Whether the row is drawn with the shaded background.
     alternate: bool = False
     # Whether the row is excluded from the sync. This is the unified per-row
-    # state for decisions and stashed items.
+    # state for decisions and excluded items.
     excluded: bool = False
     # Whether a directory row has anything below it to fold.
     has_children: bool = False
@@ -168,10 +212,12 @@ class FlatChangeModel(QAbstractTableModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.decisions = ChangeDecisions()
-        # The items the user stashed from the comparison with the space bar.
-        self.stash = StashedItems()
-        # When this is on, the stashed items stay in the list, dimmed.
-        self.show_stashed = False
+        # One source of truth for everything left out of the run. The old
+        # names are kept as aliases until the UI and the plan stop using them.
+        self.exclusions = ExcludedPaths(self.decisions)
+        self.exclusion = self.exclusions
+        # When this is on, excluded items stay in the list, dimmed.
+        self._show_excluded = False
         # The directories whose children are folded out of the list. This is
         # view state only: the folded items still belong to the sync.
         self.collapsed: set[str] = set()
@@ -255,6 +301,14 @@ class FlatChangeModel(QAbstractTableModel):
         # Bumped whenever the layout changes, so a delegate can drop its
         # cached measurements.
         self.layout_token = 0
+
+    @property
+    def show_excluded(self) -> bool:
+        return self._show_excluded
+
+    @show_excluded.setter
+    def show_excluded(self, value: bool) -> None:
+        self._show_excluded = bool(value)
 
     # ------------------------------------------------------------------
     # Building the flat structure
@@ -635,18 +689,23 @@ class FlatChangeModel(QAbstractTableModel):
             self._apply_filters()
             self.endResetModel()
 
-    def set_stashed(self, path: str, stashed: bool) -> None:
-        """Stash or restore a path with an incremental view refresh."""
+    def set_excluded(self, path: str, excluded: bool) -> None:
+        """Exclude or include a path with an incremental view refresh."""
         clean = path.rstrip("/")
-        if stashed:
-            self.stash.add(clean)
+        if excluded:
+            self.decisions.set(clean, ChangeDecision.EXCLUDE)
         else:
-            self.stash.restore(clean)
+            self.decisions.reset_subtree(clean)
+        self._refresh_effective_actions({clean})
         self._after_excluded_change({clean})
 
-    def clear_stash(self) -> None:
-        self.stash.clear()
+    def reset_exclusions(self) -> None:
+        """Clear every manual include and exclude decision."""
+        self.decisions.clear()
+        self._refresh_effective_actions(None)
         self._after_excluded_change(None)
+
+    clear_exclusion = reset_exclusions
 
     def _after_excluded_change(self, paths: set[str] | None) -> None:
         self._override_paths = self.decisions.override_paths(self.changes)
@@ -655,9 +714,9 @@ class FlatChangeModel(QAbstractTableModel):
         else:
             self.refresh_decision_visibility(paths)
 
-    def refresh_stashed(self) -> None:
-        """Show the rows again after the user stashed or restored items."""
-        with timed("model.stash_refresh"):
+    def refresh_exclusions(self) -> None:
+        """Show the rows again after the user excluded or restored items."""
+        with timed("model.exclusion_refresh"):
             self.beginResetModel()
             self._apply_filters()
             self.endResetModel()
@@ -890,9 +949,9 @@ class FlatChangeModel(QAbstractTableModel):
         change_sizes = self._change_sizes
         change_destination_sizes = self._change_destination_sizes
         row_dir_index = self._row_dir_index
-        stash = self.stash
-        has_stash = bool(stash)
-        check_stashed = has_stash and not self.show_stashed
+        exclusion = self.exclusion
+        has_exclusion = bool(exclusion)
+        check_excluded = has_exclusion and not self.show_excluded
         excluded = self._excluded_paths()
         change_visible = self._change_visible
         change_path_ok = self._change_path_ok
@@ -903,10 +962,12 @@ class FlatChangeModel(QAbstractTableModel):
         change_index = self._row_change_index
         row_excluded = self._row_excluded
         row_directory = self._row_directory
-        stashed_fn = stash.is_stashed
+        excluded_fn = exclusion.is_excluded
         for index in range(len(rows)):
             path = paths[index]
-            row_is_stashed = has_stash and stashed_fn(path)
+            # The compared folder is not an item: keep its row reachable so
+            # an exclusion of the whole list can always be undone.
+            row_is_excluded = has_exclusion and bool(path) and excluded_fn(path)
             value = excluded_get(path, False) if excluded else False
             if value != row_excluded[index]:
                 row_excluded[index] = value
@@ -916,16 +977,16 @@ class FlatChangeModel(QAbstractTableModel):
                 directory = row_directory[index]
                 if directory is None:
                     continue
-                if row_is_stashed:
-                    # A stashed folder is shown when the user asks for it,
+                if row_is_excluded:
+                    # A excluded folder is shown when the user asks for it,
                     # even when the action filters exclude its action.
-                    if check_stashed or not directory.path_ok:
+                    if check_excluded or not directory.path_ok:
                         continue
                 elif not directory.visible:
                     continue
                 if (
                     directory.own_change_index >= 0
-                    and not row_is_stashed
+                    and not row_is_excluded
                     and not directory.faded
                 ):
                     ci = directory.own_change_index
@@ -935,14 +996,14 @@ class FlatChangeModel(QAbstractTableModel):
                     values[1] += change_sizes[ci]
             else:
                 ci = change_index[index]
-                if row_is_stashed:
-                    # The same goes for a stashed item: the action filters
+                if row_is_excluded:
+                    # The same goes for a excluded item: the action filters
                     # do not hide what the user asked to see.
-                    if check_stashed or not change_path_ok[ci]:
+                    if check_excluded or not change_path_ok[ci]:
                         continue
                 elif not change_visible[ci]:
                     continue
-                if not row_is_stashed:
+                if not row_is_excluded:
                     visible_change_indices.add(ci)
                     size = change_sizes[ci]
                     values = aggregate_counts[dir_index]
@@ -1007,18 +1068,15 @@ class FlatChangeModel(QAbstractTableModel):
             self._mark_excluded(
                 excluded, path, decision is ChangeDecision.EXCLUDE
             )
-        if self.stash:
-            for path in self.stash.paths():
-                self._mark_excluded(excluded, path, True)
         return excluded
 
     def _update_excluded_rows(self, paths: set[str]) -> None:
         """Refresh the per-row excluded state for the given paths.
 
-        Stashing a directory covers everything below it, so the affected
+        Excluding a directory covers everything below it, so the affected
         rows are the path and all of its descendants, not just the row of
         the path itself. Only updating the latter leaves the children of a
-        stashed directory in the list.
+        excluded directory in the list.
         """
         excluded = self._excluded_paths()
         for row_index in self._affected_rows(paths):
@@ -1038,7 +1096,7 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _is_row_visible(self, row: FlatRow, folded: dict[str, bool]) -> bool:
         pattern_active = bool(self._pattern) and self._pattern != "*"
-        if row.excluded and not self.show_stashed:
+        if row.excluded and not self.show_excluded and row.path:
             return False
         if row.is_directory:
             directory = self._directories.get(row.path)
@@ -1098,7 +1156,7 @@ class FlatChangeModel(QAbstractTableModel):
         row_dir_index = self._row_dir_index
         change_sizes = self._change_sizes
         for index, row in enumerate(self._rows):
-            if row.excluded and not self.show_stashed:
+            if row.excluded and not self.show_excluded and row.path:
                 continue
             if row.is_directory:
                 directory = self._directories.get(row.path)
@@ -1597,8 +1655,8 @@ class FlatChangeModel(QAbstractTableModel):
             return row.path
         if role == STRIPE_ROLE:
             return row.alternate
-        if role == STASHED_ROLE:
-            return self.stash.is_stashed(row.path)
+        if role == EXCLUDED_ROLE:
+            return self.exclusion.is_excluded(row.path)
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:

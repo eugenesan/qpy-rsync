@@ -120,7 +120,5 @@ def test_deleted_size_uses_destination_metadata_without_double_counting() -> Non
         "old/b": (2000, "t"),
         "lone.txt": (500, "t"),
     }
-    plan = build_execution_plan(
-        profile(), changes, ChangeDecisions(), None, metadata
-    )
+    plan = build_execution_plan(profile(), changes, ChangeDecisions(), metadata)
     assert plan.summary.deleted_size == 3500

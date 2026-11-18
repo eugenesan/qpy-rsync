@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The stash is gone. Excluding an item is now the same EXCLUDE decision as
+  unchecking its checkbox: Space, the context menu and the overview all use
+  it, the filter bar says "Show excluded items" / "Reset All Exclusions", and
+  the crossed-eye marker in the action column was removed. The execution plan
+  takes exclusions only from the decisions.
 - Fixed stashing a directory in the comparison view: the directory row
   disappeared but all of its children, including destination removals, stayed
   in the list. The incremental refresh now marks every descendant as excluded.
