@@ -122,6 +122,51 @@ smoke test that its section describes.
 
 ## Planned work
 
+### Milestone 1.15be: responsive comparison and search (in progress)
+
+Measured on the 1.2M-item tree (`timing20.txt`, 520,663 changes,
+31,242 folders). The numbers are model time plus the overview time for one
+user action:
+
+| Action | timing18 | timing19 | timing20 |
+|---|---|---|---|
+| Global filter | ~1.7 s | ~1.46 s | **~1.04 s** |
+| Single decision | ~0.9 s | ~0.5–1.1 s | **~0.5 s** |
+| Show stashed | ~1.5 s | ~1.3 s | ~1.2–2.0 s |
+| Initial compare | ~3.5 s | ~3.5 s | ~3.9 s (acceptable) |
+
+Delivered so far: flat rows with O(1) position maps, one-pass filter and
+totals, cached effective actions, and a persistent Overview tree whose folder
+nodes are reused across filter changes.
+
+Remaining work, in priority order:
+
+1. **Incremental Overview totals.** `ui.overview_update` is still 260–290 ms
+   for a single decision. `set_aggregates()` currently recomputes every folder
+   total, sort order and visible-child list. Compare the new counts with the
+   old ones and update only the changed folders and their ancestors; rebuild
+   the view lists only where a folder actually becomes empty or non-empty.
+   Target: under ~40 ms for a decision, under ~100 ms for a global filter.
+2. **Remove the change-list copy in `view.emit_changes`.** Every stash sends
+   `list(model.changes)` (~337 ms in `timing19`) through a Qt signal to a slot
+   that no longer uses the list. Pass the model or an empty token and let the
+   slot pull only what it needs.
+3. **Speed up `refresh_excluded_visibility()`.** The show-stashed toggle
+   spends ~413 ms in `excluded_rows_rebuild`. The row loop can use the same
+   flat arrays and list slicing as the main filter pass, and the overview
+   update can be coalesced with it.
+4. **Indexed incremental search.** `find_next()` currently scans up to 520k
+   visible rows on every Enter and does a fresh `casefold()` per row. Cache
+   folded names and paths on the model, build a match list once per search
+   text/layout generation, and navigate it in O(1). Add debounced as-you-type
+   search, a match counter, and previous-match navigation. Search must never
+   change the visible set.
+5. **Coalesce UI refreshes.** Several signals each trigger an Overview update
+   in one action. A short debounce would let the UI paint once.
+
+Acceptance: every compare-view action, including search and global filters,
+under ~1 s on the 1.2M-item tree; initial load unchanged.
+
 ### Milestone 1.16: profiles and the Ubuntu packaging
 
 - complete the profile persistence and the recent-profile handling

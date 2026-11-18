@@ -242,6 +242,13 @@ class FlatChangeModel(QAbstractTableModel):
         # Integer index of the folder each row belongs to. Filtering uses
         # these to update flat aggregate arrays without string dict lookups.
         self._row_dir_index: list[int] = []
+        # Folded names and paths are built once so a search never casefolds
+        # half a million strings. The match list is cached per search text
+        # and layout generation.
+        self._row_paths_folded: list[str] = []
+        self._row_names_folded: list[str] = []
+        self._search_cache_key: tuple[str, int] | None = None
+        self._search_cache: list[int] = []
         self._visible_changes: list[Change] = []
         self._visible_change_indices: set[int] = set()
         self._override_paths: set[str] = set()
@@ -465,6 +472,10 @@ class FlatChangeModel(QAbstractTableModel):
         self._row_of_path = {row.path: index for index, row in enumerate(rows)}
         self._sorted_paths = sorted(self._row_of_path)
         self._row_paths = [row.path for row in rows]
+        self._row_paths_folded = [row.path.casefold() for row in rows]
+        self._row_names_folded = [row.name.casefold() for row in rows]
+        self._search_cache_key = None
+        self._search_cache = []
         self._row_is_dir = [row.is_directory for row in rows]
         self._row_change_index = [row.change_index for row in rows]
         self._row_parent = [row.parent for row in rows]
@@ -1160,6 +1171,30 @@ class FlatChangeModel(QAbstractTableModel):
     def all_folder_paths(self) -> list[str]:
         """Every folder of the comparison, including the filtered ones."""
         return list(self._directories)
+
+    def search_matches(self, text: str) -> list[int]:
+        """Visible model rows whose name or path contains ``text``.
+
+        The result is cached by text and layout generation, so typing or
+        stepping through matches never pays for a second scan.
+        """
+        needle = text.strip().casefold()
+        key = (needle, self.layout_token)
+        if key == self._search_cache_key:
+            return self._search_cache
+        if not needle:
+            matches: list[int] = []
+        else:
+            names = self._row_names_folded
+            paths = self._row_paths_folded
+            matches = [
+                row
+                for row in self._visible_rows
+                if needle in names[row] or needle in paths[row]
+            ]
+        self._search_cache_key = key
+        self._search_cache = matches
+        return matches
 
     def _patch_visible_rows(self, paths: set[str]) -> None:
         """Update only the rows affected by a decision change."""

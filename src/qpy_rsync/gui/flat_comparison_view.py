@@ -22,6 +22,7 @@ from PySide6.QtCore import (
     QRect,
     QSize,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMenu,
     QMessageBox,
@@ -465,8 +467,10 @@ class FlatComparisonView(QWidget):
             self.search_edit.sizePolicy().verticalPolicy(),
         )
         self.search_edit.setToolTip(
-            "Find the next item whose name or path contains the text. "
-            "Searching does not change the list."
+            "Find items whose name or path contains the text. Matches are "
+            "indexed as you type; Enter jumps to the next match and "
+            "Shift+Enter to the previous one. Searching does not change "
+            "the list."
         )
 
         self.inventory_button = QToolButton()
@@ -499,6 +503,11 @@ class FlatComparisonView(QWidget):
         self.find_button.clicked.connect(self.find_next)
         controls.addWidget(self.find_button)
         controls.addWidget(self.search_edit, 1)
+        self.search_status = QLabel()
+        self.search_status.setObjectName("search-status")
+        self.search_status.setToolTip("Search matches in the visible list")
+        self.search_status.setMinimumWidth(52)
+        controls.addWidget(self.search_status)
         self.menu_button = QToolButton()
         self.menu_button.setIcon(app_menu_icon())
         self.menu_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -515,7 +524,16 @@ class FlatComparisonView(QWidget):
         layout.addWidget(self.splitter)
 
         self.inventory_button.toggled.connect(self.inventory_toggled.emit)
+        self.search_edit.installEventFilter(self)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._run_search)
+        self.search_edit.textChanged.connect(self._search_text_changed)
         self.search_edit.returnPressed.connect(self.find_next)
+        self._search_rows: list[int] = []
+        self._search_position = -1
+        self._search_text = ""
         self.splitter.splitterMoved.connect(lambda _position, _index: self.save_view_state())
         self.source.horizontalHeader().sectionResized.connect(lambda _logical, _old, _new: self.save_view_state())
         self.destination.horizontalHeader().sectionResized.connect(
@@ -798,6 +816,17 @@ class FlatComparisonView(QWidget):
             if pane is not None
         ]
         event_type = getattr(event, "type", lambda: None)()
+        if watched is getattr(self, "search_edit", None):
+            if event_type == QEvent.Type.KeyPress:
+                key = getattr(event, "key", lambda: None)()
+                modifiers = getattr(event, "modifiers", lambda: None)()
+                if (
+                    key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                    and modifiers & Qt.KeyboardModifier.ShiftModifier
+                ):
+                    self.find_previous()
+                    return True
+            return False
         if event_type == QEvent.Type.Leave and watched in {
             pane.viewport() for pane in panes
         }:
@@ -1229,30 +1258,69 @@ class FlatComparisonView(QWidget):
         self.search_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.search_edit.selectAll()
 
+    def _search_text_changed(self, _text: str) -> None:
+        """Restart the debounce; the scan itself runs once for the text."""
+        self._search_timer.start()
+
+    def _run_search(self, *, jump: bool = True) -> None:
+        """Build the match list once and show where the search stands."""
+        text = self.search_edit.text().strip().casefold()
+        self._search_text = text
+        self._search_rows = self.model.search_matches(text) if text else []
+        self._search_position = -1
+        if not text:
+            self.search_status.setText("")
+            return
+        count = len(self._search_rows)
+        self.search_status.setText(f"0/{count}" if count else "no match")
+        if count and jump:
+            self._step_search(1)
+
+    def _step_search(self, direction: int) -> None:
+        matches = self._search_rows
+        if not matches:
+            if self._search_text:
+                self._run_search(jump=True)
+            return
+        if self._search_position < 0:
+            current = self._current_path()
+            self._search_position = -1
+            for position, row in enumerate(matches):
+                if self.model.row_path(row) == current:
+                    self._search_position = position
+                    break
+        self._search_position = (
+            self._search_position + direction
+        ) % len(matches)
+        row = matches[self._search_position]
+        path = self.model.row_path(row)
+        if path is not None:
+            self.select_path(path)
+        self.search_status.setText(
+            f"{self._search_position + 1}/{len(matches)}"
+        )
+
     def find_next(self) -> None:
-        """Jump to the next visible row matching the search text."""
+        """Jump to the next match from the current row."""
         text = self.search_edit.text().strip().casefold()
         if not text:
             self.focus_search()
             return
-        rows = self.model.visible_rows()
-        if not rows:
+        self._search_timer.stop()
+        if text != self._search_text or not self._search_rows:
+            self._run_search(jump=False)
+        self._step_search(1)
+
+    def find_previous(self) -> None:
+        """Jump to the previous match from the current row."""
+        text = self.search_edit.text().strip().casefold()
+        if not text:
+            self.focus_search()
             return
-        current = self._current_path()
-        start = 0
-        if current:
-            for position, row in enumerate(rows):
-                if self.model.row_path(row) == current:
-                    start = position + 1
-                    break
-        for offset in range(len(rows)):
-            index = rows[(start + offset) % len(rows)]
-            row = self.model._row_data(index)
-            if row is None:
-                continue
-            if text in row.path.casefold() or text in row.name.casefold():
-                self.select_path(row.path)
-                return
+        self._search_timer.stop()
+        if text != self._search_text or not self._search_rows:
+            self._run_search(jump=False)
+        self._step_search(-1)
 
     # ------------------------------------------------------------------
     # Sorting

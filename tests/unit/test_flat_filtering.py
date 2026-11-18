@@ -339,6 +339,60 @@ def test_search_jumps_without_changing_the_visible_set() -> None:
     application.processEvents()
 
 
+def test_search_matches_are_cached_and_follow_the_visible_rows() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("docs/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        ]
+    )
+    matches = model.search_matches("a.txt")
+    assert [model.row_path(row) for row in matches] == ["docs/a.txt"]
+    assert model.search_matches("a.txt") is matches
+
+    model.set_stashed("docs", True)
+    assert model.search_matches("a.txt") == []
+    model.deleteLater()
+    application.processEvents()
+
+
+def test_search_navigates_matches_without_changing_the_list() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("pics/a.jpg", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("other/c.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        ]
+    )
+    before = view.model.rowCount()
+    view.search_edit.setText("a")
+    view._search_timer.stop()
+    view._run_search(jump=False)
+    assert view.search_status.text() == "0/2"
+
+    view.find_next()
+    assert view.search_status.text() == "1/2"
+    view.find_next()
+    assert view.search_status.text() == "2/2"
+    view.find_next()
+    assert view.search_status.text() == "1/2"
+    view.find_previous()
+    assert view.search_status.text() == "2/2"
+    assert view.model.rowCount() == before
+    view.close()
+    application.processEvents()
+
+
 def test_showing_stashed_items_does_not_change_the_visible_set() -> None:
     """The overview and the statistics must not react to the show toggle."""
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
