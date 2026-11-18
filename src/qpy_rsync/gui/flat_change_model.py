@@ -23,7 +23,7 @@ from typing import Any
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
-from qpy_rsync.backend.diagnostics import timed
+from qpy_rsync.backend.diagnostics import debug_timing, timed
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_size,
@@ -678,6 +678,7 @@ class FlatChangeModel(QAbstractTableModel):
         matches, and the action filter keeps a directory when one of the
         items below it is allowed.
         """
+        debug_timing("model.filter_phase", phase="start", changes=len(self.changes))
         directories = self._directories
         pattern_active = bool(self._pattern) and self._pattern != "*"
         include_contents = self._include_directory_contents
@@ -724,13 +725,13 @@ class FlatChangeModel(QAbstractTableModel):
                     action_flags[index] = action_ok
                     visible[index] = path_ok and action_ok
         else:
-            for path, directory in directories.items():
-                for index in directory.files:
-                    action_ok = self._action_allowed(self.changes[index])
-                    path_flags[index] = True
-                    action_flags[index] = action_ok
-                    visible[index] = action_ok
+            for index, change in enumerate(self.changes):
+                action_ok = self._action_allowed(change)
+                path_flags[index] = True
+                action_flags[index] = action_ok
+                visible[index] = action_ok
 
+        debug_timing("model.filter_phase", phase="changes_done")
         # The directories, from the deepest one upwards.
         for path in self._ordered_directories():
             directory = directories[path]
@@ -777,6 +778,7 @@ class FlatChangeModel(QAbstractTableModel):
         root = directories.get("")
         if root is not None and self.changes:
             root.visible = True
+        debug_timing("model.filter_phase", phase="directories_done")
         # The rows of the visible directories.
         visible_rows: list[int] = []
         visible_change_indices: set[int] = set()
@@ -826,12 +828,14 @@ class FlatChangeModel(QAbstractTableModel):
             row.alternate = len(visible_rows) % 2 == 0
             visible_row_of_path[row.path] = len(visible_rows)
             visible_rows.append(index)
+        debug_timing("model.filter_phase", phase="rows_done")
         self._visible_rows = visible_rows
         self._visible_changes = [
             self.changes[index] for index in sorted(visible_change_indices)
         ]
         self._visible_row_of_path = visible_row_of_path
         self._total_up_directories()
+        debug_timing("model.filter_phase", phase="totals_done")
         self.layout_token += 1
 
     def _total_up_directories(self) -> None:
