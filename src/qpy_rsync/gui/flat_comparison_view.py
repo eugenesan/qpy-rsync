@@ -999,7 +999,8 @@ class FlatComparisonView(QWidget):
         path = self._stash_target(position)
         if path is None:
             return False
-        self.model.stash.toggle(path)
+        stashed = not self.model.stash.is_stashed(path)
+        self.model.set_stashed(path, stashed)
         self._refresh_stashed()
         return True
 
@@ -1008,11 +1009,11 @@ class FlatComparisonView(QWidget):
         paths = self._selected_paths()
         if not paths:
             return False
-        stash = self.model.stash
         with self._keeping_the_selection():
             for path in paths:
-                stash.toggle(path)
-            self.model.refresh_stashed()
+                self.model.set_stashed(
+                    path, not self.model.stash.is_stashed(path)
+                )
         self.changes_updated.emit(list(self.model.changes), "decision")
         return True
 
@@ -1071,19 +1072,19 @@ class FlatComparisonView(QWidget):
     def stash_path(self, path: str) -> None:
         """Stash a path and everything below it."""
         with self._keeping_the_selection(), timed("view.stash", path=path):
-            self.model.stash.add(path)
+            self.model.set_stashed(path, True)
             self._refresh_stashed()
 
     def restore_path(self, path: str) -> None:
         """Restore a path and everything below it."""
         with self._keeping_the_selection(), timed("view.restore", path=path):
-            self.model.stash.restore(path)
+            self.model.set_stashed(path, False)
             self._refresh_stashed()
 
     def restore_all_stashed(self) -> None:
         """Restore every stashed item."""
         with timed("view.restore_all_stashed"):
-            self.model.stash.clear()
+            self.model.clear_stash()
             self._refresh_stashed()
 
     def stashed_paths(self) -> set[str]:
@@ -1094,12 +1095,16 @@ class FlatComparisonView(QWidget):
         """Show or hide the items the user stashed."""
         with timed("view.show_stashed", show=show):
             self.model.show_stashed = show
-            self._refresh_stashed(kind="display")
+            self.model.refresh_excluded_visibility()
+            self.changes_updated.emit(list(self.model.changes), "display")
 
-    def _refresh_stashed(self, *, kind: str = "decision") -> None:
-        """Update the list after the stashed items changed."""
-        with timed("view.model_refresh"):
-            self.model.refresh_stashed()
+    def _refresh_stashed(
+        self, *, kind: str = "decision", model_refreshed: bool = True
+    ) -> None:
+        """Notify the window after the stashed items changed."""
+        if not model_refreshed:
+            with timed("view.model_refresh"):
+                self.model.refresh_stashed()
         with timed("view.emit_changes"):
             self.changes_updated.emit(list(self.model.changes), kind)
 

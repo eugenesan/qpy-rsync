@@ -118,6 +118,9 @@ class FlatRow:
     group: str
     # Whether the row is drawn with the shaded background.
     alternate: bool = False
+    # Whether the row is excluded from the sync. This is the unified per-row
+    # state for decisions and stashed items.
+    excluded: bool = False
     # Whether a directory row has anything below it to fold.
     has_children: bool = False
 
@@ -212,6 +215,7 @@ class FlatChangeModel(QAbstractTableModel):
         self._rows: list[FlatRow] = []
         self._visible_rows: list[int] = []
         self._visible_row_of_path: dict[str, int] = {}
+        self._row_of_path: dict[str, int] = {}
         self._visible_changes: list[Change] = []
         self._override_paths: set[str] = set()
         # Bumped whenever the layout changes, so a delegate can drop its
@@ -342,8 +346,10 @@ class FlatChangeModel(QAbstractTableModel):
         therefore contiguous, which keeps a directory next to its contents.
         """
         rows: list[FlatRow] = []
+        row_of_path: dict[str, int] = {}
 
         def add(row: FlatRow) -> None:
+            row_of_path[row.path] = len(rows)
             rows.append(row)
 
         def walk(path: str) -> None:
@@ -423,6 +429,7 @@ class FlatChangeModel(QAbstractTableModel):
                 reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
             )
         self._rows = rows
+        self._row_of_path = {row.path: index for index, row in enumerate(rows)}
 
     # ------------------------------------------------------------------
     # Sorting
@@ -569,6 +576,26 @@ class FlatChangeModel(QAbstractTableModel):
             self.beginResetModel()
             self._apply_filters()
             self.endResetModel()
+
+    def set_stashed(self, path: str, stashed: bool) -> None:
+        """Stash or restore a path with an incremental view refresh."""
+        clean = path.rstrip("/")
+        if stashed:
+            self.stash.add(clean)
+        else:
+            self.stash.restore(clean)
+        self._after_excluded_change({clean})
+
+    def clear_stash(self) -> None:
+        self.stash.clear()
+        self._after_excluded_change(None)
+
+    def _after_excluded_change(self, paths: set[str] | None) -> None:
+        self._override_paths = self.decisions.override_paths(self.changes)
+        if paths is None:
+            self._refresh_filters()
+        else:
+            self.refresh_decision_visibility(paths)
 
     def refresh_stashed(self) -> None:
         """Show the rows again after the user stashed or restored items."""
@@ -787,6 +814,9 @@ class FlatChangeModel(QAbstractTableModel):
         check_stashed = bool(stash) and not self.show_stashed
         for index, row in enumerate(self._rows):
             row_is_stashed = bool(stash) and stash.is_stashed(row.path)
+            row.excluded = row_is_stashed or (
+                self._effective_row(row) is ChangeDecision.EXCLUDE
+            )
             if row.is_directory:
                 directory = directories.get(row.path)
                 if directory is None:
@@ -837,6 +867,94 @@ class FlatChangeModel(QAbstractTableModel):
         self._total_up_directories()
         debug_timing("model.filter_phase", phase="totals_done")
         self.layout_token += 1
+
+    def _update_excluded_rows(self, paths: set[str]) -> None:
+        """Refresh the per-row excluded state for the given paths."""
+        for path in paths:
+            clean = path.rstrip("/")
+            if clean not in self._row_of_path:
+                continue
+            index = self._row_of_path[clean]
+            self._rows[index].excluded = (
+                bool(self.stash) and self.stash.is_stashed(clean)
+            ) or self._effective_row(self._rows[index]) is ChangeDecision.EXCLUDE
+
+    def _rebuild_visible_rows(self) -> None:
+        """Rebuild the visible row list from the cached per-row state.
+
+        This deliberately skips the expensive action/directory passes in
+        :meth:`_apply_filters`. It is used for decision changes, where those
+        results are unchanged; only the excluded state and the resulting row
+        visibility differ.
+        """
+        pattern_active = bool(self._pattern) and self._pattern != "*"
+        collapse_active = bool(self.collapsed) and not pattern_active
+        directory_folded: dict[str, bool] = {"": False}
+        if collapse_active:
+            for path, directory in self._directories.items():
+                directory_folded[path] = (
+                    directory_folded.get(directory.parent, False)
+                    or path in self.collapsed
+                )
+        visible_rows: list[int] = []
+        visible_change_indices: set[int] = set()
+        visible_row_of_path: dict[str, int] = {}
+        for index, row in enumerate(self._rows):
+            if row.excluded and not self.show_stashed:
+                continue
+            if row.is_directory:
+                directory = self._directories.get(row.path)
+                if directory is None:
+                    continue
+                if not (directory.visible or row.excluded):
+                    continue
+                if (
+                    directory.own_change_index >= 0
+                    and not row.excluded
+                    and not directory.faded
+                ):
+                    visible_change_indices.add(directory.own_change_index)
+            else:
+                if not row.excluded and not self._change_visible[row.change_index]:
+                    continue
+                if not row.excluded:
+                    visible_change_indices.add(row.change_index)
+            if (
+                collapse_active
+                and row.path
+                and directory_folded.get(row.parent, False)
+            ):
+                continue
+            row.alternate = len(visible_rows) % 2 == 0
+            visible_row_of_path[row.path] = len(visible_rows)
+            visible_rows.append(index)
+        self._visible_rows = visible_rows
+        self._visible_changes = [
+            self.changes[index] for index in sorted(visible_change_indices)
+        ]
+        self._visible_row_of_path = visible_row_of_path
+        self.layout_token += 1
+
+    def refresh_decision_visibility(self, paths: set[str]) -> None:
+        """Apply decision changes without a full filter recalculation."""
+        with timed("model.decision_refresh"):
+            self.beginResetModel()
+            self._update_excluded_rows(paths)
+            self._rebuild_visible_rows()
+            self._total_up_directories()
+            self.endResetModel()
+
+    def refresh_excluded_visibility(self) -> None:
+        """Show or hide every excluded row with one optimized pass."""
+        with timed("model.excluded_refresh"):
+            self.beginResetModel()
+            for row in self._rows:
+                row.excluded = (
+                    bool(self.stash) and self.stash.is_stashed(row.path)
+                ) or self._effective_row(row) is ChangeDecision.EXCLUDE
+            self._rebuild_visible_rows()
+            self._total_up_directories()
+            self.endResetModel()
 
     def _total_up_directories(self) -> None:
         """Total the visible items of every directory.
@@ -1155,7 +1273,7 @@ class FlatChangeModel(QAbstractTableModel):
             else ChangeDecision.EXCLUDE
         )
         self.decisions.set(row.path, decision)
-        self._refresh_decisions()
+        self._after_decision_change({row.path})
         return True
 
     # ------------------------------------------------------------------
@@ -1195,22 +1313,30 @@ class FlatChangeModel(QAbstractTableModel):
         return ChangeDecision.INCLUDE
 
     def reset_decision(self, path: str) -> None:
-        self.decisions.reset(path)
-        self._refresh_decisions()
+        clean = path.rstrip("/")
+        self.decisions.reset(clean)
+        self._after_decision_change({clean})
 
     def reset_subtree_decisions(self, path: str) -> None:
-        self.decisions.reset_subtree(path)
-        self._refresh_decisions()
+        clean = path.rstrip("/")
+        self.decisions.reset_subtree(clean)
+        self._after_decision_change({clean})
 
     def reset_all_decisions(self) -> None:
         self.decisions.clear()
-        self._refresh_decisions()
+        self._after_decision_change(None)
 
-    def _refresh_decisions(self) -> None:
+    def _after_decision_change(self, paths: set[str] | None) -> None:
+        """Update the view after a decision changed.
+
+        A single path uses the incremental refresh. A whole-tree reset still
+        needs the full filter pass, because it can affect every row.
+        """
         self._override_paths = self.decisions.override_paths(self.changes)
-        self.layoutAboutToBeChanged.emit()
-        self._apply_filters()
-        self.layoutChanged.emit()
+        if paths is None or "" in paths:
+            self._refresh_filters()
+        else:
+            self.refresh_decision_visibility(paths)
         self.decision_changed.emit()
         self._refresh_action_header()
 

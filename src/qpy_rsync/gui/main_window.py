@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
 
         self.comparison = FlatComparisonView()
         self.comparison.diff_requested.connect(self._open_diff_tool)
-        self.comparison.decision_changed.connect(self._invalidate_validated_plan)
+        self.comparison.decision_changed.connect(self._on_decision_changed)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.restore_all_requested.connect(self._restore_all_stashed)
         self.comparison.tool_requested.connect(self._run_external_tool)
@@ -2002,6 +2002,9 @@ class MainWindow(QMainWindow):
         self._last_plan_summary = None
         self.validate_plan_button.setEnabled(False)
         self._set_verify_state("idle")
+
+    def _on_decision_changed(self) -> None:
+        self._overview_updated(list(self.comparison.visible_changes()), "decision")
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None

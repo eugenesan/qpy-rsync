@@ -846,3 +846,26 @@ def test_decision_change_is_forwarded_to_the_view() -> None:
     assert fired
     view.close()
     application.processEvents()
+
+
+def test_single_decision_uses_incremental_refresh() -> None:
+    from PySide6.QtCore import Qt
+    from qpy_rsync.core.changes import ChangeDecision
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            file_change("a.txt"),
+            file_change("b.txt"),
+        ]
+    )
+    full: list[int] = []
+    original = model._refresh_filters
+    model._refresh_filters = lambda: full.append(1) or original()  # type: ignore[method-assign]
+    model.decisions.set("a.txt", ChangeDecision.EXCLUDE)
+    model._after_decision_change({"a.txt"})
+    assert not full
+    assert [model.row_path(i) for i in range(model.rowCount())] == ["", "b.txt"]
+    model.deleteLater()
+    application.processEvents()
