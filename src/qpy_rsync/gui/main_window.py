@@ -252,6 +252,7 @@ class MainWindow(QMainWindow):
         self._last_excluded_paths: set[str] = set()
         self._last_explicit_decisions: tuple[tuple[str, ChangeDecision], ...] = ()
         self._validated_plan: ExecutionPlan | None = None
+        self._verified_plan: ExecutionPlan | None = None
         self._execution_gate = ExecutionGate()
         self._plan_validation = PlanValidationService(self)
         self._plan_validation.on_started = self._plan_validation_started
@@ -1969,6 +1970,7 @@ class MainWindow(QMainWindow):
         self._save_recent_profile()
         self._update_backup_status()
         self._validated_plan = None
+        self._verified_plan = None
         self._set_verify_state("idle")
         if self._active_profile is not None and self.comparison.model.changes:
             self._active_profile.backup = BackupOptions(
@@ -2071,6 +2073,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self._current_plan = None
         self._validated_plan = None
+        self._verified_plan = None
         self._last_plan_summary = None
         self.validate_plan_button.setEnabled(False)
         self._set_verify_state("idle")
@@ -2081,6 +2084,7 @@ class MainWindow(QMainWindow):
 
     def _invalidate_validated_plan(self) -> None:
         self._validated_plan = None
+        self._verified_plan = None
         self.synchronize_button.setEnabled(False)
         self._set_verify_state("idle")
         if self._active_profile is not None and self.comparison.model.changes:
@@ -2235,6 +2239,21 @@ class MainWindow(QMainWindow):
             parent = parent.rpartition("/")[0]
         return parents
 
+    def _decisions_match_verified(self) -> bool:
+        """Whether today's decisions are exactly the ones that were verified."""
+        plan = self._verified_plan
+        if plan is None or self._active_profile is None:
+            return False
+        signature = decision_signature(self.comparison.model.decisions)
+        if plan.decision_signature != signature:
+            return False
+        return check_plan_freshness(
+            plan,
+            self._profile(),
+            self.comparison.model.changes,
+            signature,
+        ).fresh
+
     def _mark_plan_stale(self) -> None:
         """Mark the plan unverified and update its summary incrementally."""
         if self._current_plan is None:
@@ -2259,6 +2278,15 @@ class MainWindow(QMainWindow):
             # Fall back to a full lightweight estimate only when the cached
             # plan cannot be updated (for example after a new inventory).
             self._stale_summary_timer.start()
+        # Keep the verified plan snapshot: an immediate undo may bring the
+        # decisions back to exactly the verified state, which is still safe.
+        if self._verified_plan is not None and self._decisions_match_verified():
+            self._validated_plan = self._verified_plan
+            self._plan_stale = False
+            self.synchronize_button.setEnabled(True)
+            self._set_verify_state("verified")
+            self._refresh_verify_button()
+            return
         self._plan_stale = True
         self._validated_plan = None
         self.synchronize_button.setEnabled(False)
@@ -2444,6 +2472,7 @@ class MainWindow(QMainWindow):
         )
         if not freshness.fresh:
             self._validated_plan = None
+            self._verified_plan = None
             QMessageBox.warning(
                 self,
                 "Execution plan is stale",
@@ -2493,6 +2522,7 @@ class MainWindow(QMainWindow):
         self._set_verify_state("idle")
         if result.valid:
             self._validated_plan = self._current_plan
+            self._verified_plan = self._current_plan
             self._execution_gate.verification_succeeded()
             self.synchronize_button.setEnabled(True)
             self._set_verify_state("verified")
@@ -2513,6 +2543,7 @@ class MainWindow(QMainWindow):
             self._end_bulk_logging()
             return
         self._validated_plan = None
+        self._verified_plan = None
         self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
         missing = "\n".join(
@@ -2538,6 +2569,7 @@ class MainWindow(QMainWindow):
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
         self._validated_plan = None
+        self._verified_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
             self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
@@ -2551,6 +2583,7 @@ class MainWindow(QMainWindow):
     def _plan_validation_error(self, message: str) -> None:
         self.cancel_button.setEnabled(False)
         self._validated_plan = None
+        self._verified_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
             self._execution_gate.verification_failed()
         self.synchronize_button.setEnabled(False)
@@ -2751,6 +2784,7 @@ class MainWindow(QMainWindow):
         self._end_bulk_logging()
         self._set_busy_controls(False)
         self._validated_plan = None
+        self._verified_plan = None
         self._current_plan = None
         self._last_plan_summary = None
         self._set_state("Synchronization complete", "success")
@@ -3101,6 +3135,7 @@ class MainWindow(QMainWindow):
         self._update_filter_summary(stale=False)
         self._set_locations_stale(False)
         self._validated_plan = None
+        self._verified_plan = None
         # comparison.set_changes() below emits changes_updated and rebuilds
         # the plan; avoid a second full rebuild here.
         for message in result.parsed.diagnostics:

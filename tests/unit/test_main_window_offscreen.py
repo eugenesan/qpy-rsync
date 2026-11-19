@@ -1644,3 +1644,49 @@ def test_verify_badge_tracks_plan_staleness() -> None:
     assert badge() == clean
     window.close()
     application.processEvents()
+
+
+def test_undo_to_the_verified_decisions_clears_plan_staleness(tmp_path) -> None:
+    from qpy_rsync.services.plan_validation_service import (
+        PlanMismatch,
+        PlanValidationResult,
+    )
+
+    application = app()
+    app_settings().clear()
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
+    window = MainWindow()
+    window.source_edit.setText(str(source))
+    window.destination_edit.setText(str(destination))
+    window._active_profile = window._profile()
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.core.models import SyncProfile
+    window._comparison_profile = SyncProfile(
+        "test", window._profile().source, window._profile().destination
+    )
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    window._rebuild_plan_summary()
+    window._plan_validation_started()
+    window._plan_validation_finished(
+        PlanValidationResult(True, PlanMismatch((), ()), "", 0)
+    )
+    assert not window._plan_stale
+
+    index = window.comparison.model.index_for_path("a.txt")
+    assert window.comparison.model.setData(
+        window.comparison.model.index(index.row(), window.comparison.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    assert window._plan_stale
+
+    assert window.comparison.undo_decision()
+    assert not window._plan_stale
+    assert window._validated_plan is not None
+    window.close()
+    application.processEvents()
