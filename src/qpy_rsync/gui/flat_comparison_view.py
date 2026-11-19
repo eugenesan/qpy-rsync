@@ -439,10 +439,10 @@ class FlatComparisonView(QWidget):
         )
         self.search_edit.setToolTip(
             "Find items whose name contains the text; use a slash to match "
-            "the path, a trailing slash for a directory and its contents, and "
-            "* ? [ ] as globs. For example '.git' finds only the directory "
-            "named .git, while '.git/' finds that directory and its files. "
-            "Enter jumps to the next "
+            "the path, a trailing slash to match a directory name exactly, and "
+            "* ? [ ] as globs. So 'dir/' finds only the folder named dir, "
+            "while 'dir/a' finds paths ending in dir/a and '*dir/*.txt' finds "
+            "matching files. Enter jumps to the next "
             "match, Shift+Enter "
             "to the previous one, Ctrl+G repeats it from anywhere. Searching "
             "does not change the list."

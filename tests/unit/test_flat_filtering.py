@@ -373,26 +373,30 @@ def test_search_follows_the_find_and_filter_rules() -> None:
             Change(".git/config", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
             Change(".git/objects/id", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
             Change("src/main.py", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("first-dir/x.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("the-dir-old/y.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+            Change("big-dir/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
         ]
     )
 
     def found(text: str) -> list[str]:
         return [model.row_path(row) for row in model.search_matches(text)]
 
-    # A bare name matches the directory itself, not its whole hierarchy.
+    # A bare name matches only the item with that name.
     assert found(".git") == [".git"]
     assert found("config") == [".git/config"]
-    # A slash searches the relative path; a trailing slash finds the folder
-    # and everything below it, just like the path filter.
-    assert found(".git/") == [
-        ".git",
-        ".git/config",
-        ".git/objects",
-        ".git/objects/id",
-    ]
-    assert found("src/") == ["src", "src/main.py"]
+    # A trailing slash means folders only, matched exactly: no hierarchy,
+    # and "dir/" does not find "first-dir/" or "the-dir-old/".
+    assert found(".git/") == [".git"]
+    assert found("src/") == ["src"]
+    assert found("dir/") == []
+    assert found("first-dir/") == ["first-dir"]
+    # A slash inside the pattern is an unanchored substring of the path.
+    assert found("dir/a") == ["big-dir/a.txt"]
     assert found(".git/config") == [".git/config"]
-    # Globs follow the same rules in both forms.
+    # Globs work in both forms, including a globbed folder pattern.
+    assert found("*dir/") == ["big-dir", "first-dir"]
+    assert found("*dir/*.txt") == ["big-dir/a.txt", "first-dir/x.txt"]
     assert found("*.py") == ["src/main.py"]
     assert found("src/*.py") == ["src/main.py"]
     model.deleteLater()

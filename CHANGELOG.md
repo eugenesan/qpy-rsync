@@ -4,8 +4,9 @@
 
 - "Verify Actions" is now "Verify Decisions", matching the decisions it
   verifies; the verification log and status use the same wording.
-- A folder search like `dir/` now finds the folder and everything in it, while
-  a plain name like `.git` still matches only the item with that name.
+- Search follows the Find/Filter rules exactly: `dir/` matches only the
+  folder named `dir`, `dir/a` is an unanchored path match, globs such as
+  `*dir/*.txt` work, and a plain name matches only that item's name.
 - The synchronization dialog shows Backup and Nested protection beside Source
   and Destination instead of in the statistics table. Long paths are elided
   to one line with the full value in a tooltip, so the table no longer grows
