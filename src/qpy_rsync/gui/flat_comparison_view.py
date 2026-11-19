@@ -965,9 +965,23 @@ class FlatComparisonView(QWidget):
         paths = self._selected_paths()
         if not paths:
             return False
-        with self._keeping_the_selection():
+        with self._keeping_the_selection(), self.model.decision_batch():
             for path in paths:
                 self.model.set_excluded(path, not self.model.exclusions.is_excluded(path))
+        self.changes_updated.emit("decision")
+        return True
+
+    def undo_decision(self) -> bool:
+        """Undo the last decision edit."""
+        if not self.model.undo_decision():
+            return False
+        self.changes_updated.emit("decision")
+        return True
+
+    def redo_decision(self) -> bool:
+        """Redo the last undone decision edit."""
+        if not self.model.redo_decision():
+            return False
         self.changes_updated.emit("decision")
         return True
 

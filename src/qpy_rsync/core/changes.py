@@ -252,3 +252,50 @@ class ChangeDecisions:
         return DecisionSummary(
             included, excluded, self.modified_count(changes), destructive
         )
+
+    def replace(self, decisions: dict[str, ChangeDecision]) -> None:
+        """Restore a complete set of explicit decisions."""
+        self._decisions = dict(decisions)
+
+
+class DecisionHistory:
+    """A bounded undo/redo stack of decision snapshots."""
+
+    def __init__(self, limit: int = 100) -> None:
+        self._undo: list[dict[str, ChangeDecision]] = []
+        self._redo: list[dict[str, ChangeDecision]] = []
+        self._limit = limit
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def record(self, before: dict[str, ChangeDecision], after: dict[str, ChangeDecision]) -> None:
+        if before == after:
+            return
+        self._undo.append(dict(before))
+        if len(self._undo) > self._limit:
+            self._undo.pop(0)
+        self._redo.clear()
+
+    def undo(self, current: dict[str, ChangeDecision]) -> dict[str, ChangeDecision] | None:
+        if not self._undo:
+            return None
+        previous = self._undo.pop()
+        self._redo.append(dict(current))
+        return previous
+
+    def redo(self, current: dict[str, ChangeDecision]) -> dict[str, ChangeDecision] | None:
+        if not self._redo:
+            return None
+        following = self._redo.pop()
+        self._undo.append(dict(current))
+        return following
+
+    def clear(self) -> None:
+        self._undo.clear()
+        self._redo.clear()

@@ -927,3 +927,59 @@ def test_ctrl_up_and_down_walk_the_hierarchy() -> None:
     assert current() == "d1/a.txt"
     view.close()
     application.processEvents()
+
+
+def test_undo_redo_restores_an_excluded_and_hidden_item() -> None:
+    from qpy_rsync.core.changes import ChangeDecision
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("docs/a.txt"), file_change("docs/b.txt")])
+    application.processEvents()
+
+    def visible() -> list[str]:
+        return [
+            str(view.model.row_path(row))
+            for row in range(view.model.rowCount())
+            if view.model.row_path(row)
+        ]
+
+    index = view.model.index_for_path("docs/a.txt")
+    assert view.model.setData(
+        view.model.index(index.row(), view.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    assert "docs/a.txt" not in visible()
+    assert view.model.decision_history.can_undo
+    assert not view.model.decision_history.can_redo
+
+    assert view.undo_decision()
+    assert "docs/a.txt" in visible()
+    assert view.model.decisions.explicit("docs/a.txt") is ChangeDecision.INHERIT
+    assert view.model.decision_history.can_redo
+
+    assert view.redo_decision()
+    assert "docs/a.txt" not in visible()
+    assert view.model.decisions.explicit("docs/a.txt") is ChangeDecision.EXCLUDE
+    assert not view.model.decision_history.can_redo
+    view.close()
+    application.processEvents()
+
+
+def test_new_comparison_clears_the_decision_history() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes([file_change("a.txt")])
+    index = model.index_for_path("a.txt")
+    model.setData(
+        model.index(index.row(), model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    assert model.decision_history.can_undo
+    model.set_changes([file_change("b.txt")])
+    assert not model.decision_history.can_undo
+    assert not model.decision_history.can_redo
+    model.deleteLater()
+    application.processEvents()

@@ -1429,6 +1429,18 @@ def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
         "Find Next": "Ctrl+G",
         "Find Previous": "Ctrl+Shift+G",
     }
+    undo_actions = {
+        action.text(): action.shortcut().toString()
+        for action in edit_menu.actions()
+        if action.text() in {"Undo Decision", "Redo Decision", "Reset Decisions"}
+    }
+    assert undo_actions == {
+        "Undo Decision": "Ctrl+Z",
+        "Redo Decision": "Ctrl+Shift+Z",
+        "Reset Decisions": "",
+    }
+    assert not window.undo_decision_action.isEnabled()
+    assert not window.redo_decision_action.isEnabled()
     assert entries == {
         "Normal": "",
         "Compare only": "",

@@ -396,6 +396,7 @@ class MainWindow(QMainWindow):
         self.comparison = FlatComparisonView()
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._on_decision_changed)
+        self.comparison.model.history_changed.connect(self._update_decision_actions)
         self.comparison.stale_changed.connect(self._update_stale_indicators)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.reset_exclusions_requested.connect(self._reset_exclusions)
@@ -835,6 +836,16 @@ class MainWindow(QMainWindow):
         self._add_action(file_menu, "Quit", "Ctrl+Q", self.close)
 
         edit_menu = menu_bar.addMenu("&Edit")
+        self.undo_decision_action = self._add_action(
+            edit_menu, "Undo Decision", "Ctrl+Z", self.comparison.undo_decision
+        )
+        self.redo_decision_action = self._add_action(
+            edit_menu, "Redo Decision", "Ctrl+Shift+Z", self.comparison.redo_decision
+        )
+        self.reset_decisions_action = self._add_action(
+            edit_menu, "Reset Decisions", "", self.comparison.reset_all_decisions
+        )
+        edit_menu.addSeparator()
         self._add_action(
             edit_menu, "Find in List", "Ctrl+F", self.comparison.focus_search
         )
@@ -867,7 +878,7 @@ class MainWindow(QMainWindow):
         self._add_action(
             actions_menu,
             "Reset All Decisions",
-            "Ctrl+Z",
+            "",
             self.comparison.reset_all_decisions,
         )
         self._add_action(
@@ -878,7 +889,7 @@ class MainWindow(QMainWindow):
         self._add_action(actions_menu, "Inventory", "F6", self._toggle_inventory)
         self._add_action(actions_menu, "Filters", "F7", self._edit_filters)
         self._add_action(
-            actions_menu, "Validate Actions", "F8", self._validate_selected_plan
+            actions_menu, "Verify Decisions", "F8", self._validate_selected_plan
         )
         self._add_action(
             actions_menu, "Synchronize", "F9", self._show_sync_confirmation
@@ -887,6 +898,7 @@ class MainWindow(QMainWindow):
             actions_menu, "Cancel", "F10", self._cancel_active_operation
         )
         self._add_action(actions_menu, "Pause", "F11", self._toggle_pause)
+        self._update_decision_actions()
         actions_menu.addSeparator()
         self._add_action(
             actions_menu,
@@ -1305,6 +1317,15 @@ class MainWindow(QMainWindow):
             play_completion_sound(kind)
         except Exception:  # noqa: BLE001 - a sound must never break the sync
             pass
+
+    def _update_decision_actions(self) -> None:
+        """Enable the history actions from the decision model's state."""
+        history = self.comparison.model.decision_history
+        self.undo_decision_action.setEnabled(history.can_undo)
+        self.redo_decision_action.setEnabled(history.can_redo)
+        self.reset_decisions_action.setEnabled(
+            self.comparison.model.decisions.has_explicit()
+        )
 
     def _update_stale_indicators(self, stale: bool) -> None:
         """Mark the Compare button and status bar when results are stale."""

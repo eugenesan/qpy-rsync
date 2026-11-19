@@ -17,9 +17,10 @@ work with the flat rows without a change.
 from __future__ import annotations
 
 from bisect import bisect_left
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
-from typing import Any
+from typing import Any, Iterator
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
@@ -34,6 +35,7 @@ from qpy_rsync.core.changes import (
     ChangeAction,
     ChangeDecision,
     ChangeDecisions,
+    DecisionHistory,
     ObjectKind,
 )
 from qpy_rsync.core.units import format_size
@@ -182,6 +184,7 @@ class FlatChangeModel(QAbstractTableModel):
     """
 
     decision_changed = Signal(object)
+    history_changed = Signal()
 
     SOURCE_NAME = 0
     SOURCE_ITEMS = 1
@@ -212,6 +215,8 @@ class FlatChangeModel(QAbstractTableModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.decisions = ChangeDecisions()
+        self.decision_history = DecisionHistory()
+        self._decision_batch = 0
         # One source of truth for everything left out of the run. The old
         # names are kept as aliases until the UI and the plan stop using them.
         self.exclusions = ExcludedPaths(self.decisions)
@@ -318,6 +323,8 @@ class FlatChangeModel(QAbstractTableModel):
         self.hovered_row = None
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(self.changes)
+        self.decision_history.clear()
+        self.history_changed.emit()
         self._build_directories()
         # A fold is meaningless when its directory is gone; keep the folds of
         # the directories that are still there.
@@ -692,16 +699,20 @@ class FlatChangeModel(QAbstractTableModel):
     def set_excluded(self, path: str, excluded: bool) -> None:
         """Exclude or include a path with an incremental view refresh."""
         clean = path.rstrip("/")
+        before = self._snapshot()
         if excluded:
             self.decisions.set(clean, ChangeDecision.EXCLUDE)
         else:
             self.decisions.reset_subtree(clean)
+        self._record_decision(before)
         self._refresh_effective_actions({clean})
         self._after_excluded_change({clean})
 
     def reset_exclusions(self) -> None:
         """Clear every manual include and exclude decision."""
+        before = self._snapshot()
         self.decisions.clear()
+        self._record_decision(before)
         self._refresh_effective_actions(None)
         self._after_excluded_change(None)
 
@@ -1731,7 +1742,9 @@ class FlatChangeModel(QAbstractTableModel):
             if state is Qt.CheckState.Checked
             else ChangeDecision.EXCLUDE
         )
+        before = self._snapshot()
         self.decisions.set(row.path, decision)
+        self._record_decision(before)
         self._after_decision_change({row.path})
         return True
 
@@ -1771,18 +1784,75 @@ class FlatChangeModel(QAbstractTableModel):
             return self._effective_change(row.change)
         return ChangeDecision.INCLUDE
 
+    @contextmanager
+    def decision_batch(self) -> Iterator[None]:
+        """Record several decision edits as one undoable step."""
+        self._decision_batch += 1
+        before = dict(self.decisions.explicit_items())
+        try:
+            yield
+        finally:
+            self._decision_batch -= 1
+            if self._decision_batch == 0:
+                self._record_decision(before)
+
+    def _record_decision(self, before: dict[str, ChangeDecision]) -> None:
+        if self._decision_batch:
+            return
+        after = dict(self.decisions.explicit_items())
+        self.decision_history.record(before, after)
+        self.history_changed.emit()
+
+    def _snapshot(self) -> dict[str, ChangeDecision]:
+        return dict(self.decisions.explicit_items())
+
+    def undo_decision(self) -> bool:
+        """Restore the decision state before the last edit."""
+        current = self._snapshot()
+        previous = self.decision_history.undo(current)
+        if previous is None:
+            return False
+        self.decisions.replace(previous)
+        self._apply_decision_snapshot()
+        return True
+
+    def redo_decision(self) -> bool:
+        """Reapply the decision state cancelled by the last undo."""
+        current = self._snapshot()
+        following = self.decision_history.redo(current)
+        if following is None:
+            return False
+        self.decisions.replace(following)
+        self._apply_decision_snapshot()
+        return True
+
+    def _apply_decision_snapshot(self) -> None:
+        self._override_paths = self.decisions.override_paths(self.changes)
+        self._refresh_effective_actions(None)
+        self.beginResetModel()
+        self._apply_filters()
+        self.endResetModel()
+        self.decision_changed.emit(None)
+        self.history_changed.emit()
+
     def reset_decision(self, path: str) -> None:
         clean = path.rstrip("/")
+        before = self._snapshot()
         self.decisions.reset(clean)
+        self._record_decision(before)
         self._after_decision_change({clean})
 
     def reset_subtree_decisions(self, path: str) -> None:
         clean = path.rstrip("/")
+        before = self._snapshot()
         self.decisions.reset_subtree(clean)
+        self._record_decision(before)
         self._after_decision_change({clean})
 
     def reset_all_decisions(self) -> None:
+        before = self._snapshot()
         self.decisions.clear()
+        self._record_decision(before)
         self._after_decision_change(None)
 
     def _refresh_effective_actions(self, paths: set[str] | None) -> None:

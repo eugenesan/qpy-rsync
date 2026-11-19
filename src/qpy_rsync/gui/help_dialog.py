@@ -38,7 +38,9 @@ result.
      pin metadata only       x  deleted item
      replace                 arrow left  kept in destination
    Checkboxes include or exclude an item. Items that cannot be chosen, such
-   as unchanged items, carry no checkbox. The Actions menu resets decisions.
+   as unchanged items, carry no checkbox. Edit > Undo Decision (Ctrl+Z) and
+   Redo Decision (Ctrl+Shift+Z) step through your decision history; Edit >
+   Reset Decisions clears it.
 
    Space excludes the selected item: it is temporarily left out of the sync
    and kept aside for this comparison only. The checkbox in the Actions column
