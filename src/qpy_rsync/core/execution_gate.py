@@ -101,7 +101,7 @@ class ExecutionGate:
             ExecutionGateState.NO_COMPARISON: "Compare Source and Destination before synchronization.",
             ExecutionGateState.COMPARISON_OUTDATED: "Comparison is out of date. Compare again.",
             ExecutionGateState.SELECTION_READY: "Verify selected actions before synchronization.",
-            ExecutionGateState.VERIFYING: "Verifying selected actions with a second dry run.",
+            ExecutionGateState.VERIFYING: "Verifying selected decisions with a second dry run.",
             ExecutionGateState.VERIFIED: "Selected actions are verified and ready for confirmation.",
             ExecutionGateState.CONFIRMING: "Review the confirmation summary before synchronization.",
             ExecutionGateState.EXECUTING: "Synchronization is running.",

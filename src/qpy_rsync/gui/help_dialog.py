@@ -49,7 +49,7 @@ result.
    Right do the same from the keyboard, and "Collapse All Folders" /
    "Expand All Folders" are in the Actions menu.
 
-5. Verify Actions (F8)
+5. Verify Decisions (F8)
    Builds the execution plan from your selection and checks it with a second
    rsync dry run. It runs only when checkbox decisions were changed after the
    comparison; otherwise the fresh comparison is reused. Verification is the

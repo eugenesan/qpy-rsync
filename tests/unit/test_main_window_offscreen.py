@@ -21,7 +21,7 @@ def test_wide_workflow_controls_and_swap(tmp_path) -> None:
     QCoreApplication.setApplicationName("wide-ui")
     app_settings().clear()
     window = MainWindow()
-    assert window.validate_plan_button.accessibleName() == "Verify Actions"
+    assert window.validate_plan_button.accessibleName() == "Verify Decisions"
     assert window.swap_button.accessibleName() == "Swap Source and Destination"
     assert window.swap_button.toolTip() == "Swap Source and Destination"
     assert window.comparison.search_edit.minimumWidth() == 180
@@ -454,17 +454,17 @@ def test_verification_reuses_fresh_comparison() -> None:
 
     window._plan_validation = RejectProcess()
     window._validate_selected_plan()
-    assert window.validate_plan_button.accessibleName() == "Actions Verified"
+    assert window.validate_plan_button.accessibleName() == "Decisions Verified"
     assert window._validated_plan is window._current_plan
     assert "STATE verification-reused-comparison" in window.log.toPlainText()
     log = window.log.toPlainText()
     assert "Selected: 1 item, 0 B; new 0, updated 1" in log
     assert (
-        "Actions verified, selected: new 0, updated 1, metadata 0, "
+        "Decisions verified, selected: new 0, updated 1, metadata 0, "
         "replaced 0, deleted 0; 1 item, 0 B"
     ) in log
-    assert window.progress_label.text() == "Selected actions verified"
-    assert window.status_edit.text() == "Selected actions verified."
+    assert window.progress_label.text() == "Selected decisions verified"
+    assert window.status_edit.text() == "Selected decisions verified."
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()
@@ -489,7 +489,7 @@ def test_verification_can_be_cancelled() -> None:
     assert window.cancel_button.isEnabled()
     window._plan_validation_cancelled()
     assert not window.cancel_button.isEnabled()
-    assert window.validate_plan_button.accessibleName() == "Verify Actions"
+    assert window.validate_plan_button.accessibleName() == "Verify Decisions"
     assert window.progress_label.text() == "Action verification cancelled"
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
@@ -678,7 +678,7 @@ def test_help_menu_and_synchronize_tooltip() -> None:
     assert entries["About qpy-rsync"] == ""
     tooltip = window.synchronize_button.toolTip()
     assert "confirmation dialog" in tooltip
-    assert "Verify Actions" in tooltip
+    assert "Verify Decisions" in tooltip
     assert "Shortcut: F9" in tooltip
     window.close()
     application.processEvents()

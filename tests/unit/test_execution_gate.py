@@ -69,7 +69,7 @@ def test_verification_can_run_again_after_a_success() -> None:
     gate.verification_succeeded()
     assert gate.state is ExecutionGateState.VERIFIED
 
-    # Clicking Verify Actions a second time must not raise.
+    # Clicking Verify Decisions a second time must not raise.
     gate.verification_started()
     assert gate.state is ExecutionGateState.VERIFYING
     gate.verification_succeeded()

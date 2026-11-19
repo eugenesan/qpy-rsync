@@ -85,7 +85,7 @@ _PAUSE_TOOLTIP = (
 _RESUME_TOOLTIP = "Continue the paused rsync operation.\n\nShortcut: F11"
 
 _VERIFY_TOOLTIP = (
-    "Verify the selected actions.\n"
+    "Verify the selected decisions.\n"
     "When no checkbox decisions were changed after the comparison, the\n"
     "latest comparison is reused immediately.\n"
     "Otherwise a second rsync dry run checks the selected subset; that run\n"
@@ -451,13 +451,13 @@ class MainWindow(QMainWindow):
         self.validate_plan_button = QToolButton()
         self.validate_plan_button.setIcon(verify_icon())
         self.validate_plan_button.setToolTip(_VERIFY_TOOLTIP)
-        self.validate_plan_button.setAccessibleName("Verify Actions")
+        self.validate_plan_button.setAccessibleName("Verify Decisions")
         self.synchronize_button = QToolButton()
         self.synchronize_button.setIcon(synchronize_icon())
         self.synchronize_button.setAccessibleName("Synchronize")
         self.synchronize_button.setToolTip(
             "Open the confirmation dialog and write the verified plan.\n"
-            "The button stays disabled until Verify Actions (F8) succeeds for\n"
+            "The button stays disabled until Verify Decisions (F8) succeeds for\n"
             "the current selection; changed filters or decisions invalidate\n"
             "the verification."
         )
@@ -1925,7 +1925,7 @@ class MainWindow(QMainWindow):
         """Refresh the command preview shown in the progress pane.
 
         The preview reflects the operation the pointer is over: Compare,
-        Verify Actions, or Synchronize.
+        Verify Decisions, or Synchronize.
         """
         if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
             self.command_preview_label.setText("")
@@ -1982,22 +1982,22 @@ class MainWindow(QMainWindow):
             self._set_backup_message(status.message, "success" if status.nonempty is False else "info")
 
     def _set_verify_state(self, state: str) -> None:
-        """Update the icon and the accessible label of Verify Actions."""
+        """Update the icon and the accessible label of Verify Decisions."""
         if state == "verified":
             self.validate_plan_button.setIcon(verified_icon())
-            self.validate_plan_button.setAccessibleName("Actions Verified")
+            self.validate_plan_button.setAccessibleName("Decisions Verified")
             self.validate_plan_button.setToolTip(
                 with_shortcut(
-                    "Actions verified. Verify again to refresh the plan.", "F8"
+                    "Decisions verified. Verify again to refresh the plan.", "F8"
                 )
             )
         elif state == "verifying":
             self.validate_plan_button.setIcon(verify_icon())
-            self.validate_plan_button.setAccessibleName("Verifying selected actions")
-            self.validate_plan_button.setToolTip("Verifying selected actions...")
+            self.validate_plan_button.setAccessibleName("Verifying selected decisions")
+            self.validate_plan_button.setToolTip("Verifying selected decisions...")
         else:
             self.validate_plan_button.setIcon(verify_icon())
-            self.validate_plan_button.setAccessibleName("Verify Actions")
+            self.validate_plan_button.setAccessibleName("Verify Decisions")
             self.validate_plan_button.setToolTip(with_shortcut(_VERIFY_TOOLTIP, "F8"))
 
     def _invalidate_plan_context(self) -> None:
@@ -2286,9 +2286,9 @@ class MainWindow(QMainWindow):
             f"background-color: {marker};" if marker else ""
         )
         self.validate_plan_button.setToolTip(
-            "Plan changed — press Verify Actions to rebuild and verify."
+            "Plan changed — press Verify Decisions to rebuild and verify."
             if self._plan_stale
-            else "Verify Actions"
+            else "Verify Decisions"
         )
 
     def _refresh_plan_summary(self) -> None:
@@ -2409,8 +2409,8 @@ class MainWindow(QMainWindow):
         self._reset_pause_button()
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Verifying selected actions...")
-        self._set_state("Verifying selected actions...")
+        self.progress_label.setText("Verifying selected decisions...")
+        self._set_state("Verifying selected decisions...")
         self._append_log("STATE verifying-selected-actions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
@@ -2430,16 +2430,16 @@ class MainWindow(QMainWindow):
                 summary = self._current_plan.summary
                 noun = "item" if summary.included == 1 else "items"
                 self._append_log(
-                    "Actions verified, selected: "
+                    "Decisions verified, selected: "
                     f"new {summary.creates}, updated {summary.updates}, "
                     f"metadata {summary.metadata}, replaced {summary.replacements}, "
                     f"deleted {summary.deletions}; "
                     f"{summary.included} {noun}, {format_size(summary.total_size)}"
                 )
             self.progress_bar.setValue(100)
-            self.progress_label.setText("Selected actions verified")
-            self._set_state("Selected actions verified.", "success")
-            self._append_log("STATE actions-verified")
+            self.progress_label.setText("Selected decisions verified")
+            self._set_state("Selected decisions verified.", "success")
+            self._append_log("STATE decisions-verified")
             self._end_bulk_logging()
             return
         self._validated_plan = None

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- "Verify Actions" is now "Verify Decisions", matching the decisions it
+  verifies; the verification log and status use the same wording.
+- A folder search like `dir/` now finds the folder and everything in it, while
+  a plain name like `.git` still matches only the item with that name.
+- The synchronization dialog shows Backup and Nested protection beside Source
+  and Destination instead of in the statistics table. Long paths are elided
+  to one line with the full value in a tooltip, so the table no longer grows
+  into the warning below it.
 - The stash is gone. Excluding an item is now the same EXCLUDE decision as
   unchecking its checkbox: Space, the context menu and the overview all use
   it, the filter bar says "Show excluded items" / "Reset All Exclusions", and
