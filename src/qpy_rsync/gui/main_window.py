@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync import __version__ as APP_VERSION
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
@@ -2693,7 +2694,7 @@ class MainWindow(QMainWindow):
         summary = plan.summary
         noun = "item" if summary.included == 1 else "items"
         text = (
-            f"Selected: {summary.included} {noun}, "
+            f"qpy-rsync {APP_VERSION} Selected: {summary.included} {noun}, "
             f"{format_size(summary.total_size)}; "
             f"new {summary.creates}, updated {summary.updates}, "
             f"metadata {summary.metadata}, "
@@ -2793,7 +2794,7 @@ class MainWindow(QMainWindow):
                 summary = self._current_plan.summary
                 noun = "item" if summary.included == 1 else "items"
                 self._append_log(
-                    "Decisions verified, selected: "
+                    f"qpy-rsync {APP_VERSION} Decisions verified, selected: "
                     f"new {summary.creates}, updated {summary.updates}, "
                     f"metadata {summary.metadata}, "
                     f"deleted {summary.deletions}; "
@@ -3464,7 +3465,8 @@ class MainWindow(QMainWindow):
         metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         self._append_log(
-            f"Comparison view built in {time.monotonic() - view_started:.2f} s."
+            f"qpy-rsync {APP_VERSION} Comparison view built in "
+            f"{time.monotonic() - view_started:.2f} s."
         )
         discarded = self.comparison.model.discarded_decisions
         conflicts = self.comparison.model.conflicts()
@@ -3831,7 +3833,7 @@ class MainWindow(QMainWindow):
         count = self._last_compare_count
         if self._last_phase_started is not None:
             self._append_log(
-                "Comparison ready in "
+                f"qpy-rsync {APP_VERSION} Comparison ready in "
                 f"{time.monotonic() - self._last_phase_started:.2f} s."
             )
             self._last_phase_started = None
@@ -3986,7 +3988,7 @@ class MainWindow(QMainWindow):
         elapsed = time.monotonic() - monotonic_start
         wall = (datetime.now() - wall_start).total_seconds()
         self._append_log(
-            f"rsync {label} finished in {elapsed:.2f} s "
+            f"qpy-rsync {APP_VERSION} rsync {label} finished in {elapsed:.2f} s "
             f"(wall {wall:.2f} s)."
         )
 

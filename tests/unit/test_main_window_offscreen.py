@@ -2140,3 +2140,30 @@ def test_compare_progress_does_not_override_the_item_count() -> None:
     assert window.progress_label.text() == label
     window.close()
     application.processEvents()
+
+
+def test_stats_lines_include_the_app_version() -> None:
+    from qpy_rsync import __version__
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    window._comparison_finished(
+        CompareResult(
+            ParseResult(
+                [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")], []
+            ),
+            "",
+            0,
+        )
+    )
+    assert f"qpy-rsync {__version__} Selected:" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
