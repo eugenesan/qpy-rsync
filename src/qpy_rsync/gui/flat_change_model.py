@@ -1850,6 +1850,11 @@ class FlatChangeModel(QAbstractTableModel):
             if state is Qt.CheckState.Checked
             else ChangeDecision.EXCLUDE
         )
+        # Clicking a box back to the state rsync already proposed is a
+        # restoration, not a new decision. Keep it implicit so Ctrl+Z and the
+        # next comparison see the original state, not a redundant override.
+        if self.decisions.default_for(row.path) is decision:
+            decision = ChangeDecision.INHERIT
         before = self._snapshot()
         self.decisions.set(row.path, decision)
         self._record_decision(before)

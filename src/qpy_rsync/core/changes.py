@@ -96,6 +96,10 @@ class ChangeDecisions:
         self._conflicts.clear()
         return len(paths)
 
+    def default_for(self, path: str) -> ChangeDecision:
+        """The decision rsync would apply without a manual override."""
+        return self._defaults.get(path.rstrip("/"), ChangeDecision.INCLUDE)
+
     def explicit(self, path: str) -> ChangeDecision:
         return self._decisions.get(path.rstrip("/"), ChangeDecision.INHERIT)
 

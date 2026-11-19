@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Clicking a checkbox back to the decision rsync already proposes now clears
+  the manual override instead of recording a redundant explicit decision.
+  Undoing or restoring returns to the original state, as expected.
 - Directory rows show per-side item counts. A folder whose children exist
   only on the source now leaves the destination Items and Size cells blank
   instead of showing "2" and "0 B".

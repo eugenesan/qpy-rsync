@@ -309,8 +309,10 @@ def test_the_root_checkbox_decides_the_whole_comparison() -> None:
     view.model.setData(
         root_action, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole
     )
-    assert view.model.decisions.inherited("docs/a.txt") is ChangeDecision.INCLUDE
-    assert view.model.decisions.inherited("pics/c.jpg") is ChangeDecision.INCLUDE
+    # Restoring the rsync default leaves no explicit override behind.
+    assert view.model.decisions.explicit("docs/a.txt") is ChangeDecision.INHERIT
+    assert view.model.decisions.effective(file_change("docs/a.txt")) is ChangeDecision.INCLUDE
+    assert view.model.decisions.effective(file_change("pics/c.jpg")) is ChangeDecision.INCLUDE
     view.close()
     application.processEvents()
 
