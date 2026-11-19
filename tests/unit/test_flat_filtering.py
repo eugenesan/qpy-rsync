@@ -382,9 +382,15 @@ def test_search_follows_the_find_and_filter_rules() -> None:
     # A bare name matches the directory itself, not its whole hierarchy.
     assert found(".git") == [".git"]
     assert found("config") == [".git/config"]
-    # A slash searches the relative path; a trailing slash means directories.
-    assert found(".git/") == [".git"]
-    assert found("src/") == ["src"]
+    # A slash searches the relative path; a trailing slash finds the folder
+    # and everything below it, just like the path filter.
+    assert found(".git/") == [
+        ".git",
+        ".git/config",
+        ".git/objects",
+        ".git/objects/id",
+    ]
+    assert found("src/") == ["src", "src/main.py"]
     assert found(".git/config") == [".git/config"]
     # Globs follow the same rules in both forms.
     assert found("*.py") == ["src/main.py"]

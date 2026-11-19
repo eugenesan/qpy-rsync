@@ -66,10 +66,19 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     # The stats are a table with two label/value pairs per row.
     assert dialog.stats.item(0, 0).text() == "Included"
     assert dialog.stats.item(0, 1).text() == "1"
-    assert dialog.stats.item(0, 2).text() == "Update"
-    assert dialog.stats.item(0, 3).text() == "0"
+    assert dialog.stats.item(0, 2).text() == "Create"
+    assert dialog.stats.item(0, 3).text() == "1"
     assert dialog.stats.item(1, 0).text() == "Total size"
-    assert dialog.stats.item(5, 2).text() == "Nested protection"
+    # Backup settings live with the endpoints, not in the statistics table.
+    assert dialog.backup_label.toolTip() == "/recovery"
+    assert dialog.protection_label.toolTip() == "Not required"
+    assert all(
+        dialog.stats.item(row, column) is None
+        or dialog.stats.item(row, column).text()
+        not in {"Backup", "Nested protection"}
+        for row in range(dialog.stats.rowCount())
+        for column in range(dialog.stats.columnCount())
+    )
     command = dialog.command.toPlainText()
     assert dialog.command.isReadOnly()
     assert dialog.rules.isReadOnly()

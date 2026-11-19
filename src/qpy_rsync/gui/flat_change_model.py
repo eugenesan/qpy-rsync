@@ -1246,8 +1246,9 @@ class FlatChangeModel(QAbstractTableModel):
         A name without a slash matches only the item's own name, so looking
         for ``.git`` finds the directory and not everything below it. A
         pattern with a slash matches the relative path, globs work in both
-        forms, and a trailing slash searches directories only. Searching
-        never changes the visible set.
+        forms, and a trailing slash finds directories *and their contents*,
+        the way the path filter keeps the contents of a matched folder.
+        Searching never changes the visible set.
         """
         value = text.strip().casefold()
         key = (value, self.layout_token)
@@ -1263,20 +1264,40 @@ class FlatChangeModel(QAbstractTableModel):
             names = self._row_names_folded
             paths = self._row_paths_folded
             is_dir = self._row_is_dir
-            if is_glob:
+            visible = self._visible_rows
+            if directories_only:
+                # A folder search also finds the objects below it, like the
+                # path filter. Match the folder rows first, then expand them.
+                if is_glob:
+                    roots = {
+                        paths[row]
+                        for row in visible
+                        if is_dir[row]
+                        and fnmatchcase(paths[row] if by_path else names[row], pattern)
+                    }
+                else:
+                    candidate_source = paths if by_path else names
+                    roots = {
+                        paths[row]
+                        for row in visible
+                        if is_dir[row] and pattern in candidate_source[row]
+                    }
+                prefixes = tuple(root + "/" for root in roots)
                 matches = [
                     row
-                    for row in self._visible_rows
-                    if (not directories_only or is_dir[row])
-                    and fnmatchcase(paths[row] if by_path else names[row], pattern)
+                    for row in visible
+                    if paths[row] in roots or paths[row].startswith(prefixes)
+                ]
+            elif is_glob:
+                matches = [
+                    row
+                    for row in visible
+                    if fnmatchcase(paths[row] if by_path else names[row], pattern)
                 ]
             else:
                 candidate_source = paths if by_path else names
                 matches = [
-                    row
-                    for row in self._visible_rows
-                    if (not directories_only or is_dir[row])
-                    and pattern in candidate_source[row]
+                    row for row in visible if pattern in candidate_source[row]
                 ]
         self._search_cache_key = key
         self._search_cache = matches

@@ -234,8 +234,9 @@ pattern contains a slash. Shell-style globs are supported (`*`, `?`, `[...]`).
 A pattern that ends with a slash matches directories only and keeps their
 contents. The *Find in List* search uses the same rules: a name without a
 slash matches only that item's name, so searching for `.git` finds the
-directory but not everything below it. Search builds a match index and only
-moves the selection; it never filters the list. Enter, Shift+Enter and
+directory but not everything below it; `.git/` finds the directory and its
+contents. Search builds a match index and only moves the selection; it never
+filters the list. Enter, Shift+Enter and
 Ctrl+G / Ctrl+Shift+G step through the matches.
 
 ### 4.8 The overview

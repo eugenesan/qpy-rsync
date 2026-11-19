@@ -81,6 +81,26 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
     )
 
 
+class _PathLabel(QLabel):
+    """A single-line path with the full value available in its tooltip."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._path = text
+        self.setWordWrap(False)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.setToolTip(text)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        available = max(0, self.width() - 2)
+        self.setText(
+            self.fontMetrics().elidedText(
+                self._path, Qt.TextElideMode.ElideMiddle, available
+            )
+        )
+
+
 class _StaticTableWidget(QTableWidget):
     """A summary table that never scrolls away from its content."""
 
@@ -127,20 +147,25 @@ class SyncConfirmationDialog(QDialog):
         endpoint_rows = (
             ("Source", summary.source),
             ("Destination", summary.destination),
+            ("Backup", summary.backup),
+            ("Nested protection", summary.nested_protection),
         )
+        self.path_labels: dict[str, QLabel] = {}
         for row, (title, value) in enumerate(endpoint_rows):
             name = QLabel(title)
             name.setAlignment(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             )
-            path = QLabel(value)
+            path = _PathLabel(value)
+            path.setObjectName(f"confirmation-{title.lower().replace(' ', '-')}")
             path.setAlignment(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             )
-            path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            path.setWordWrap(True)
             endpoints.addWidget(name, row, 0)
             endpoints.addWidget(path, row, 1)
+            self.path_labels[title] = path
+        self.backup_label = self.path_labels["Backup"]
+        self.protection_label = self.path_labels["Nested protection"]
         layout.addLayout(endpoints)
 
         stats = [
@@ -154,8 +179,6 @@ class SyncConfirmationDialog(QDialog):
             ("Metadata", str(summary.metadata)),
             ("Replace", str(summary.replacements)),
             ("Delete", str(summary.deletions)),
-            ("Backup", summary.backup),
-            ("Nested protection", summary.nested_protection),
         ]
         half = (len(stats) + 1) // 2
         left, right = stats[:half], stats[half:]
