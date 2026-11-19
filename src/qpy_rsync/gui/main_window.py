@@ -3410,7 +3410,7 @@ class MainWindow(QMainWindow):
     def _comparison_cancelled(self) -> None:
         if self._closing:
             return
-        self._log_rsync_elapsed("comparison")
+        self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
@@ -3425,7 +3425,7 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         if self._closing:
             return
-        self._log_rsync_elapsed("comparison")
+        self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
@@ -3955,7 +3955,7 @@ class MainWindow(QMainWindow):
     def _comparison_error(self, message: str) -> None:
         if self._closing:
             return
-        self._log_rsync_elapsed("comparison")
+        self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Compare parsing now reports its own timing in the application log and as a
+  `compare.parse` timing probe: number of lines, time spent parsing records
+  and time spent writing journal entries. The elapsed rsync message now says
+  "dry run" to distinguish the child process from the whole comparison.
 - File log timestamps and session headers use local time with the local UTC
   offset instead of UTC.
 - Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
