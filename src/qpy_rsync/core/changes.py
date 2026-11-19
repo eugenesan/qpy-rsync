@@ -225,8 +225,9 @@ class ChangeDecisions:
         it became destination-only, the old decision would silently turn into
         a DELETE, so it is dropped and flagged for review. Decisions on paths
         that vanished are dropped without a flag; they are not on the list.
-        With ``preserve`` off, any decision whose item identity changed is
-        dropped and flagged while the item remains on the list.
+        With ``preserve`` off, the user asked for a fresh comparison, so
+        stale decisions are dropped silently — no conflict is reported for
+        work they deliberately discarded.
         """
         current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}
         current_paths = tuple(current)
@@ -245,11 +246,13 @@ class ChangeDecisions:
                 # Nothing to apply the decision to: not shown in the list.
                 stale.append(path)
                 continue
-            if not preserve or not identity_changed:
-                # Identity unchanged: the decision still says what it did.
-                if not preserve and identity_changed:
+            if not preserve:
+                # A fresh comparison discards every stale decision silently.
+                if identity_changed:
                     stale.append(path)
-                    self._conflicts[path] = "The item's action or kind changed."
+                continue
+            if not identity_changed:
+                # The decision still says exactly what it did before.
                 continue
             if decision is ChangeDecision.EXCLUDE:
                 # Excluding only narrows the sync; it cannot authorize a

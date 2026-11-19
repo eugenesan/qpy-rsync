@@ -116,3 +116,17 @@ def test_preservation_is_type_aware_and_flags_changed_decisions() -> None:
     vanished.reconcile(old)
     assert vanished.reconcile([], preserve=True) == 1
     assert vanished.conflicts() == {}
+
+
+def test_fresh_comparison_drops_stale_decisions_without_conflicts() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ChangeDecision, ObjectKind
+
+    old = [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    new = [Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f")]
+    decisions = ChangeDecisions()
+    decisions.set("a.txt", ChangeDecision.INCLUDE)
+    decisions.reconcile(old)
+
+    assert decisions.reconcile(new, preserve=False) == 1
+    assert decisions.explicit("a.txt") is ChangeDecision.INHERIT
+    assert decisions.conflicts() == {}
