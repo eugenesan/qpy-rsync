@@ -690,7 +690,8 @@ def test_directory_sizes_only_count_affected_items() -> None:
     row = model.index(1, model.SOURCE_NAME)
     assert model.data(model.index(row.row(), model.SOURCE_ITEMS), Qt.ItemDataRole.DisplayRole) == "0"
     assert model.data(model.index(row.row(), model.SOURCE_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
-    assert model.data(model.index(row.row(), model.DESTINATION_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
+    assert model.data(model.index(row.row(), model.DESTINATION_SIZE), Qt.ItemDataRole.DisplayRole) == ""
+    assert model.data(model.index(row.row(), model.DESTINATION_ITEMS), Qt.ItemDataRole.DisplayRole) == ""
     model.deleteLater()
 
 

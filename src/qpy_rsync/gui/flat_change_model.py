@@ -1713,9 +1713,7 @@ class FlatChangeModel(QAbstractTableModel):
                 if not destination_present or directory is None:
                     return ""
                 if not directory.subtree_destination_items:
-                    own = directory.own_change
-                    if own is None or own.action is ChangeAction.CREATE:
-                        return ""
+                    return ""
                 return str(directory.subtree_destination_items)
             if index.column() == self.SOURCE_SIZE:
                 if not source_present:
@@ -1727,10 +1725,7 @@ class FlatChangeModel(QAbstractTableModel):
                 if not destination_present:
                     return ""
                 if directory is not None:
-                    own = directory.own_change
-                    if not directory.subtree_destination_items and (
-                        own is None or own.action is ChangeAction.CREATE
-                    ):
+                    if not directory.subtree_destination_items:
                         return ""
                     return self._size(directory.subtree_destination_size)
                 return self._size(
@@ -1750,10 +1745,7 @@ class FlatChangeModel(QAbstractTableModel):
                 if not destination_present:
                     return ""
                 if directory is not None:
-                    own = directory.own_change
-                    if not directory.subtree_destination_items and (
-                        own is None or own.action is ChangeAction.CREATE
-                    ):
+                    if not directory.subtree_destination_items:
                         return ""
                     return str(directory.subtree_destination_size)
                 size = self._destination_size_display(change) if change else None

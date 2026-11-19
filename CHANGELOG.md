@@ -13,9 +13,10 @@
 - Clicking a checkbox back to the decision rsync already proposes now clears
   the manual override instead of recording a redundant explicit decision.
   Undoing or restoring returns to the original state, as expected.
-- Directory rows show per-side item counts. A folder whose children exist
-  only on the source now leaves the destination Items and Size cells blank
-  instead of showing "2" and "0 B".
+- Directory rows show per-side item counts. A folder with no destination
+  items below it leaves the destination Items and Size cells blank instead of
+  showing "0" and "0 B"; folders with destination items show their real counts
+  and sizes.
 - Destination sizes are gathered for every changed path that exists on the
   destination, so updated and metadata-only items show their real size again
   instead of "0 B". The listing uses the profile's own filters in one pass
