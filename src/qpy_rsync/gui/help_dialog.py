@@ -51,7 +51,8 @@ result.
    Right do the same from the keyboard, and "Collapse All Folders" /
    "Expand All Folders" are in the Actions menu. Ctrl+Up and Ctrl+Down walk
    the hierarchy instead: they move between a folder and its parent or first
-   child without folding anything.
+   child without folding anything. Home and End jump to the first and last
+   item of the list.
 
 5. Verify Decisions (F8)
    Builds the execution plan from your selection and checks it with a second

@@ -1041,3 +1041,28 @@ def test_space_exclusion_moves_the_cursor_and_keeps_selection() -> None:
     ] == ["d/f2.txt"]
     view.close()
     application.processEvents()
+
+
+def test_home_and_end_jump_to_the_first_and_last_items() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change(f"d/f{i}.txt") for i in range(5)])
+    application.processEvents()
+    view.select_path("d/f2.txt")
+
+    def press(key: int) -> None:
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier
+        )
+        assert view.eventFilter(view.source, event) is True
+        application.processEvents()
+
+    press(Qt.Key.Key_Home)
+    assert view.model.row_path(view.source.currentIndex().row()) == "d/f0.txt"
+    press(Qt.Key.Key_End)
+    assert view.model.row_path(view.source.currentIndex().row()) == "d/f4.txt"
+    view.close()
+    application.processEvents()

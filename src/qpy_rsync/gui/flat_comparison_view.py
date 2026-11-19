@@ -834,6 +834,9 @@ class FlatComparisonView(QWidget):
                 ):
                     self._hierarchy_move(1 if key == Qt.Key.Key_Down else -1)
                     return True
+                if key in (Qt.Key.Key_Home, Qt.Key.Key_End):
+                    self._jump_to_edge(key == Qt.Key.Key_End)
+                    return True
                 if key == Qt.Key.Key_Space:
                     if self._toggle_excluded():
                         return True
@@ -874,6 +877,17 @@ class FlatComparisonView(QWidget):
             return False
         self.toggle_collapsed(path)
         return True
+
+    def _jump_to_edge(self, last: bool) -> None:
+        """Select the first or last visible item of the comparison."""
+        positions = list(range(self.model.rowCount()))
+        if last:
+            positions.reverse()
+        for row in positions:
+            data = self.model.row_data(row)
+            if data is not None and not data.is_directory and data.path:
+                self.select_path(data.path)
+                return
 
     def _hierarchy_move(self, direction: int) -> None:
         """Move the selection between a folder and its ancestors or children.
