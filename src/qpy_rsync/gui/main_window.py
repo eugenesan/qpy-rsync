@@ -1330,8 +1330,12 @@ class MainWindow(QMainWindow):
         """Use the same three-state badge as the filter and profile buttons."""
         fresh = bool(self.comparison.model.changes) and not stale
         self.compare_button.setIcon(compare_icon(info=fresh, warning=stale))
+        plan_warning = stale or self._plan_stale
         self.validate_plan_button.setIcon(
-            verify_icon(info=self._verify_state == "verified", warning=stale)
+            verify_icon(
+                info=self._verify_state == "verified" and not plan_warning,
+                warning=plan_warning,
+            )
         )
         if stale:
             self.compare_button.setToolTip(
@@ -2343,8 +2347,13 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_verify_button(self) -> None:
-        # The stale state is shown by the small badge on the icon, like the
-        # filter and profile buttons. Never paint the whole button background.
+        # A decision edit makes the plan stale even though the comparison is
+        # still fresh. Show that with the same small badge the other buttons
+        # use, never by painting the whole background.
+        warning = self._plan_stale or self.comparison.model.stale
+        self.validate_plan_button.setIcon(
+            verify_icon(info=not warning and self._verify_state == "verified", warning=warning)
+        )
         self.validate_plan_button.setToolTip(
             "Plan changed — press Verify Decisions to rebuild and verify."
             if self._plan_stale

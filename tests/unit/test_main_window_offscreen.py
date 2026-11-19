@@ -1613,3 +1613,34 @@ def test_stale_plan_does_not_paint_the_whole_verify_button() -> None:
     assert window.validate_plan_button.styleSheet() == ""
     window.close()
     application.processEvents()
+
+
+def test_verify_badge_tracks_plan_staleness() -> None:
+    from qpy_rsync.gui.icons import ICON_SIZE, verify_icon
+
+    def badge_color(icon) -> str:
+        image = icon.pixmap(ICON_SIZE, ICON_SIZE).toImage()
+        return image.pixelColor(50, 50).name().lower()
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    from qpy_rsync.gui.icons import ICON_SIZE
+
+    def badge() -> str:
+        image = window.validate_plan_button.icon().pixmap(ICON_SIZE, ICON_SIZE).toImage()
+        return image.pixelColor(50, 50).name().lower()
+
+    window._set_verify_state("idle")
+    clean = badge()
+    window._plan_stale = True
+    window._refresh_verify_button()
+    assert badge() == badge_color(verify_icon(warning=True))
+    assert badge() != clean
+    window._plan_stale = False
+    window._set_verify_state("verified")
+    assert badge() == badge_color(verify_icon(info=True))
+    window._set_verify_state("idle")
+    assert badge() == clean
+    window.close()
+    application.processEvents()
