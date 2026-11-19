@@ -215,26 +215,41 @@ def source_icon() -> QIcon:
     )
 
 
-def compare_icon() -> QIcon:
-    """The system icon for the Compare action."""
-    return _theme_icon(
+def _badged_icon(base: QIcon, color: str) -> QIcon:
+    """Add the same corner badge the filter and profile buttons use."""
+    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    base.paint(painter, 0, 0, ICON_SIZE, ICON_SIZE)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor(color)))
+    painter.drawEllipse(QPointF(50.0, 50.0), 11.0, 11.0)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def compare_icon(*, stale: bool = False) -> QIcon:
+    """The system icon for the Compare action, with a stale badge."""
+    base = _theme_icon(
         "kr_comparedirs",
         "kr_comparedir",
         "document-compareright",
         "document-compareright-symbolic",
         fallback=QStyle.StandardPixmap.SP_FileDialogContentsView,
     )
+    return _badged_icon(base, "#f59e0b") if stale else base
 
 
-def verify_icon() -> QIcon:
-    """The system icon for verifying the selected actions."""
-    return _theme_icon(
+def verify_icon(*, stale: bool = False) -> QIcon:
+    """The system icon for verifying the decisions, with a stale badge."""
+    base = _theme_icon(
         "answer-symbolic",
         "answer",
         "answer-correct",
         "Answer",
         fallback=QStyle.StandardPixmap.SP_DialogApplyButton,
     )
+    return _badged_icon(base, "#f59e0b") if stale else base
 
 
 def verified_icon() -> QIcon:

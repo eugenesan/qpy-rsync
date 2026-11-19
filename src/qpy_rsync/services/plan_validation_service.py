@@ -105,6 +105,10 @@ class PlanValidationService:
         with timed("verify.spec"):
             spec = build_compare_spec(effective_profile, filter_file=self._filter_path)
         debug_timing("verify.rsync_started")
+        self.on_log(
+            "Verify Decisions: rsync dry run started: "
+            f"{plan.source_operand} -> {plan.destination_operand}"
+        )
         self.on_started()
         try:
             self.on_spec(spec)

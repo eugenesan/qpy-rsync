@@ -87,3 +87,36 @@ def test_a_excluded_item_does_not_invalidate_the_plan() -> None:
     )
     plan = build_execution_plan(profile, _two_files(), decisions)
     assert compare_plan_to_changes(plan, _two_files(), decisions).valid
+
+
+def test_validation_logs_the_rsync_start_before_running() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.services.plan_validation_service import PlanValidationService
+
+    application = QApplication.instance() or QApplication([])
+    profile = SyncProfile(
+        "plan", Endpoint(EndpointKind.LOCAL, "/src/"), Endpoint(EndpointKind.LOCAL, "/dst/")
+    )
+    plan = build_execution_plan(profile, _two_files(), ChangeDecisions())
+    service = PlanValidationService()
+    messages: list[str] = []
+    started: list[bool] = []
+    service.on_log = messages.append
+    service.on_started = lambda: started.append(True)
+
+    class Runner:
+        on_stdout = None
+        on_stderr = None
+        on_finished = None
+        on_error = None
+
+        def start(self, spec) -> None:
+            assert messages and "rsync dry run started" in messages[-1]
+
+    service._runner = Runner()  # type: ignore[assignment]
+    service.validate(profile, plan)
+    assert any("rsync dry run started" in message for message in messages)
+    assert any("/src/" in message for message in messages)
+    assert started
+    application.processEvents()

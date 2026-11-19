@@ -1548,15 +1548,20 @@ def test_stale_comparison_marks_compare_button_and_status() -> None:
     window.destination_edit.setText("/dst/")
     window._set_state("Ready for compare")
     assert window.status_edit.text() == "Ready for compare"
-    assert "#EA580C" not in window.compare_button.styleSheet()
+    clean_compare = window.compare_button.icon().cacheKey()
+    clean_verify = window.validate_plan_button.icon().cacheKey()
     window.comparison.set_stale(True)
     application.processEvents()
-    assert "#EA580C" in window.compare_button.styleSheet()
+    # The badges are the same icon markers the filter and profile buttons use.
+    assert window.compare_button.icon().cacheKey() != clean_compare
+    assert window.validate_plan_button.icon().cacheKey() != clean_verify
     assert "STALE" in window.compare_button.toolTip()
     assert window.status_edit.text() == "Stale comparison — click Compare to refresh"
     assert "#EA580C" in window.status_edit.styleSheet()
+    assert "#EA580C" in window.state_label.styleSheet()
     window.comparison.set_stale(False)
     application.processEvents()
-    assert "#EA580C" not in window.compare_button.styleSheet()
+    assert "STALE" not in window.compare_button.toolTip()
+    assert window.status_edit.text() != "Stale comparison — click Compare to refresh"
     window.close()
     application.processEvents()

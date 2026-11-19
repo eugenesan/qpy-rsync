@@ -55,19 +55,19 @@ def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
     return lines
 
 
-_FILTER_TEXT_CACHE: list[tuple[ExecutionPlan, str]] = []
+_FILTER_TEXT_CACHE: dict[tuple[str, str, str], str] = {}
 
 
 def filter_text(plan: ExecutionPlan) -> str:
-    """The rendered filter file, cached by the identity of the immutable plan."""
-    for cached_plan, text in _FILTER_TEXT_CACHE:
-        if cached_plan is plan:
-            return text
-    lines = decision_filter_lines(plan)
-    text = "\n".join(lines) + ("\n" if lines else "")
-    if len(_FILTER_TEXT_CACHE) >= 4:
-        _FILTER_TEXT_CACHE.pop(0)
-    _FILTER_TEXT_CACHE.append((plan, text))
+    """The rendered filter file, reused while the plan's contents are equal."""
+    key = (plan.items_fingerprint, plan.decision_signature, plan.profile_fingerprint)
+    text = _FILTER_TEXT_CACHE.get(key)
+    if text is None:
+        lines = decision_filter_lines(plan)
+        text = "\n".join(lines) + ("\n" if lines else "")
+        if len(_FILTER_TEXT_CACHE) >= 4:
+            _FILTER_TEXT_CACHE.clear()
+        _FILTER_TEXT_CACHE[key] = text
     return text
 
 

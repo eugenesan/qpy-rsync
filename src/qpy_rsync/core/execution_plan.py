@@ -64,6 +64,9 @@ class ExecutionPlan:
     items: tuple[PlanItem, ...]
     summary: PlanSummary
     decision_signature: str = ""
+    # A cheap content fingerprint used to reuse generated rsync filter rules
+    # when a rebuilt plan has exactly the same items and decisions.
+    items_fingerprint: str = ""
 
     @property
     def included_items(self) -> tuple[PlanItem, ...]:
@@ -206,7 +209,14 @@ def build_execution_plan(
         included_size=included_size,
     )
     signature = decision_signature(decisions)
+    digest = sha256()
+    for item in items:
+        digest.update(item.path.encode("utf-8"))
+        digest.update(item.action.value.encode("utf-8"))
+        digest.update(item.kind.value.encode("utf-8"))
+        digest.update(b"1" if item.included else b"0")
     return ExecutionPlan(
+        items_fingerprint=digest.hexdigest(),
         decision_signature=signature,
         profile_fingerprint=profile_fingerprint(profile),
         source_operand=profile.source.rsync_operand(),

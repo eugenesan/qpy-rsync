@@ -671,21 +671,31 @@ def test_double_clicking_a_directory_toggles_it() -> None:
     application.processEvents()
 
 
-def test_the_hover_marks_the_whole_row_in_every_pane() -> None:
+def test_hover_does_not_mark_or_select_rows() -> None:
     application = app()
     view = FlatComparisonView()
     view.set_changes([file_change("docs/a.txt"), file_change("docs/b.txt")])
     first = view.model.index_for_path("docs/a.txt")
-    second = view.model.index_for_path("docs/b.txt")
-
-    view._row_entered(first)
-    assert view.model.hovered_row == first.row()
-
-    view._row_entered(second)
-    assert view.model.hovered_row == second.row()
-
-    view._clear_hover()
+    view.select_path("docs/a.txt")
     assert view.model.hovered_row is None
+
+    # A pointer moving over another row must not change the selection.
+    second = view.model.index_for_path("docs/b.txt")
+    rect = view.action.visualRect(second)
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(rect.center()),
+        QPointF(view.action.viewport().mapToGlobal(rect.center())),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(view.action.viewport(), event)
+    application.processEvents()
+    assert view.model.hovered_row is None
+    assert view.model.row_path(view.source.currentIndex().row()) == "docs/a.txt"
     view.close()
     application.processEvents()
 

@@ -97,10 +97,6 @@ class UniformRowDelegate(QStyledItemDelegate):
         # by its background, and the dotted outline reads like a second
         # cursor next to the hover highlight.
         styled.state &= ~QStyle.StateFlag.State_HasFocus
-        if index.model().hovered_row == index.row():
-            # The hover marks the row and not the cell, so the whole row of
-            # every pane is highlighted.
-            styled.state |= QStyle.StateFlag.State_MouseOver
         super().paint(painter, styled, index)  # type: ignore[arg-type]
 
 
@@ -210,14 +206,9 @@ class FlatPathDelegate(UniformRowDelegate):
 
         styled = QStyleOptionViewItem(option)
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
-        hovered = index.model().hovered_row == index.row()
-        # Paint the row background (alternating group, selection, hover) with
-        # the style first, so the custom text below sits on the right colour.
+        # Paint the row background (alternating group, selection) with the
+        # style first, so the custom text below sits on the right colour.
         styled.state &= ~QStyle.StateFlag.State_HasFocus
-        if hovered:
-            # The hover marks the row and not the cell, so the whole row of
-            # every pane is highlighted.
-            styled.state |= QStyle.StateFlag.State_MouseOver
         if index.data(STRIPE_ROLE) and not selected:
             painter.fillRect(styled.rect, STRIPE_COLOR)
         blank = QStyleOptionViewItem(styled)
@@ -582,10 +573,8 @@ class FlatComparisonView(QWidget):
         pane.doubleClicked.connect(
             lambda index, p=pane: self._handle_double_click(p, index)
         )
-        # The pointer marks the whole row, in this pane and in the other one.
-        pane.setMouseTracking(True)
-        pane.viewport().setMouseTracking(True)
-        pane.entered.connect(self._row_entered)
+        # Hover is deliberately not used: only a click or a key changes the
+        # selection, so a pointer resting over a row cannot look like a cursor.
         # The space bar hides the selected items; the key event goes to the
         # focused pane, so the panes are watched. The mouse events of a pane
         # go to its viewport, so the viewport is watched as well.
@@ -803,10 +792,6 @@ class FlatComparisonView(QWidget):
                     self.find_previous()
                     return True
             return False
-        if event_type == QEvent.Type.Leave and watched in {
-            pane.viewport() for pane in panes
-        }:
-            self._clear_hover()
         action = getattr(self, "action", None)
         # The viewport accepts touch events, so a touchscreen sends TouchBegin
         # instead of the synthesized mouse press that a mouse would send.
@@ -974,26 +959,6 @@ class FlatComparisonView(QWidget):
         yield
         if path:
             self.select_path(path)
-
-    def _row_entered(self, index: QModelIndex) -> None:
-        """Mark the row under the pointer in every pane."""
-        row = index.row()
-        if self.model.hovered_row == row:
-            return
-        self.model.hovered_row = row
-        self._refresh_hover()
-
-    def _clear_hover(self) -> None:
-        """Forget the row under the pointer."""
-        if self.model.hovered_row is None:
-            return
-        self.model.hovered_row = None
-        self._refresh_hover()
-
-    def _refresh_hover(self) -> None:
-        """Repaint the panes after the hovered row changed."""
-        for pane in (self.source, self.action, self.destination):
-            pane.viewport().update()
 
     def _toggle_excluded(self) -> bool:
         """Exclude or include the selected items. True when it handled them."""

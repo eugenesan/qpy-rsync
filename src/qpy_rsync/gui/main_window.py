@@ -297,6 +297,7 @@ class MainWindow(QMainWindow):
         self._sync_service.on_spec = self._log_spec
         self._sync_service.on_transient = self._append_transient_log
         self._last_plan_summary: str | None = None
+        self._verify_state = "idle"
         self._filters: list[FilterRule] = []
         self._filters_text: str = ""
         self._sound_enabled = True
@@ -1307,19 +1308,21 @@ class MainWindow(QMainWindow):
 
     def _update_stale_indicators(self, stale: bool) -> None:
         """Mark the Compare button and status bar when results are stale."""
+        self.compare_button.setIcon(compare_icon(stale=stale))
+        if self._verify_state != "verified":
+            self.validate_plan_button.setIcon(verify_icon(stale=stale))
         if stale:
-            self.compare_button.setStyleSheet(
-                "QToolButton { border: 2px solid #EA580C; border-radius: 4px; }"
-            )
             self.compare_button.setToolTip(
                 "STALE: this comparison no longer matches the current profile.\n"
                 "Click Compare (F5) to refresh it."
             )
-            if self.status_edit.text() in {"", "Ready for compare"}:
+            current = self.status_edit.text()
+            if "stale" not in current.casefold():
                 self._set_state(_STALE_STATE_TEXT, "stale")
+            self.state_label.setStyleSheet("color: #EA580C; font-weight: bold;")
         else:
-            self.compare_button.setStyleSheet("")
             self.compare_button.setToolTip(_COMPARE_TOOLTIP)
+            self.state_label.setStyleSheet("")
             if self.status_edit.text() == _STALE_STATE_TEXT:
                 self._update_startup_status()
 
@@ -1332,6 +1335,13 @@ class MainWindow(QMainWindow):
             "error": "#B91C1C",
             "success": "#15803D",
         }
+        comparison = getattr(self, "comparison", None)
+        if (
+            comparison is not None
+            and comparison.model.stale
+            and text in {"", "Ready for compare"}
+        ):
+            text, severity = _STALE_STATE_TEXT, "stale"
         self.status_edit.setToolTip(text)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
@@ -2005,6 +2015,8 @@ class MainWindow(QMainWindow):
 
     def _set_verify_state(self, state: str) -> None:
         """Update the icon and the accessible label of Verify Decisions."""
+        self._verify_state = state
+        stale = bool(self.comparison.model.stale)
         if state == "verified":
             self.validate_plan_button.setIcon(verified_icon())
             self.validate_plan_button.setAccessibleName("Decisions Verified")
@@ -2018,7 +2030,7 @@ class MainWindow(QMainWindow):
             self.validate_plan_button.setAccessibleName("Verifying selected decisions")
             self.validate_plan_button.setToolTip("Verifying selected decisions...")
         else:
-            self.validate_plan_button.setIcon(verify_icon())
+            self.validate_plan_button.setIcon(verify_icon(stale=stale))
             self.validate_plan_button.setAccessibleName("Verify Decisions")
             self.validate_plan_button.setToolTip(with_shortcut(_VERIFY_TOOLTIP, "F8"))
 
