@@ -59,7 +59,13 @@ from .flat_change_model import (
     STRIPE_ROLE,
     FlatChangeModel,
 )
-from .icons import app_menu_icon, search_icon, unchanged_icon
+from .icons import (
+    app_menu_icon,
+    search_icon,
+    search_next_icon,
+    search_previous_icon,
+    unchanged_icon,
+)
 from .paths import full_path
 from .text_elide import elide_path
 from qpy_rsync.storage.settings import app_settings
@@ -479,6 +485,26 @@ class FlatComparisonView(QWidget):
         self.find_button.clicked.connect(self.find_next)
         controls.addWidget(self.find_button)
         controls.addWidget(self.search_edit, 1)
+        self.search_previous_button = QToolButton()
+        self.search_previous_button.setIcon(search_previous_icon())
+        self.search_previous_button.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.search_previous_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.search_previous_button.setToolTip("Previous match (Ctrl+Shift+G)")
+        self.search_previous_button.setAccessibleName("Previous search match")
+        self.search_previous_button.clicked.connect(self.find_previous)
+        controls.addWidget(self.search_previous_button)
+        self.search_next_button = QToolButton()
+        self.search_next_button.setIcon(search_next_icon())
+        self.search_next_button.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.search_next_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.search_next_button.setToolTip("Next match (Ctrl+G)")
+        self.search_next_button.setAccessibleName("Next search match")
+        self.search_next_button.clicked.connect(self.find_next)
+        controls.addWidget(self.search_next_button)
         self.search_status = QLabel()
         self.search_status.setObjectName("search-status")
         self.search_status.setToolTip("Search matches in the visible list")

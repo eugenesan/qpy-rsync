@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added previous/next arrow buttons to the right of the search field for
+  pointer navigation between matches, matching Ctrl+Shift+G and Ctrl+G.
 - After a fresh comparison, the Preserve decisions button returns to the
   state the app forced off while the comparison was stale. A manual click
   still wins.

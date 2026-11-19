@@ -1094,3 +1094,22 @@ def test_folding_hides_rows_but_keeps_totals_and_aggregates() -> None:
     assert [model.row_path(row) for row in range(model.rowCount())] == visible
     model.deleteLater()
     application.processEvents()
+
+
+def test_search_buttons_step_through_matches() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change(f"d/f{i}.txt") for i in range(4)])
+    application.processEvents()
+    view.search_edit.setText("f")
+    view._search_timer.stop()
+    view._run_search(jump=False)
+
+    view.search_next_button.click()
+    assert view.search_status.text() == "1/4"
+    view.search_next_button.click()
+    assert view.search_status.text() == "2/4"
+    view.search_previous_button.click()
+    assert view.search_status.text() == "1/4"
+    view.close()
+    application.processEvents()

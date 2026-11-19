@@ -645,6 +645,26 @@ def excluded_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def search_previous_icon() -> QIcon:
+    """Move to the previous search match."""
+    return _theme_icon(
+        "go-up",
+        "arrow-up",
+        fallback=QStyle.StandardPixmap.SP_ArrowUp,
+    )
+
+
+@lru_cache(maxsize=None)
+def search_next_icon() -> QIcon:
+    """Move to the next search match."""
+    return _theme_icon(
+        "go-down",
+        "arrow-down",
+        fallback=QStyle.StandardPixmap.SP_ArrowDown,
+    )
+
+
+@lru_cache(maxsize=None)
 def preserve_icon(*, active: bool = False, warning: bool = False) -> QIcon:
     """Preserve-decisions icon: blue when on, orange when forced off."""
     base = _theme_icon(
