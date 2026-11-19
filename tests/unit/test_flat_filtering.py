@@ -692,3 +692,35 @@ def test_directory_sizes_only_count_affected_items() -> None:
     assert model.data(model.index(row.row(), model.SOURCE_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
     assert model.data(model.index(row.row(), model.DESTINATION_SIZE), Qt.ItemDataRole.DisplayRole) == "0 B"
     model.deleteLater()
+
+
+def test_changed_decisions_are_filterable_and_reviewable() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ChangeDecision, ObjectKind
+    from qpy_rsync.gui.flat_change_model import CONFLICT_ROLE, FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes([Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")])
+    model.decisions.set("a.txt", ChangeDecision.INCLUDE)
+    model.decisions.reconcile(model.changes)
+
+    model.set_changes(
+        [Change("a.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")]
+    )
+    assert model.conflicts()
+    index = model.index_for_path("a.txt")
+    assert model.data(model.index(index.row(), model.SOURCE_NAME), CONFLICT_ROLE)
+
+    model.set_conflicts_only(True)
+    paths = {
+        model.row_path(row)
+        for row in range(model.rowCount())
+        if model.row_path(row)
+    }
+    assert paths == {"a.txt"}
+
+    assert model.accept_defaults_for_conflicts() == 1
+    assert not model.conflicts()
+    assert model.decisions.explicit("a.txt") is ChangeDecision.INHERIT
+    model.deleteLater()
+    application.processEvents()

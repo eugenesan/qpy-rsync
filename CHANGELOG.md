@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Reconciliation is now type-aware: EXCLUDE survives a changed action, while
+  INCLUDE is dropped when the item became destination-only (the old decision
+  would otherwise silently turn into a DELETE). Decisions on vanished paths
+  are dropped without a flag.
+- Decisions that no longer apply but are still on the list are highlighted,
+  filterable with a new warning checkbox in the decisions bar, and can be
+  cleared with "Accept rsync default for all changed decisions" in the context
+  menu. No separate before/after diff view: the compare list already shows the
+  current state.
 - Verify Decisions now validates against the comparison the user reviewed,
   without a second rsync dry run. Live directories (browser profiles, caches)
   can no longer make verification fail with unrelated changes; the journal

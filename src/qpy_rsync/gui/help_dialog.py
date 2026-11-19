@@ -46,7 +46,10 @@ result.
    Checkboxes include or exclude an item. Items that cannot be chosen, such
    as unchanged items, carry no checkbox. Edit > Undo Decision (Ctrl+Z) and
    Redo Decision (Ctrl+Shift+Z) step through your decision history; Edit >
-   Reset Decisions clears it.
+   Reset Decisions clears it. If a decision no longer applies after a new
+   comparison, the item is highlighted; the warning checkbox in the decisions
+   bar filters those items and the context menu offers to accept the rsync
+   default for all of them.
 
    Space excludes the selected item: it is temporarily left out of the sync
    and kept aside for this comparison only. The checkbox in the Actions column

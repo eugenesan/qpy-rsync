@@ -73,6 +73,28 @@ class ChangeDecisions:
         # comparison tree. This keeps per-cell painting O(1) instead of scanning
         # the complete change list for every row.
         self._defaults: dict[str, ChangeDecision] = {}
+        # Paths whose decision was dropped because it no longer applies to
+        # the item still shown in the comparison, with the reason.
+        self._conflicts: dict[str, str] = {}
+
+    def conflicts(self) -> dict[str, str]:
+        """The decisions that need review after the last reconciliation."""
+        return dict(self._conflicts)
+
+    def conflicted(self, path: str) -> bool:
+        return path.rstrip("/") in self._conflicts
+
+    def resolve_conflict(self, path: str) -> None:
+        """A fresh decision was made; the conflict is no longer open."""
+        self._conflicts.pop(path.rstrip("/"), None)
+
+    def accept_defaults_for_conflicts(self) -> int:
+        """Give up the decisions that no longer apply, clearing their flags."""
+        paths = tuple(self._conflicts)
+        for path in paths:
+            self._decisions.pop(path, None)
+        self._conflicts.clear()
+        return len(paths)
 
     def explicit(self, path: str) -> ChangeDecision:
         return self._decisions.get(path.rstrip("/"), ChangeDecision.INHERIT)
@@ -83,13 +105,16 @@ class ChangeDecisions:
 
     def set(self, path: str, decision: ChangeDecision) -> None:
         normalized = path.rstrip("/")
+        self._conflicts.pop(normalized, None)
         if decision is ChangeDecision.INHERIT:
             self._decisions.pop(normalized, None)
         else:
             self._decisions[normalized] = decision
 
     def reset(self, path: str) -> None:
-        self._decisions.pop(path.rstrip("/"), None)
+        clean = path.rstrip("/")
+        self._decisions.pop(clean, None)
+        self._conflicts.pop(clean, None)
 
     def reset_subtree(self, path: str) -> None:
         root = path.rstrip("/")
@@ -100,9 +125,13 @@ class ChangeDecisions:
         ]
         for item in stale:
             self._decisions.pop(item, None)
+        for item in tuple(self._conflicts):
+            if item == root or item.startswith(root + "/"):
+                self._conflicts.pop(item, None)
 
     def clear(self) -> None:
         self._decisions.clear()
+        self._conflicts.clear()
 
     def has_explicit(self) -> bool:
         return bool(self._decisions)
@@ -191,36 +220,50 @@ class ChangeDecisions:
     def reconcile(self, changes: list[Change], *, preserve: bool = False) -> int:
         """Drop decisions that no longer describe the comparison.
 
-        With ``preserve``, a decision is kept while its path is still present,
-        even when rsync reports a different action or kind for it — the
-        normal case on a live tree. Without it, a decision whose item's
-        identity changed is discarded as well. A directory decision survives
-        while any item below it remains in either mode.
+        An EXCLUDE is preserved by path: it can only narrow the sync. An
+        INCLUDE is preserved only while the item stays non-destructive — if
+        it became destination-only, the old decision would silently turn into
+        a DELETE, so it is dropped and flagged for review. Decisions on paths
+        that vanished are dropped without a flag; they are not on the list.
+        With ``preserve`` off, any decision whose item identity changed is
+        dropped and flagged while the item remains on the list.
         """
         current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}
         current_paths = tuple(current)
-        if preserve:
-            stale = [
-                path
-                for path in self._decisions
-                if path not in current
-                and not any(item.startswith(path + "/") for item in current_paths)
-            ]
-            # (A folder decision with living descendants survives; an exact
-            # path that still exists always survives in preservation mode.)
-        else:
-            stale = [
-                path
-                for path in self._decisions
-                if (
-                    path in self._identities
-                    and current.get(path) != self._identities.get(path)
+        self._conflicts.clear()
+        stale: list[str] = []
+        for path, decision in self._decisions.items():
+            exists = path in current
+            has_descendants = any(
+                item.startswith(path + "/") for item in current_paths
+            )
+            identity_changed = (
+                path in self._identities
+                and current.get(path) != self._identities.get(path)
+            )
+            if not exists and not has_descendants:
+                # Nothing to apply the decision to: not shown in the list.
+                stale.append(path)
+                continue
+            if not preserve or not identity_changed:
+                # Identity unchanged: the decision still says what it did.
+                if not preserve and identity_changed:
+                    stale.append(path)
+                    self._conflicts[path] = "The item's action or kind changed."
+                continue
+            if decision is ChangeDecision.EXCLUDE:
+                # Excluding only narrows the sync; it cannot authorize a
+                # write to an item the user never reviewed.
+                continue
+            new_action = current[path][0] if exists else None
+            if new_action is ChangeAction.DESTINATION_ONLY:
+                # Including this would turn the item into a DELETE. A prior
+                # decision on a different action must not silently do that.
+                stale.append(path)
+                self._conflicts[path] = (
+                    "The item is now destination-only; including it would "
+                    "delete it."
                 )
-                or (
-                    path not in current
-                    and not any(item.startswith(path + "/") for item in current_paths)
-                )
-            ]
         for path in stale:
             self._decisions.pop(path, None)
         self._identities = current

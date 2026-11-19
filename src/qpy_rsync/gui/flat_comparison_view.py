@@ -53,6 +53,7 @@ from qpy_rsync.services.external_tools import ExternalTool
 
 from .controls import ACTION_PANE_WIDTH, CONTROL_ICON_SIZE, CONTROL_SIZE, ROW_HEIGHT
 from .flat_change_model import (
+    CONFLICT_ROLE,
     STALE_HELP_TEXT,
     STALE_SUFFIX,
     STRIPE_ROLE,
@@ -72,6 +73,8 @@ RULE_COLOR = QColor("#c8c8c8")
 STRIPE_COLOR = QColor(0, 0, 0, 22)
 EXCLUDED_COLOR = QColor("#9ca3af")
 STALE_COLOR = QColor("#EA580C")
+# A decision that no longer applies is highlighted for review.
+CONFLICT_COLOR = QColor(180, 83, 9, 34)
 
 
 class UniformRowDelegate(QStyledItemDelegate):
@@ -214,6 +217,8 @@ class FlatPathDelegate(UniformRowDelegate):
         )
         if index.data(STRIPE_ROLE) and not selected:
             painter.fillRect(styled.rect, STRIPE_COLOR)
+        if index.data(CONFLICT_ROLE) and not selected:
+            painter.fillRect(styled.rect, CONFLICT_COLOR)
         blank = QStyleOptionViewItem(styled)
         blank.text = ""
         blank.icon = QIcon()
@@ -1426,6 +1431,8 @@ class FlatComparisonView(QWidget):
             self.model.reset_subtree_decisions(path)
         elif selected is actions["reset_all"]:
             self.reset_all_decisions()
+        elif selected is actions["accept_conflicts"]:
+            self.model.accept_defaults_for_conflicts()
         elif selected is actions["exclusion"] and path is not None:
             self.exclude_path(path)
         elif selected is actions["restore"] and path is not None:
@@ -1516,6 +1523,7 @@ class FlatComparisonView(QWidget):
             "exclusion": None,
             "restore": None,
             "reset_exclusions": None,
+            "accept_conflicts": None,
             "collapse": None,
             "expand": None,
             "collapse_all": None,
@@ -1556,6 +1564,10 @@ class FlatComparisonView(QWidget):
                 actions["reset_all"].setEnabled(  # type: ignore[union-attr]
                     self.model.decisions.has_explicit()
                 )
+                if self.model.conflicts():
+                    actions["accept_conflicts"] = menu.addAction(
+                        "Accept rsync default for all changed decisions"
+                    )
 
         # The filter entries of FreeFileSync, with rsync patterns.
         if path:

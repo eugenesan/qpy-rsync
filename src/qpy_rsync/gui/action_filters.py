@@ -16,6 +16,7 @@ from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
 from .icons import (
     ACTION_LABELS,
     action_icon,
+    conflict_icon,
     folder_icon,
     excluded_icon,
     unchanged_icon,
@@ -47,6 +48,7 @@ class ActionFilterBar(QWidget):
     changed = Signal(object)
     excluded_toggled = Signal(bool)
     unchanged_toggled = Signal(bool)
+    conflicts_toggled = Signal(bool)
     reset_exclusions_requested = Signal()
     directory_filter_toggled = Signal(bool)
 
@@ -133,6 +135,19 @@ class ActionFilterBar(QWidget):
         self.unchanged_box.setAccessibleName("Show unchanged items")
         self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
         layout.addWidget(self.unchanged_box)
+        layout.addWidget(_separator())
+        self.conflicts_box = QCheckBox(self)
+        self.conflicts_box.setIcon(conflict_icon())
+        self.conflicts_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.conflicts_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
+        self.conflicts_box.setAccessibleName("Review changed decisions")
+        self.conflicts_box.setToolTip(
+            "Show only the items whose decision no longer applies after a "
+            "comparison — for example an item that became destination-only. "
+            "Review them and choose the rsync default with the context menu."
+        )
+        self.conflicts_box.toggled.connect(self.conflicts_toggled.emit)
+        layout.addWidget(self.conflicts_box)
 
         # Breeze marks a focused icon-only checkbox with an underline. A
         # pointer click should not leave that marker behind, but Tab must

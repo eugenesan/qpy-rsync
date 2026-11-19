@@ -113,8 +113,10 @@ ACTION_HEADER_ACCENT = "#0891B2"
 PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 # Whether a row is drawn with the alternating background.
 STRIPE_ROLE = Qt.ItemDataRole.UserRole + 3
-# Whether the row is excluded, for the crossed-eye marker in the action column.
+# Whether the row is excluded from the sync.
 EXCLUDED_ROLE = Qt.ItemDataRole.UserRole + 4
+# Why a decision on this item no longer applies, for review and filtering.
+CONFLICT_ROLE = Qt.ItemDataRole.UserRole + 5
 
 
 @dataclass(slots=True)
@@ -218,6 +220,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.decisions = ChangeDecisions()
         self.preserve_decisions = True
         self.decision_history = DecisionHistory()
+        self._conflicts: dict[str, str] = {}
+        self._conflicts_only = False
+        self._conflict_rows: set[str] = set()
         self._decision_batch = 0
         # One source of truth for everything left out of the run. The old
         # names are kept as aliases until the UI and the plan stop using them.
@@ -327,6 +332,7 @@ class FlatChangeModel(QAbstractTableModel):
         self.discarded_decisions = self.decisions.reconcile(
             self.changes, preserve=self.preserve_decisions
         )
+        self._refresh_conflicts()
         self.decision_history.clear()
         self.history_changed.emit()
         self._build_directories()
@@ -724,7 +730,12 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _after_excluded_change(self, paths: set[str] | None) -> None:
         self._override_paths = self.decisions.override_paths(self.changes)
-        if paths is None:
+        self._refresh_conflicts()
+        if self._conflicts_only:
+            self.beginResetModel()
+            self._rebuild_visible_rows()
+            self.endResetModel()
+        elif paths is None:
             self._refresh_filters()
         else:
             self.refresh_decision_visibility(paths)
@@ -1011,6 +1022,8 @@ class FlatChangeModel(QAbstractTableModel):
         excluded_fn = exclusion.is_excluded
         for index in range(len(rows)):
             path = paths[index]
+            if not self._conflict_row_visible(rows[index]):
+                continue
             # The compared folder is not an item: keep its row reachable so
             # an exclusion of the whole list can always be undone.
             row_is_excluded = has_exclusion and bool(path) and excluded_fn(path)
@@ -1146,6 +1159,8 @@ class FlatChangeModel(QAbstractTableModel):
         pattern_active = bool(self._pattern) and self._pattern != "*"
         if row.excluded and not self.show_excluded and row.path:
             return False
+        if not self._conflict_row_visible(row):
+            return False
         if row.is_directory:
             directory = self._directories.get(row.path)
             if directory is None or not (directory.visible or row.excluded):
@@ -1215,6 +1230,8 @@ class FlatChangeModel(QAbstractTableModel):
                 row_excluded[index] = value
                 row.excluded = value
             if row.excluded and not self.show_excluded and row.path:
+                continue
+            if not self._conflict_row_visible(row):
                 continue
             if row.is_directory:
                 directory = self._directories.get(row.path)
@@ -1761,6 +1778,8 @@ class FlatChangeModel(QAbstractTableModel):
             return row.alternate
         if role == EXCLUDED_ROLE:
             return self.exclusion.is_excluded(row.path)
+        if role == CONFLICT_ROLE:
+            return self._conflicts.get(row.path)
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
@@ -1929,6 +1948,43 @@ class FlatChangeModel(QAbstractTableModel):
                 index = directory.own_change_index
                 actions[index] = self.effective_action_of_change(self.changes[index])
 
+    def _refresh_conflicts(self) -> None:
+        """Cache the conflict reasons and the folders that contain them."""
+        self._conflicts = self.decisions.conflicts()
+        rows = set(self._conflicts)
+        for path in tuple(self._conflicts):
+            parent = path.rpartition("/")[0]
+            while parent:
+                rows.add(parent)
+                parent = parent.rpartition("/")[0]
+        self._conflict_rows = rows
+
+    def conflicts(self) -> dict[str, str]:
+        """Decisions that no longer apply but are still on the list."""
+        return dict(self._conflicts)
+
+    def accept_defaults_for_conflicts(self) -> int:
+        """Clear the decisions that need review."""
+        count = self.decisions.accept_defaults_for_conflicts()
+        if count:
+            before = self._snapshot()
+            self._record_decision(before)
+            self._refresh_conflicts()
+            self._after_decision_change(None)
+        return count
+
+    def set_conflicts_only(self, enabled: bool) -> None:
+        """Show only the items whose decision needs review."""
+        if self._conflicts_only == bool(enabled):
+            return
+        self._conflicts_only = bool(enabled)
+        self.beginResetModel()
+        self._rebuild_visible_rows()
+        self.endResetModel()
+
+    def _conflict_row_visible(self, row: FlatRow) -> bool:
+        return not self._conflicts_only or row.path in self._conflict_rows
+
     def _after_decision_change(self, paths: set[str] | None) -> None:
         """Update the view after a decision changed.
 
@@ -1937,7 +1993,12 @@ class FlatChangeModel(QAbstractTableModel):
         """
         self._refresh_effective_actions(paths)
         self._override_paths = self.decisions.override_paths(self.changes)
-        if paths is None or "" in paths:
+        self._refresh_conflicts()
+        if self._conflicts_only:
+            self.beginResetModel()
+            self._rebuild_visible_rows()
+            self.endResetModel()
+        elif paths is None or "" in paths:
             self._refresh_filters()
         else:
             self.refresh_decision_visibility(paths)

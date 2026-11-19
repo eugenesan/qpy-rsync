@@ -252,11 +252,16 @@ counts and destructive warning — is the real gate.
      the profile identity or filter rules change, or when the comparison is
      explicitly started fresh. Preserve when only item identities changed
      because a live tree moved on. Each exception is logged.
-4. **Show what changed between comparisons.** A count summary plus a
-   browsable list of added, removed and action-changed paths, grouped by
-   folder. The diff itself is O(n) over the two change lists and negligible
-   next to rsync; the UI is the expensive part, so start with the summary and
-   grow it only if real use needs the detail.
+4. **Review decisions that no longer apply — delivered.** No diff view: a
+   comparison of two inventory states would have to show action, decision,
+   source and destination changes at once, which is harder to interpret than
+   the current list. Instead, reconciliation is type-aware: EXCLUDE survives
+   by path, INCLUDE is dropped when the item became destination-only (the old
+   decision would silently become a DELETE), and decisions on vanished paths
+   are dropped without a flag. Dropped decisions whose item is still on the
+   list are marked as conflicts: highlighted rows, a warning filter in the
+   decisions toolbar, and *Accept rsync default for all changed decisions* in
+   the context menu.
 
 Acceptance: a live tree can be compared, decisions prepared once, re-compared
 and synchronized without redoing the decisions; no step can fail with only

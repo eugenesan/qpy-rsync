@@ -619,6 +619,9 @@ class MainWindow(QMainWindow):
             self._filter_directories_changed
         )
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
+        self.action_filters.conflicts_toggled.connect(
+            self.comparison.model.set_conflicts_only
+        )
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
         # The direction line above the checkboxes names both sides, so the
@@ -3322,9 +3325,6 @@ class MainWindow(QMainWindow):
         self._last_compare_filters = getattr(
             self, "_next_compare_filters", self._last_compare_filters
         )
-        discarded = getattr(self.comparison.model, "discarded_decisions", 0)
-        if discarded:
-            self._append_log(f"{discarded} decision(s) no longer apply.")
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
         self.comparison.source_is_local = (
@@ -3336,8 +3336,16 @@ class MainWindow(QMainWindow):
         self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         discarded = self.comparison.model.discarded_decisions
-        if discarded:
-            self._append_log(f"{discarded} decision(s) no longer apply.")
+        conflicts = self.comparison.model.conflicts()
+        if discarded or conflicts:
+            self._append_log(
+                f"{discarded} decision(s) dropped; "
+                f"{len(conflicts)} still on the list need review."
+            )
+            self._set_status(
+                "Some decisions no longer apply — review the highlighted items.",
+                "warning",
+            )
         self.comparison.set_stale(False)
         self._update_filter_summary(stale=False)
         self._set_locations_stale(False)

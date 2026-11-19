@@ -85,3 +85,34 @@ def test_reconcile_preserves_decisions_by_path_when_requested() -> None:
     preserved.reconcile(old)
     assert preserved.reconcile(new, preserve=True) == 0
     assert preserved.explicit("a.txt") is ChangeDecision.EXCLUDE
+
+
+def test_preservation_is_type_aware_and_flags_changed_decisions() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ChangeDecision, ObjectKind
+
+    old = [Change("a.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f")]
+    destination_only = [
+        Change("a.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")
+    ]
+
+    excluded = ChangeDecisions()
+    excluded.set("a.txt", ChangeDecision.EXCLUDE)
+    excluded.reconcile(old)
+    assert excluded.reconcile(destination_only, preserve=True) == 0
+    assert excluded.explicit("a.txt") is ChangeDecision.EXCLUDE
+    assert excluded.conflicts() == {}
+
+    included = ChangeDecisions()
+    included.set("a.txt", ChangeDecision.INCLUDE)
+    included.reconcile(old)
+    assert included.reconcile(destination_only, preserve=True) == 1
+    assert included.explicit("a.txt") is ChangeDecision.INHERIT
+    assert "destination-only" in included.conflicts()["a.txt"]
+    assert included.accept_defaults_for_conflicts() == 1
+    assert included.conflicts() == {}
+
+    vanished = ChangeDecisions()
+    vanished.set("a.txt", ChangeDecision.EXCLUDE)
+    vanished.reconcile(old)
+    assert vanished.reconcile([], preserve=True) == 1
+    assert vanished.conflicts() == {}

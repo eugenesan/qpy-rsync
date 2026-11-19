@@ -645,6 +645,19 @@ def excluded_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def conflict_icon() -> QIcon:
+    """An amber warning marker for decisions that need review."""
+    pixmap, painter = _pixmap()
+    color = QColor("#b45309")
+    painter.setPen(_pen(color, 1.8))
+    painter.drawEllipse(QRectF(2.5, 2.5, 11.0, 11.0))
+    painter.drawLine(QPointF(8.0, 5.0), QPointF(8.0, 9.5))
+    painter.drawPoint(QPointF(8.0, 12.0))
+    painter.end()
+    return QIcon(pixmap)
+
+
+@lru_cache(maxsize=None)
 def app_menu_icon() -> QIcon:
     """Hamburger icon of the application menu button."""
     color = QColor("#94a3b8")
