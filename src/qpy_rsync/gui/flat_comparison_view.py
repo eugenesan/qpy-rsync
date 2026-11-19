@@ -1037,19 +1037,19 @@ class FlatComparisonView(QWidget):
         """Fold a directory's children out of the list."""
         with self._keeping_the_selection():
             self.model.set_collapsed(path, True)
-            self.model.refresh_collapsed()
+            self.model.refresh_collapsed({path})
 
     def expand_path(self, path: str) -> None:
         """Show the children of a folded directory again."""
         with self._keeping_the_selection():
             self.model.set_collapsed(path, False)
-            self.model.refresh_collapsed()
+            self.model.refresh_collapsed({path})
 
     def toggle_collapsed(self, path: str) -> None:
         """Fold or unfold a directory."""
         with self._keeping_the_selection(), timed("view.fold", path=path):
             self.model.toggle_collapsed(path)
-            self.model.refresh_collapsed()
+            self.model.refresh_collapsed({path})
 
     def collapse_all(self) -> None:
         """Fold every directory that has children."""

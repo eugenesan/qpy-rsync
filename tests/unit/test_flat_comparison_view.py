@@ -1066,3 +1066,29 @@ def test_home_and_end_jump_to_the_first_and_last_items() -> None:
     assert view.model.row_path(view.source.currentIndex().row()) == "d/f4.txt"
     view.close()
     application.processEvents()
+
+
+def test_folding_hides_rows_but_keeps_totals_and_aggregates() -> None:
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [file_change("docs/f0.txt"), file_change("docs/sub/f1.txt"), file_change("other/f2.txt")]
+    )
+    aggregates = dict(model.overview_aggregates())
+    total = model._directories[""].subtree_items
+    visible = [model.row_path(row) for row in range(model.rowCount())]
+    assert "docs/sub/f1.txt" in visible
+
+    model.set_collapsed("docs", True)
+    model.refresh_collapsed({"docs"})
+    hidden = [model.row_path(row) for row in range(model.rowCount())]
+    assert "docs/sub/f1.txt" not in hidden
+    assert "other/f2.txt" in hidden
+    assert model.overview_aggregates() == aggregates
+    assert model._directories[""].subtree_items == total
+
+    model.set_collapsed("docs", False)
+    model.refresh_collapsed({"docs"})
+    assert [model.row_path(row) for row in range(model.rowCount())] == visible
+    model.deleteLater()
+    application.processEvents()

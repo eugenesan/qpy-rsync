@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Folding or unfolding a folder now patches only that folder's rows. It used
+  to run the full filter pass (~500 ms on 520k items); it now takes ~120 ms
+  and keeps folded items in the totals and overview, as before.
 - Added a decision history: Ctrl+Z / Ctrl+Shift+Z undo and redo checkbox and
   exclude decisions, with Edit > Undo Decision / Redo Decision / Reset
   Decisions. Undoing an exclusion brings the hidden row back. Undo/redo patch

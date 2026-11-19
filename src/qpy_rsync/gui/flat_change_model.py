@@ -789,12 +789,43 @@ class FlatChangeModel(QAbstractTableModel):
         """Forget the folds, for a new comparison."""
         self.collapsed.clear()
 
-    def refresh_collapsed(self) -> None:
-        """Show the rows again after a fold or an unfold."""
+    def refresh_collapsed(self, paths: set[str] | None = None) -> None:
+        """Show the rows again after a fold or an unfold.
+
+        A single fold only changes the rows below that folder. Totals and
+        aggregates must keep the folded items, so only the visible row list
+        is patched; a full rebuild is used for collapse/expand all.
+        """
         with timed("model.fold_refresh"):
             self.beginResetModel()
-            self._apply_filters()
+            if paths:
+                self._patch_folded_rows(paths)
+            else:
+                self._rebuild_visible_rows()
             self.endResetModel()
+
+    def _patch_folded_rows(self, paths: set[str]) -> None:
+        """Add or remove only the rows below a folded or unfolded folder."""
+        affected = self._affected_rows(paths)
+        if not affected:
+            return
+        folded = self._collapsed_map()
+        positions = [
+            position
+            for position, row in enumerate(self._visible_rows)
+            if row in affected
+        ]
+        for position in sorted(positions, reverse=True):
+            del self._visible_rows[position]
+        for row_index in sorted(affected):
+            if self._is_row_visible(self._rows[row_index], folded):
+                self._visible_rows.insert(
+                    bisect_left(self._visible_rows, row_index), row_index
+                )
+        self._visible_position_of_row = self._position_array()
+        for position, row in enumerate(self._visible_rows):
+            self._rows[row].alternate = position % 2 == 0
+        self.layout_token += 1
 
     def _matches(
         self,
