@@ -253,6 +253,7 @@ class MainWindow(QMainWindow):
         self._last_explicit_decisions: tuple[tuple[str, ChangeDecision], ...] = ()
         self._validated_plan: ExecutionPlan | None = None
         self._verified_plan: ExecutionPlan | None = None
+        self._baseline_plan: ExecutionPlan | None = None
         self._execution_gate = ExecutionGate()
         self._plan_validation = PlanValidationService(self)
         self._plan_validation.on_started = self._plan_validation_started
@@ -2239,9 +2240,8 @@ class MainWindow(QMainWindow):
             parent = parent.rpartition("/")[0]
         return parents
 
-    def _decisions_match_verified(self) -> bool:
-        """Whether today's decisions are exactly the ones that were verified."""
-        plan = self._verified_plan
+    def _decisions_match(self, plan: ExecutionPlan | None) -> bool:
+        """Whether today's decisions still describe the given fresh plan."""
         if plan is None or self._active_profile is None:
             return False
         signature = decision_signature(self.comparison.model.decisions)
@@ -2253,6 +2253,9 @@ class MainWindow(QMainWindow):
             self.comparison.model.changes,
             signature,
         ).fresh
+
+    def _decisions_match_verified(self) -> bool:
+        return self._decisions_match(self._verified_plan)
 
     def _mark_plan_stale(self) -> None:
         """Mark the plan unverified and update its summary incrementally."""
@@ -2278,13 +2281,17 @@ class MainWindow(QMainWindow):
             # Fall back to a full lightweight estimate only when the cached
             # plan cannot be updated (for example after a new inventory).
             self._stale_summary_timer.start()
-        # Keep the verified plan snapshot: an immediate undo may bring the
-        # decisions back to exactly the verified state, which is still safe.
-        if self._verified_plan is not None and self._decisions_match_verified():
+        # An immediate undo may bring the decisions back to the state that
+        # was verified, or to the state the comparison was made with. In
+        # either case the plan is not stale. Only the verified state may
+        # re-enable synchronization; a fresh comparison still needs F8.
+        reference = self._verified_plan or self._baseline_plan
+        if reference is not None and self._decisions_match(reference):
+            was_verified = self._verified_plan is not None
             self._validated_plan = self._verified_plan
             self._plan_stale = False
-            self.synchronize_button.setEnabled(True)
-            self._set_verify_state("verified")
+            self.synchronize_button.setEnabled(was_verified)
+            self._set_verify_state("verified" if was_verified else "idle")
             self._refresh_verify_button()
             return
         self._plan_stale = True
@@ -2900,6 +2907,7 @@ class MainWindow(QMainWindow):
             return
         if kind == "new":
             self._refresh_plan_summary()
+            self._baseline_plan = self._current_plan
             return
         self._mark_plan_stale()
 

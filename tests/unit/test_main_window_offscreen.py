@@ -1690,3 +1690,47 @@ def test_undo_to_the_verified_decisions_clears_plan_staleness(tmp_path) -> None:
     assert window._validated_plan is not None
     window.close()
     application.processEvents()
+
+
+def test_undo_to_the_comparison_baseline_clears_staleness_without_verification(tmp_path) -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.core.models import SyncProfile
+
+    application = app()
+    app_settings().clear()
+    source = tmp_path / "src"
+    destination = tmp_path / "dst"
+    source.mkdir()
+    destination.mkdir()
+    window = MainWindow()
+    window.source_edit.setText(str(source))
+    window.destination_edit.setText(str(destination))
+    window._active_profile = window._profile()
+    profile = window._profile()
+    window._comparison_profile = SyncProfile("test", profile.source, profile.destination)
+    window.comparison.set_changes(
+        [Change(f"f{i}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f") for i in range(4)]
+    )
+    application.processEvents()
+    assert window._baseline_plan is not None
+    assert not window._plan_stale
+
+    for path in ("f1.txt", "f2.txt"):
+        window.comparison.select_path(path)
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier
+        )
+        window.comparison.eventFilter(window.comparison.source, event)
+        application.processEvents()
+    assert window._plan_stale
+
+    assert window.comparison.undo_decision()
+    assert window._plan_stale
+    assert window.comparison.undo_decision()
+    assert not window._plan_stale
+    assert not window.synchronize_button.isEnabled()
+    assert window._verify_state == "idle"
+    window.close()
+    application.processEvents()
