@@ -31,7 +31,7 @@ from .action_colours import DEFAULT_COLOURS
 from .tools_panel import ToolsPanel
 
 # The tabs are named so a context menu can open the matching one.
-SECTIONS = ("general", "logging", "tools")
+SECTIONS = ("general", "logging", "tools", "advanced")
 
 
 class SettingsDialog(QDialog):
@@ -54,6 +54,8 @@ class SettingsDialog(QDialog):
         tools: list[ExternalTool] | None = None,
         diff_command: str = "",
         colours: dict[ChangeAction, str | None] | None = None,
+        verification_enabled: bool = False,
+        verification_rsync: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -112,9 +114,51 @@ class SettingsDialog(QDialog):
         self.colour_table.cellClicked.connect(self._colour_clicked)
         self.set_action_colours(colours)
         self.tools_panel = ToolsPanel(self, tools or [], diff_command)
+        advanced = QWidget(self.tabs)
+        advanced_layout = QVBoxLayout(advanced)
+        self.verification_checkbox = QCheckBox(
+            "Show the Verify Decisions check", advanced
+        )
+        self.verification_checkbox.setChecked(bool(verification_enabled))
+        self.verification_checkbox.setToolTip(
+            "Off by default. Shows an optional consistency check between the "
+            "selected decisions and the execution plan. Synchronization does "
+            "not depend on it."
+        )
+        advanced_layout.addWidget(self.verification_checkbox)
+        self.verification_rsync_checkbox = QCheckBox(
+            "Verify with a second rsync dry run", advanced
+        )
+        self.verification_rsync_checkbox.setChecked(bool(verification_rsync))
+        self.verification_rsync_checkbox.setToolTip(
+            "Off by default. Re-scans the live tree and reports differences "
+            "from the reviewed comparison as a warning. On a changing "
+            "directory this will report unrelated changes; re-compare close "
+            "to verification to reduce them."
+        )
+        advanced_layout.addWidget(self.verification_rsync_checkbox)
+        advanced_hint = QLabel(
+            "Both checks are diagnostics, not gates. The synchronization "
+            "confirmation dialog remains the final review before writing. "
+            "The rsync check needs the Verify Decisions check above."
+        )
+        advanced_hint.setWordWrap(True)
+        advanced_layout.addWidget(advanced_hint)
+        self.verification_checkbox.toggled.connect(
+            self._verification_toggle_changed
+        )
+        self.verification_rsync_checkbox.toggled.connect(
+            self._rsync_toggle_changed
+        )
+        self._rsync_toggle_changed(self.verification_rsync_checkbox.isChecked())
+        advanced_layout.addStretch(1)
+
         self.tabs.addTab(general, "General")
         self.tabs.addTab(log_panel, "Logging")
         self.tabs.addTab(self.tools_panel, "Tools")
+        self.tabs.addTab(advanced, "Advanced")
+        self._verification_checkbox = self.verification_checkbox
+        self._verification_rsync_checkbox = self.verification_rsync_checkbox
 
         button_row = QHBoxLayout()
         defaults_button = QPushButton("Defaults", self)
@@ -142,6 +186,27 @@ class SettingsDialog(QDialog):
 
     def sound_enabled(self) -> bool:
         return self.sound_checkbox.isChecked()
+
+    def _verification_toggle_changed(self, _checked: bool) -> None:
+        self.verification_rsync_checkbox.setEnabled(
+            self.verification_checkbox.isChecked()
+        )
+
+    def _rsync_toggle_changed(self, checked: bool) -> None:
+        if checked and not self.verification_checkbox.isChecked():
+            self.verification_checkbox.setChecked(True)
+        self.verification_rsync_checkbox.setEnabled(
+            self.verification_checkbox.isChecked()
+        )
+
+    def verification_enabled(self) -> bool:
+        return self.verification_checkbox.isChecked()
+
+    def verification_rsync(self) -> bool:
+        return (
+            self.verification_enabled()
+            and self.verification_rsync_checkbox.isChecked()
+        )
 
     def set_action_colours(
         self, colours: dict[ChangeAction, str | None] | None

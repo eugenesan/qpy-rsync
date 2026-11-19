@@ -188,21 +188,39 @@ class ChangeDecisions:
             ChangeAction.MESSAGE,
         }
 
-    def reconcile(self, changes: list[Change]) -> int:
+    def reconcile(self, changes: list[Change], *, preserve: bool = False) -> int:
+        """Drop decisions that no longer describe the comparison.
+
+        With ``preserve``, a decision is kept while its path is still present,
+        even when rsync reports a different action or kind for it — the
+        normal case on a live tree. Without it, a decision whose item's
+        identity changed is discarded as well. A directory decision survives
+        while any item below it remains in either mode.
+        """
         current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}
         current_paths = tuple(current)
-        stale = [
-            path
-            for path in self._decisions
-            if (
-                path in self._identities
-                and current.get(path) != self._identities.get(path)
-            )
-            or (
-                path not in self._identities
+        if preserve:
+            stale = [
+                path
+                for path in self._decisions
+                if path not in current
                 and not any(item.startswith(path + "/") for item in current_paths)
-            )
-        ]
+            ]
+            # (A folder decision with living descendants survives; an exact
+            # path that still exists always survives in preservation mode.)
+        else:
+            stale = [
+                path
+                for path in self._decisions
+                if (
+                    path in self._identities
+                    and current.get(path) != self._identities.get(path)
+                )
+                or (
+                    path not in current
+                    and not any(item.startswith(path + "/") for item in current_paths)
+                )
+            ]
         for path in stale:
             self._decisions.pop(path, None)
         self._identities = current

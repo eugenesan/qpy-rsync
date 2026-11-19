@@ -211,7 +211,58 @@ children disappear from the list, and the destination is never touched.
 Status: code, documents and tests updated; 367 tests pass. The manual smoke
 test remains with the user, who is testing on real trees.
 
-### After 1.15bf
+### Milestone 1.15bg: verification as a diagnostic, preserved decisions
+
+`main-unified` was branched from `main` as the rollback point before this
+milestone; work continues on `main`.
+
+A mandatory verification step is a trap on a live tree: the local check can
+only fail through a bug with no user recovery, and a second rsync run will
+always eventually mismatch because the tree changed. Neither failure gives the
+user a valid next action. The confirmation dialog — command, filter rules,
+counts and destructive warning — is the real gate.
+
+1. **Remove verification from the critical path.**
+   - Synchronize becomes available once a plan has included items; the
+     execution gate drops the `verify → sync` transition.
+   - The consistency check stays as an optional diagnostic, not a required
+     pass. It compares the incrementally patched plan with a fresh derivation
+     from the decisions and catches bookkeeping drift.
+2. **Gate both checks in Advanced settings.**
+   - `verification.enabled`: shows the Verify Decisions button and makes the
+     consistency check available. Off by default.
+   - `verification.rsync`: additionally runs the second rsync dry run and
+     compares its output. Off by default, only meaningful when the first flag
+     is on. Its mismatch is a warning with a browsable detail list and the
+     recommendation to re-compare close to verification, or to disable the
+     rsync check with known risks. It never blocks synchronization.
+3. **Preserve Decisions.**
+   - A checkbox in the decisions toolbar, on by default, with a distinct
+     background to mark it as important.
+   - Explicit decisions survive a new comparison when the path still exists,
+     even if the item's action or kind changed. A directory decision survives
+     while any descendant remains.
+   - When preservation is off, today's identity-based `reconcile()` behaviour
+     is kept.
+   - Decision history, the comparison baseline and folds are carried over as
+     appropriate; verification is marked invalid but the user's choices are
+     not discarded.
+   - Rationalised exceptions — do **not** preserve when the compared locations
+     change (an external drive mount point replaced after a disconnect), when
+     the profile identity or filter rules change, or when the comparison is
+     explicitly started fresh. Preserve when only item identities changed
+     because a live tree moved on. Each exception is logged.
+4. **Show what changed between comparisons.** A count summary plus a
+   browsable list of added, removed and action-changed paths, grouped by
+   folder. The diff itself is O(n) over the two change lists and negligible
+   next to rsync; the UI is the expensive part, so start with the summary and
+   grow it only if real use needs the detail.
+
+Acceptance: a live tree can be compared, decisions prepared once, re-compared
+and synchronized without redoing the decisions; no step can fail with only
+"start over" as the recovery.
+
+### After 1.15bg
 
 - review the removal of the `/tmp/qpy-rsync-smoke` execution restriction
 - harden the synchronization further and validate it on real trees

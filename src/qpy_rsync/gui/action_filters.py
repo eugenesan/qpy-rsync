@@ -49,6 +49,7 @@ class ActionFilterBar(QWidget):
     unchanged_toggled = Signal(bool)
     reset_exclusions_requested = Signal()
     directory_filter_toggled = Signal(bool)
+    preserve_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -133,6 +134,26 @@ class ActionFilterBar(QWidget):
         self.unchanged_box.setAccessibleName("Show unchanged items")
         self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
         layout.addWidget(self.unchanged_box)
+
+        # Preserving decisions across comparisons is important enough to get
+        # its own highlighted toggle at the end of the decisions bar.
+        layout.addWidget(_separator())
+        self.preserve_box = QCheckBox("Preserve decisions", self)
+        self.preserve_box.setChecked(True)
+        self.preserve_box.setAccessibleName("Preserve decisions")
+        self.preserve_box.setStyleSheet(
+            "QCheckBox { background-color: #fef3c7; padding: 2px 4px; "
+            "border-radius: 3px; }"
+        )
+        self.preserve_box.setToolTip(
+            "Keep manual include and exclude decisions when the comparison "
+            "is refreshed. Items whose path is still present keep their "
+            "decision even if the action changed.\n"
+            "Decisions are still reset when Source, Destination, filters or "
+            "the profile change, or when a fresh comparison is requested."
+        )
+        self.preserve_box.toggled.connect(self.preserve_toggled.emit)
+        layout.addWidget(self.preserve_box)
 
         # Breeze marks a focused icon-only checkbox with an underline. A
         # pointer click should not leave that marker behind, but Tab must

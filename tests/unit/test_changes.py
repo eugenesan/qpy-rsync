@@ -66,3 +66,22 @@ def test_destination_only_defaults_excluded_but_can_be_selected() -> None:
     assert decisions.effective(change) is ChangeDecision.INCLUDE
     decisions.reset(change.path)
     assert decisions.effective(change) is ChangeDecision.EXCLUDE
+
+
+def test_reconcile_preserves_decisions_by_path_when_requested() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ChangeDecision, ObjectKind
+
+    old = [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    new = [Change("a.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
+    decisions = ChangeDecisions()
+    decisions.set("a.txt", ChangeDecision.EXCLUDE)
+    decisions.reconcile(old)
+
+    assert decisions.reconcile(new) == 1
+    assert decisions.explicit("a.txt") is ChangeDecision.INHERIT
+
+    preserved = ChangeDecisions()
+    preserved.set("a.txt", ChangeDecision.EXCLUDE)
+    preserved.reconcile(old)
+    assert preserved.reconcile(new, preserve=True) == 0
+    assert preserved.explicit("a.txt") is ChangeDecision.EXCLUDE

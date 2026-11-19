@@ -93,7 +93,8 @@ _COMPARE_TOOLTIP = (
 _STALE_STATE_TEXT = "Stale comparison — click Compare to refresh"
 
 _VERIFY_TOOLTIP = (
-    "Verify the selected decisions.\n"
+    "Optional diagnostic: check the selected decisions against the plan.\n"
+    "Synchronization does not depend on this check.\n"
     "When no checkbox decisions were changed after the comparison, the\n"
     "latest comparison is reused immediately.\n"
     "Otherwise a second rsync dry run checks the selected subset; that run\n"
@@ -324,6 +325,22 @@ class MainWindow(QMainWindow):
         self._stale_summary_timer.setSingleShot(True)
         self._stale_summary_timer.setInterval(100)
         self._stale_summary_timer.timeout.connect(self._refresh_estimated_summary)
+        settings = app_settings()
+        self._verification_enabled = settings.value(
+            "verification/enabled", False, type=bool
+        )
+        self._verification_rsync = settings.value(
+            "verification/rsync", False, type=bool
+        )
+        self._preserve_decisions = settings.value(
+            "decisions/preserve", True, type=bool
+        )
+        self._last_compare_locations: tuple[str, str] | None = None
+        self._last_compare_filters: str = ""
+        self._preserve_for_compare = True
+        self._preserve_reason = ""
+        self._next_compare_locations: tuple[str, str] | None = None
+        self._next_compare_filters: str = ""
         self._build_ui()
         self._restore_window_state()
         if not self._restore_recent_profile():
@@ -339,6 +356,7 @@ class MainWindow(QMainWindow):
         self._sound_enabled = app_settings().value(
             "sound/enabled", True, type=bool
         )
+        self._update_verification_visibility()
         self._update_startup_status()
         try:
             self._baseline_profile = self._profile()
@@ -395,6 +413,7 @@ class MainWindow(QMainWindow):
         self.destination_edit.setToolTip(endpoint_help)
 
         self.comparison = FlatComparisonView()
+        self.comparison.model.preserve_decisions = self._preserve_decisions
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._on_decision_changed)
         self.comparison.model.history_changed.connect(self._update_decision_actions)
@@ -463,10 +482,9 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setIcon(synchronize_icon())
         self.synchronize_button.setAccessibleName("Synchronize")
         self.synchronize_button.setToolTip(
-            "Open the confirmation dialog and write the verified plan.\n"
-            "The button stays disabled until Verify Decisions (F8) succeeds for\n"
-            "the current selection; changed filters or decisions invalidate\n"
-            "the verification."
+            "Open the confirmation dialog and review the exact rsync command,\n"
+            "decision rules and counts before writing. Verification is an\n"
+            "optional diagnostic and is not required to synchronize."
         )
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
@@ -592,6 +610,8 @@ class MainWindow(QMainWindow):
         self.action_filters.directory_filter_toggled.connect(
             self._filter_directories_changed
         )
+        self.action_filters.preserve_toggled.connect(self._preserve_toggled)
+        self.action_filters.preserve_box.setChecked(self._preserve_decisions)
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -889,7 +909,7 @@ class MainWindow(QMainWindow):
         self._add_action(actions_menu, "Compare", "F5", self._compare)
         self._add_action(actions_menu, "Inventory", "F6", self._toggle_inventory)
         self._add_action(actions_menu, "Filters", "F7", self._edit_filters)
-        self._add_action(
+        self.verify_action = self._add_action(
             actions_menu, "Verify Decisions", "F8", self._validate_selected_plan
         )
         self._add_action(
@@ -900,6 +920,7 @@ class MainWindow(QMainWindow):
         )
         self._add_action(actions_menu, "Pause", "F11", self._toggle_pause)
         self._update_decision_actions()
+        self._update_verification_visibility()
         actions_menu.addSeparator()
         self._add_action(
             actions_menu,
@@ -1319,6 +1340,51 @@ class MainWindow(QMainWindow):
         except Exception:  # noqa: BLE001 - a sound must never break the sync
             pass
 
+    def _preserve_toggled(self, enabled: bool) -> None:
+        self._preserve_decisions = bool(enabled)
+        self.comparison.model.preserve_decisions = self._preserve_decisions
+        settings = app_settings()
+        settings.setValue("decisions/preserve", self._preserve_decisions)
+        settings.sync()
+        self._append_log(
+            "Decision preservation "
+            + ("enabled" if self._preserve_decisions else "disabled")
+            + "."
+        )
+
+    def _prepare_decision_preservation(self, profile: SyncProfile) -> None:
+        """Decide whether this comparison may keep the existing decisions.
+
+        A different location or a changed filter set means the decisions
+        describe a different job, so they are reset even when the toolbar
+        toggle is on. Those are rational, logged exceptions rather than
+        software failures.
+        """
+        locations = (profile.source.rsync_operand(), profile.destination.rsync_operand())
+        reason = ""
+        if (
+            self._last_compare_locations is not None
+            and locations != self._last_compare_locations
+        ):
+            reason = "Source or Destination changed"
+        elif self._last_compare_filters and self._filters_text != self._last_compare_filters:
+            reason = "filter rules changed"
+        self._preserve_for_compare = self._preserve_decisions and not reason
+        self._preserve_reason = reason
+        self._next_compare_locations = locations
+        self._next_compare_filters = self._filters_text
+
+    def _update_verification_visibility(self) -> None:
+        """Show the diagnostic only when it is enabled in Advanced settings."""
+        enabled = bool(getattr(self, "_verification_enabled", False))
+        button = getattr(self, "validate_plan_button", None)
+        if button is not None:
+            button.setVisible(enabled)
+        action = getattr(self, "verify_action", None)
+        if action is not None:
+            action.setVisible(enabled)
+            action.setEnabled(enabled)
+
     def _update_decision_actions(self) -> None:
         """Enable the history actions from the decision model's state."""
         history = self.comparison.model.decision_history
@@ -1562,6 +1628,8 @@ class MainWindow(QMainWindow):
             tools=self._external_tools,
             diff_command=self._diff_command,
             colours=self._action_colours,
+            verification_enabled=self._verification_enabled,
+            verification_rsync=self._verification_rsync,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1574,6 +1642,13 @@ class MainWindow(QMainWindow):
                 settings = app_settings()
                 settings.setValue("sound/enabled", enabled)
                 settings.sync()
+            self._verification_enabled = dialog.verification_enabled()
+            self._verification_rsync = dialog.verification_rsync()
+            settings = app_settings()
+            settings.setValue("verification/enabled", self._verification_enabled)
+            settings.setValue("verification/rsync", self._verification_rsync)
+            settings.sync()
+            self._update_verification_visibility()
             self._external_tools = dialog.external_tools()
             self._diff_command = dialog.diff_command()
             save_tools(self._external_tools)
@@ -2290,13 +2365,19 @@ class MainWindow(QMainWindow):
             was_verified = self._verified_plan is not None
             self._validated_plan = self._verified_plan
             self._plan_stale = False
-            self.synchronize_button.setEnabled(was_verified)
+            self.synchronize_button.setEnabled(
+                bool(self._current_plan and self._current_plan.summary.included)
+            )
             self._set_verify_state("verified" if was_verified else "idle")
             self._refresh_verify_button()
             return
         self._plan_stale = True
         self._validated_plan = None
-        self.synchronize_button.setEnabled(False)
+        # A decision change makes verification invalid, but the patched plan
+        # is still safe to review and sync through the confirmation dialog.
+        self.synchronize_button.setEnabled(
+            bool(self._current_plan and self._current_plan.summary.included)
+        )
         self._set_verify_state("idle")
         self._refresh_verify_button()
 
@@ -2460,7 +2541,7 @@ class MainWindow(QMainWindow):
             self._append_log(text)
         self.overview.set_statistics(summary)
         self.validate_plan_button.setEnabled(summary.included > 0)
-        self.synchronize_button.setEnabled(False)
+        self.synchronize_button.setEnabled(summary.included > 0)
         self._execution_gate.selection_changed(included=summary.included)
 
     def _validate_selected_plan(self) -> None:
@@ -2485,6 +2566,11 @@ class MainWindow(QMainWindow):
                 "Execution plan is stale",
                 "Plan validation is blocked: " + "; ".join(freshness.reasons),
             )
+            return
+        if self._verification_enabled and self._verification_rsync:
+            # Advanced opt-in: compare rsync's live view with the reviewed
+            # plan. Mismatches are warnings, handled in _plan_validation_finished.
+            self._plan_validation.validate(self._active_profile, self._current_plan)
             return
         # Verify against the comparison the user actually reviewed. A second
         # rsync dry run would re-scan the live tree and report unrelated
@@ -2569,15 +2655,20 @@ class MainWindow(QMainWindow):
         # A live tree can produce thousands of mismatches. Keep the dialog
         # bounded: the detail area scrolls and the buttons stay reachable.
         box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setWindowTitle("Decisions mismatch")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Verification mismatch")
         box.setText(
-            "The verification did not match the selected decisions. "
-            "Synchronization remains blocked."
+            "The second rsync run saw a different set of changes than the "
+            "comparison you reviewed. This is expected on a live directory "
+            "that changes between the two runs. Synchronization is not "
+            "blocked; review before continuing."
         )
         box.setInformativeText(
             f"{len(result.mismatch.missing)} missing, "
-            f"{len(result.mismatch.unexpected)} unexpected item(s)."
+            f"{len(result.mismatch.unexpected)} unexpected item(s).\n\n"
+            "Re-compare close to verification to reduce the difference, or "
+            "disable the rsync check in Settings > Advanced if the live "
+            "tree changes too often."
         )
         if detail:
             box.setDetailedText(detail)
@@ -2587,9 +2678,7 @@ class MainWindow(QMainWindow):
         if len(detail.splitlines()) > 50:
             self._append_log("... further mismatches omitted from the journal", severity="error")
         box.exec()
-        self._set_state(
-            "Plan validation failed; synchronization remains blocked.", "error"
-        )
+        self._set_state("Verification found a mismatch.", "warning")
 
     def _plan_validation_cancelled(self) -> None:
         if self._closing:
@@ -2635,19 +2724,21 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
         self._backup_changed()
         QApplication.processEvents()
+        plan = self._validated_plan or self._current_plan
         if (
-            self._validated_plan is None
+            plan is None
             or self._active_profile is None
-            or self._execution_gate.state is not ExecutionGateState.VERIFIED
+            or self._execution_gate.state
+            not in (ExecutionGateState.SELECTION_READY, ExecutionGateState.VERIFIED)
         ):
             QMessageBox.warning(
                 self,
-                "Verification required",
-                "Verify the current selected actions before synchronization.",
+                "No selected actions",
+                "Compare the locations and select at least one action first.",
             )
             return
         freshness = check_plan_freshness(
-            self._validated_plan,
+            plan,
             self._profile(),
             self.comparison.model.changes,
         )
@@ -2658,19 +2749,19 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Selected actions are out of date",
-                "Compare and verify again: " + "; ".join(freshness.reasons),
+                "Compare again: " + "; ".join(freshness.reasons),
             )
             return
         self._execution_gate.confirmation_opened()
         self._cleanup_dialog_filter()
-        filter_context = temporary_decision_filter(self._validated_plan)
+        filter_context = temporary_decision_filter(plan)
         filter_path = filter_context.__enter__()
         self._dialog_filter_context = filter_context
         started = False
         try:
             dialog = SyncConfirmationDialog(
                 self._active_profile,
-                self._validated_plan,
+                plan,
                 self,
                 filter_path=filter_path,
             )
@@ -2686,7 +2777,7 @@ class MainWindow(QMainWindow):
             try:
                 self._sync_service.synchronize(
                     self._active_profile,
-                    self._validated_plan,
+                    plan,
                     filter_path=filter_path,
                 )
                 started = True
@@ -2881,6 +2972,7 @@ class MainWindow(QMainWindow):
         self._last_plan_summary = None
         self._active_profile = profile
         self._comparison_profile = profile
+        self._prepare_decision_preservation(profile)
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
 
@@ -3151,6 +3243,24 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
+        self.comparison.model.preserve_decisions = getattr(
+            self, "_preserve_for_compare", self._preserve_decisions
+        )
+        if getattr(self, "_preserve_reason", ""):
+            self._append_log(
+                f"Decisions reset for this comparison: {self._preserve_reason}."
+            )
+        elif getattr(self, "_preserve_for_compare", False):
+            self._append_log("Decisions preserved for this comparison.")
+        self._last_compare_locations = getattr(
+            self, "_next_compare_locations", self._last_compare_locations
+        )
+        self._last_compare_filters = getattr(
+            self, "_next_compare_filters", self._last_compare_filters
+        )
+        discarded = getattr(self.comparison.model, "discarded_decisions", 0)
+        if discarded:
+            self._append_log(f"{discarded} decision(s) no longer apply.")
         self.comparison.source_root = self._active_profile.source.path.rstrip("/")
         self.comparison.destination_root = self._active_profile.destination.path.rstrip("/")
         self.comparison.source_is_local = (
@@ -3161,6 +3271,9 @@ class MainWindow(QMainWindow):
         )
         self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
+        discarded = self.comparison.model.discarded_decisions
+        if discarded:
+            self._append_log(f"{discarded} decision(s) no longer apply.")
         self.comparison.set_stale(False)
         self._update_filter_summary(stale=False)
         self._set_locations_stale(False)

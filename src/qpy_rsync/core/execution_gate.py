@@ -37,6 +37,7 @@ class ExecutionGate:
 
     def __init__(self) -> None:
         self._state = ExecutionGateState.NO_COMPARISON
+        self._before_confirmation = ExecutionGateState.SELECTION_READY
 
     @property
     def state(self) -> ExecutionGateState:
@@ -72,12 +73,19 @@ class ExecutionGate:
         self._state = ExecutionGateState.SELECTION_READY
 
     def confirmation_opened(self) -> None:
-        self._require(ExecutionGateState.VERIFIED)
+        # Verification is optional; a selection is enough to review and sync.
+        self._require_any(
+            ExecutionGateState.SELECTION_READY,
+            ExecutionGateState.VERIFIED,
+        )
+        self._before_confirmation = self._state
         self._state = ExecutionGateState.CONFIRMING
 
     def confirmation_cancelled(self) -> None:
         self._require(ExecutionGateState.CONFIRMING)
-        self._state = ExecutionGateState.VERIFIED
+        self._state = getattr(
+            self, "_before_confirmation", ExecutionGateState.SELECTION_READY
+        )
 
     def execution_started(self) -> None:
         self._require(ExecutionGateState.CONFIRMING)

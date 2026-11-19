@@ -216,6 +216,7 @@ class FlatChangeModel(QAbstractTableModel):
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self.decisions = ChangeDecisions()
+        self.preserve_decisions = True
         self.decision_history = DecisionHistory()
         self._decision_batch = 0
         # One source of truth for everything left out of the run. The old
@@ -323,7 +324,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.beginResetModel()
         self.hovered_row = None
         self.changes = list(changes)
-        self.discarded_decisions = self.decisions.reconcile(self.changes)
+        self.discarded_decisions = self.decisions.reconcile(
+            self.changes, preserve=self.preserve_decisions
+        )
         self.decision_history.clear()
         self.history_changed.emit()
         self._build_directories()

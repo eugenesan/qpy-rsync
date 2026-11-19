@@ -678,7 +678,7 @@ def test_help_menu_and_synchronize_tooltip() -> None:
     assert entries["About qpy-rsync"] == ""
     tooltip = window.synchronize_button.toolTip()
     assert "confirmation dialog" in tooltip
-    assert "Verify Decisions" in tooltip
+    assert "optional diagnostic" in tooltip
     assert "Shortcut: F9" in tooltip
     window.close()
     application.processEvents()
@@ -1730,7 +1730,7 @@ def test_undo_to_the_comparison_baseline_clears_staleness_without_verification(t
     assert window._plan_stale
     assert window.comparison.undo_decision()
     assert not window._plan_stale
-    assert not window.synchronize_button.isEnabled()
+    assert window.synchronize_button.isEnabled()
     assert window._verify_state == "idle"
     window.close()
     application.processEvents()
@@ -1781,7 +1781,7 @@ def test_mismatch_dialog_keeps_a_scrollable_detail_and_visible_buttons(monkeypat
     captured: dict[str, object] = {}
 
     class FakeBox:
-        Icon = SimpleNamespace(Critical=1)
+        Icon = SimpleNamespace(Critical=1, Warning=2)
         StandardButton = SimpleNamespace(Ok=2)
 
         def __init__(self, parent=None) -> None:
@@ -1828,6 +1828,56 @@ def test_mismatch_dialog_keeps_a_scrollable_detail_and_visible_buttons(monkeypat
     assert captured.get("shown") is True
     assert "500 missing" in str(captured.get("info"))
     assert str(captured.get("detail")).count("Missing:") == 500
-    assert "Synchronization remains blocked" in str(captured.get("text"))
+    assert "Synchronization is not blocked" in str(captured.get("text"))
+    window.close()
+    application.processEvents()
+
+
+def test_verify_button_is_hidden_unless_enabled_in_settings() -> None:
+    application = app()
+    app_settings().clear()
+    settings = app_settings()
+    settings.setValue("verification/enabled", False)
+    settings.sync()
+    window = MainWindow()
+    assert window.validate_plan_button.isHidden()
+    assert window.verify_action.isVisible() is False
+    window._verification_enabled = True
+    window._update_verification_visibility()
+    assert not window.validate_plan_button.isHidden()
+    assert window.verify_action.isVisible() or window.verify_action.isVisibleTo(window)
+    window.close()
+    application.processEvents()
+
+
+def test_second_rsync_run_is_only_used_when_both_flags_are_enabled() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    profile = window._profile()
+    from qpy_rsync.core.models import SyncProfile
+    window._comparison_profile = SyncProfile("test", profile.source, profile.destination)
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    application.processEvents()
+
+    class RejectProcess:
+        def validate(self, *_args, **_kwargs):
+            raise AssertionError("rsync run must stay off by default")
+
+    window._plan_validation = RejectProcess()
+    window._validate_selected_plan()
+    assert "no second rsync run" in window.log.toPlainText()
+
+    window._verification_rsync = True
+    window._verification_enabled = False
+    window._validate_selected_plan()
+    assert "no second rsync run" in window.log.toPlainText()
     window.close()
     application.processEvents()
