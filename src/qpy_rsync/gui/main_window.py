@@ -319,6 +319,7 @@ class MainWindow(QMainWindow):
         self._rsync_log_path = self._default_log_file_path("rsync")
         self._rsync_log_handle = None
         self._log_size_warned = False
+        self._rsync_pending: list[str] = []
         self._rsync_started_at: dict[str, float] = {}
         self._log_buffer: list[str] = []
         self._bulk_logging = False
@@ -1303,6 +1304,7 @@ class MainWindow(QMainWindow):
         self._log_initialized = False
 
     def _close_rsync_log(self) -> None:
+        self._flush_rsync_pending()
         self._close_handle(self._rsync_log_handle)
         self._rsync_log_handle = None
 
@@ -4008,14 +4010,25 @@ class MainWindow(QMainWindow):
             return
         self._flush_log()
 
+    def _flush_rsync_pending(self) -> None:
+        if not self._rsync_pending:
+            return
+        lines = self._rsync_pending
+        self._rsync_pending = []
+        self._write_session_log("\n".join(lines), rsync=True)
+
     def _append_rsync_log(self, text: str) -> None:
         if self._bulk_logging or self._bulk_rsync:
             # Never let an itemized record reach the journal widget during a
             # bulk comparison, including late lines after the final flush.
+            # Batch the raw file writes: one timestamp and one flush per
+            # thousand lines instead of one per record.
             lines = text.rstrip("\r\n").splitlines()
             if lines:
-                self._write_session_log("\n".join(lines), rsync=True)
+                self._rsync_pending.extend(lines)
                 self._bulk_record_count += len(lines)
+                if len(self._rsync_pending) >= 1000:
+                    self._flush_rsync_pending()
             return
         self._append_log(text, rsync=True)
 
@@ -4095,6 +4108,7 @@ class MainWindow(QMainWindow):
         self._bulk_record_count = 0
 
     def _end_bulk_logging(self) -> None:
+        self._flush_rsync_pending()
         self._bulk_logging = False
         if self._log_flush_timer.isActive():
             self._log_flush_timer.stop()

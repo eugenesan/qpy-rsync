@@ -2100,3 +2100,27 @@ def test_session_log_uses_local_time(tmp_path, monkeypatch) -> None:
     assert parsed.utcoffset() == datetime.now().astimezone().utcoffset()
     window.close()
     application.processEvents()
+
+
+def test_bulk_rsync_output_is_written_in_batches(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    writes: list[str] = []
+    original = window._write_session_log
+    def counted(text, *, rsync=False):
+        if rsync:
+            writes.append(text)
+        return original(text, rsync=rsync)
+
+    window._write_session_log = counted
+    window._bulk_logging = True
+    for index in range(2500):
+        window._append_rsync_log(f"record {index}")
+    window._end_bulk_logging()
+    assert len(writes) == 3
+    content = window._rsync_log_path.read_text(encoding="utf-8")
+    assert "record 0" in content and "record 2499" in content
+    window.close()
+    application.processEvents()

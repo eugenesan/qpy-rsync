@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Raw rsync output is written to its log in batches of 1,000 lines instead of
+  one timestamped, flushed write per record, removing most of the journal-write
+  cost measured on large comparisons.
 - Compare parsing now reports its own timing in the application log and as a
   `compare.parse` timing probe: number of lines, time spent parsing records
   and time spent writing journal entries. The elapsed rsync message now says
