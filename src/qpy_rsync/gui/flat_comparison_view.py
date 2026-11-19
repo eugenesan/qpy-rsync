@@ -837,6 +837,13 @@ class FlatComparisonView(QWidget):
         if watched in panes:
             if event_type == QEvent.Type.KeyPress:
                 key = getattr(event, "key", lambda: None)()
+                modifiers = getattr(event, "modifiers", lambda: None)()
+                if (
+                    key in (Qt.Key.Key_Up, Qt.Key.Key_Down)
+                    and modifiers & Qt.KeyboardModifier.ControlModifier
+                ):
+                    self._hierarchy_move(1 if key == Qt.Key.Key_Down else -1)
+                    return True
                 if key == Qt.Key.Key_Space:
                     if self._toggle_excluded():
                         return True
@@ -877,6 +884,31 @@ class FlatComparisonView(QWidget):
             return False
         self.toggle_collapsed(path)
         return True
+
+    def _hierarchy_move(self, direction: int) -> None:
+        """Move the selection between a folder and its ancestors or children.
+
+        Ctrl+Up selects the nearest visible parent folder; Ctrl+Down selects
+        the first item below the current folder, expanding folds on the way.
+        Unlike Left/Right this never changes a fold of its own, so it can be
+        used repeatedly to walk up and down the tree.
+        """
+        path = self._current_path()
+        if not path:
+            return
+        if direction < 0:
+            parent = path.rpartition("/")[0]
+            while parent and not self.model.index_for_path(parent).isValid():
+                parent = parent.rpartition("/")[0]
+            if parent:
+                self.select_path(parent)
+            return
+        prefix = path + "/"
+        for index in range(self.model.row_count_total()):
+            candidate = self.model.path_of_row_index(index)
+            if candidate and candidate.startswith(prefix):
+                self.select_path(candidate)
+                return
 
     def _handle_collapse_key(self, pane: QTableView, key: int) -> bool:
         """Use the arrow keys like a tree's expand and collapse keys."""

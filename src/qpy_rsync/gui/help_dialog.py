@@ -47,7 +47,9 @@ result.
    The arrow in front of a folder collapses or expands its contents in the
    list only: the sync, the totals and the overview keep every item. Left and
    Right do the same from the keyboard, and "Collapse All Folders" /
-   "Expand All Folders" are in the Actions menu.
+   "Expand All Folders" are in the Actions menu. Ctrl+Up and Ctrl+Down walk
+   the hierarchy instead: they move between a folder and its parent or first
+   child without folding anything.
 
 5. Verify Decisions (F8)
    Builds the execution plan from your selection and checks it with a second

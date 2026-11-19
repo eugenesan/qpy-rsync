@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added Ctrl+Up / Ctrl+Down for hierarchy navigation: they move between a
+  folder and its parent or first child without folding anything, and expand
+  folds when descending. Left/Right still fold and unfold.
 - "Verify Actions" is now "Verify Decisions", matching the decisions it
   verifies; the verification log and status use the same wording.
 - Search now scans the whole comparison, not just the rows currently on

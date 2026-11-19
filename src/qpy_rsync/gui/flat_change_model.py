@@ -1543,6 +1543,10 @@ class FlatChangeModel(QAbstractTableModel):
             return QModelIndex()
         return self.createIndex(position, 0)
 
+    def row_count_total(self) -> int:
+        """The number of rows in the comparison, including hidden ones."""
+        return len(self._rows)
+
     def path_of_row_index(self, index: int) -> str | None:
         """The path of a model row, regardless of folds or filters."""
         if not 0 <= index < len(self._rows):

@@ -869,3 +869,42 @@ def test_single_decision_uses_incremental_refresh() -> None:
     assert [model.row_path(i) for i in range(model.rowCount())] == ["", "b.txt"]
     model.deleteLater()
     application.processEvents()
+
+
+def test_ctrl_up_and_down_walk_the_hierarchy() -> None:
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            file_change("d1/a.txt"),
+            file_change("d1/sub/b.txt"),
+            file_change("d2/c.txt"),
+        ]
+    )
+    application.processEvents()
+    view.select_path("d1/sub/b.txt")
+
+    def press(key: int) -> None:
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, key, Qt.KeyboardModifier.ControlModifier
+        )
+        assert view.eventFilter(view.source, event) is True
+        application.processEvents()
+
+    def current() -> str:
+        return str(view.model.row_path(view.source.currentIndex().row()))
+
+    press(Qt.Key.Key_Up)
+    assert current() == "d1/sub"
+    press(Qt.Key.Key_Up)
+    assert current() == "d1"
+    press(Qt.Key.Key_Down)
+    assert current() == "d1/a.txt"
+    # A file has no children, so Ctrl+Down keeps the selection.
+    press(Qt.Key.Key_Down)
+    assert current() == "d1/a.txt"
+    view.close()
+    application.processEvents()
