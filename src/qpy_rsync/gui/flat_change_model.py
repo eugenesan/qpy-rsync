@@ -1081,7 +1081,9 @@ class FlatChangeModel(QAbstractTableModel):
         excluded = self._excluded_paths()
         for row_index in self._affected_rows(paths):
             row = self._rows[row_index]
-            row.excluded = excluded.get(row.path, False)
+            value = excluded.get(row.path, False)
+            row.excluded = value
+            self._row_excluded[row_index] = value
 
     def _collapsed_map(self) -> dict[str, bool]:
         pattern_active = bool(self._pattern) and self._pattern != "*"
@@ -1262,7 +1264,13 @@ class FlatChangeModel(QAbstractTableModel):
             names = self._row_names_folded
             paths = self._row_paths_folded
             is_dir = self._row_is_dir
-            visible = self._visible_rows
+            # Search the whole comparison, not just the rows currently on
+            # screen: a folded folder must not hide a match. Excluded rows
+            # stay out, because jumping to a hidden row cannot select it.
+            visible = [
+                row for row in range(len(paths))
+                if not self._row_excluded[row] or self.show_excluded
+            ]
             candidate_source = paths if by_path else names
             if directories_only and not is_glob:
                 # The filter compares the whole name (or path) for a folder
@@ -1534,6 +1542,12 @@ class FlatChangeModel(QAbstractTableModel):
         if position < 0:
             return QModelIndex()
         return self.createIndex(position, 0)
+
+    def path_of_row_index(self, index: int) -> str | None:
+        """The path of a model row, regardless of folds or filters."""
+        if not 0 <= index < len(self._rows):
+            return None
+        return self._rows[index].path
 
     def row_path(self, row: int) -> str | None:
         """Return the comparison path of a visible row."""

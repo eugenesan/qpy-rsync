@@ -2362,7 +2362,8 @@ class MainWindow(QMainWindow):
     def _validate_selected_plan(self) -> None:
         self._backup_changed()
         if self._plan_stale:
-            self._refresh_plan_summary()
+            with timed("verify.plan_rebuild"):
+                self._refresh_plan_summary()
         if self._current_plan is None or self._active_profile is None:
             return
         signature = decision_signature(self.comparison.model.decisions)

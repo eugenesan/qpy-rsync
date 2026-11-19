@@ -7,6 +7,7 @@ import re
 from typing import Callable
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
+from qpy_rsync.backend.diagnostics import debug_timing, timed
 from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.rsync_parser import parse_output
@@ -98,11 +99,14 @@ class PlanValidationService:
         effective_profile = deepcopy(profile)
         effective_profile.transfer.delete = selected_deletions
         self._delete_enabled = selected_deletions
-        self._filter_context = temporary_decision_filter(plan)
-        self._filter_path = self._filter_context.__enter__()
+        with timed("verify.filter_file"):
+            self._filter_context = temporary_decision_filter(plan)
+            self._filter_path = self._filter_context.__enter__()
+        with timed("verify.spec"):
+            spec = build_compare_spec(effective_profile, filter_file=self._filter_path)
+        debug_timing("verify.rsync_started")
         self.on_started()
         try:
-            spec = build_compare_spec(effective_profile, filter_file=self._filter_path)
             self.on_spec(spec)
             self._runner.start(spec)
         except BaseException:

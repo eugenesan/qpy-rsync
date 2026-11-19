@@ -1225,14 +1225,14 @@ class FlatComparisonView(QWidget):
             current = self._current_path()
             self._search_position = -1
             for position, row in enumerate(matches):
-                if self.model.row_path(row) == current:
+                if self.model.path_of_row_index(row) == current:
                     self._search_position = position
                     break
         self._search_position = (
             self._search_position + direction
         ) % len(matches)
         row = matches[self._search_position]
-        path = self.model.row_path(row)
+        path = self.model.path_of_row_index(row)
         if path is not None:
             self.select_path(path)
         self.search_status.setText(

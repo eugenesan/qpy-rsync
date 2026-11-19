@@ -353,7 +353,7 @@ def test_search_matches_are_cached_and_follow_the_visible_rows() -> None:
         ]
     )
     matches = model.search_matches("a.txt")
-    assert [model.row_path(row) for row in matches] == ["docs/a.txt"]
+    assert [model.path_of_row_index(row) for row in matches] == ["docs/a.txt"]
     assert model.search_matches("a.txt") is matches
 
     model.set_excluded("docs", True)
@@ -380,7 +380,7 @@ def test_search_follows_the_find_and_filter_rules() -> None:
     )
 
     def found(text: str) -> list[str]:
-        return [model.row_path(row) for row in model.search_matches(text)]
+        return [model.path_of_row_index(row) for row in model.search_matches(text)]
 
     # A bare name matches only the item with that name.
     assert found(".git") == [".git"]
@@ -399,6 +399,14 @@ def test_search_follows_the_find_and_filter_rules() -> None:
     assert found("*dir/*.txt") == ["big-dir/a.txt", "first-dir/x.txt"]
     assert found("*.py") == ["src/main.py"]
     assert found("src/*.py") == ["src/main.py"]
+
+    # Folding a folder must not hide its contents from search.
+    model.set_collapsed(".git", True)
+    assert found("config") == [".git/config"]
+
+    # A folded match must also be reachable through the real navigation path.
+    model.refresh_collapsed()
+    assert found("config") == [".git/config"]
     model.deleteLater()
     application.processEvents()
 

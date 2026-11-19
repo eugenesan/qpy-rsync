@@ -4,6 +4,11 @@
 
 - "Verify Actions" is now "Verify Decisions", matching the decisions it
   verifies; the verification log and status use the same wording.
+- Search now scans the whole comparison, not just the rows currently on
+  screen: folded folders no longer hide matches, and jumping to a match
+  expands its ancestors. Fixed the row-index mapping used by Find Next.
+- The default metadata-only colour is violet, so its icons no longer blend
+  with the inactive selection colour in the opposite pane.
 - Search follows the Find/Filter rules exactly: `dir/` matches only the
   folder named `dir`, `dir/a` is an unanchored path match, globs such as
   `*dir/*.txt` work, and a plain name matches only that item's name.
@@ -830,3 +835,4 @@
 
 - The overview pane starts 474 px wide and defaults to 514 px, so the
   statistics bar is not clipped without taking too much room.
+
