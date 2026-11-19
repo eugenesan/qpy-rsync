@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verification reuses the generated decision filter for an unchanged plan,
+  removing the ~1.25 s rule-generation cost on repeated Verify Decisions.
+- Climbing with Ctrl+Up/Down now always replaces the selection, so previously
+  visited rows no longer stay highlighted when Ctrl is held.
 - A stale comparison is now visible outside the list: the Compare button gets
   an orange outline and a STALE tooltip, and the status bar turns orange with
   "Stale comparison — click Compare to refresh" when it was showing a neutral

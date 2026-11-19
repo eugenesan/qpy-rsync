@@ -55,6 +55,22 @@ def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
     return lines
 
 
+_FILTER_TEXT_CACHE: list[tuple[ExecutionPlan, str]] = []
+
+
+def filter_text(plan: ExecutionPlan) -> str:
+    """The rendered filter file, cached by the identity of the immutable plan."""
+    for cached_plan, text in _FILTER_TEXT_CACHE:
+        if cached_plan is plan:
+            return text
+    lines = decision_filter_lines(plan)
+    text = "\n".join(lines) + ("\n" if lines else "")
+    if len(_FILTER_TEXT_CACHE) >= 4:
+        _FILTER_TEXT_CACHE.pop(0)
+    _FILTER_TEXT_CACHE.append((plan, text))
+    return text
+
+
 @contextmanager
 def temporary_decision_filter(plan: ExecutionPlan) -> Iterator[Path]:
     descriptor, name = tempfile.mkstemp(prefix="qpy-rsync-plan-", suffix=".rules", text=True)
@@ -62,8 +78,7 @@ def temporary_decision_filter(plan: ExecutionPlan) -> Iterator[Path]:
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            lines = decision_filter_lines(plan)
-            handle.write("\n".join(lines) + ("\n" if lines else ""))
+            handle.write(filter_text(plan))
             handle.flush()
             os.fsync(handle.fileno())
         yield path

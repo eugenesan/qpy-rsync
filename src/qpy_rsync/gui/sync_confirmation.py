@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.backend.decision_filters import decision_filter_lines
+from qpy_rsync.backend.decision_filters import filter_text
 from qpy_rsync.backend.rsync_command import build_sync_argv
 from qpy_rsync.core.backup_paths import backup_summary
 from qpy_rsync.core.changes import ChangeAction
@@ -277,8 +277,7 @@ class SyncConfirmationDialog(QDialog):
         self.rules = QPlainTextEdit()
         self.rules.setObjectName("confirmation-rules")
         self.rules.setReadOnly(True)
-        rule_lines = decision_filter_lines(plan)
-        self.rules.setPlainText("\n".join(rule_lines))
+        self.rules.setPlainText(filter_text(plan).rstrip("\n"))
         self.rules.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )

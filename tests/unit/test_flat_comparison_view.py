@@ -897,12 +897,21 @@ def test_ctrl_up_and_down_walk_the_hierarchy() -> None:
     def current() -> str:
         return str(view.model.row_path(view.source.currentIndex().row()))
 
+    def selected() -> list[str]:
+        return [
+            str(view.model.row_path(index.row()))
+            for index in view.source.selectionModel().selectedRows()
+        ]
+
     press(Qt.Key.Key_Up)
     assert current() == "d1/sub"
+    assert selected() == ["d1/sub"]
     press(Qt.Key.Key_Up)
     assert current() == "d1"
+    assert selected() == ["d1"]
     press(Qt.Key.Key_Down)
     assert current() == "d1/a.txt"
+    assert selected() == ["d1/a.txt"]
     # A file has no children, so Ctrl+Down keeps the selection.
     press(Qt.Key.Key_Down)
     assert current() == "d1/a.txt"

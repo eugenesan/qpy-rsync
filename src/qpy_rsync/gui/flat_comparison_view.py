@@ -1199,8 +1199,15 @@ class FlatComparisonView(QWidget):
         index = self.model.index_for_path(path)
         if not index.isValid():
             return
+        # setCurrentIndex() would derive the selection command from the keys
+        # held at that moment: with Ctrl down it toggles instead of replacing
+        # the selection, leaving every climbed row highlighted. Be explicit.
+        flags = (
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            | QItemSelectionModel.SelectionFlag.Rows
+        )
         for tree in (self.source, self.action, self.destination):
-            tree.setCurrentIndex(index)
+            tree.selectionModel().setCurrentIndex(index, flags)
             tree.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
 
     def set_filter_directories(self, enabled: bool) -> None:
