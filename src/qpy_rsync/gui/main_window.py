@@ -320,6 +320,7 @@ class MainWindow(QMainWindow):
         self._rsync_log_handle = None
         self._log_size_warned = False
         self._rsync_pending: list[str] = []
+        self._last_phase_started: float | None = None
         self._rsync_started_at: dict[str, float] = {}
         self._log_buffer: list[str] = []
         self._bulk_logging = False
@@ -3423,6 +3424,7 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         if self._closing:
             return
+        self._last_phase_started = time.monotonic()
         self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
@@ -3458,8 +3460,12 @@ class MainWindow(QMainWindow):
         self.comparison.destination_is_local = (
             self._active_profile.destination.kind is EndpointKind.LOCAL
         )
+        view_started = time.monotonic()
         metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
+        self._append_log(
+            f"Comparison view built in {time.monotonic() - view_started:.2f} s."
+        )
         discarded = self.comparison.model.discarded_decisions
         conflicts = self.comparison.model.conflicts()
         if discarded or conflicts:
@@ -3823,6 +3829,12 @@ class MainWindow(QMainWindow):
 
     def _finish_comparison_status(self) -> None:
         count = self._last_compare_count
+        if self._last_phase_started is not None:
+            self._append_log(
+                "Comparison ready in "
+                f"{time.monotonic() - self._last_phase_started:.2f} s."
+            )
+            self._last_phase_started = None
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")

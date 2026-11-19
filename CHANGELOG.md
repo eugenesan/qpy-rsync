@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Post-parse comparison phases are timed in the application log: how long the
+  view/model rebuild took, and how long from receiving the parsed result until
+  the comparison is ready (including the destination metadata listing).
 - Comparison progress no longer alternates between two counters: the parsed
   change count is the only visible number, while rsync's unstable incremental
   counter only drives the indeterminate progress bar.
