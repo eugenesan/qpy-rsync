@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Directory rows show per-side item counts. A folder whose children exist
+  only on the source now leaves the destination Items and Size cells blank
+  instead of showing "2" and "0 B".
 - Destination sizes are gathered for every changed path that exists on the
   destination, so updated and metadata-only items show their real size again
   instead of "0 B". The listing uses the profile's own filters in one pass

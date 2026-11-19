@@ -137,6 +137,8 @@ class FlatDirectory:
     has_children: bool = False
     # Totals of the rows the filters show below this directory.
     subtree_items: int = 0
+    # Item counts per side: a directory of creates has no destination items.
+    subtree_destination_items: int = 0
     subtree_size: int = 0
     subtree_destination_size: int = 0
     # Totals of the whole subtree, independent of the filters.
@@ -591,8 +593,10 @@ class FlatChangeModel(QAbstractTableModel):
             directory = self._directories.get(row.path)
             if directory is None:
                 return (0, name, row.path)
-            if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
+            if column == self.SOURCE_ITEMS:
                 return (directory.subtree_items, name, row.path)
+            if column == self.DESTINATION_ITEMS:
+                return (directory.subtree_destination_items, name, row.path)
             if column in (
                 self.SOURCE_SIZE,
                 self.DESTINATION_SIZE,
@@ -620,8 +624,13 @@ class FlatChangeModel(QAbstractTableModel):
         directory = self._directories.get(path)
         name = directory.name if directory is not None else path
         column = self._sort_column
-        if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
+        if column == self.SOURCE_ITEMS:
             return (directory.subtree_items if directory else 0, name.casefold())
+        if column == self.DESTINATION_ITEMS:
+            return (
+                directory.subtree_destination_items if directory else 0,
+                name.casefold(),
+            )
         if column in (
             self.SOURCE_SIZE,
             self.DESTINATION_SIZE,
@@ -1005,7 +1014,9 @@ class FlatChangeModel(QAbstractTableModel):
         # The same totals without the excluded items feed the directory rows.
         # They are collected here so the end of the pass no longer has to
         # walk every change a second time.
-        total_counts: list[list[int]] = [[0, 0, 0] for _ in dir_paths]
+        # count, size, destination size, source items, destination items
+        total_counts: list[list[int]] = [[0, 0, 0, 0, 0] for _ in dir_paths]
+        change_actions = [change.action for change in self.changes]
         change_sizes = self._change_sizes
         change_destination_sizes = self._change_destination_sizes
         row_dir_index = self._row_dir_index
@@ -1053,6 +1064,9 @@ class FlatChangeModel(QAbstractTableModel):
                 ):
                     ci = directory.own_change_index
                     visible_change_indices.add(ci)
+                    # The directory's own change belongs to this folder, not
+                    # to its parent (the row's directory index).
+                    dir_index = self._dir_index.get(directory.path, dir_index)
                     values = aggregate_counts[dir_index]
                     values[0] += 1
                     values[1] += change_sizes[ci]
@@ -1073,9 +1087,12 @@ class FlatChangeModel(QAbstractTableModel):
                     values[1] += size
                     if not value:
                         totals = total_counts[dir_index]
+                        action = change_actions[ci]
                         totals[0] += 1
                         totals[1] += size
                         totals[2] += change_destination_sizes[ci]
+                        totals[3] += action is not ChangeAction.DESTINATION_ONLY
+                        totals[4] += action is not ChangeAction.CREATE
             # The rows below a folded directory are out of the list, but
             # they stay in the totals and in the overview.
             if (
@@ -1457,6 +1474,7 @@ class FlatChangeModel(QAbstractTableModel):
         if directory is None:
             return
         items = 0
+        destination_items = 0
         size = 0
         destination_size = 0
         for index in directory.files:
@@ -1465,7 +1483,10 @@ class FlatChangeModel(QAbstractTableModel):
             if excluded.get(self._change_paths[index], False):
                 continue
             change = self.changes[index]
-            items += 1
+            if change.action is not ChangeAction.DESTINATION_ONLY:
+                items += 1
+            if change.action is not ChangeAction.CREATE:
+                destination_items += 1
             size += int(change.size or 0)
             destination_size += self._change_destination_sizes[index]
         for child_path in directory.child_directories:
@@ -1473,9 +1494,11 @@ class FlatChangeModel(QAbstractTableModel):
             if not child.visible or excluded.get(child_path, False):
                 continue
             items += child.subtree_items
+            destination_items += child.subtree_destination_items
             size += child.subtree_size
             destination_size += child.subtree_destination_size
         directory.subtree_items = items
+        directory.subtree_destination_items = destination_items
         directory.subtree_size = size
         directory.subtree_destination_size = destination_size
 
@@ -1489,6 +1512,7 @@ class FlatChangeModel(QAbstractTableModel):
         directories = self._directories
         for directory in directories.values():
             directory.subtree_items = 0
+            directory.subtree_destination_items = 0
             directory.subtree_size = 0
             directory.subtree_destination_size = 0
         paths = self._dir_paths
@@ -1496,12 +1520,16 @@ class FlatChangeModel(QAbstractTableModel):
             directory = directories[paths[index]]
             values = counts[index]
             if values[0]:
-                directory.subtree_items += values[0]
+                directory.subtree_items += values[3]
+                directory.subtree_destination_items += values[4]
                 directory.subtree_size += values[1]
                 directory.subtree_destination_size += values[2]
             parent = directories.get(directory.parent) if index else None
             if parent is not None:
                 parent.subtree_items += directory.subtree_items
+                parent.subtree_destination_items += (
+                    directory.subtree_destination_items
+                )
                 parent.subtree_size += directory.subtree_size
                 parent.subtree_destination_size += directory.subtree_destination_size
 
@@ -1683,7 +1711,11 @@ class FlatChangeModel(QAbstractTableModel):
             if index.column() == self.DESTINATION_ITEMS:
                 if not destination_present or directory is None:
                     return ""
-                return str(directory.subtree_items)
+                if not directory.subtree_destination_items:
+                    own = directory.own_change
+                    if own is None or own.action is ChangeAction.CREATE:
+                        return ""
+                return str(directory.subtree_destination_items)
             if index.column() == self.SOURCE_SIZE:
                 if not source_present:
                     return ""
@@ -1694,6 +1726,11 @@ class FlatChangeModel(QAbstractTableModel):
                 if not destination_present:
                     return ""
                 if directory is not None:
+                    own = directory.own_change
+                    if not directory.subtree_destination_items and (
+                        own is None or own.action is ChangeAction.CREATE
+                    ):
+                        return ""
                     return self._size(directory.subtree_destination_size)
                 return self._size(
                     self._destination_size_display(change) if change else None
@@ -1712,6 +1749,11 @@ class FlatChangeModel(QAbstractTableModel):
                 if not destination_present:
                     return ""
                 if directory is not None:
+                    own = directory.own_change
+                    if not directory.subtree_destination_items and (
+                        own is None or own.action is ChangeAction.CREATE
+                    ):
+                        return ""
                     return str(directory.subtree_destination_size)
                 size = self._destination_size_display(change) if change else None
                 return str(size) if size is not None else ""
