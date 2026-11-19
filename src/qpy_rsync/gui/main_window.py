@@ -1270,13 +1270,31 @@ class MainWindow(QMainWindow):
             self.log_file_edit.setText(selected)
             self._logging_settings_changed()
 
+    @staticmethod
+    def _app_identity() -> str:
+        commit = "unknown"
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(__file__).resolve().parent.parent.parent,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                commit = result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return f"qpy-rsync {APP_VERSION} ({commit})"
+
     def _open_log(self, path: Path, handle):
         if handle is not None:
             return handle
         path.parent.mkdir(parents=True, exist_ok=True)
         handle = path.open("a", encoding="utf-8")
         handle.write(
-            f"\n===== qpy-rsync session {datetime.now().astimezone().isoformat()} =====\n"
+            f"\n===== qpy-rsync session {datetime.now().astimezone().isoformat()} "
+            f"[{self._app_identity()}] =====\n"
         )
         handle.flush()
         return handle
@@ -2694,7 +2712,7 @@ class MainWindow(QMainWindow):
         summary = plan.summary
         noun = "item" if summary.included == 1 else "items"
         text = (
-            f"qpy-rsync {APP_VERSION} Selected: {summary.included} {noun}, "
+            f"Selected: {summary.included} {noun}, "
             f"{format_size(summary.total_size)}; "
             f"new {summary.creates}, updated {summary.updates}, "
             f"metadata {summary.metadata}, "
@@ -2794,7 +2812,7 @@ class MainWindow(QMainWindow):
                 summary = self._current_plan.summary
                 noun = "item" if summary.included == 1 else "items"
                 self._append_log(
-                    f"qpy-rsync {APP_VERSION} Decisions verified, selected: "
+                    "Decisions verified, selected: "
                     f"new {summary.creates}, updated {summary.updates}, "
                     f"metadata {summary.metadata}, "
                     f"deleted {summary.deletions}; "
@@ -3465,8 +3483,7 @@ class MainWindow(QMainWindow):
         metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         self._append_log(
-            f"qpy-rsync {APP_VERSION} Comparison view built in "
-            f"{time.monotonic() - view_started:.2f} s."
+            f"Comparison view built in {time.monotonic() - view_started:.2f} s."
         )
         discarded = self.comparison.model.discarded_decisions
         conflicts = self.comparison.model.conflicts()
@@ -3833,7 +3850,7 @@ class MainWindow(QMainWindow):
         count = self._last_compare_count
         if self._last_phase_started is not None:
             self._append_log(
-                f"qpy-rsync {APP_VERSION} Comparison ready in "
+                "Comparison ready in "
                 f"{time.monotonic() - self._last_phase_started:.2f} s."
             )
             self._last_phase_started = None
@@ -3988,7 +4005,7 @@ class MainWindow(QMainWindow):
         elapsed = time.monotonic() - monotonic_start
         wall = (datetime.now() - wall_start).total_seconds()
         self._append_log(
-            f"qpy-rsync {APP_VERSION} rsync {label} finished in {elapsed:.2f} s "
+            f"rsync {label} finished in {elapsed:.2f} s "
             f"(wall {wall:.2f} s)."
         )
 

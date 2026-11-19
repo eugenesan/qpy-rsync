@@ -5,7 +5,6 @@ import re
 from time import perf_counter
 from typing import Callable
 
-from qpy_rsync import __version__ as APP_VERSION
 from qpy_rsync.backend.diagnostics import debug, debug_timing
 from qpy_rsync.backend.process_runner import (
     ProcessResult,
@@ -159,7 +158,7 @@ class CompareService:
             log_ms=round(self._log_seconds * 1000, 1),
         )
         self.on_diagnostic(
-            f"qpy-rsync {APP_VERSION} Compare parse: {self._line_count:,} line(s), "
+            f"Compare parse: {self._line_count:,} line(s), "
             f"parsing {self._parse_seconds:.2f} s, "
             f"journal writes {self._log_seconds:.2f} s."
         )

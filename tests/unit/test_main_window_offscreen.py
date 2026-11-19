@@ -2142,28 +2142,22 @@ def test_compare_progress_does_not_override_the_item_count() -> None:
     application.processEvents()
 
 
-def test_stats_lines_include_the_app_version() -> None:
+def test_version_and_commit_are_logged_once_in_the_session_header(tmp_path, monkeypatch) -> None:
     from qpy_rsync import __version__
 
     application = app()
     app_settings().clear()
-    window = MainWindow()
-    from qpy_rsync.backend.rsync_parser import ParseResult
-    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-    from qpy_rsync.services.compare_service import CompareResult
-
-    window.source_edit.setText("/src/")
-    window.destination_edit.setText("/dst/")
-    window._active_profile = window._profile()
-    window._comparison_finished(
-        CompareResult(
-            ParseResult(
-                [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")], []
-            ),
-            "",
-            0,
-        )
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.MainWindow._app_identity",
+        staticmethod(lambda: f"qpy-rsync {__version__} (testcommit)"),
     )
-    assert f"qpy-rsync {__version__} Selected:" in window.log.toPlainText()
+    window = MainWindow()
+    window._write_session_log("one line")
+    content = window._log_file_path.read_text(encoding="utf-8")
+    header = content.splitlines()[1]
+    assert "qpy-rsync 0.3.3 (testcommit)" in header
+    assert content.count("qpy-rsync 0.3.3") == 1
+    assert "one line" in content
     window.close()
     application.processEvents()

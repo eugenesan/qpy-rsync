@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Statistics lines in the application log now carry the full `qpy-rsync`
-  version, so timing snapshots from different builds can be told apart.
+- Each log session header records the full `qpy-rsync` version and git commit
+  once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the
   view/model rebuild took, and how long from receiving the parsed result until
   the comparison is ready (including the destination metadata listing).
