@@ -418,20 +418,27 @@ decision rules, the backup settings and the option set. The profiles are
 stored as versioned JSON in `$XDG_CONFIG_HOME/qpy-rsync/profiles`, and the
 application settings live in `$XDG_STATE_HOME/qpy-rsyncstaterc`.
 
-The settings dialog has the pages *General*, *Logging*, *Backup* and *Tools*.
-The general page holds the completion sound, the logging page the log file
-and the backup page the backup directory, and the tools page the external
-tools and the diff tool command.
+The settings dialog has the pages *General*, *Logging*, *Backup*, *Tools* and
+*Advanced*. The general page holds the completion sound; the logging page
+only enables or disables logging and shows the derived log paths; the backup
+page the backup directory; the tools page the external tools and diff tool
+command; the advanced page the optional verification diagnostics.
+
+Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
+`app-<profile>.log` for application messages and `rsync-<profile>.log` for
+raw rsync output. An unsaved profile uses the name `default`.
 
 ## 10. Progress, logs and cancellation
 
 A transfer reports its progress, its phase and the number of processed
 objects; the journal keeps the commands, the itemized records and the
-application states, while the raw rsync progress belongs in the session log
-file, so the journal stays readable.
+application states, while the raw rsync output belongs in the rsync log file,
+so the journal stays readable. The application log records the same
+application messages with full UTC timestamps, and each rsync run reports its
+elapsed time.
 
 The status bar carries the operation state only. Every other message goes to
-the journal with a `HH:MM` timestamp and a severity colour.
+the journal with a `HH:MM:SS.ss` timestamp and a severity colour.
 
 The execution gate is an explicit state machine: a transfer may only start
 after a successful verification and an explicit confirmation, and a cancelled

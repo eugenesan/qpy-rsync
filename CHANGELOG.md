@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
+  `app-<profile>.log` for application messages and `rsync-<profile>.log` for
+  raw rsync output. Unsaved profiles use `default`. The log button's context
+  menu clears both files.
+- Journal timestamps now include seconds and hundredths (`12:04:01.55`).
+- Automatically loaded profiles are logged at startup, and each rsync run
+  logs its elapsed time after completion, cancellation or failure.
+- A log file reaching 1 GB adds an orange journal warning pointing to the
+  "Clear Log" context-menu entry.
 - Dropped the "Replaced" action type entirely. rsync's replacement attribute
   is so rare that it is classified as a metadata update; the summary, filter
   bar, colours, help and design documents no longer mention a replacement

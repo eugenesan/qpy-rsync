@@ -245,17 +245,19 @@ def test_command_line_compare_is_queued(monkeypatch) -> None:
 def test_xdg_default_log_and_visible_pane_preserve_history(tmp_path, monkeypatch) -> None:
     application = app()
     app_settings().clear()
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     window = MainWindow()
     window._restore_logging_settings()
-    assert window.log_file_edit.text() == str(tmp_path / "state" / "qpy-rsync.log")
-    window._append_log("rsync progress first")
-    window._append_log("rsync stats second")
-    assert "rsync progress first" in window.log.toPlainText()
-    assert "rsync stats second" in window.log.toPlainText()
-    content = (tmp_path / "state" / "qpy-rsync.log").read_text(encoding="utf-8")
-    assert "rsync progress first" in content
-    assert "rsync stats second" in content
+    app_log = tmp_path / "cache" / "qpy-rsync" / "app-default.log"
+    rsync_log = tmp_path / "cache" / "qpy-rsync" / "rsync-default.log"
+    assert window.log_file_edit.text() == str(app_log)
+    window._append_log("app progress first")
+    window._append_log("rsync output line", rsync=True)
+    assert "app progress first" in window.log.toPlainText()
+    assert "app progress first" in app_log.read_text(encoding="utf-8")
+    rsync_content = rsync_log.read_text(encoding="utf-8")
+    assert "rsync output line" in rsync_content
+    assert "app progress first" not in rsync_content
     window.close(); application.processEvents()
 
 def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) -> None:
@@ -264,7 +266,7 @@ def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) 
 
     application = app()
     app_settings().clear()
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     window = MainWindow()
     window._restore_logging_settings()
 
@@ -288,7 +290,7 @@ def test_sync_terminal_events_are_written_to_diagnostics(tmp_path, monkeypatch) 
     window._sync_error("failed", False)
     assert "STATE synchronization-failed" in window.log.toPlainText()
 
-    content = (tmp_path / "state" / "qpy-rsync.log").read_text(encoding="utf-8")
+    content = (tmp_path / "cache" / "qpy-rsync" / "app-default.log").read_text(encoding="utf-8")
     assert "STATE synchronization-completed exit_code=0" in content
     assert "STATE synchronization-cancelled" in content
     assert "STATE synchronization-failed" in content
@@ -1036,7 +1038,7 @@ def test_journal_lines_get_timestamps_and_severity_colors() -> None:
 
     document = window.log.document()
     lines = [document.findBlockByNumber(row).text() for row in range(document.blockCount())]
-    assert all(re.match(r"^\d{2}:\d{2} ", line) for line in lines)
+    assert all(re.match(r"^\d{2}:\d{2}:\d{2}\.\d{2} ", line) for line in lines)
     assert lines[0].endswith("app message")
     assert lines[1].endswith("warning message")
 
@@ -1318,16 +1320,17 @@ def test_the_log_file_can_be_cleared(tmp_path) -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    log_file = tmp_path / "session.log"
-    log_file.write_text("the old session\n", encoding="utf-8")
-    window.log_file_edit.setText(str(log_file))
+    window._log_file_path.write_text("the old app session\n", encoding="utf-8")
+    window._rsync_log_path.write_text("the old rsync session\n", encoding="utf-8")
 
     window._clear_log()
     application.processEvents()
 
-    contents = log_file.read_text(encoding="utf-8")
-    assert "the old session" not in contents
-    assert "cleared" in contents
+    app_contents = window._log_file_path.read_text(encoding="utf-8")
+    rsync_contents = window._rsync_log_path.read_text(encoding="utf-8")
+    assert "the old app session" not in app_contents
+    assert "the old rsync session" not in rsync_contents
+    assert "cleared" in app_contents
     window.close()
     application.processEvents()
 
@@ -2001,5 +2004,82 @@ def test_preserve_button_restores_after_a_fresh_comparison() -> None:
     application.processEvents()
     assert window.preserve_button.isChecked()
     assert "Preserve decisions restored" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_log_files_follow_the_profile_name(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.storage.profile_store import save_profile
+
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    assert window._profile_name() == "default"
+    assert window._log_file_path.name == "app-default.log"
+    assert window._rsync_log_path.name == "rsync-default.log"
+    profile_path = tmp_path / "backup.json"
+    save_profile(profile_path, window._profile())
+    window._remember_profile_path(profile_path)
+    assert window._profile_name() == "backup"
+    assert window._log_file_path.name == "app-backup.log"
+    assert window._rsync_log_path.name == "rsync-backup.log"
+    window.close()
+    application.processEvents()
+
+
+def test_large_log_warns_in_orange(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    window._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    with window._log_file_path.open("wb") as handle:
+        handle.truncate(1_000_000_001)
+    window._write_session_log("one more line")
+    assert "1 GB" in window.log.toPlainText()
+    assert "Clear Log" in window.log.toPlainText()
+    block = window.log.document().findBlockByNumber(0)
+    colors = []
+    iterator = block.begin()
+    while not iterator.atEnd():
+        fragment = iterator.fragment()
+        if fragment.isValid():
+            colors.append(fragment.charFormat().foreground().color().name())
+        iterator += 1
+    assert "#ea580c" in colors
+    window.close()
+    application.processEvents()
+
+
+def test_rsync_elapsed_is_logged() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._start_rsync_clock("comparison")
+    window._log_rsync_elapsed("comparison")
+    assert "rsync comparison finished in" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_automatically_loaded_profile_is_logged(monkeypatch) -> None:
+    from pathlib import Path
+
+    import qpy_rsync.gui.main_window as module
+
+    application = app()
+    app_settings().clear()
+    profile_path = Path("/profiles/laptop.json")
+
+    def fake_restore(self):
+        self._profile_path = profile_path
+        return True
+
+    monkeypatch.setattr(module.MainWindow, "_restore_recent_profile", fake_restore)
+    window = module.MainWindow()
+    assert "Profile loaded automatically: laptop" in window.log.toPlainText()
     window.close()
     application.processEvents()
