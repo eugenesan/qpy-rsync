@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preserve decisions is now a toggle button beside Compare, using the same
+  state badge style as the other toolbar buttons. Its tooltip describes the
+  current state, and the indicator lights up when the app forced it off
+  because the comparison became stale. It only toggles the setting; Compare
+  is still a separate button.
 - Conflict highlighting, the review filter and the "accept rsync default"
   context-menu action are hidden unless the opt-in inherited-folder detection
   is enabled in Settings > Advanced. The journal count remains.

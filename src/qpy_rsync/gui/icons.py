@@ -645,6 +645,17 @@ def excluded_icon() -> QIcon:
 
 
 @lru_cache(maxsize=None)
+def preserve_icon(*, active: bool = False, warning: bool = False) -> QIcon:
+    """Preserve-decisions icon: blue when on, orange when forced off."""
+    base = _theme_icon(
+        "anchor-symbolic",
+        "anchor",
+        fallback=QStyle.StandardPixmap.SP_BrowserReload,
+    )
+    return _state_icon(base, info=active, warning=warning)
+
+
+@lru_cache(maxsize=None)
 def conflict_icon() -> QIcon:
     """An amber warning marker for decisions that need review."""
     pixmap, painter = _pixmap()

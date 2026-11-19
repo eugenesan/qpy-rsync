@@ -1883,16 +1883,21 @@ def test_second_rsync_run_is_only_used_when_both_flags_are_enabled() -> None:
     application.processEvents()
 
 
-def test_preserve_checkbox_sits_by_compare_and_is_checked_by_default() -> None:
+def test_preserve_button_sits_by_compare_and_reports_its_state() -> None:
+    from PySide6.QtWidgets import QToolButton
+
     application = app()
     app_settings().clear()
     window = MainWindow()
-    assert window.preserve_box.isChecked()
-    assert "#fecaca" not in window.preserve_box.styleSheet()
-    window.preserve_box.setChecked(False)
+    assert isinstance(window.preserve_button, QToolButton)
+    assert window.preserve_button.isCheckable()
+    assert window.preserve_button.isChecked()
+    assert "ON" in window.preserve_button.toolTip()
+    on_icon = window.preserve_button.icon().cacheKey()
+    window.preserve_button.setChecked(False)
     application.processEvents()
-    assert "#fecaca" in window.preserve_box.styleSheet()
-    assert "UNCHECKED" in window.preserve_box.toolTip()
+    assert window.preserve_button.icon().cacheKey() != on_icon
+    assert "OFF" in window.preserve_button.toolTip()
     window.close()
     application.processEvents()
 
@@ -1907,17 +1912,18 @@ def test_stale_comparison_unchecks_preserve_but_allows_forcing_it(monkeypatch) -
         [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
     )
     application.processEvents()
-    assert window.preserve_box.isChecked()
+    assert window.preserve_button.isChecked()
     window.comparison.set_stale(True)
     application.processEvents()
-    assert window.preserve_box.isEnabled()
-    assert not window.preserve_box.isChecked()
-    window.preserve_box.setChecked(True)
+    assert window.preserve_button.isEnabled()
+    assert not window.preserve_button.isChecked()
+    assert "forced" in window.preserve_button.toolTip()
+    window.preserve_button.setChecked(True)
     application.processEvents()
     assert window._preserve_decisions is True
     window.comparison.set_stale(False)
     application.processEvents()
-    assert window.preserve_box.isChecked()
+    assert window.preserve_button.isChecked()
     window.close()
     application.processEvents()
 
@@ -1928,7 +1934,7 @@ def test_compare_warns_before_discarding_decisions(monkeypatch) -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window.preserve_box.setChecked(False)
+    window.preserve_button.setChecked(False)
     application.processEvents()
     calls: list[object] = []
 
