@@ -1017,3 +1017,27 @@ def test_checkbox_click_keeps_the_cursor_on_the_next_item() -> None:
     assert view.model.row_path(view.source.currentIndex().row()) == "docs/f3.txt"
     view.close()
     application.processEvents()
+
+
+def test_space_exclusion_moves_the_cursor_and_keeps_selection() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change(f"d/f{i}.txt") for i in range(4)])
+    application.processEvents()
+    view.select_path("d/f1.txt")
+
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier
+    )
+    assert view.eventFilter(view.source, event) is True
+    application.processEvents()
+    assert view.model.row_path(view.source.currentIndex().row()) == "d/f2.txt"
+    assert [
+        view.model.row_path(index.row())
+        for index in view.source.selectionModel().selectedRows()
+    ] == ["d/f2.txt"]
+    view.close()
+    application.processEvents()

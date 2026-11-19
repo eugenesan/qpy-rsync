@@ -972,7 +972,7 @@ class FlatComparisonView(QWidget):
         path = self._current_path()
         yield
         if path:
-            self.select_path(path)
+            self._restore_decision_focus(path)
 
     def _toggle_excluded(self) -> bool:
         """Exclude or include the selected items. True when it handled them."""

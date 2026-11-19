@@ -2343,10 +2343,8 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_verify_button(self) -> None:
-        marker = "#EA580C" if self._plan_stale else ""
-        self.validate_plan_button.setStyleSheet(
-            f"background-color: {marker};" if marker else ""
-        )
+        # The stale state is shown by the small badge on the icon, like the
+        # filter and profile buttons. Never paint the whole button background.
         self.validate_plan_button.setToolTip(
             "Plan changed — press Verify Decisions to rebuild and verify."
             if self._plan_stale

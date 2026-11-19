@@ -1599,3 +1599,17 @@ def test_compare_and_verify_badges_use_the_same_three_states() -> None:
             make(info=True).cacheKey(),
             make(warning=True).cacheKey(),
         }) == 3
+
+
+def test_stale_plan_does_not_paint_the_whole_verify_button() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._plan_stale = True
+    window._refresh_verify_button()
+    assert window.validate_plan_button.styleSheet() == ""
+    window._plan_stale = False
+    window._refresh_verify_button()
+    assert window.validate_plan_button.styleSheet() == ""
+    window.close()
+    application.processEvents()
