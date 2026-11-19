@@ -47,6 +47,7 @@ class CompareService:
         self.on_error: Callable[[str], None] = lambda _message: None
         self.on_cancelled: Callable[[], None] = lambda: None
         self.on_log: Callable[[str], None] = lambda _message: None
+        self.on_diagnostic: Callable[[str], None] = lambda _message: None
         self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
         self.on_transient: Callable[[str], None] = lambda _text: None
         # The number of items the comparison has found so far.
@@ -156,7 +157,7 @@ class CompareService:
             parse_ms=round(self._parse_seconds * 1000, 1),
             log_ms=round(self._log_seconds * 1000, 1),
         )
-        self.on_log(
+        self.on_diagnostic(
             f"Compare parse: {self._line_count:,} line(s), "
             f"parsing {self._parse_seconds:.2f} s, "
             f"journal writes {self._log_seconds:.2f} s."

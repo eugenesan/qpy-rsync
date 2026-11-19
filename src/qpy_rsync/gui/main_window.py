@@ -237,6 +237,7 @@ class MainWindow(QMainWindow):
         self._service.on_error = self._comparison_error
         self._service.on_cancelled = self._comparison_cancelled
         self._service.on_log = self._append_rsync_log
+        self._service.on_diagnostic = self._append_log
         self._service.on_progress = self._comparison_progress
         self._service.on_transient = self._append_transient_log
         self._service.on_items = self._comparison_items
@@ -3035,6 +3036,7 @@ class MainWindow(QMainWindow):
             self._reset_pause_button()
 
     def _sync_started(self) -> None:
+        self._start_rsync_clock("synchronization")
         self._begin_bulk_logging()
         self._set_hovered_action("synchronize")
         self._execution_gate.execution_started()
@@ -3360,7 +3362,7 @@ class MainWindow(QMainWindow):
         self._set_state(f"Started {tool.name}.", "success")
 
     def _comparison_started(self) -> None:
-        self._start_rsync_clock("comparison")
+        self._start_rsync_clock("dry run")
         self._begin_bulk_logging()
         self._set_hovered_action("compare")
         self._inventory_service.cancel()
