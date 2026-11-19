@@ -1812,8 +1812,7 @@ class FlatChangeModel(QAbstractTableModel):
         previous = self.decision_history.undo(current)
         if previous is None:
             return False
-        self.decisions.replace(previous)
-        self._apply_decision_snapshot()
+        self._apply_decision_snapshot(previous)
         return True
 
     def redo_decision(self) -> bool:
@@ -1822,17 +1821,19 @@ class FlatChangeModel(QAbstractTableModel):
         following = self.decision_history.redo(current)
         if following is None:
             return False
-        self.decisions.replace(following)
-        self._apply_decision_snapshot()
+        self._apply_decision_snapshot(following)
         return True
 
-    def _apply_decision_snapshot(self) -> None:
-        self._override_paths = self.decisions.override_paths(self.changes)
-        self._refresh_effective_actions(None)
-        self.beginResetModel()
-        self._apply_filters()
-        self.endResetModel()
-        self.decision_changed.emit(None)
+    def _apply_decision_snapshot(self, decisions: dict[str, ChangeDecision]) -> None:
+        """Restore a snapshot, patching only the paths that actually changed."""
+        current = self._snapshot()
+        changed = {
+            path
+            for path in current.keys() | decisions.keys()
+            if current.get(path) != decisions.get(path)
+        }
+        self.decisions.replace(decisions)
+        self._after_decision_change(changed or None)
         self.history_changed.emit()
 
     def reset_decision(self, path: str) -> None:

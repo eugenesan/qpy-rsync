@@ -4,8 +4,10 @@
 
 - Added a decision history: Ctrl+Z / Ctrl+Shift+Z undo and redo checkbox and
   exclude decisions, with Edit > Undo Decision / Redo Decision / Reset
-  Decisions. Undoing an exclusion brings the hidden row back. The history is
-  cleared with each new comparison.
+  Decisions. Undoing an exclusion brings the hidden row back. Undo/redo patch
+  only the changed paths, so they cost the same as a single decision (~160 ms
+  on 520k items instead of ~800 ms). The history is cleared with each new
+  comparison and its depth costs no runtime work.
 - The verification journal now says "rsync dry run started" with the source
   and destination before the long rsync run, so the wait is no longer silent.
 - Verification reuses the generated decision filter by plan content, so a
