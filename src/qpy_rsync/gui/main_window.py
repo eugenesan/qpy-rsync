@@ -3964,6 +3964,7 @@ class MainWindow(QMainWindow):
 
     def _start_rsync_clock(self, label: str) -> None:
         self._rsync_started_at[label] = (time.monotonic(), datetime.now())
+        self._append_log(f"rsync {label} start clock set.")
 
     def _log_rsync_elapsed(self, label: str) -> None:
         started = self._rsync_started_at.pop(label, None)
