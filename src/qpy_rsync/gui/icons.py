@@ -215,7 +215,7 @@ def source_icon() -> QIcon:
     )
 
 
-def _badged_icon(base: QIcon, color: str) -> QIcon:
+def _badged_icon(base: QIcon, color: QColor | str) -> QIcon:
     """Add the same corner badge the filter and profile buttons use."""
     pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -228,8 +228,17 @@ def _badged_icon(base: QIcon, color: str) -> QIcon:
     return QIcon(pixmap)
 
 
-def compare_icon(*, stale: bool = False) -> QIcon:
-    """The system icon for the Compare action, with a stale badge."""
+def _state_icon(base: QIcon, *, info: bool = False, warning: bool = False) -> QIcon:
+    """Off, informational (blue) or warning (orange), like the other buttons."""
+    if warning:
+        return _badged_icon(base, "#f59e0b")
+    if info:
+        return _badged_icon(base, ACCENT)
+    return base
+
+
+def compare_icon(*, info: bool = False, warning: bool = False) -> QIcon:
+    """Compare icon: blue when a fresh comparison exists, orange when stale."""
     base = _theme_icon(
         "kr_comparedirs",
         "kr_comparedir",
@@ -237,11 +246,11 @@ def compare_icon(*, stale: bool = False) -> QIcon:
         "document-compareright-symbolic",
         fallback=QStyle.StandardPixmap.SP_FileDialogContentsView,
     )
-    return _badged_icon(base, "#f59e0b") if stale else base
+    return _state_icon(base, info=info, warning=warning)
 
 
-def verify_icon(*, stale: bool = False) -> QIcon:
-    """The system icon for verifying the decisions, with a stale badge."""
+def verify_icon(*, info: bool = False, warning: bool = False) -> QIcon:
+    """Verify icon: blue when verified, orange when the plan is stale."""
     base = _theme_icon(
         "answer-symbolic",
         "answer",
@@ -249,7 +258,7 @@ def verify_icon(*, stale: bool = False) -> QIcon:
         "Answer",
         fallback=QStyle.StandardPixmap.SP_DialogApplyButton,
     )
-    return _badged_icon(base, "#f59e0b") if stale else base
+    return _state_icon(base, info=info, warning=warning)
 
 
 def verified_icon() -> QIcon:

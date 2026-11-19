@@ -14,8 +14,9 @@
   rebuilt plan with unchanged items no longer pays the ~1.25 s rule generation.
 - Hover no longer highlights rows in the comparison lists: only clicking or a
   key changes the selection.
-- The stale Compare and Verify Decisions buttons now use the same amber badge
-  as the filter and profile buttons; the "State:" label also turns amber.
+- Compare and Verify Decisions now use the same three-state badge as the
+  filter and profile buttons: no badge, blue informational (fresh comparison /
+  verified) and orange warning (stale). The "State:" label also turns amber.
 - Climbing with Ctrl+Up/Down now always replaces the selection, so previously
   visited rows no longer stay highlighted when Ctrl is held.
 - A stale comparison is now visible outside the list: the Compare button gets

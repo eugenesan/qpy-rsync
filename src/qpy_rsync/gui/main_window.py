@@ -206,7 +206,6 @@ from .icons import (
     settings_icon,
     swap_icon,
     synchronize_icon,
-    verified_icon,
     verify_icon,
 )
 from .overview import OverviewPane
@@ -1328,20 +1327,12 @@ class MainWindow(QMainWindow):
         )
 
     def _update_stale_indicators(self, stale: bool) -> None:
-        """Mark the Compare button and status bar when results are stale."""
-        self.compare_button.setIcon(compare_icon(stale=stale))
-        if self._verify_state != "verified":
-            self.validate_plan_button.setIcon(verify_icon(stale=stale))
-        # The badge is the same marker the filter and profile buttons use.
-        # Verify is disabled while stale, which greys its icon out, so the
-        # outline keeps the state readable in both buttons.
-        marker = (
-            "QToolButton { border: 2px solid #EA580C; border-radius: 4px; }"
-            if stale
-            else ""
+        """Use the same three-state badge as the filter and profile buttons."""
+        fresh = bool(self.comparison.model.changes) and not stale
+        self.compare_button.setIcon(compare_icon(info=fresh, warning=stale))
+        self.validate_plan_button.setIcon(
+            verify_icon(info=self._verify_state == "verified", warning=stale)
         )
-        self.compare_button.setStyleSheet(marker)
-        self.validate_plan_button.setStyleSheet(marker)
         if stale:
             self.compare_button.setToolTip(
                 "STALE: this comparison no longer matches the current profile.\n"
@@ -2053,7 +2044,9 @@ class MainWindow(QMainWindow):
         self._verify_state = state
         stale = bool(self.comparison.model.stale)
         if state == "verified":
-            self.validate_plan_button.setIcon(verified_icon())
+            self.validate_plan_button.setIcon(
+                verify_icon(info=True, warning=stale)
+            )
             self.validate_plan_button.setAccessibleName("Decisions Verified")
             self.validate_plan_button.setToolTip(
                 with_shortcut(
@@ -2065,7 +2058,7 @@ class MainWindow(QMainWindow):
             self.validate_plan_button.setAccessibleName("Verifying selected decisions")
             self.validate_plan_button.setToolTip("Verifying selected decisions...")
         else:
-            self.validate_plan_button.setIcon(verify_icon(stale=stale))
+            self.validate_plan_button.setIcon(verify_icon(warning=stale))
             self.validate_plan_button.setAccessibleName("Verify Decisions")
             self.validate_plan_button.setToolTip(with_shortcut(_VERIFY_TOOLTIP, "F8"))
 

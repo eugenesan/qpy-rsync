@@ -1571,13 +1571,31 @@ def test_stale_comparison_marks_compare_button_and_status() -> None:
     assert window.status_edit.text() == "Stale comparison — click Compare to refresh"
     assert "#EA580C" in window.status_edit.styleSheet()
     assert "#EA580C" in window.state_label.styleSheet()
-    assert "#EA580C" in window.compare_button.styleSheet()
-    assert "#EA580C" in window.validate_plan_button.styleSheet()
+    assert window.compare_button.styleSheet() == ""
+    assert window.validate_plan_button.styleSheet() == ""
     window.comparison.set_stale(False)
     application.processEvents()
     assert "STALE" not in window.compare_button.toolTip()
-    assert "#EA580C" not in window.compare_button.styleSheet()
-    assert "#EA580C" not in window.validate_plan_button.styleSheet()
     assert window.status_edit.text() != "Stale comparison — click Compare to refresh"
     window.close()
     application.processEvents()
+
+
+def test_compare_and_verify_badges_use_the_same_three_states() -> None:
+    from qpy_rsync.gui.icons import ICON_SIZE, compare_icon, filters_icon, verify_icon
+
+    app()
+
+    def badge(icon) -> str:
+        image = icon.pixmap(ICON_SIZE, ICON_SIZE).toImage()
+        return image.pixelColor(50, 50).name().lower()
+
+    for make in (compare_icon, verify_icon):
+        assert badge(make()) != badge(make(info=True))
+        assert badge(make(info=True)) == badge(filters_icon(active=True))
+        assert badge(make(warning=True)) == badge(filters_icon(stale=True))
+        assert len({
+            make().cacheKey(),
+            make(info=True).cacheKey(),
+            make(warning=True).cacheKey(),
+        }) == 3
