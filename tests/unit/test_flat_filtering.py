@@ -724,3 +724,27 @@ def test_changed_decisions_are_filterable_and_reviewable() -> None:
     assert model.decisions.explicit("a.txt") is ChangeDecision.INHERIT
     model.deleteLater()
     application.processEvents()
+
+
+def test_unknown_destination_size_is_blank_not_zero() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("updated.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......", size=500),
+            Change("gone.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        ]
+    )
+    model.set_destination_metadata({"gone.txt": (320, "t")})
+    for path, expected in (("updated.txt", ""), ("gone.txt", "320 B")):
+        index = model.index_for_path(path)
+        value = model.data(
+            model.index(index.row(), model.DESTINATION_SIZE),
+            Qt.ItemDataRole.DisplayRole,
+        )
+        assert value == expected, (path, value)
+    model.deleteLater()
+    application.processEvents()

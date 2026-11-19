@@ -1695,7 +1695,9 @@ class FlatChangeModel(QAbstractTableModel):
                     return ""
                 if directory is not None:
                     return self._size(directory.subtree_destination_size)
-                return self._size(self._destination_size(change) if change else None)
+                return self._size(
+                    self._destination_size_display(change) if change else None
+                )
             if index.column() == self.SOURCE_SIZE_BYTES:
                 if not source_present:
                     return ""
@@ -1709,13 +1711,10 @@ class FlatChangeModel(QAbstractTableModel):
             if index.column() == self.DESTINATION_SIZE_BYTES:
                 if not destination_present:
                     return ""
-                return str(
-                    int(
-                        directory.subtree_destination_size
-                        if directory is not None
-                        else (self._destination_size(change) if change else 0) or 0
-                    )
-                )
+                if directory is not None:
+                    return str(directory.subtree_destination_size)
+                size = self._destination_size_display(change) if change else None
+                return str(size) if size is not None else ""
             if change is None:
                 return ""
             if index.column() == self.SOURCE_TIME:
@@ -2141,6 +2140,19 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _destination_size(self, change: Change) -> int:
         return destination_size(change, self._destination_index)
+
+    def _destination_size_display(self, change: Change) -> int | None:
+        """A size only when the destination listing actually reported one.
+
+        The metadata listing is deliberately narrow and fetches the sizes of
+        deletions; for items that also exist on the source we have no
+        destination size. Showing 0 B there would be a false statement, so the
+        column stays blank instead.
+        """
+        if change.destination_size is not None:
+            return int(change.destination_size)
+        own = self._destination_index.own(str(change.path).rstrip("/"))
+        return own or None
 
     @staticmethod
     def _size(size: int | None) -> str:

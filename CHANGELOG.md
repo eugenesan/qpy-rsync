@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A destination size that was never listed now shows a blank cell instead of
+  a misleading "0 B". Deletions still show their real destination size, and
+  directory rows keep their "affected items only" totals.
 - Optional (off by default) detection of new destination-only items below a
   folder-level INCLUDE decision, configurable in Settings > Advanced. It is
   off because a subtree decision is often a deliberate choice, and rotating
