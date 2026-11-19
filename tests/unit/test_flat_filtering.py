@@ -708,6 +708,11 @@ def test_changed_decisions_are_filterable_and_reviewable() -> None:
         [Change("a.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting")]
     )
     assert model.conflicts()
+    assert model.data(
+        model.index(model.index_for_path("a.txt").row(), model.SOURCE_NAME),
+        CONFLICT_ROLE,
+    ) is None
+    model.conflicts_visible = True
     index = model.index_for_path("a.txt")
     assert model.data(model.index(index.row(), model.SOURCE_NAME), CONFLICT_ROLE)
 

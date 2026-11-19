@@ -1564,7 +1564,7 @@ class FlatComparisonView(QWidget):
                 actions["reset_all"].setEnabled(  # type: ignore[union-attr]
                     self.model.decisions.has_explicit()
                 )
-                if self.model.conflicts():
+                if self.model.conflicts_visible and self.model.conflicts():
                     actions["accept_conflicts"] = menu.addAction(
                         "Accept rsync default for all changed decisions"
                     )

@@ -224,6 +224,7 @@ class FlatChangeModel(QAbstractTableModel):
         self.detect_inherited_conflicts = False
         self.decision_history = DecisionHistory()
         self._conflicts: dict[str, str] = {}
+        self.conflicts_visible = False
         self._conflicts_only = False
         self._conflict_rows: set[str] = set()
         self._decision_batch = 0
@@ -1823,7 +1824,7 @@ class FlatChangeModel(QAbstractTableModel):
         if role == EXCLUDED_ROLE:
             return self.exclusion.is_excluded(row.path)
         if role == CONFLICT_ROLE:
-            return self._conflicts.get(row.path)
+            return self._conflicts.get(row.path) if self.conflicts_visible else None
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:

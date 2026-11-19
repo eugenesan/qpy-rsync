@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Conflict highlighting, the review filter and the "accept rsync default"
+  context-menu action are hidden unless the opt-in inherited-folder detection
+  is enabled in Settings > Advanced. The journal count remains.
 - Clicking a checkbox back to the decision rsync already proposes now clears
   the manual override instead of recording a redundant explicit decision.
   Undoing or restoring returns to the original state, as expected.

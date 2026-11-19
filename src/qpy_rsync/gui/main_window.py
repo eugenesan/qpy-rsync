@@ -625,6 +625,7 @@ class MainWindow(QMainWindow):
         self.action_filters.conflicts_toggled.connect(
             self.comparison.model.set_conflicts_only
         )
+        self._update_conflict_ui()
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
         # The direction line above the checkboxes names both sides, so the
@@ -1428,6 +1429,14 @@ class MainWindow(QMainWindow):
         self._next_compare_locations = locations
         self._next_compare_filters = self._filters_text
 
+    def _update_conflict_ui(self) -> None:
+        """Show conflict review controls only for the opt-in detection."""
+        enabled = bool(self._detect_inherited_conflicts)
+        self.comparison.model.conflicts_visible = enabled
+        self.action_filters.conflicts_box.setVisible(enabled)
+        if not enabled:
+            self.action_filters.conflicts_box.setChecked(False)
+
     def _update_verification_visibility(self) -> None:
         """Show the diagnostic only when it is enabled in Advanced settings."""
         enabled = bool(getattr(self, "_verification_enabled", False))
@@ -1724,6 +1733,7 @@ class MainWindow(QMainWindow):
             )
             settings.sync()
             self._update_verification_visibility()
+            self._update_conflict_ui()
             self._external_tools = dialog.external_tools()
             self._diff_command = dialog.diff_command()
             save_tools(self._external_tools)

@@ -1948,3 +1948,19 @@ def test_compare_warns_before_discarding_decisions(monkeypatch) -> None:
     window._compare()
     window.close()
     application.processEvents()
+
+
+def test_conflict_ui_is_hidden_unless_inherited_detection_is_enabled(tmp_path) -> None:
+    application = app()
+    settings = app_settings()
+    settings.setValue("decisions/detect-inherited", False)
+    settings.sync()
+    window = MainWindow()
+    assert window.action_filters.conflicts_box.isHidden()
+    assert not window.comparison.model.conflicts_visible
+    window._detect_inherited_conflicts = True
+    window._update_conflict_ui()
+    assert window.comparison.model.conflicts_visible
+    assert not window.action_filters.conflicts_box.isHidden()
+    window.close()
+    application.processEvents()
