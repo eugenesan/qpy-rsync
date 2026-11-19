@@ -112,6 +112,17 @@ objects are created when the GUI consumes them, not while rsync streams. This
 does not yet reduce the total time to the populated view; that needs the model
 to consume native arrays directly (Stage 4b).
 
+## Execution plan kernel (Stage 5)
+
+`build_execution_plan` can now run its item loop natively. The extension emits
+compact item arrays, summary counters and the exact byte stream that Python
+hashes for `items_fingerprint`; `PlanItem` objects are created lazily and
+cached. `native/check_plan.py` verifies items, summary and fingerprint against
+the Python implementation in four decision scenarios.
+
+On 520,000 changes: **1,386 ms → 466 ms** (3x), identical fingerprint. All 413
+tests pass with the flag on and off.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

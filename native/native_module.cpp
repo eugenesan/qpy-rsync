@@ -16,6 +16,7 @@
 namespace nb = nanobind;
 
 using u32 = std::uint32_t;
+using u64 = std::uint64_t;
 using i64 = std::int64_t;
 using u8 = std::uint8_t;
 
@@ -563,7 +564,137 @@ static ParsedRecords parse_records_native(const std::string& input,
   return out;
 }
 
+// Stage 5: the build_execution_plan loop. Python supplies the per-change
+// effective "included" decision (decision inheritance stays in Python); this
+// kernel emits compact item arrays, summary counters and the exact byte
+// stream used for the items fingerprint.
+struct PlanArrays {
+  std::vector<std::string> paths;
+  std::vector<int> actions;              // effective action code
+  std::vector<int> comparison_actions;
+  std::vector<int> kinds;
+  std::vector<u8> included;
+  std::vector<u8> destructive;
+  std::vector<i64> sizes;
+  std::vector<u8> size_none;
+  std::vector<std::string> delete_paths;
+  std::vector<int> delete_kinds;
+  std::string digest;                    // feed directly to sha256 in Python
+  u64 included_count = 0;
+  u64 excluded = 0;
+  u64 retained_destination_only = 0;
+  u64 destructive_count = 0;
+  u64 creates = 0;
+  u64 updates = 0;
+  u64 metadata = 0;
+  u64 deletions = 0;
+  i64 total_size = 0;
+  i64 included_size = 0;
+};
+
+static const char* action_value(int code) {
+  static const char* values[7] = {
+      "create", "update_content", "update_metadata", "delete",
+      "destination_only", "no_change", "message"};
+  return code >= 0 && code < 7 ? values[code] : "message";
+}
+
+static const char* kind_value(int code) {
+  static const char* values[6] = {
+      "file", "directory", "symlink", "device", "special", "unknown"};
+  return code >= 0 && code < 6 ? values[code] : "unknown";
+}
+
+static PlanArrays build_plan_arrays(const std::vector<std::string>& paths,
+                                    const std::vector<int>& actions,
+                                    const std::vector<int>& kinds,
+                                    const std::vector<i64>& sizes,
+                                    const std::vector<u8>& size_none,
+                                    const std::vector<u8>& included) {
+  PlanArrays out;
+  const std::size_t count = paths.size();
+  out.paths.reserve(count);
+  out.actions.reserve(count);
+  out.comparison_actions.reserve(count);
+  out.kinds.reserve(count);
+  out.included.reserve(count);
+  out.destructive.reserve(count);
+  out.sizes.reserve(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    const int comparison = i < actions.size() ? actions[i] : 0;
+    if (comparison == 5 || comparison == 6) continue;  // no change / message
+    const bool selected = i < included.size() && included[i] != 0;
+    const int effective =
+        (comparison == 4 && selected) ? 3 : comparison;  // dest-only -> delete
+    const bool destructive = selected && effective == 3;
+    const i64 size = i < sizes.size() ? sizes[i] : 0;
+    const int kind = i < kinds.size() ? kinds[i] : 0;
+
+    std::string clean = paths[i];
+    while (!clean.empty() && clean.back() == '/') clean.pop_back();
+    out.paths.push_back(clean);
+    out.actions.push_back(effective);
+    out.comparison_actions.push_back(comparison);
+    out.kinds.push_back(kind);
+    out.included.push_back(selected ? 1 : 0);
+    out.destructive.push_back(destructive ? 1 : 0);
+    out.sizes.push_back(size);
+    out.size_none.push_back(
+        i < size_none.size() && size_none[i] != 0 ? 1 : 0);
+
+    if (selected) {
+      ++out.included_count;
+      if (destructive) ++out.destructive_count;
+      out.included_size += size;
+      if (effective == 0 || effective == 1) out.total_size += size;
+      if (effective == 0) ++out.creates;
+      else if (effective == 1) ++out.updates;
+      else if (effective == 2) ++out.metadata;
+      else if (effective == 3) {
+        ++out.deletions;
+        out.delete_paths.push_back(clean);
+        out.delete_kinds.push_back(kind);
+      }
+    } else if (comparison == 4) {
+      ++out.retained_destination_only;
+    } else {
+      ++out.excluded;
+    }
+
+    out.digest += clean;
+    out.digest += action_value(effective);
+    out.digest += kind_value(kind);
+    out.digest += selected ? '1' : '0';
+  }
+  return out;
+}
+
 NB_MODULE(_qpy_native, m) {
+  nb::class_<PlanArrays>(m, "PlanArrays")
+      .def_ro("paths", &PlanArrays::paths)
+      .def_ro("actions", &PlanArrays::actions)
+      .def_ro("comparison_actions", &PlanArrays::comparison_actions)
+      .def_ro("kinds", &PlanArrays::kinds)
+      .def_ro("included", &PlanArrays::included)
+      .def_ro("destructive", &PlanArrays::destructive)
+      .def_ro("sizes", &PlanArrays::sizes)
+      .def_ro("size_none", &PlanArrays::size_none)
+      .def_ro("delete_paths", &PlanArrays::delete_paths)
+      .def_ro("delete_kinds", &PlanArrays::delete_kinds)
+      .def_ro("digest", &PlanArrays::digest)
+      .def_ro("included_count", &PlanArrays::included_count)
+      .def_ro("excluded", &PlanArrays::excluded)
+      .def_ro("retained_destination_only", &PlanArrays::retained_destination_only)
+      .def_ro("destructive_count", &PlanArrays::destructive_count)
+      .def_ro("creates", &PlanArrays::creates)
+      .def_ro("updates", &PlanArrays::updates)
+      .def_ro("metadata", &PlanArrays::metadata)
+      .def_ro("deletions", &PlanArrays::deletions)
+      .def_ro("total_size", &PlanArrays::total_size)
+      .def_ro("included_size", &PlanArrays::included_size);
+  m.def("build_plan_arrays", &build_plan_arrays, nb::arg("paths"),
+        nb::arg("actions"), nb::arg("kinds"), nb::arg("sizes"),
+        nb::arg("size_none"), nb::arg("included"));
   nb::class_<NativeFilter>(m, "NativeFilter")
       .def(nb::init<std::vector<int>, std::vector<int>, std::vector<bool>,
                     std::vector<i64>, std::size_t>())

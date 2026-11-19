@@ -93,4 +93,13 @@ before the next one starts.
     happens later, but the total time to the populated view is unchanged.
   - **Stage 4b remains:** teach `FlatChangeModel` to consume native arrays
     directly so the 520,000 `Change` objects are never created.
-- Stages 5–8 not started.
+- **Stage 5 done** (this commit): `build_execution_plan` can use a native
+  kernel for the item loop, summary counters and the items-fingerprint byte
+  stream. Decision inheritance and the deleted-size lookup stay in Python.
+  `native/check_plan.py` compares items, summary and fingerprint byte-for-byte
+  in four decision scenarios; a pytest parity test covers the integrated path.
+  - Measured on 520,000 changes: plan 1,386 ms (Python) → 466 ms (native) with
+    an identical `items_fingerprint`.
+  - `decision_filter_lines` (~200 ms) is not moved yet; the analysis rates it
+    lower value because it is cached by plan content (Stage 5b).
+- Stages 6–8 not started.

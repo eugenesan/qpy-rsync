@@ -71,6 +71,45 @@ def test_native_folding_keeps_totals(monkeypatch: pytest.MonkeyPatch) -> None:
     assert signature(python) == signature(native)
 
 
+def test_native_plan_parity(monkeypatch: pytest.MonkeyPatch) -> None:
+    from qpy_rsync.core.changes import ChangeDecisions, ChangeDecision
+    from qpy_rsync.core.enums import EndpointKind
+    from qpy_rsync.core.execution_plan import build_execution_plan
+    from qpy_rsync.core.models import Endpoint, SyncProfile
+
+    profile = SyncProfile(
+        "plan",
+        Endpoint(EndpointKind.LOCAL, "/src/"),
+        Endpoint(EndpointKind.LOCAL, "/dst/"),
+    )
+
+    def run(flag: str) -> tuple[object, ...]:
+        monkeypatch.setenv("QPY_RSYNC_NATIVE", flag)
+        decisions = ChangeDecisions()
+        decisions.set("docs/a.txt", ChangeDecision.EXCLUDE)
+        plan = build_execution_plan(profile, changes(), decisions)
+        return (
+            tuple(
+                (
+                    item.path,
+                    item.action,
+                    item.comparison_action,
+                    item.kind,
+                    item.included,
+                    item.destructive,
+                    item.size,
+                )
+                for item in plan.items
+            ),
+            plan.summary,
+            plan.items_fingerprint,
+            plan.decision_signature,
+            plan.profile_fingerprint,
+        )
+
+    assert run("0") == run("1")
+
+
 def test_compare_service_parser_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     from qpy_rsync.backend.process_runner import ProcessResult
     from qpy_rsync.services.compare_service import CompareService

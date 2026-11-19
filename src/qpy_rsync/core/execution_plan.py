@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
-from typing import Iterable
+from typing import Iterable, overload
 
 from qpy_rsync.backend.diagnostics import timed
+from qpy_rsync.backend.native_backend import (
+    NATIVE_ACTIONS,
+    NATIVE_KINDS,
+    native_module,
+)
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_subtree_size,
@@ -72,6 +78,129 @@ class ExecutionPlan:
         return tuple(item for item in self.items if item.included)
 
 
+_NATIVE_ACTIONS = tuple(ChangeAction(value) for value in NATIVE_ACTIONS)
+_NATIVE_KINDS = tuple(ObjectKind(value) for value in NATIVE_KINDS)
+_NATIVE_ACTION_CODE = {action: index for index, action in enumerate(_NATIVE_ACTIONS)}
+_NATIVE_KIND_CODE = {kind: index for index, kind in enumerate(_NATIVE_KINDS)}
+
+
+class _LazyPlanItems(Sequence[PlanItem]):
+    """A PlanItem sequence backed by compact native arrays."""
+
+    def __init__(self, arrays: object) -> None:
+        self._arrays = arrays
+        self._cache: dict[int, PlanItem] = {}
+
+    def __len__(self) -> int:
+        return len(self._arrays.paths)
+
+    @overload
+    def __getitem__(self, index: int) -> PlanItem: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[PlanItem]: ...
+
+    def __getitem__(self, index: int | slice) -> PlanItem | list[PlanItem]:
+        if isinstance(index, slice):
+            return [self._item_at(i) for i in range(*index.indices(len(self)))]
+        length = len(self)
+        position = index + length if index < 0 else index
+        if not 0 <= position < length:
+            raise IndexError("plan item index out of range")
+        return self._item_at(position)
+
+    def __iter__(self) -> Iterator[PlanItem]:
+        for index in range(len(self)):
+            yield self._item_at(index)
+
+    def _item_at(self, index: int) -> PlanItem:
+        item = self._cache.get(index)
+        if item is None:
+            arrays = self._arrays
+            item = PlanItem(
+                path=arrays.paths[index],
+                action=_NATIVE_ACTIONS[arrays.actions[index]],
+                comparison_action=_NATIVE_ACTIONS[
+                    arrays.comparison_actions[index]
+                ],
+                kind=_NATIVE_KINDS[arrays.kinds[index]],
+                included=bool(arrays.included[index]),
+                destructive=bool(arrays.destructive[index]),
+                size=None if arrays.size_none[index] else arrays.sizes[index],
+            )
+            self._cache[index] = item
+        return item
+
+    def __repr__(self) -> str:
+        return f"<PlanItems {len(self)} items>"
+
+
+def _build_native_plan(
+    profile: SyncProfile,
+    changes_list: list[Change],
+    decisions: ChangeDecisions,
+    destination_metadata: dict[str, tuple[int | None, str | None]] | None,
+    native: object,
+) -> ExecutionPlan:
+    """Build a plan with the native loop; decision inheritance stays Python."""
+    included = [
+        1 if decisions.effective(change) is not ChangeDecision.EXCLUDE else 0
+        for change in changes_list
+    ]
+    arrays = native.build_plan_arrays(
+        [str(change.path) for change in changes_list],
+        [_NATIVE_ACTION_CODE[change.action] for change in changes_list],
+        [_NATIVE_KIND_CODE[change.kind] for change in changes_list],
+        [int(change.size or 0) for change in changes_list],
+        [1 if change.size is None else 0 for change in changes_list],
+        included,
+    )
+
+    metadata = build_destination_size_index(destination_metadata or {})
+    delete_paths = set(arrays.delete_paths)
+    deleted_size = 0
+
+    def has_delete_ancestor(path: str) -> bool:
+        parent = path.rpartition("/")[0]
+        while parent:
+            if parent in delete_paths:
+                return True
+            parent = parent.rpartition("/")[0]
+        return False
+
+    for index, path in enumerate(arrays.delete_paths):
+        if has_delete_ancestor(path):
+            continue
+        deleted_size += destination_subtree_size(
+            path, _NATIVE_KINDS[arrays.delete_kinds[index]], metadata
+        )
+
+    summary = PlanSummary(
+        included=arrays.included_count,
+        excluded=arrays.excluded,
+        modified=decisions.modified_count(changes_list),
+        retained_destination_only=arrays.retained_destination_only,
+        destructive=arrays.destructive_count,
+        creates=arrays.creates,
+        updates=arrays.updates,
+        metadata=arrays.metadata,
+        deletions=arrays.deletions,
+        deleted_size=deleted_size,
+        backup_enabled=profile.backup.enabled,
+        total_size=arrays.total_size,
+        included_size=arrays.included_size,
+    )
+    return ExecutionPlan(
+        profile_fingerprint=profile_fingerprint(profile),
+        source_operand=profile.source.rsync_operand(),
+        destination_operand=profile.destination.rsync_operand(),
+        items=_LazyPlanItems(arrays),
+        summary=summary,
+        decision_signature=decision_signature(decisions),
+        items_fingerprint=sha256(arrays.digest.encode("utf-8")).hexdigest(),
+    )
+
+
 def profile_fingerprint(profile: SyncProfile) -> str:
     # Fingerprint synchronization semantics, not profile identity or labels.
     # Ad-hoc profiles are reconstructed by the GUI and therefore receive a new
@@ -101,6 +230,11 @@ def build_execution_plan(
     destination_metadata: dict[str, tuple[int | None, str | None]] | None = None,
 ) -> ExecutionPlan:
     changes_list = list(changes)
+    native = native_module()
+    if native is not None:
+        return _build_native_plan(
+            profile, changes_list, decisions, destination_metadata, native
+        )
     items: list[PlanItem] = []
     creates = updates = metadata_count = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
