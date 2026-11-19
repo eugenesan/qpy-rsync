@@ -3963,14 +3963,19 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Comparison failed", message)
 
     def _start_rsync_clock(self, label: str) -> None:
-        self._rsync_started_at[label] = time.monotonic()
+        self._rsync_started_at[label] = (time.monotonic(), datetime.now())
 
     def _log_rsync_elapsed(self, label: str) -> None:
         started = self._rsync_started_at.pop(label, None)
         if started is None:
             return
-        elapsed = time.monotonic() - started
-        self._append_log(f"rsync {label} finished in {elapsed:.2f} s.")
+        monotonic_start, wall_start = started
+        elapsed = time.monotonic() - monotonic_start
+        wall = (datetime.now() - wall_start).total_seconds()
+        self._append_log(
+            f"rsync {label} finished in {elapsed:.2f} s "
+            f"(wall {wall:.2f} s)."
+        )
 
     def _log_spec(self, spec: object) -> None:
         argv = getattr(spec, "argv", None)
