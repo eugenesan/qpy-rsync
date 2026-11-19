@@ -398,19 +398,45 @@ struct NativeComparison {
 };
 
 // Experimental rsync itemized-record parser. Mirrors backend/rsync_parser.py
-// closely enough to measure the raw parse cost without Python object creation.
+// field for field so the lazy Change sequence can be validated byte-for-byte.
 struct ParsedRecords {
   std::vector<std::string> paths;
   std::vector<int> actions;
   std::vector<int> kinds;
   std::vector<i64> sizes;
   std::vector<std::string> codes;
-  std::vector<std::string> times;
+  std::vector<std::string> times;      // empty means None
+  std::vector<std::string> link_targets;
+  std::vector<std::string> reasons;
+  std::vector<u8> size_none;           // deletion records carry no size
+  std::vector<std::string> skipped;    // informational and root records
+  std::string error;                   // first parse error, empty when valid
 };
+
+// Mirrors backend/rsync_parser.describe_itemized.
+static std::string describe_itemized(const std::string& code, bool deleting) {
+  if (deleting) return "destination-only object will be deleted";
+  if (code.size() < 11) return "unrecognized rsync action";
+  const std::string attrs = code.substr(2, 9);
+  if (attrs.find('+') != std::string::npos) return "new object";
+  static const char* labels[8] = {
+      "checksum/value", "size", "modification time", "permissions",
+      "owner", "group", "ACL", "extended attributes"};
+  std::string reason;
+  for (int position = 0; position < 8; ++position) {
+    if (position < static_cast<int>(attrs.size()) &&
+        attrs[position] != '.' && attrs[position] != ' ') {
+      if (!reason.empty()) reason += ", ";
+      reason += labels[position];
+    }
+  }
+  return reason.empty() ? "rsync reported a change" : reason;
+}
 
 static ParsedRecords parse_records_native(const std::string& input,
                                           bool delete_enabled) {
   static const std::string sep = "|qpy-rsync|";
+  static const std::string link_marker = " -> ";
   ParsedRecords out;
   std::size_t cursor = 0;
   while (cursor <= input.size()) {
@@ -421,27 +447,80 @@ static ParsedRecords parse_records_native(const std::string& input,
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
     std::size_t a = line.find(sep);
-    if (a == std::string::npos) continue;
+    if (a == std::string::npos) {
+      out.skipped.push_back(line);  // informational line, not an error
+      continue;
+    }
     std::size_t b = line.find(sep, a + sep.size());
-    if (b == std::string::npos) continue;
+    if (b == std::string::npos) {
+      out.error = "Expected four output fields, got 2";
+      return out;
+    }
     std::size_t c = line.find(sep, b + sep.size());
-    if (c == std::string::npos) continue;
+    if (c == std::string::npos) {
+      out.error = "Expected four output fields, got 3";
+      return out;
+    }
+    if (line.find(sep, c + sep.size()) != std::string::npos) {
+      out.error = "Field separator appears in filename; record is ambiguous";
+      return out;
+    }
     const std::string code = line.substr(0, a);
     const std::string size_text = line.substr(a + sep.size(), b - a - sep.size());
     const std::string time_text = line.substr(b + sep.size(), c - b - sep.size());
-    std::string path = line.substr(c + sep.size());
+    std::string name_and_link = line.substr(c + sep.size());
     const bool deleting = code.rfind("*deleting", 0) == 0;
-    if (!deleting && code.size() != 11) continue;
-    static const std::string link_marker = " -> ";
-    if (!deleting && code.size() > 1 && code[1] == 'L') {
-      std::size_t marker = path.find(link_marker);
-      if (marker != std::string::npos) path = path.substr(0, marker);
+    if (!deleting && code.size() != 11) {
+      out.error = "Invalid itemized code: '" + code + "'";
+      return out;
     }
-    if (path == "." || path == "./") continue;
-    if (path.empty()) continue;
+    if (name_and_link.find('\0') != std::string::npos) {
+      out.error = "NUL in rsync output is unsupported";
+      return out;
+    }
+    i64 size = 0;
+    bool size_none = false;
+    if (deleting) {
+      size_none = true;
+    } else {
+      bool digits = !size_text.empty();
+      for (char ch : size_text) {
+        if (ch < '0' || ch > '9') {
+          digits = false;
+          break;
+        }
+      }
+      if (!digits) {
+        out.error = "Invalid size field: '" + size_text + "'";
+        return out;
+      }
+      try {
+        size = std::stoll(size_text);
+      } catch (...) {
+        out.error = "Invalid size field: '" + size_text + "'";
+        return out;
+      }
+    }
+    std::string link_target;
+    if (!deleting && code.size() > 1 && code[1] == 'L') {
+      std::size_t marker = name_and_link.find(link_marker);
+      if (marker != std::string::npos) {
+        link_target = name_and_link.substr(marker + link_marker.size());
+        name_and_link = name_and_link.substr(0, marker);
+      }
+    }
+    if (name_and_link == "." || name_and_link == "./") {
+      out.skipped.push_back(line);
+      if (end == input.size()) break;
+      continue;
+    }
+    if (name_and_link.empty()) {
+      out.error = "Empty change path";
+      return out;
+    }
     int action = 0;  // create
     if (deleting) {
-      action = delete_enabled ? 4 : 5;  // delete / destination_only
+      action = delete_enabled ? 3 : 4;  // delete / destination_only
     } else {
       const std::string attrs = code.substr(2);
       if (attrs.find('+') != std::string::npos) {
@@ -454,39 +533,31 @@ static ParsedRecords parse_records_native(const std::string& input,
         for (char ch : attrs) {
           if (ch != '.' && ch != ' ') metadata = true;
         }
-        action = metadata ? 2 : 6;  // metadata / no_change
+        action = metadata ? 2 : 5;  // metadata / no change
       }
     }
     int kind = 0;  // file
     if (deleting) {
-      kind = (!path.empty() && path.back() == '/') ? 1 : 0;
+      kind = (!name_and_link.empty() && name_and_link.back() == '/') ? 1 : 0;
     } else if (code.size() > 1) {
       switch (code[1]) {
+        case 'f': kind = 0; break;
         case 'd': kind = 1; break;
         case 'L': kind = 2; break;
         case 'D': kind = 3; break;
         case 'S': kind = 4; break;
-        default: kind = 0;
+        default: kind = 5;  // unknown
       }
     }
-    i64 size = 0;
-    if (!deleting) {
-      std::size_t pos = 0;
-      if (!size_text.empty()) {
-        try {
-          size = std::stoll(size_text, &pos);
-          if (pos != size_text.size()) size = 0;
-        } catch (...) {
-          size = 0;
-        }
-      }
-    }
-    out.paths.push_back(std::move(path));
+    out.paths.push_back(std::move(name_and_link));
     out.actions.push_back(action);
     out.kinds.push_back(kind);
     out.sizes.push_back(size);
     out.codes.push_back(code);
     out.times.push_back(deleting ? std::string() : time_text);
+    out.link_targets.push_back(std::move(link_target));
+    out.reasons.push_back(describe_itemized(code, deleting));
+    out.size_none.push_back(size_none ? 1 : 0);
     if (end == input.size()) break;
   }
   return out;
@@ -539,7 +610,12 @@ NB_MODULE(_qpy_native, m) {
       .def_ro("kinds", &ParsedRecords::kinds)
       .def_ro("sizes", &ParsedRecords::sizes)
       .def_ro("codes", &ParsedRecords::codes)
-      .def_ro("times", &ParsedRecords::times);
+      .def_ro("times", &ParsedRecords::times)
+      .def_ro("link_targets", &ParsedRecords::link_targets)
+      .def_ro("reasons", &ParsedRecords::reasons)
+      .def_ro("size_none", &ParsedRecords::size_none)
+      .def_ro("skipped", &ParsedRecords::skipped)
+      .def_ro("error", &ParsedRecords::error);
   m.def("parse_records", &parse_records_native, nb::arg("input"),
         nb::arg("delete_enabled"));
 }

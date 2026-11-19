@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Callable
 
 from qpy_rsync.backend.diagnostics import debug, debug_timing
+from qpy_rsync.backend.native_records import NativeRecordStore, new_store
 from qpy_rsync.backend.process_runner import (
     ProcessResult,
     ProcessState,
@@ -41,6 +42,13 @@ class CompareService:
         self._parse_seconds = 0.0
         self._log_seconds = 0.0
         self._line_count = 0
+        # With the optional native backend the records are accumulated in
+        # flat arrays instead of one Change object per line.
+        self._native_store: NativeRecordStore | None = new_store(
+            delete_enabled=False
+        )
+        self._pending_lines: list[str] = []
+        self._last_items_reported = 0
         self._runner = QtProcessRunner(parent)  # type: ignore[arg-type]
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[CompareResult], None] = lambda _result: None
@@ -68,6 +76,11 @@ class CompareService:
         self._parse_seconds = 0.0
         self._log_seconds = 0.0
         self._line_count = 0
+        self._pending_lines = []
+        self._last_items_reported = 0
+        self._native_store = new_store(
+            delete_enabled=profile.transfer.mirror_enabled
+        )
         self.on_started()
         self._runner.start(build_compare_spec(profile))
 
@@ -111,6 +124,28 @@ class CompareService:
         self._buffer = parts.pop()
         for line in parts:
             self._emit_line(line)
+        self._flush_native_lines()
+
+    def _flush_native_lines(self) -> None:
+        """Parse a batch of buffered lines into the native record store."""
+        if not self._pending_lines or self._native_store is None:
+            return
+        lines = self._pending_lines
+        self._pending_lines = []
+        if self._parse_error is not None:
+            return
+        self._native_store.delete_enabled = self._delete_enabled
+        started = perf_counter()
+        try:
+            self._native_store.append(lines)
+        except RsyncParseError as exc:
+            self._parse_error = str(exc)
+        self._parse_seconds += perf_counter() - started
+        count = len(self._native_store)
+        self._line_count = count + len(self._native_store.diagnostics)
+        if count // 1000 > self._last_items_reported // 1000:
+            self._last_items_reported = count
+            self.on_items(count)
 
     def _emit_line(self, line: str) -> None:
         cleaned = line.strip()
@@ -127,6 +162,9 @@ class CompareService:
         self.on_log(cleaned)
         self._log_seconds += perf_counter() - log_started
         if self._parse_error is not None:
+            return
+        if self._native_store is not None:
+            self._pending_lines.append(cleaned)
             return
         parse_started = perf_counter()
         try:
@@ -150,7 +188,12 @@ class CompareService:
         if self._buffer:
             self._emit_line(self._buffer)
             self._buffer = ""
-        self.on_items(len(self._changes))
+        self._flush_native_lines()
+        self.on_items(
+            len(self._native_store)
+            if self._native_store is not None
+            else len(self._changes)
+        )
         debug_timing(
             "compare.parse",
             lines=self._line_count,
@@ -175,21 +218,40 @@ class CompareService:
         if self._parse_error is not None:
             self.on_error(f"Could not parse rsync output: {self._parse_error}")
             return
-        # A caller that fed the whole output at the end instead of
-        # streaming it (a synchronous test or a runner) bypasses the
-        # streaming path; parse it now so the result is complete.
-        if not self._changes and process.stdout:
-            from qpy_rsync.backend.rsync_parser import parse_output
-
-            try:
-                parsed = parse_output(
-                    process.stdout, delete_enabled=self._delete_enabled
+        if self._native_store is not None:
+            # A caller that fed the whole output at the end instead of
+            # streaming it bypasses the streaming path; parse it now.
+            if not len(self._native_store) and process.stdout:
+                started = perf_counter()
+                try:
+                    self._native_store.append(process.stdout.splitlines())
+                except RsyncParseError as exc:
+                    self.on_error(f"Could not parse rsync output: {exc}")
+                    return
+                self._parse_seconds += perf_counter() - started
+                self._line_count = (
+                    len(self._native_store) + len(self._native_store.diagnostics)
                 )
-            except ValueError as exc:
-                self.on_error(f"Could not parse rsync output: {exc}")
-                return
-            self._changes = list(parsed.changes)
-            self._diagnostics = list(parsed.diagnostics)
-        parsed = ParseResult(list(self._changes), list(self._diagnostics))
+            parsed = ParseResult(
+                self._native_store.changes() if len(self._native_store) else [],
+                self._native_store.diagnostics,
+            )
+        else:
+            # A caller that fed the whole output at the end instead of
+            # streaming it (a synchronous test or a runner) bypasses the
+            # streaming path; parse it now so the result is complete.
+            if not self._changes and process.stdout:
+                from qpy_rsync.backend.rsync_parser import parse_output
+
+                try:
+                    parsed_from_output = parse_output(
+                        process.stdout, delete_enabled=self._delete_enabled
+                    )
+                except ValueError as exc:
+                    self.on_error(f"Could not parse rsync output: {exc}")
+                    return
+                self._changes = list(parsed_from_output.changes)
+                self._diagnostics = list(parsed_from_output.diagnostics)
+            parsed = ParseResult(list(self._changes), list(self._diagnostics))
         debug("compare.parsed", changes=len(parsed.changes), diagnostics=len(parsed.diagnostics))
         self.on_finished(CompareResult(parsed, process.stderr, process.exit_code))

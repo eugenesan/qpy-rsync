@@ -16,7 +16,6 @@ work with the flat rows without a change.
 
 from __future__ import annotations
 
-import os
 from bisect import bisect_left
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -27,6 +26,10 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 
 from qpy_rsync.backend.diagnostics import debug_timing, timed
+from qpy_rsync.backend.native_backend import (
+    NATIVE_ACTION_CODE as _NATIVE_ACTION_CODE,
+    native_module,
+)
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_size,
@@ -43,33 +46,6 @@ from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
 from .text_elide import elide_path, wrap_path
-
-# Optional native backend. The application ships the Python implementation;
-# the extension is enabled only by QPY_RSYNC_NATIVE=1 or =auto. "auto" uses it
-# when the module is present, anything else (including unset) stays on Python.
-_NATIVE_ACTION_CODE = {
-    "create": 0,
-    "update_content": 1,
-    "update_metadata": 2,
-    "delete": 3,
-    "destination_only": 4,
-    "no_change": 5,
-    "message": 6,
-}
-
-
-def _native_backend_module():
-    flag = os.environ.get("QPY_RSYNC_NATIVE", "").strip().lower()
-    if flag not in {"1", "true", "yes", "on", "auto"}:
-        return None
-    try:
-        from qpy_rsync import _qpy_native
-
-        return _qpy_native
-    except (ImportError, OSError):
-        debug("native.backend_unavailable", flag=flag)
-        return None
-
 
 class ExcludedPaths:
     """The EXCLUDE decisions, exposed as the old exclusion API.
@@ -347,7 +323,7 @@ class FlatChangeModel(QAbstractTableModel):
         self.layout_token = 0
         # Optional persistent native mirror of this comparison, built once
         # per row layout and reused by every filter pass.
-        self._native = _native_backend_module()
+        self._native = native_module()
         self._native_comparison: object | None = None
 
     @property

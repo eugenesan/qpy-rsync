@@ -6,6 +6,8 @@
   that computes filter visibility, ancestor closure and aggregates in C++,
   with a 520,000-item byte-for-byte differential harness. The optional backend
   is selected with `QPY_RSYNC_NATIVE=0|1|auto`; Python remains the default.
+  The optional path also accumulates compare records in native arrays and
+  exposes them lazily, with a full parser differential check.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the

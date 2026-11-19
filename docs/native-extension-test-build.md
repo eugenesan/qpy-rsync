@@ -99,6 +99,19 @@ native mirror (4.75 s vs 4.24 s) because it still builds the Python `Change`
 list and then copies it into native arrays; Stage 4 removes the duplicate
 work by parsing into native storage directly.
 
+## Compare parser integration (Stage 4)
+
+`CompareService` can now accumulate rsync records directly into native flat
+arrays and expose them as a lazy `Sequence[Change]`. `native/check_parse.py`
+validates every field of eleven record types plus malformed-input errors
+against the Python parser. The full suite passes with the flag both off and on
+(412 tests), including a `CompareService` parser-parity test.
+
+The parse phase is faster (about 1 s saved on 520,000 records) because Change
+objects are created when the GUI consumes them, not while rsync streams. This
+does not yet reduce the total time to the populated view; that needs the model
+to consume native arrays directly (Stage 4b).
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

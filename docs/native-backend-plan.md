@@ -81,4 +81,16 @@ before the next one starts.
     (native); `set_changes` 4.24 s → 4.75 s (the one-time mirror costs more
     than it saves until the parser is native too, Stage 4).
   - Path-pattern filters still use the Python path; search is Stage 6.
-- Stages 4–8 not started.
+- **Stage 4 done** (this commit): `CompareService` can accumulate parsed
+  records in native arrays behind the same flag, and `ParseResult.changes`
+  becomes a lazy `Sequence[Change]`. The parser now produces every `Change`
+  field (link target, reason, deletion size/time, kind, action), and
+  `native/check_parse.py` compares full records plus the malformed-record
+  error against `backend/rsync_parser.py`.
+  - Measured on 520,000 records: Python `parse_record` 1.56 s; native
+    accumulation 0.56 s; lazy `Change` materialization 1.01 s. The parse
+    phase logged by the application drops by about 1 s because materialization
+    happens later, but the total time to the populated view is unchanged.
+  - **Stage 4b remains:** teach `FlatChangeModel` to consume native arrays
+    directly so the 520,000 `Change` objects are never created.
+- Stages 5–8 not started.

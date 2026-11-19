@@ -69,3 +69,43 @@ def test_native_folding_keeps_totals(monkeypatch: pytest.MonkeyPatch) -> None:
         model.set_collapsed("docs", True)
         model.refresh_collapsed({"docs"})
     assert signature(python) == signature(native)
+
+
+def test_compare_service_parser_parity(monkeypatch: pytest.MonkeyPatch) -> None:
+    from qpy_rsync.backend.process_runner import ProcessResult
+    from qpy_rsync.services.compare_service import CompareService
+
+    lines = [
+        ">f+++++++++|qpy-rsync|10|qpy-rsync|2026/01/01|qpy-rsync|new.txt",
+        "*deleting  |qpy-rsync||qpy-rsync||qpy-rsync|old.txt",
+        "cL+++++++++|qpy-rsync|5|qpy-rsync|2026/01/01|qpy-rsync|link -> target",
+        ">f+++++++++|qpy-rsync|10|qpy-rsync|2026/01/01|qpy-rsync|.",
+        "an informational line",
+    ]
+
+    def run(flag: str) -> tuple[list[tuple[object, ...]], list[str]]:
+        monkeypatch.setenv("QPY_RSYNC_NATIVE", flag)
+        service = CompareService()
+        finished: list[object] = []
+        service.on_finished = finished.append
+        for line in lines:
+            service._stdout_chunk(line + "\n")
+        service._finish(ProcessResult(0, "", ""))
+        parsed = finished[0].parsed
+        return (
+            [
+                (
+                    change.path,
+                    change.action,
+                    change.kind,
+                    change.size,
+                    change.modified_time,
+                    change.link_target,
+                    change.reason,
+                )
+                for change in parsed.changes
+            ],
+            parsed.diagnostics,
+        )
+
+    assert run("0") == run("1")
