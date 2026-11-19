@@ -1970,3 +1970,36 @@ def test_conflict_ui_is_hidden_unless_inherited_detection_is_enabled(tmp_path) -
     assert not window.action_filters.conflicts_box.isHidden()
     window.close()
     application.processEvents()
+
+
+def test_preserve_button_restores_after_a_fresh_comparison() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.enums import SyncMode
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    application.processEvents()
+    assert window.preserve_button.isChecked()
+
+    window.sync_mode.setCurrentIndex(window.sync_mode.findData(SyncMode.MIRROR))
+    application.processEvents()
+    assert not window.preserve_button.isChecked()
+    assert "forced" in window.preserve_button.toolTip()
+
+    window._comparison_finished(
+        CompareResult(ParseResult([], [], ), "", 0)
+    )
+    application.processEvents()
+    assert window.preserve_button.isChecked()
+    assert "Preserve decisions restored" in window.log.toPlainText()
+    window.close()
+    application.processEvents()

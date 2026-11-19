@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- After a fresh comparison, the Preserve decisions button returns to the
+  state the app forced off while the comparison was stale. A manual click
+  still wins.
+- The synchronization dialog no longer claims a verified second dry run
+  unless verification actually ran; its heading says "selected" instead of
+  "verified" otherwise.
 - Preserve decisions is now a toggle button beside Compare, using the same
   state badge style as the other toolbar buttons. Its tooltip describes the
   current state, and the indicator lights up when the app forced it off

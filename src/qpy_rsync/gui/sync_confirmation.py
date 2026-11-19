@@ -124,6 +124,7 @@ class SyncConfirmationDialog(QDialog):
         parent=None,
         *,
         filter_path: Path | None = None,
+        verified: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Confirm synchronization")
@@ -131,8 +132,9 @@ class SyncConfirmationDialog(QDialog):
         summary = confirmation_summary(profile, plan)
 
         layout = QVBoxLayout(self)
+        reviewed = "verified" if verified else "selected"
         self.heading = QLabel(
-            "Review verified synchronization "
+            f"Review {reviewed} synchronization "
             f"(fingerprint: {summary.fingerprint})"
         )
         self.heading.setObjectName("confirmation-heading")
@@ -307,9 +309,14 @@ class SyncConfirmationDialog(QDialog):
         self.preview_splitter.setSizes([140, 300])
         layout.addWidget(self.preview_splitter, 1)
 
-        self.details = QLabel(
+        verification_note = (
             "This confirmation is based on a verified second dry run. "
-            "Confirming will launch write-capable rsync for the reviewed "
+            if verified
+            else ""
+        )
+        self.details = QLabel(
+            verification_note
+            + "Confirming will launch write-capable rsync for the reviewed "
             "Source and Destination. The private decision filter is created "
             "for this confirmation and removed after execution."
         )

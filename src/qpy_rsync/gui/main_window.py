@@ -343,6 +343,7 @@ class MainWindow(QMainWindow):
         self._last_compare_filters: str = ""
         self._preserve_for_compare = True
         self._preserve_reason = ""
+        self._preserve_before_force: bool | None = None
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
         self._build_ui()
@@ -1398,6 +1399,8 @@ class MainWindow(QMainWindow):
         self._update_preserve_button()
 
     def _preserve_toggled(self, enabled: bool) -> None:
+        # A manual click overrides the automatic stale-state handling.
+        self._preserve_before_force = None
         self._preserve_decisions = bool(enabled)
         self.comparison.model.preserve_decisions = self._preserve_decisions
         self._update_preserve_button()
@@ -1479,6 +1482,8 @@ class MainWindow(QMainWindow):
         # indicator. The button stays clickable: the user may check it again
         # to force preservation despite the changed locations or filters.
         if stale and self.preserve_button.isChecked():
+            # Remember the user's setting so a fresh comparison can restore it.
+            self._preserve_before_force = True
             self._set_preserve_checked(False)
             self._preserve_decisions = False
             self.comparison.model.preserve_decisions = False
@@ -2861,6 +2866,7 @@ class MainWindow(QMainWindow):
                 plan,
                 self,
                 filter_path=filter_path,
+                verified=self._validated_plan is not None,
             )
             accepted = bool(dialog.exec())
             if not accepted:
@@ -3392,6 +3398,18 @@ class MainWindow(QMainWindow):
                 "warning",
             )
         self.comparison.set_stale(False)
+        if self._preserve_before_force is not None:
+            restore = self._preserve_before_force
+            self._preserve_before_force = None
+            self._set_preserve_checked(restore)
+            self._preserve_decisions = restore
+            self.comparison.model.preserve_decisions = restore
+            settings = app_settings()
+            settings.setValue("decisions/preserve", restore)
+            settings.sync()
+            self._append_log(
+                "Preserve decisions restored after the fresh comparison."
+            )
         self._update_filter_summary(stale=False)
         self._set_locations_stale(False)
         self._validated_plan = None

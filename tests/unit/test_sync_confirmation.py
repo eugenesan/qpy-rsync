@@ -57,12 +57,13 @@ def test_confirmation_is_ready_without_an_extra_acknowledgement() -> None:
     assert dialog.confirm_button.text() == "Synchronize Now"
     # The fingerprint moved into the header; the old text box is gone.
     assert dialog.heading.text() == (
-        "Review verified synchronization "
+        "Review selected synchronization "
         f"(fingerprint: {summary.fingerprint})"
     )
     assert dialog.command is not None
     assert dialog.rules_label.text() == "Decision rules"
     assert dialog.details.font().bold()
+    assert "verified second dry run" not in dialog.details.text()
     # The stats are a table with two label/value pairs per row.
     assert dialog.stats.item(0, 0).text() == "Included"
     assert dialog.stats.item(0, 1).text() == "1"
@@ -220,5 +221,20 @@ def test_summary_table_ignores_wheel_scrolling() -> None:
     )
     QApplication.sendEvent(dialog.stats.viewport(), event)
     assert bar.value() == 0
+    dialog.close()
+    application.processEvents()
+
+
+def test_confirmation_mentions_verification_only_when_it_ran() -> None:
+    application = app()
+    item = profile()
+    plan = build_execution_plan(
+        item,
+        [Change("new", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")],
+        ChangeDecisions(),
+    )
+    dialog = SyncConfirmationDialog(item, plan, verified=True)
+    assert "Review verified synchronization" in dialog.heading.text()
+    assert "verified second dry run" in dialog.details.text()
     dialog.close()
     application.processEvents()
