@@ -1571,9 +1571,13 @@ def test_stale_comparison_marks_compare_button_and_status() -> None:
     assert window.status_edit.text() == "Stale comparison — click Compare to refresh"
     assert "#EA580C" in window.status_edit.styleSheet()
     assert "#EA580C" in window.state_label.styleSheet()
+    assert "#EA580C" in window.compare_button.styleSheet()
+    assert "#EA580C" in window.validate_plan_button.styleSheet()
     window.comparison.set_stale(False)
     application.processEvents()
     assert "STALE" not in window.compare_button.toolTip()
+    assert "#EA580C" not in window.compare_button.styleSheet()
+    assert "#EA580C" not in window.validate_plan_button.styleSheet()
     assert window.status_edit.text() != "Stale comparison — click Compare to refresh"
     window.close()
     application.processEvents()

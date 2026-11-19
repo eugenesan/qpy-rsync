@@ -184,6 +184,7 @@ class FlatChangeModel(QAbstractTableModel):
     """
 
     decision_changed = Signal(object)
+    decision_edited = Signal(str)
     history_changed = Signal()
 
     SOURCE_NAME = 0
@@ -1558,6 +1559,16 @@ class FlatChangeModel(QAbstractTableModel):
         """The number of rows in the comparison, including hidden ones."""
         return len(self._rows)
 
+    def nearest_visible_path(self, path: str) -> str | None:
+        """The visible row closest to ``path``, preferring the next one."""
+        target = self._row_of_path.get(path.rstrip("/"))
+        if target is None or not self._visible_rows:
+            return None
+        position = bisect_left(self._visible_rows, target)
+        if position >= len(self._visible_rows):
+            position = len(self._visible_rows) - 1
+        return self.path_of_row_index(self._visible_rows[position])
+
     def path_of_row_index(self, index: int) -> str | None:
         """The path of a model row, regardless of folds or filters."""
         if not 0 <= index < len(self._rows):
@@ -1746,6 +1757,7 @@ class FlatChangeModel(QAbstractTableModel):
         self.decisions.set(row.path, decision)
         self._record_decision(before)
         self._after_decision_change({row.path})
+        self.decision_edited.emit(str(row.path))
         return True
 
     # ------------------------------------------------------------------

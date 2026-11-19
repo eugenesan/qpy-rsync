@@ -93,10 +93,11 @@ class UniformRowDelegate(QStyledItemDelegate):
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
         if index.data(STRIPE_ROLE) and not selected:
             painter.fillRect(styled.rect, STRIPE_COLOR)  # type: ignore[attr-defined]
-        # The focus rectangle is dropped: the selected row is already marked
-        # by its background, and the dotted outline reads like a second
-        # cursor next to the hover highlight.
-        styled.state &= ~QStyle.StateFlag.State_HasFocus
+        # No focus rectangle and no mouse-over state: clicking or a key is
+        # the only thing that marks a row, never the pointer position.
+        styled.state &= ~(
+            QStyle.StateFlag.State_HasFocus | QStyle.StateFlag.State_MouseOver
+        )
         super().paint(painter, styled, index)  # type: ignore[arg-type]
 
 
@@ -113,18 +114,18 @@ class ActionColumnDelegate(UniformRowDelegate):
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
             styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+            styled.state &= ~QStyle.StateFlag.State_MouseOver
             if index.model().stale:
                 styled.state &= ~QStyle.StateFlag.State_Enabled
             super().paint(painter, styled, index)  # type: ignore[arg-type]
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
-        hovered = index.model().hovered_row == index.row()
         if index.data(STRIPE_ROLE) and not selected:
             painter.fillRect(styled.rect, STRIPE_COLOR)  # type: ignore[attr-defined]
-        styled.state &= ~QStyle.StateFlag.State_HasFocus
-        if hovered:
-            styled.state |= QStyle.StateFlag.State_MouseOver
+        styled.state &= ~(
+            QStyle.StateFlag.State_HasFocus | QStyle.StateFlag.State_MouseOver
+        )
         blank = QStyleOptionViewItem(styled)
         blank.text = ""
         blank.icon = QIcon()
@@ -208,7 +209,9 @@ class FlatPathDelegate(UniformRowDelegate):
         selected = bool(styled.state & QStyle.StateFlag.State_Selected)
         # Paint the row background (alternating group, selection) with the
         # style first, so the custom text below sits on the right colour.
-        styled.state &= ~QStyle.StateFlag.State_HasFocus
+        styled.state &= ~(
+            QStyle.StateFlag.State_HasFocus | QStyle.StateFlag.State_MouseOver
+        )
         if index.data(STRIPE_ROLE) and not selected:
             painter.fillRect(styled.rect, STRIPE_COLOR)
         blank = QStyleOptionViewItem(styled)
@@ -390,6 +393,7 @@ class FlatComparisonView(QWidget):
         self._context_menu_closed_at = 0.0
         self.model = FlatChangeModel(self)
         self.model.decision_changed.connect(self.decision_changed.emit)
+        self.model.decision_edited.connect(self._restore_decision_focus)
         self._source_root = ""
         self._destination_root = ""
         # Whether each side lives on this machine, so local items can be
@@ -947,6 +951,16 @@ class FlatComparisonView(QWidget):
         if not index.isValid():
             return None
         return self.model.row_path(index.row())
+
+    def _restore_decision_focus(self, path: str) -> None:
+        """Keep the cursor near a row that a checkbox click just hid."""
+        if self._update_freeze or not path:
+            return
+        target = path if self.model.index_for_path(path).isValid() else None
+        if target is None:
+            target = self.model.nearest_visible_path(path)
+        if target is not None:
+            self.select_path(target)
 
     @contextmanager
     def _keeping_the_selection(self) -> Iterator[None]:

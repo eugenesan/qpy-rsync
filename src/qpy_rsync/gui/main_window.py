@@ -1332,10 +1332,23 @@ class MainWindow(QMainWindow):
         self.compare_button.setIcon(compare_icon(stale=stale))
         if self._verify_state != "verified":
             self.validate_plan_button.setIcon(verify_icon(stale=stale))
+        # The badge is the same marker the filter and profile buttons use.
+        # Verify is disabled while stale, which greys its icon out, so the
+        # outline keeps the state readable in both buttons.
+        marker = (
+            "QToolButton { border: 2px solid #EA580C; border-radius: 4px; }"
+            if stale
+            else ""
+        )
+        self.compare_button.setStyleSheet(marker)
+        self.validate_plan_button.setStyleSheet(marker)
         if stale:
             self.compare_button.setToolTip(
                 "STALE: this comparison no longer matches the current profile.\n"
                 "Click Compare (F5) to refresh it."
+            )
+            self.validate_plan_button.setToolTip(
+                "Compare again before Verify Decisions can run."
             )
             current = self.status_edit.text()
             if "stale" not in current.casefold():
@@ -1343,6 +1356,7 @@ class MainWindow(QMainWindow):
             self.state_label.setStyleSheet("color: #EA580C; font-weight: bold;")
         else:
             self.compare_button.setToolTip(_COMPARE_TOOLTIP)
+            self._set_verify_state(self._verify_state)
             self.state_label.setStyleSheet("")
             if self.status_edit.text() == _STALE_STATE_TEXT:
                 self._update_startup_status()

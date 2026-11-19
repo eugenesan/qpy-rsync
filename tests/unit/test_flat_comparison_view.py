@@ -983,3 +983,37 @@ def test_new_comparison_clears_the_decision_history() -> None:
     assert not model.decision_history.can_redo
     model.deleteLater()
     application.processEvents()
+
+
+def test_checkbox_click_keeps_the_cursor_on_the_next_item() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change(f"docs/f{i}.txt") for i in range(5)])
+    application.processEvents()
+    view.select_path("docs/f2.txt")
+
+    index = view.model.index_for_path("docs/f2.txt")
+    assert view.model.setData(
+        view.model.index(index.row(), view.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    application.processEvents()
+    assert "docs/f2.txt" not in [
+        view.model.row_path(row) for row in range(view.model.rowCount())
+    ]
+    assert view.model.row_path(view.source.currentIndex().row()) == "docs/f3.txt"
+    assert view.model.row_path(view.action.currentIndex().row()) == "docs/f3.txt"
+
+    # Hiding the last visible item falls back to the one above it.
+    view.select_path("docs/f4.txt")
+    index = view.model.index_for_path("docs/f4.txt")
+    view.model.setData(
+        view.model.index(index.row(), view.model.ACTION),
+        Qt.CheckState.Unchecked,
+        Qt.ItemDataRole.CheckStateRole,
+    )
+    application.processEvents()
+    assert view.model.row_path(view.source.currentIndex().row()) == "docs/f3.txt"
+    view.close()
+    application.processEvents()
