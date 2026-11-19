@@ -85,6 +85,20 @@ first commit, seven of them now driven by the native flag kernel).
 The full 520,000-item differential passes. Path-pattern matching is still
 Python-side and is planned for the search stage of the backend plan.
 
+## Model integration (Stage 3)
+
+`FlatChangeModel` now accepts `QPY_RSYNC_NATIVE=0|1|auto`. Unset and `0` keep
+the pure-Python path; `1` uses the extension when present; `auto` uses it when
+present. The full suite (411 tests) passes in all three modes, and
+`tests/unit/test_native_backend.py` checks that both paths produce identical
+visible rows, aggregates, overview and subtree totals.
+
+On the 520,000-change tree, an action-filter pass costs 326 ms in Python and
+150 ms through the native backend. `set_changes` is slightly slower with the
+native mirror (4.75 s vs 4.24 s) because it still builds the Python `Change`
+list and then copies it into native arrays; Stage 4 removes the duplicate
+work by parsing into native storage directly.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

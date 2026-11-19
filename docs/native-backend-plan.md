@@ -71,4 +71,14 @@ before the next one starts.
   - Still in Python: path-pattern matching (`_matches`, glob, directories-only)
     is deferred to Stage 6, and `row_excluded` / `folded_parent` are passed as
     per-row flags (empty buffers on the common path, so no O(n) marshalling).
-- Stages 3–8 not started.
+- **Stage 3 done** (this commit): `FlatChangeModel` uses the native kernel
+  behind `QPY_RSYNC_NATIVE`. Unset or `0` keeps the pure-Python path; `1`
+  requires the extension (falling back with a debug message if absent), and
+  `auto` uses it when present. Qt roles, selection, folds, exclusions,
+  aggregates, subtree totals and the incremental refresh paths are preserved.
+  The whole suite passes with the flag off, on and `auto` (411 tests).
+  - End-to-end on 520,000 changes: filter pass 326 ms (Python) → 150 ms
+    (native); `set_changes` 4.24 s → 4.75 s (the one-time mirror costs more
+    than it saves until the parser is native too, Stage 4).
+  - Path-pattern filters still use the Python path; search is Stage 6.
+- Stages 4–8 not started.

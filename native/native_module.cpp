@@ -94,19 +94,23 @@ struct NativeComparison {
   std::vector<u32> own_dir_index;  // dir row -> its own folder index (aggregate)
   std::vector<u32> is_dir;
   std::vector<i64> change_sizes;   // indexed by change, not by row
+  std::vector<i64> change_dest_sizes;
 
   // Outputs, reused between passes.
   std::vector<u32> visible_rows;
   std::vector<u32> visible_changes;
   std::vector<u32> dir_counts;
   std::vector<i64> dir_sizes;
+  // count, size, destination size, source items, destination items
+  std::vector<i64> dir_totals;
 
   NativeComparison(std::vector<std::string> paths_,
                    std::vector<std::string> folded_names_,
                    std::vector<std::string> folded_paths_,
                    std::vector<int> change_index_, std::vector<int> dir_index_,
                    std::vector<int> own_dir_index_, std::vector<bool> is_dir_,
-                   std::vector<i64> change_sizes_)
+                   std::vector<i64> change_sizes_,
+                   std::vector<i64> change_dest_sizes_)
       : paths(std::move(paths_)), folded_names(std::move(folded_names_)),
         folded_paths(std::move(folded_paths_)),
         change_index(change_index_.begin(), change_index_.end()),
@@ -114,7 +118,7 @@ struct NativeComparison {
         own_dir_index(own_dir_index_.begin(), own_dir_index_.end()),
         is_dir(is_dir_.begin(), is_dir_.end()),
         change_sizes(std::move(change_sizes_)),
-        dir_counts(paths.size() ? 0 : 0) {
+        change_dest_sizes(std::move(change_dest_sizes_)) {
     // Size the aggregate arrays to cover every folder that can own a row.
     std::size_t max_dir = 0;
     for (u32 value : dir_index) {
@@ -125,6 +129,7 @@ struct NativeComparison {
     }
     dir_counts.assign(max_dir, 0);
     dir_sizes.assign(max_dir, 0);
+    dir_totals.assign(max_dir * 5, 0);
   }
 
   std::size_t row_count() const { return paths.size(); }
@@ -133,19 +138,22 @@ struct NativeComparison {
   const std::vector<u32>& changes() const { return visible_changes; }
   const std::vector<u32>& counts() const { return dir_counts; }
   const std::vector<i64>& sizes_per_dir() const { return dir_sizes; }
+  const std::vector<i64>& totals_per_dir() const { return dir_totals; }
 
   // Shared row loop. Mirrors the final pass of FlatChangeModel._apply_filters:
   // visibility, the visible change set and the per-directory aggregates.
   u32 emit(const std::vector<u8>& row_visible,
            const std::vector<u8>& row_path_ok,
            const std::vector<u8>& row_faded,
-           const std::vector<u8>& row_excluded, bool has_exclusion,
+           const std::vector<u8>& row_excluded,
+           const std::vector<u8>& row_explicit, bool has_exclusion,
            bool show_excluded, const std::vector<u8>& folded_parent,
            u32 generation) {
     visible_rows.clear();
     visible_changes.clear();
     std::fill(dir_counts.begin(), dir_counts.end(), 0);
     std::fill(dir_sizes.begin(), dir_sizes.end(), 0);
+    std::fill(dir_totals.begin(), dir_totals.end(), 0);
     visible_rows.reserve(paths.size());
     visible_changes.reserve(paths.size() / 2);
     const bool check_excluded = has_exclusion && !show_excluded;
@@ -153,6 +161,8 @@ struct NativeComparison {
     for (std::size_t i = 0; i < paths.size(); ++i) {
       const bool inherited =
           has_exclusion && i < row_excluded.size() && row_excluded[i] != 0;
+      const bool explicit_excluded =
+          has_exclusion && i < row_explicit.size() && row_explicit[i] != 0;
       const bool faded = i < row_faded.size() && row_faded[i] != 0;
       const bool path_ok = i < row_path_ok.size() && row_path_ok[i] != 0;
       const bool visible = i < row_visible.size() && row_visible[i] != 0;
@@ -184,8 +194,19 @@ struct NativeComparison {
         if (!inherited && ci != NO_INDEX) {
           visible_changes.push_back(ci);
           if (di < dir_counts.size()) {
+            const i64 size = ci < change_sizes.size() ? change_sizes[ci] : 0;
             ++dir_counts[di];
-            dir_sizes[di] += ci < change_sizes.size() ? change_sizes[ci] : 0;
+            dir_sizes[di] += size;
+            if (!explicit_excluded && !change_action.empty() &&
+                !change_dest_sizes.empty() && di * 5 + 4 < dir_totals.size()) {
+              const u32 code = ci < change_action.size() ? change_action[ci] : 0;
+              i64* totals = &dir_totals[di * 5];
+              totals[0] += 1;
+              totals[1] += size;
+              totals[2] += ci < change_dest_sizes.size() ? change_dest_sizes[ci] : 0;
+              totals[3] += code != 4 ? 1 : 0;  // not DESTINATION_ONLY
+              totals[4] += code != 0 ? 1 : 0;  // not CREATE
+            }
           }
         }
       }
@@ -208,9 +229,10 @@ struct NativeComparison {
             const std::vector<u8>& row_path_ok,
             const std::vector<u8>& row_faded,
             const std::vector<u8>& row_excluded,
-            const std::vector<u8>&, const std::vector<u8>& folded_parent,
-            bool has_exclusion, bool show_excluded, u32 generation) {
-    return emit(row_visible, row_path_ok, row_faded, row_excluded,
+            const std::vector<u8>& row_explicit,
+            const std::vector<u8>& folded_parent, bool has_exclusion,
+            bool show_excluded, u32 generation) {
+    return emit(row_visible, row_path_ok, row_faded, row_excluded, row_explicit,
                 has_exclusion, show_excluded, folded_parent, generation);
   }
 
@@ -231,6 +253,13 @@ struct NativeComparison {
   std::vector<u8> dir_action_ok;
   std::vector<u8> dir_faded;
   std::vector<u8> dir_visible;
+
+  // Refresh only the effective action codes after a decision change. The
+  // hierarchy (CSR arrays) does not change, so this is cheaper than rebuilding
+  // the whole structure.
+  void set_actions(const std::vector<int>& actions) {
+    change_action.assign(actions.begin(), actions.end());
+  }
 
   void set_structure(std::vector<int> change_dir_,
                      std::vector<bool> change_is_dir_,
@@ -298,7 +327,8 @@ struct NativeComparison {
   // whose effective action code is N. This replaces the Python change loop
   // and the directory closure for comparisons without a path pattern.
   u32 filter(u32 actions_mask, bool filter_directories, bool has_exclusion,
-             const std::vector<u8>& row_excluded, bool show_excluded,
+             const std::vector<u8>& row_excluded,
+             const std::vector<u8>& row_explicit, bool show_excluded,
              const std::vector<u8>& folded_parent, u32 generation) {
     const std::size_t nchanges = change_dir.size();
     for (std::size_t ci = 0; ci < nchanges; ++ci) {
@@ -361,7 +391,7 @@ struct NativeComparison {
         row_path_ok[i] = ci < change_path_ok.size() ? change_path_ok[ci] : 0;
       }
     }
-    return emit(row_visible, row_path_ok, row_faded, row_excluded,
+    return emit(row_visible, row_path_ok, row_faded, row_excluded, row_explicit,
                 has_exclusion, show_excluded, folded_parent, generation);
   }
 
@@ -471,7 +501,7 @@ NB_MODULE(_qpy_native, m) {
       .def(nb::init<std::vector<std::string>, std::vector<std::string>,
                     std::vector<std::string>, std::vector<int>,
                     std::vector<int>, std::vector<int>, std::vector<bool>,
-                    std::vector<i64>>())
+                    std::vector<i64>, std::vector<i64>>())
       .def("row_count", &NativeComparison::row_count)
       .def("dir_count", &NativeComparison::dir_count)
       .def("apply", &NativeComparison::apply, nb::arg("row_visible"),
@@ -483,20 +513,26 @@ NB_MODULE(_qpy_native, m) {
            nb::arg("change_dir"), nb::arg("change_is_dir"),
            nb::arg("change_action"), nb::arg("dir_parent"),
            nb::arg("dir_own_change"))
+      .def("set_actions", &NativeComparison::set_actions, nb::arg("actions"))
       .def("filter", &NativeComparison::filter, nb::arg("actions_mask"),
            nb::arg("filter_directories"), nb::arg("has_exclusion"),
-           nb::arg("row_excluded"), nb::arg("show_excluded"),
-           nb::arg("folded_parent"), nb::arg("generation"))
+           nb::arg("row_excluded"), nb::arg("row_explicit"),
+           nb::arg("show_excluded"), nb::arg("folded_parent"),
+           nb::arg("generation"))
       .def_ro("visible_rows", &NativeComparison::visible_rows)
       .def_ro("visible_changes", &NativeComparison::visible_changes)
       .def_ro("dir_action_ok", &NativeComparison::dir_action_ok)
       .def_ro("dir_visible", &NativeComparison::dir_visible)
+      .def_ro("dir_path_ok", &NativeComparison::dir_path_ok)
+      .def_ro("dir_faded", &NativeComparison::dir_faded)
       .def_ro("change_visible", &NativeComparison::change_visible)
+      .def_ro("change_path_ok", &NativeComparison::change_path_ok)
       .def_ro("dir_file_offsets", &NativeComparison::dir_file_offsets)
       .def_ro("dir_file_indices", &NativeComparison::dir_file_indices)
       .def_ro("dir_own_change", &NativeComparison::dir_own_change)
       .def_ro("dir_counts", &NativeComparison::dir_counts)
-      .def_ro("dir_sizes", &NativeComparison::dir_sizes);
+      .def_ro("dir_sizes", &NativeComparison::dir_sizes)
+      .def_ro("dir_totals", &NativeComparison::dir_totals);
   nb::class_<ParsedRecords>(m, "ParsedRecords")
       .def_ro("paths", &ParsedRecords::paths)
       .def_ro("actions", &ParsedRecords::actions)

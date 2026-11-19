@@ -16,6 +16,7 @@ work with the flat rows without a change.
 
 from __future__ import annotations
 
+import os
 from bisect import bisect_left
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -42,6 +43,33 @@ from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
 from .text_elide import elide_path, wrap_path
+
+# Optional native backend. The application ships the Python implementation;
+# the extension is enabled only by QPY_RSYNC_NATIVE=1 or =auto. "auto" uses it
+# when the module is present, anything else (including unset) stays on Python.
+_NATIVE_ACTION_CODE = {
+    "create": 0,
+    "update_content": 1,
+    "update_metadata": 2,
+    "delete": 3,
+    "destination_only": 4,
+    "no_change": 5,
+    "message": 6,
+}
+
+
+def _native_backend_module():
+    flag = os.environ.get("QPY_RSYNC_NATIVE", "").strip().lower()
+    if flag not in {"1", "true", "yes", "on", "auto"}:
+        return None
+    try:
+        from qpy_rsync import _qpy_native
+
+        return _qpy_native
+    except (ImportError, OSError):
+        debug("native.backend_unavailable", flag=flag)
+        return None
+
 
 class ExcludedPaths:
     """The EXCLUDE decisions, exposed as the old exclusion API.
@@ -317,6 +345,10 @@ class FlatChangeModel(QAbstractTableModel):
         # Bumped whenever the layout changes, so a delegate can drop its
         # cached measurements.
         self.layout_token = 0
+        # Optional persistent native mirror of this comparison, built once
+        # per row layout and reused by every filter pass.
+        self._native = _native_backend_module()
+        self._native_comparison: object | None = None
 
     @property
     def show_excluded(self) -> bool:
@@ -561,6 +593,173 @@ class FlatChangeModel(QAbstractTableModel):
         self._dir_paths = list(self._directories)
         self._dir_index = {path: index for index, path in enumerate(self._dir_paths)}
         self._row_dir_index = [self._dir_index.get(row.parent, 0) for row in rows]
+        self._rebuild_native_comparison()
+
+    # ------------------------------------------------------------------
+    # Native backend
+    # ------------------------------------------------------------------
+    def _native_action_codes(self) -> list[int]:
+        return [
+            _NATIVE_ACTION_CODE.get(action.value, 6)
+            for action in self._change_effective_actions
+        ]
+
+    def _rebuild_native_comparison(self) -> None:
+        """Mirror the current row layout in the native backend."""
+        if self._native is None or not self._rows:
+            self._native_comparison = None
+            return
+        rows = self._rows
+        comparison = self._native.NativeComparison(
+            [row.path for row in rows],
+            [row.name.casefold() for row in rows],
+            [row.path.casefold() for row in rows],
+            [row.change_index if row.change_index >= 0 else -1 for row in rows],
+            list(self._row_dir_index),
+            [
+                self._dir_index.get(row.path, 0) if row.is_directory else -1
+                for row in rows
+            ],
+            [row.is_directory for row in rows],
+            [int(change.size or 0) for change in self.changes],
+            list(self._change_destination_sizes)
+            or [int(change.destination_size or 0) for change in self.changes],
+        )
+        dir_paths = self._dir_paths
+        comparison.set_structure(
+            [
+                self._dir_index.get(
+                    self._change_paths[index]
+                    if self.changes[index].kind is ObjectKind.DIRECTORY
+                    else self._change_parents[index],
+                    0,
+                )
+                for index in range(len(self.changes))
+            ],
+            [change.kind is ObjectKind.DIRECTORY for change in self.changes],
+            self._native_action_codes(),
+            [
+                self._dir_index.get(self._directories[path].parent, -1)
+                for path in dir_paths
+            ],
+            [self._directories[path].own_change_index for path in dir_paths],
+        )
+        self._native_comparison = comparison
+
+    def _native_filter_applicable(self) -> bool:
+        """The native flag kernel covers every case except path patterns."""
+        pattern_active = bool(self._pattern) and self._pattern != "*"
+        return (
+            self._native_comparison is not None
+            and not pattern_active
+            and not self._conflicts_only
+        )
+
+    def _native_apply_filters(self) -> None:
+        """Run the native filter kernel and copy its compact results back."""
+        comparison = self._native_comparison
+        rows = self._rows
+        has_exclusion = bool(self.exclusion)
+        excluded = self._excluded_paths()
+        excluded_get = excluded.get
+        if has_exclusion:
+            excluded_fn = self.exclusion.is_excluded
+            row_excluded = [
+                1 if (row.path and excluded_fn(row.path)) else 0 for row in rows
+            ]
+            row_explicit = [
+                1 if excluded_get(row.path, False) else 0 for row in rows
+            ]
+        else:
+            row_excluded = []
+            row_explicit = []
+        collapse_active = bool(self.collapsed)
+        if collapse_active:
+            directory_folded: dict[str, bool] = {"": False}
+            for path, directory in self._directories.items():
+                directory_folded[path] = (
+                    directory_folded.get(directory.parent, False)
+                    or path in self.collapsed
+                )
+            folded_parent = [
+                1 if (row.path and directory_folded.get(row.parent, False)) else 0
+                for row in rows
+            ]
+        else:
+            folded_parent = []
+        visible_actions = self._visible_actions
+        mask = (
+            0
+            if visible_actions is None
+            else sum(
+                1 << _NATIVE_ACTION_CODE[action.value]
+                for action in visible_actions
+            )
+        )
+        comparison.filter(
+            mask,
+            self.filter_directories,
+            has_exclusion,
+            row_excluded,
+            row_explicit,
+            self.show_excluded,
+            folded_parent,
+            self.layout_token,
+        )
+
+        # nanobind copies a def_ro vector on every property access, so bind
+        # each one once before the loops instead of indexing the property.
+        dir_path_ok = comparison.dir_path_ok
+        dir_action_ok = comparison.dir_action_ok
+        dir_faded = comparison.dir_faded
+        dir_visible = comparison.dir_visible
+        change_visible = comparison.change_visible
+        change_path_ok = comparison.change_path_ok
+        dir_paths = self._dir_paths
+        for index, path in enumerate(dir_paths):
+            directory = self._directories[path]
+            directory.path_ok = bool(dir_path_ok[index])
+            directory.action_ok = bool(dir_action_ok[index])
+            directory.faded = bool(dir_faded[index])
+            directory.visible = bool(dir_visible[index])
+
+        # The incremental fold and decision paths read these flags without
+        # rerunning the filter pass, so they must be kept in sync too. Slice
+        # assignment keeps this a C-level loop on large comparisons.
+        flags = [bool(value) for value in change_visible]
+        self._change_visible[:] = flags
+        self._change_action_ok[:] = flags
+        self._change_path_ok[:] = [bool(value) for value in change_path_ok]
+        for row_index, row in enumerate(rows):
+            value = bool(excluded_get(row.path, False)) if has_exclusion else False
+            self._row_excluded[row_index] = value
+            row.excluded = value
+
+        visible_rows = list(comparison.visible_rows)
+        for position, row_index in enumerate(visible_rows):
+            rows[row_index].alternate = position % 2 == 0
+        self._visible_rows = visible_rows
+        self._visible_change_indices = set(comparison.visible_changes)
+        self._visible_changes = [
+            self.changes[index] for index in sorted(self._visible_change_indices)
+        ]
+        self._visible_position_of_row = self._position_array()
+
+        width = len(dir_paths)
+        counts = list(comparison.dir_counts)
+        sizes = list(comparison.dir_sizes)
+        counts += [0] * (width - len(counts))
+        sizes += [0] * (width - len(sizes))
+        self._aggregate_counts = [
+            [counts[index], sizes[index]] for index in range(width)
+        ]
+        self._publish_overview_aggregates()
+        flat = list(comparison.dir_totals)
+        flat += [0] * (width * 5 - len(flat))
+        self._total_up_from_aggregates(
+            [flat[index * 5 : index * 5 + 5] for index in range(width)]
+        )
+        self.layout_token += 1
 
     # ------------------------------------------------------------------
     # Sorting
@@ -893,6 +1092,10 @@ class FlatChangeModel(QAbstractTableModel):
         items below it is allowed.
         """
         debug_timing("model.filter_phase", phase="start", changes=len(self.changes))
+        if self._native_filter_applicable():
+            self._native_apply_filters()
+            debug_timing("model.filter_phase", phase="totals_done")
+            return
         directories = self._directories
         pattern_active = bool(self._pattern) and self._pattern != "*"
         include_contents = self._include_directory_contents
@@ -1989,6 +2192,8 @@ class FlatChangeModel(QAbstractTableModel):
             ):
                 index = directory.own_change_index
                 actions[index] = self.effective_action_of_change(self.changes[index])
+        if self._native_comparison is not None:
+            self._native_comparison.set_actions(self._native_action_codes())
 
     def _refresh_conflicts(self) -> None:
         """Cache the conflict reasons and the folders that contain them."""
@@ -2163,6 +2368,7 @@ class FlatChangeModel(QAbstractTableModel):
             self._destination_metadata
         )
         self._refresh_destination_sizes()
+        self._rebuild_native_comparison()
         self.layoutAboutToBeChanged.emit()
         self._apply_filters()
         self.layoutChanged.emit()

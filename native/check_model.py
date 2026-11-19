@@ -80,11 +80,45 @@ def folded_parent_flags(model: FlatChangeModel) -> list[int]:
     ]
 
 
+def subtree_signature(model: FlatChangeModel) -> list[tuple[int, int, int, int]]:
+    return [
+        (
+            directory.subtree_items,
+            directory.subtree_destination_items,
+            directory.subtree_size,
+            directory.subtree_destination_size,
+        )
+        for directory in model._directories.values()
+    ]
+
+
+def total_up(counts: list[list[int]], model: FlatChangeModel) -> list[tuple[int, int, int, int]]:
+    """Replicate FlatChangeModel._total_up_from_aggregates."""
+    values = {
+        path: [0, 0, 0, 0] for path in model._dir_paths
+    }
+    for index in range(len(model._dir_paths) - 1, -1, -1):
+        path = model._dir_paths[index]
+        directory = model._directories[path]
+        own = counts[index]
+        if own[0]:
+            values[path][0] += own[3]
+            values[path][1] += own[4]
+            values[path][2] += own[1]
+            values[path][3] += own[2]
+        parent = model._directories.get(directory.parent) if index else None
+        if parent is not None:
+            for slot in range(4):
+                values[parent.path][slot] += values[path][slot]
+    return [tuple(values[path]) for path in model._dir_paths]
+
+
 def python_signature(model: FlatChangeModel) -> dict[str, object]:
     return {
         "rows": list(model._visible_rows),
         "changes": sorted(model._visible_change_indices),
         "aggregates": [list(values) for values in model._aggregate_counts],
+        "subtree": subtree_signature(model),
     }
 
 
@@ -123,6 +157,9 @@ def native_signature(
     ]
     is_dir = [row.is_directory for row in rows]
     change_sizes = [int(change.size or 0) for change in model.changes]
+    change_dest_sizes = [
+        int(change.destination_size or 0) for change in model.changes
+    ]
 
     comparison = _qpy_native.NativeComparison(
         paths,
@@ -133,6 +170,7 @@ def native_signature(
         own_dir_index,
         is_dir,
         change_sizes,
+        change_dest_sizes,
     )
 
     has_exclusion = bool(model.exclusion)
@@ -142,43 +180,45 @@ def native_signature(
     row_excluded = [
         1 if (row.path and excluded_fn(row.path)) else 0 for row in rows
     ]
+    row_explicit = [1 if excluded_get(row.path, False) else 0 for row in rows]
     folded_parent = folded_parent_flags(model)
 
-    if native_filter:
-        # Stage 2: the native kernel computes change and directory flags
-        # itself. This is only valid without a path pattern; pattern cases
-        # still exercise the Stage 1 flags-from-Python path below.
-        dir_paths = model._dir_paths
-        change_dir = [
-            model._dir_index.get(
-                model._change_paths[ci]
-                if model.changes[ci].kind is ObjectKind.DIRECTORY
-                else model._change_parents[ci],
-                0,
-            )
-            for ci in range(len(model.changes))
-        ]
-        change_is_dir = [
-            change.kind is ObjectKind.DIRECTORY for change in model.changes
-        ]
-        change_action = [
-            ACTION_CODE[action.value]
-            for action in model._change_effective_actions
-        ]
-        dir_parent = [
-            model._dir_index.get(model._directories[path].parent, -1)
-            for path in dir_paths
-        ]
-        dir_own_change = [
-            model._directories[path].own_change_index for path in dir_paths
-        ]
-        comparison.set_structure(
-            change_dir,
-            change_is_dir,
-            change_action,
-            dir_parent,
-            dir_own_change,
+    # The structure is supplied once for every scenario so the native kernel
+    # can also produce the subtree totals. Only the flag computation differs.
+    dir_paths = model._dir_paths
+    change_dir = [
+        model._dir_index.get(
+            model._change_paths[ci]
+            if model.changes[ci].kind is ObjectKind.DIRECTORY
+            else model._change_parents[ci],
+            0,
         )
+        for ci in range(len(model.changes))
+    ]
+    change_is_dir = [
+        change.kind is ObjectKind.DIRECTORY for change in model.changes
+    ]
+    change_action = [
+        ACTION_CODE[action.value] for action in model._change_effective_actions
+    ]
+    dir_parent = [
+        model._dir_index.get(model._directories[path].parent, -1)
+        for path in dir_paths
+    ]
+    dir_own_change = [
+        model._directories[path].own_change_index for path in dir_paths
+    ]
+    comparison.set_structure(
+        change_dir,
+        change_is_dir,
+        change_action,
+        dir_parent,
+        dir_own_change,
+    )
+
+    if native_filter:
+        # The kernel computes change and directory flags itself. Valid only
+        # without a path pattern; those cases use the Stage 1 path below.
         visible_actions = model._visible_actions
         mask = (
             0
@@ -190,6 +230,7 @@ def native_signature(
             model.filter_directories,
             has_exclusion,
             row_excluded,
+            row_explicit,
             model.show_excluded,
             folded_parent,
             0,
@@ -232,10 +273,14 @@ def native_signature(
     width = len(model._dir_paths)
     counts += [0] * (width - len(counts))
     sizes += [0] * (width - len(sizes))
+    flat = list(comparison.dir_totals)
+    flat += [0] * (width * 5 - len(flat))
+    total_counts = [flat[i * 5 : i * 5 + 5] for i in range(width)]
     return {
         "rows": list(comparison.visible_rows),
         "changes": sorted(comparison.visible_changes),
         "aggregates": [[counts[i], sizes[i]] for i in range(width)],
+        "subtree": total_up(total_counts, model),
     }
 
 

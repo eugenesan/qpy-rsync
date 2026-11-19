@@ -41,6 +41,7 @@ def comparison_for(model: FlatChangeModel) -> _qpy_native.NativeComparison:
         [model._dir_index.get(row.path, 0) if row.is_directory else -1 for row in rows],
         [row.is_directory for row in rows],
         [int(change.size or 0) for change in model.changes],
+        [int(change.destination_size or 0) for change in model.changes],
     )
 
 
@@ -96,7 +97,7 @@ def main() -> None:
         native_times: list[float] = []
         for _ in range(3):
             t = time.perf_counter()
-            comp.filter(mask, False, False, [], False, [], 0)
+            comp.filter(mask, False, False, [], [], False, [], 0)
             native_times.append(1000 * (time.perf_counter() - t))
         print(
             f"{name:8s} python {min(python_times):6.0f} ms "
