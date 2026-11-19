@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Verify Decisions now validates against the comparison the user reviewed,
+  without a second rsync dry run. Live directories (browser profiles, caches)
+  can no longer make verification fail with unrelated changes; the journal
+  records that the existing comparison was reused.
+- A decision mismatch dialog now keeps its buttons visible: the full list is
+  in a scrollable detail area, the summary shows the counts, and the journal
+  keeps up to 50 entries plus an omission note.
 - Folding or unfolding a folder now patches only that folder's rows. It used
   to run the full filter pass (~500 ms on 520k items); it now takes ~120 ms
   and keeps folded items in the totals and overview, as before.

@@ -2486,22 +2486,24 @@ class MainWindow(QMainWindow):
                 "Plan validation is blocked: " + "; ".join(freshness.reasons),
             )
             return
-        if not self.comparison.model.decisions.has_explicit():
-            # The comparison already itemized exactly this selection, so a second
-            # identical rsync dry run would add no information. Reuse the parsed
-            # result; modified decisions still take the full validation path.
-            self._plan_validation_started()
-            mismatch = compare_plan_to_changes(
-                self._current_plan,
-                self.comparison.model.changes,
-                self.comparison.model.decisions,
-            )
-            self._append_log("STATE verification-reused-comparison")
-            self._plan_validation_finished(
-                PlanValidationResult(mismatch.valid, mismatch, "", 0)
-            )
-            return
-        self._plan_validation.validate(self._active_profile, self._current_plan)
+        # Verify against the comparison the user actually reviewed. A second
+        # rsync dry run would re-scan the live tree and report unrelated
+        # changes (browser profiles, caches) as mismatches. The plan and the
+        # comparison come from the same snapshot, and the decisions are
+        # path-based, so checking them locally is both exact and stable.
+        self._plan_validation_started()
+        mismatch = compare_plan_to_changes(
+            self._current_plan,
+            self.comparison.model.changes,
+            self.comparison.model.decisions,
+        )
+        self._append_log(
+            "Verification used the existing comparison; no second rsync run."
+        )
+        self._append_log("STATE verification-reused-comparison")
+        self._plan_validation_finished(
+            PlanValidationResult(mismatch.valid, mismatch, "", 0)
+        )
 
     def _plan_validation_started(self) -> None:
         self._begin_bulk_logging()
@@ -2564,7 +2566,27 @@ class MainWindow(QMainWindow):
         detail = "\n".join(part for part in (missing, unexpected) if part)
         self.progress_label.setText("Plan validation failed")
         self._end_bulk_logging()
-        QMessageBox.critical(self, "Plan validation mismatch", detail or "Validation result differed from the selected plan.")
+        # A live tree can produce thousands of mismatches. Keep the dialog
+        # bounded: the detail area scrolls and the buttons stay reachable.
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("Decisions mismatch")
+        box.setText(
+            "The verification did not match the selected decisions. "
+            "Synchronization remains blocked."
+        )
+        box.setInformativeText(
+            f"{len(result.mismatch.missing)} missing, "
+            f"{len(result.mismatch.unexpected)} unexpected item(s)."
+        )
+        if detail:
+            box.setDetailedText(detail)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        for line in detail.splitlines()[:50]:
+            self._append_log(line, severity="error")
+        if len(detail.splitlines()) > 50:
+            self._append_log("... further mismatches omitted from the journal", severity="error")
+        box.exec()
         self._set_state(
             "Plan validation failed; synchronization remains blocked.", "error"
         )

@@ -1734,3 +1734,100 @@ def test_undo_to_the_comparison_baseline_clears_staleness_without_verification(t
     assert window._verify_state == "idle"
     window.close()
     application.processEvents()
+
+
+def test_verification_with_decisions_does_not_rescan_the_live_tree() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        Change("b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+    ]
+    window.comparison.set_changes(changes)
+    application.processEvents()
+    window.comparison.model.decisions.set("a.txt", ChangeDecision.EXCLUDE)
+    window.comparison.model.decisions.set("b.txt", ChangeDecision.INCLUDE)
+    window.comparison.model._after_decision_change({"a.txt", "b.txt"})
+    application.processEvents()
+
+    class RejectProcess:
+        def validate(self, *_args, **_kwargs):
+            raise AssertionError("decision changes must not start another rsync")
+
+    window._plan_validation = RejectProcess()
+    window._validate_selected_plan()
+    assert window.validate_plan_button.accessibleName() == "Decisions Verified"
+    assert "no second rsync run" in window.log.toPlainText()
+    assert "STATE verification-reused-comparison" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_mismatch_dialog_keeps_a_scrollable_detail_and_visible_buttons(monkeypatch) -> None:
+    from types import SimpleNamespace
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.plan_validation_service import (
+        PlanMismatch,
+        PlanValidationResult,
+    )
+    import qpy_rsync.gui.main_window as main_window
+
+    captured: dict[str, object] = {}
+
+    class FakeBox:
+        Icon = SimpleNamespace(Critical=1)
+        StandardButton = SimpleNamespace(Ok=2)
+
+        def __init__(self, parent=None) -> None:
+            pass
+
+        def setIcon(self, value) -> None:
+            pass
+
+        def setWindowTitle(self, value) -> None:
+            pass
+
+        def setText(self, value) -> None:
+            captured["text"] = value
+
+        def setInformativeText(self, value) -> None:
+            captured["info"] = value
+
+        def setDetailedText(self, value) -> None:
+            captured["detail"] = value
+
+        def setStandardButtons(self, value) -> None:
+            captured["buttons"] = value
+
+        def exec(self) -> None:
+            captured["shown"] = True
+
+    monkeypatch.setattr(main_window, "QMessageBox", FakeBox)
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    application.processEvents()
+    window._rebuild_plan_summary()
+    window._execution_gate.selection_changed(included=1)
+    window._plan_validation_started()
+    missing = tuple(
+        (f"path/{i}", ChangeAction.CREATE, "file") for i in range(500)
+    )
+    window._plan_validation_finished(
+        PlanValidationResult(False, PlanMismatch(missing, ()), "", 0)
+    )
+    assert captured.get("shown") is True
+    assert "500 missing" in str(captured.get("info"))
+    assert str(captured.get("detail")).count("Missing:") == 500
+    assert "Synchronization remains blocked" in str(captured.get("text"))
+    window.close()
+    application.processEvents()
