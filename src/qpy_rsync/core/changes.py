@@ -217,7 +217,13 @@ class ChangeDecisions:
             ChangeAction.MESSAGE,
         }
 
-    def reconcile(self, changes: list[Change], *, preserve: bool = False) -> int:
+    def reconcile(
+        self,
+        changes: list[Change],
+        *,
+        preserve: bool = False,
+        detect_inherited: bool = False,
+    ) -> int:
         """Drop decisions that no longer describe the comparison.
 
         An EXCLUDE is preserved by path: it can only narrow the sync. An
@@ -227,7 +233,11 @@ class ChangeDecisions:
         that vanished are dropped without a flag; they are not on the list.
         With ``preserve`` off, the user asked for a fresh comparison, so
         stale decisions are dropped silently — no conflict is reported for
-        work they deliberately discarded.
+        work they deliberately discarded. ``detect_inherited`` is an opt-in
+        extra check for INCLUDE decisions on folders: it flags them when a
+        destination-only item appeared below them that was not there when the
+        decision was made. It is off by default because a folder-wide INCLUDE
+        is often a deliberate choice to own everything below that folder.
         """
         current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}
         current_paths = tuple(current)
@@ -267,6 +277,36 @@ class ChangeDecisions:
                     "The item is now destination-only; including it would "
                     "delete it."
                 )
+        if detect_inherited and preserve and self._identities:
+            # A folder-level INCLUDE can silently authorize a DELETE for a
+            # destination-only item that appeared below it after the decision.
+            # Compare the current and previous sets of destination-only paths
+            # covered by each explicit INCLUDE.
+            for path, decision in self._decisions.items():
+                if path in stale or decision is not ChangeDecision.INCLUDE:
+                    continue
+                prefix = path + "/" if path else ""
+                covered = {
+                    item
+                    for item, (action, _kind) in current.items()
+                    if action is ChangeAction.DESTINATION_ONLY
+                    and (item == path or item.startswith(prefix))
+                }
+                if not covered:
+                    continue
+                previous = {
+                    item
+                    for item, (action, _kind) in self._identities.items()
+                    if action is ChangeAction.DESTINATION_ONLY
+                    and (item == path or item.startswith(prefix))
+                }
+                appeared = covered - previous
+                if appeared:
+                    stale.append(path)
+                    self._conflicts[path] = (
+                        f"{len(appeared)} destination-only item(s) appeared "
+                        "below this included folder."
+                    )
         for path in stale:
             self._decisions.pop(path, None)
         self._identities = current

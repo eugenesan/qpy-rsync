@@ -56,6 +56,7 @@ class SettingsDialog(QDialog):
         colours: dict[ChangeAction, str | None] | None = None,
         verification_enabled: bool = False,
         verification_rsync: bool = False,
+        detect_inherited_conflicts: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -137,6 +138,20 @@ class SettingsDialog(QDialog):
             "to verification to reduce them."
         )
         advanced_layout.addWidget(self.verification_rsync_checkbox)
+        self.inherited_checkbox = QCheckBox(
+            "Flag new destination-only items below included folders", advanced
+        )
+        self.inherited_checkbox.setChecked(bool(detect_inherited_conflicts))
+        self.inherited_checkbox.setToolTip(
+            "Off by default. When a folder has an INCLUDE decision, a new "
+            "destination-only item below it would be deleted. This check "
+            "flags that decision for review.\n"
+            "A folder-wide INCLUDE is often a deliberate choice to own "
+            "everything below it: rotating logs under /var/log, for example, "
+            "would produce a review on every sync. Leave off unless those "
+            "deletions should be confirmed explicitly."
+        )
+        advanced_layout.addWidget(self.inherited_checkbox)
         advanced_hint = QLabel(
             "Both checks are diagnostics, not gates. The synchronization "
             "confirmation dialog remains the final review before writing. "
@@ -201,6 +216,9 @@ class SettingsDialog(QDialog):
 
     def verification_enabled(self) -> bool:
         return self.verification_checkbox.isChecked()
+
+    def detect_inherited_conflicts(self) -> bool:
+        return self.inherited_checkbox.isChecked()
 
     def verification_rsync(self) -> bool:
         return (

@@ -130,3 +130,32 @@ def test_fresh_comparison_drops_stale_decisions_without_conflicts() -> None:
     assert decisions.reconcile(new, preserve=False) == 1
     assert decisions.explicit("a.txt") is ChangeDecision.INHERIT
     assert decisions.conflicts() == {}
+
+
+def test_inherited_destination_only_detection_is_opt_in() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecisions, ChangeDecision, ObjectKind
+
+    old = [
+        Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        Change("docs/b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+    ]
+    new = [
+        Change("docs/a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
+        Change("docs/b.txt", ChangeAction.DESTINATION_ONLY, ObjectKind.FILE, "*deleting"),
+    ]
+
+    def prepared():
+        decisions = ChangeDecisions()
+        decisions.set("docs", ChangeDecision.INCLUDE)
+        decisions.reconcile(old)
+        return decisions
+
+    quiet = prepared()
+    assert quiet.reconcile(new, preserve=True) == 0
+    assert quiet.conflicts() == {}
+    assert quiet.explicit("docs") is ChangeDecision.INCLUDE
+
+    detect = prepared()
+    assert detect.reconcile(new, preserve=True, detect_inherited=True) == 1
+    assert "destination-only" in detect.conflicts()["docs"]
+    assert detect.explicit("docs") is ChangeDecision.INHERIT

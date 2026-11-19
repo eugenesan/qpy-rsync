@@ -219,6 +219,7 @@ class FlatChangeModel(QAbstractTableModel):
         super().__init__(parent)
         self.decisions = ChangeDecisions()
         self.preserve_decisions = True
+        self.detect_inherited_conflicts = False
         self.decision_history = DecisionHistory()
         self._conflicts: dict[str, str] = {}
         self._conflicts_only = False
@@ -330,7 +331,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.hovered_row = None
         self.changes = list(changes)
         self.discarded_decisions = self.decisions.reconcile(
-            self.changes, preserve=self.preserve_decisions
+            self.changes,
+            preserve=self.preserve_decisions,
+            detect_inherited=self.detect_inherited_conflicts,
         )
         self._refresh_conflicts()
         self.decision_history.clear()

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Optional (off by default) detection of new destination-only items below a
+  folder-level INCLUDE decision, configurable in Settings > Advanced. It is
+  off because a subtree decision is often a deliberate choice, and rotating
+  logs under such a folder would otherwise flag a conflict on every sync.
 - Reconciliation is now type-aware: EXCLUDE survives a changed action, while
   INCLUDE is dropped when the item became destination-only (the old decision
   would otherwise silently turn into a DELETE). Decisions on vanished paths

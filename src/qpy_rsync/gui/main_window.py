@@ -335,6 +335,9 @@ class MainWindow(QMainWindow):
         self._preserve_decisions = settings.value(
             "decisions/preserve", True, type=bool
         )
+        self._detect_inherited_conflicts = settings.value(
+            "decisions/detect-inherited", False, type=bool
+        )
         self._last_compare_locations: tuple[str, str] | None = None
         self._last_compare_filters: str = ""
         self._preserve_for_compare = True
@@ -1695,6 +1698,7 @@ class MainWindow(QMainWindow):
             colours=self._action_colours,
             verification_enabled=self._verification_enabled,
             verification_rsync=self._verification_rsync,
+            detect_inherited_conflicts=self._detect_inherited_conflicts,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1712,6 +1716,12 @@ class MainWindow(QMainWindow):
             settings = app_settings()
             settings.setValue("verification/enabled", self._verification_enabled)
             settings.setValue("verification/rsync", self._verification_rsync)
+            self._detect_inherited_conflicts = (
+                dialog.detect_inherited_conflicts()
+            )
+            settings.setValue(
+                "decisions/detect-inherited", self._detect_inherited_conflicts
+            )
             settings.sync()
             self._update_verification_visibility()
             self._external_tools = dialog.external_tools()
@@ -3322,6 +3332,9 @@ class MainWindow(QMainWindow):
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.model.preserve_decisions = getattr(
             self, "_preserve_for_compare", self._preserve_decisions
+        )
+        self.comparison.model.detect_inherited_conflicts = (
+            self._detect_inherited_conflicts
         )
         if getattr(self, "_preserve_reason", ""):
             self._append_log(
