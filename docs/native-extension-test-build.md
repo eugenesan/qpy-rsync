@@ -48,6 +48,24 @@ is for the row/aggregate part only. The next step is to move the
 change-visibility and directory-flag passes into the same native object so
 the whole filter path runs without rebuilding Python arrays.
 
+## Compare parsing (added after merging `main`)
+
+The same module now also exposes `parse_records()`, an experimental native
+rsync itemized-record parser. Benchmark on a synthetic 43.9 MB stream of
+520,000 records:
+
+| Step | Time |
+|---|---:|
+| Python `parse_record` loop | 1.66 s |
+| Native `parse_records` (full arrays returned) | **0.25 s** |
+| Native array conversion to Python lists | 0.01 s |
+
+`native/check_parse.py` verifies six tricky records (create, update, directory,
+two deletions, symlink) against the Python parser. In the real application the
+3.5 s parse phase also includes per-line callback and journal work, so the
+native kernel would save roughly 1–2 s there unless `Change` object creation is
+also eliminated.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,
