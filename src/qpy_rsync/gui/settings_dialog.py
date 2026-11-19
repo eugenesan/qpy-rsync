@@ -60,7 +60,7 @@ class SettingsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.resize(560, 380)
+        self.resize(720, 600)
         self._holder = holder
         self._log_panel = log_panel
         self._backup_panel = backup_panel
@@ -146,12 +146,14 @@ class SettingsDialog(QDialog):
             "Off by default. When a folder has an INCLUDE decision, a new "
             "destination-only item below it would be deleted. This check "
             "flags that decision for review.\n"
-            "A folder-wide INCLUDE is often a deliberate choice to own "
-            "everything below it: rotating logs under /var/log, for example, "
-            "would produce a review on every sync. Leave off unless those "
-            "deletions should be confirmed explicitly."
+            "A folder-wide INCLUDE is often a deliberate choice\n"
+            "to own everything below it: rotating logs under\n"
+            "/var/log, for example, would produce a review on every\n"
+            "sync. Leave off unless those deletions should be\n"
+            "confirmed explicitly."
         )
         advanced_layout.addWidget(self.inherited_checkbox)
+        advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Both checks are diagnostics, not gates. The synchronization "
             "confirmation dialog remains the final review before writing. "

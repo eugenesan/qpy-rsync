@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Cancelling the synchronization confirmation now clears the "Preparing the
+  synchronization" status; the same happens when synchronization is blocked.
+- The Settings dialog is larger so the General tab fits, and the Advanced tab
+  has a narrower tooltip and more space above its explanatory text.
 - Added previous/next arrow buttons to the right of the search field for
   pointer navigation between matches, matching Ctrl+Shift+G and Ctrl+G.
 - After a fresh comparison, the Preserve decisions button returns to the

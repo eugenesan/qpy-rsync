@@ -2876,6 +2876,7 @@ class MainWindow(QMainWindow):
                 self.progress_bar.setValue(0)
                 self.progress_bar.setVisible(False)
                 self.progress_label.setText("Synchronization cancelled.")
+                self._set_state("Synchronization cancelled.", "warning")
                 return
             try:
                 self._sync_service.synchronize(
@@ -2887,6 +2888,7 @@ class MainWindow(QMainWindow):
             except ValueError as exc:
                 self._execution_gate.confirmation_cancelled()
                 self.synchronize_button.setEnabled(True)
+                self._set_state("Synchronization blocked.", "error")
                 QMessageBox.critical(self, "Synchronization blocked", str(exc))
         finally:
             if not started:
