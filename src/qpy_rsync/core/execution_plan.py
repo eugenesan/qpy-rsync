@@ -46,7 +46,6 @@ class PlanSummary:
     creates: int
     updates: int
     metadata: int
-    replacements: int
     deletions: int
     deleted_size: int = 0
     backup_enabled: bool = False
@@ -103,7 +102,7 @@ def build_execution_plan(
 ) -> ExecutionPlan:
     changes_list = list(changes)
     items: list[PlanItem] = []
-    creates = updates = metadata_count = replacements = deletions = 0
+    creates = updates = metadata_count = deletions = 0
     included = excluded = retained_destination_only = destructive = 0
     total_size = 0
     included_size = 0
@@ -130,10 +129,7 @@ def build_execution_plan(
                 if action is ChangeAction.DESTINATION_ONLY and selected
                 else action
             )
-            is_destructive = selected and effective_action in {
-                ChangeAction.DELETE,
-                ChangeAction.REPLACE,
-            }
+            is_destructive = selected and effective_action is ChangeAction.DELETE
             items.append(
                 PlanItem(
                     path=clean,
@@ -153,7 +149,6 @@ def build_execution_plan(
                 if effective_action in {
                     ChangeAction.CREATE,
                     ChangeAction.UPDATE_CONTENT,
-                    ChangeAction.REPLACE,
                 }:
                     total_size += size
                 if effective_action is ChangeAction.CREATE:
@@ -162,8 +157,6 @@ def build_execution_plan(
                     updates += 1
                 elif effective_action is ChangeAction.UPDATE_METADATA:
                     metadata_count += 1
-                elif effective_action is ChangeAction.REPLACE:
-                    replacements += 1
                 elif effective_action is ChangeAction.DELETE:
                     deletions += 1
                     delete_paths.add(clean)
@@ -201,7 +194,6 @@ def build_execution_plan(
         creates=creates,
         updates=updates,
         metadata=metadata_count,
-        replacements=replacements,
         deletions=deletions,
         deleted_size=deleted_size,
         backup_enabled=profile.backup.enabled,

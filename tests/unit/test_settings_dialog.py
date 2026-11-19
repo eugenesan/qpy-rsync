@@ -96,9 +96,9 @@ def test_the_colour_page_carries_the_colours_of_the_actions() -> None:
     assert dialog.action_colours() == colours
 
     # An action that is not marked reads back as disabled.
-    colours[ChangeAction.REPLACE] = None
+    colours[ChangeAction.UPDATE_METADATA] = None
     dialog.set_action_colours(colours)
-    assert dialog.action_colours()[ChangeAction.REPLACE] is None
+    assert dialog.action_colours()[ChangeAction.UPDATE_METADATA] is None
     assert dialog.action_colours()[ChangeAction.CREATE] is not None
 
 

@@ -31,7 +31,6 @@ ACTION_LABELS: dict[ChangeAction, str] = {
     ChangeAction.UPDATE_METADATA: "Metadata only",
     ChangeAction.DELETE: "Delete",
     ChangeAction.DESTINATION_ONLY: "Keep in Destination",
-    ChangeAction.REPLACE: "Replace",
     ChangeAction.NO_CHANGE: "Unchanged",
     ChangeAction.MESSAGE: "Message",
 }
@@ -152,7 +151,6 @@ _DRAWERS = {
     ChangeAction.UPDATE_METADATA: _draw_metadata,
     ChangeAction.DELETE: _draw_delete,
     ChangeAction.DESTINATION_ONLY: _draw_keep,
-    ChangeAction.REPLACE: _draw_replace,
     ChangeAction.NO_CHANGE: _draw_unchanged,
     ChangeAction.MESSAGE: _draw_message,
 }

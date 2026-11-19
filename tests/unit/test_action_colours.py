@@ -30,12 +30,10 @@ def test_the_colours_are_stored_and_read_back(tmp_path) -> None:
     store = QSettings(str(tmp_path / "colours.ini"), QSettings.Format.IniFormat)
     colours = default_colours()
     colours[ChangeAction.UPDATE_CONTENT] = "#123456"
-    colours[ChangeAction.REPLACE] = None
     save_colours(colours, store)
 
     loaded = load_colours(store)
     assert loaded[ChangeAction.UPDATE_CONTENT] == "#123456"
-    assert loaded[ChangeAction.REPLACE] is None
     assert loaded[ChangeAction.CREATE] == DEFAULT_COLOURS[ChangeAction.CREATE]
 
 

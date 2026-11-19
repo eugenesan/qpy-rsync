@@ -39,7 +39,7 @@ def test_reconcile_discards_changed_identity() -> None:
     assert decisions.reconcile([original]) == 0
     decisions.set(original.path, ChangeDecision.EXCLUDE)
     assert decisions.reconcile([original]) == 0
-    changed = Change("file.txt", ChangeAction.REPLACE, ObjectKind.FILE, "cL+++++++++")
+    changed = Change("file.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")
     assert decisions.reconcile([changed]) == 1
     assert decisions.explicit("file.txt") is ChangeDecision.INHERIT
 

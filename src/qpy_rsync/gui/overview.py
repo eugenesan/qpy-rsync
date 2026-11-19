@@ -555,7 +555,6 @@ class StatisticsBar(QWidget):
             (ChangeAction.CREATE, "created"),
             (ChangeAction.UPDATE_CONTENT, "updated"),
             (ChangeAction.UPDATE_METADATA, "metadata"),
-            (ChangeAction.REPLACE, "replaced"),
             (ChangeAction.DELETE, "deleted"),
             (ChangeAction.DESTINATION_ONLY, "kept"),
         ):
@@ -593,7 +592,6 @@ class StatisticsBar(QWidget):
             "created": summary.creates,
             "updated": summary.updates,
             "metadata": summary.metadata,
-            "replaced": summary.replacements,
             "deleted": summary.deletions,
             "kept": summary.retained_destination_only,
         }

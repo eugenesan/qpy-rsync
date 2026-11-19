@@ -18,7 +18,6 @@ _SUPPORTED_TOOLS = ("meld", "kdiff3", "kompare", "vimdiff")
 _COMPARABLE_ACTIONS = {
     ChangeAction.UPDATE_CONTENT,
     ChangeAction.UPDATE_METADATA,
-    ChangeAction.REPLACE,
 }
 
 

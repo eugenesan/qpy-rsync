@@ -42,7 +42,6 @@ class ConfirmationSummary:
     creates: int
     updates: int
     metadata: int
-    replacements: int
     deletions: int
     total_size: int
     backup: str
@@ -72,7 +71,6 @@ def confirmation_summary(profile: SyncProfile, plan: ExecutionPlan) -> Confirmat
         creates=summary.creates,
         updates=summary.updates,
         metadata=summary.metadata,
-        replacements=summary.replacements,
         deletions=summary.deletions,
         total_size=summary.total_size,
         backup=backup_text,
@@ -179,7 +177,6 @@ class SyncConfirmationDialog(QDialog):
             ("Create", str(summary.creates)),
             ("Update", str(summary.updates)),
             ("Metadata", str(summary.metadata)),
-            ("Replace", str(summary.replacements)),
             ("Delete", str(summary.deletions)),
         ]
         half = (len(stats) + 1) // 2

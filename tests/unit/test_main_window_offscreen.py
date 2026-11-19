@@ -461,7 +461,7 @@ def test_verification_reuses_fresh_comparison() -> None:
     assert "Selected: 1 item, 0 B; new 0, updated 1" in log
     assert (
         "Decisions verified, selected: new 0, updated 1, metadata 0, "
-        "replaced 0, deleted 0; 1 item, 0 B"
+        "deleted 0; 1 item, 0 B"
     ) in log
     assert window.progress_label.text() == "Selected decisions verified"
     assert window.status_edit.text() == "Selected decisions verified."

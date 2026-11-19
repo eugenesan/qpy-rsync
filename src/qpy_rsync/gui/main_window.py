@@ -2284,16 +2284,11 @@ class MainWindow(QMainWindow):
                 "included_size": size,
                 "total_size": size
                 if item.action
-                in {
-                    ChangeAction.CREATE,
-                    ChangeAction.UPDATE_CONTENT,
-                    ChangeAction.REPLACE,
-                }
+                in {ChangeAction.CREATE, ChangeAction.UPDATE_CONTENT}
                 else 0,
                 "creates": int(item.action is ChangeAction.CREATE),
                 "updates": int(item.action is ChangeAction.UPDATE_CONTENT),
                 "metadata": int(item.action is ChangeAction.UPDATE_METADATA),
-                "replacements": int(item.action is ChangeAction.REPLACE),
                 "deletions": int(item.action is ChangeAction.DELETE),
                 "excluded": 0,
                 "retained_destination_only": 0,
@@ -2308,7 +2303,6 @@ class MainWindow(QMainWindow):
                     "creates",
                     "updates",
                     "metadata",
-                    "replacements",
                     "deletions",
                 ),
                 0,
@@ -2504,7 +2498,7 @@ class MainWindow(QMainWindow):
         decisions = self.comparison.model.decisions
         excluded = set(self.comparison.excluded_paths())
         counts = dict.fromkeys(
-            ("creates", "updates", "metadata", "replacements", "deletions", "kept"),
+            ("creates", "updates", "metadata", "deletions", "kept"),
             0,
         )
         included = excluded = destructive = 0
@@ -2529,11 +2523,7 @@ class MainWindow(QMainWindow):
             included += 1
             size = int(change.size or 0)
             included_size += size
-            if action in {
-                ChangeAction.CREATE,
-                ChangeAction.UPDATE_CONTENT,
-                ChangeAction.REPLACE,
-            }:
+            if action in {ChangeAction.CREATE, ChangeAction.UPDATE_CONTENT}:
                 total_size += size
             if action is ChangeAction.CREATE:
                 counts["creates"] += 1
@@ -2541,9 +2531,6 @@ class MainWindow(QMainWindow):
                 counts["updates"] += 1
             elif action is ChangeAction.UPDATE_METADATA:
                 counts["metadata"] += 1
-            elif action is ChangeAction.REPLACE:
-                counts["replacements"] += 1
-                destructive += 1
             elif action is ChangeAction.DELETE:
                 counts["deletions"] += 1
                 destructive += 1
@@ -2559,7 +2546,6 @@ class MainWindow(QMainWindow):
             creates=counts["creates"],
             updates=counts["updates"],
             metadata=counts["metadata"],
-            replacements=counts["replacements"],
             deletions=counts["deletions"],
             deleted_size=deleted_size,
             backup_enabled=bool(
@@ -2637,7 +2623,7 @@ class MainWindow(QMainWindow):
             f"Selected: {summary.included} {noun}, "
             f"{format_size(summary.total_size)}; "
             f"new {summary.creates}, updated {summary.updates}, "
-            f"metadata {summary.metadata}, replaced {summary.replacements}, "
+            f"metadata {summary.metadata}, "
             f"deleted {summary.deletions}; "
             f"kept {summary.retained_destination_only}, unchecked {summary.excluded}, "
             f"modified {summary.modified}, destructive {summary.destructive}; "
@@ -2734,7 +2720,7 @@ class MainWindow(QMainWindow):
                 self._append_log(
                     "Decisions verified, selected: "
                     f"new {summary.creates}, updated {summary.updates}, "
-                    f"metadata {summary.metadata}, replaced {summary.replacements}, "
+                    f"metadata {summary.metadata}, "
                     f"deleted {summary.deletions}; "
                     f"{summary.included} {noun}, {format_size(summary.total_size)}"
                 )

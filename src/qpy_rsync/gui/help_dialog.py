@@ -42,7 +42,7 @@ result.
      +  new item             =  unchanged item (faded checkmark)
      up updated content      =  folder on both sides
      pin metadata only       x  deleted item
-     replace                 arrow left  kept in destination
+     arrow left  kept in destination
    Checkboxes include or exclude an item. Items that cannot be chosen, such
    as unchanged items, carry no checkbox. Edit > Undo Decision (Ctrl+Z) and
    Redo Decision (Ctrl+Shift+Z) step through your decision history; Edit >

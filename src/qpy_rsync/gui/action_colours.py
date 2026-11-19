@@ -21,7 +21,6 @@ DEFAULT_COLOURS: dict[ChangeAction, str] = {
     ChangeAction.CREATE: "#208020",  # green
     ChangeAction.UPDATE_CONTENT: "#eab308",  # light yellow
     ChangeAction.UPDATE_METADATA: "#7c3aed",  # violet: distinct from selection blue
-    ChangeAction.REPLACE: "#f97316",  # orange
     ChangeAction.DELETE: "#ef4444",  # red, lightened for the dark themes
     ChangeAction.DESTINATION_ONLY: "#a05020",  # brown
 }

@@ -192,8 +192,8 @@ switched off from the header context menu; the choice is remembered per pane.
 - Create file, directory or symlink
 - Update content
 - Update size or time
-- Update metadata only
-- Replace the object type
+- Update metadata only (including a change of object type, which rsync
+  reports with a replacement attribute)
 - Delete the destination object
 - Skip or protect
 - Unchanged

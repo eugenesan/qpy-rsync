@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Dropped the "Replaced" action type entirely. rsync's replacement attribute
+  is so rare that it is classified as a metadata update; the summary, filter
+  bar, colours, help and design documents no longer mention a replacement
+  category.
 - Search navigation buttons now sit next to the search field and stay hidden
   until a search is active.
 - Tooltips and context-menu headings use the relative path, wrapped over two

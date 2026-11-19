@@ -10,7 +10,6 @@ class ChangeAction(StrEnum):
     UPDATE_METADATA = "update_metadata"
     DELETE = "delete"
     DESTINATION_ONLY = "destination_only"
-    REPLACE = "replace"
     NO_CHANGE = "no_change"
     MESSAGE = "message"
 

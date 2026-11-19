@@ -49,7 +49,7 @@ def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
         if item.included:
             continue
         pattern = _pattern(item)
-        if item.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY, ChangeAction.REPLACE}:
+        if item.action in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}:
             lines.append(f"P {pattern}")
         lines.append(f"- {pattern}")
     return lines

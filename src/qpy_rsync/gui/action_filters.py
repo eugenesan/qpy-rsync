@@ -36,7 +36,6 @@ FILTERABLE_ACTIONS: tuple[ChangeAction, ...] = (
     ChangeAction.CREATE,
     ChangeAction.UPDATE_CONTENT,
     ChangeAction.UPDATE_METADATA,
-    ChangeAction.REPLACE,
     ChangeAction.DELETE,
     ChangeAction.DESTINATION_ONLY,
 )
