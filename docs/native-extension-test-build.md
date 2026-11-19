@@ -66,6 +66,25 @@ two deletions, symlink) against the Python parser. In the real application the
 native kernel would save roughly 1–2 s there unless `Change` object creation is
 also eliminated.
 
+## Persistent comparison backend (Stage 1–2a)
+
+`_qpy_native.NativeComparison` owns the row arrays for one comparison. A build
+call (`set_changes`) passes the layout once; each filter pass then takes only
+small scalar flags and returns row positions. `native/check_model.py` compares
+its output to `FlatChangeModel` byte-for-byte on ten scenarios (nine after the
+first commit, seven of them now driven by the native flag kernel).
+
+`native/bench_filter.py` on 520,000 changes / 550,590 rows / 30,590 folders:
+
+| Filter | Python `_apply_filters` | Native `filter()` | Speedup |
+|---|---:|---:|---:|
+| all | 620 ms | 10.1 ms | 61x |
+| updates only | 328 ms | 7.3 ms | 45x |
+| creates only | 602 ms | 10.3 ms | 58x |
+
+The full 520,000-item differential passes. Path-pattern matching is still
+Python-side and is planned for the search stage of the backend plan.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

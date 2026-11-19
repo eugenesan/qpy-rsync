@@ -88,7 +88,25 @@ def python_signature(model: FlatChangeModel) -> dict[str, object]:
     }
 
 
-def native_signature(model: FlatChangeModel) -> dict[str, object]:
+ACTION_CODE = {
+    action.value: index
+    for index, action in enumerate(
+        (
+            ChangeAction.CREATE,
+            ChangeAction.UPDATE_CONTENT,
+            ChangeAction.UPDATE_METADATA,
+            ChangeAction.DELETE,
+            ChangeAction.DESTINATION_ONLY,
+            ChangeAction.NO_CHANGE,
+            ChangeAction.MESSAGE,
+        )
+    )
+}
+
+
+def native_signature(
+    model: FlatChangeModel, *, native_filter: bool = False
+) -> dict[str, object]:
     rows = model._rows
     paths = [row.path for row in rows]
     folded_names = [row.name.casefold() for row in rows]
@@ -97,10 +115,10 @@ def native_signature(model: FlatChangeModel) -> dict[str, object]:
         row.change_index if row.change_index >= 0 else -1 for row in rows
     ]
     row_dir = list(model._row_dir_index)
+    # Every directory row carries its own folder index, even without a
+    # change of its own; the row loop needs it for the flag lookup.
     own_dir_index = [
-        model._dir_index.get(row.path, 0)
-        if row.is_directory and row.change_index >= 0
-        else -1
+        model._dir_index.get(row.path, 0) if row.is_directory else -1
         for row in rows
     ]
     is_dir = [row.is_directory for row in rows]
@@ -121,39 +139,93 @@ def native_signature(model: FlatChangeModel) -> dict[str, object]:
     excluded = model._excluded_paths()
     excluded_get = excluded.get
     excluded_fn = model.exclusion.is_excluded
-    row_visible: list[int] = []
-    row_path_ok: list[int] = []
-    row_faded: list[int] = []
-    row_excluded: list[int] = []
-    row_explicit: list[int] = []
-    for row in rows:
-        if row.is_directory and row.directory is not None:
-            row_visible.append(1 if row.directory.visible else 0)
-            row_path_ok.append(1 if row.directory.path_ok else 0)
-            row_faded.append(1 if row.directory.faded else 0)
-        elif not row.is_directory:
-            ci = row.change_index
-            row_visible.append(1 if model._change_visible[ci] else 0)
-            row_path_ok.append(1 if model._change_path_ok[ci] else 0)
-            row_faded.append(0)
-        else:
-            row_visible.append(0)
-            row_path_ok.append(0)
-            row_faded.append(0)
-        row_excluded.append(1 if (row.path and excluded_fn(row.path)) else 0)
-        row_explicit.append(1 if excluded_get(row.path, False) else 0)
+    row_excluded = [
+        1 if (row.path and excluded_fn(row.path)) else 0 for row in rows
+    ]
+    folded_parent = folded_parent_flags(model)
 
-    comparison.apply(
-        row_visible,
-        row_path_ok,
-        row_faded,
-        row_excluded,
-        row_explicit,
-        folded_parent_flags(model),
-        has_exclusion,
-        model.show_excluded,
-        0,
-    )
+    if native_filter:
+        # Stage 2: the native kernel computes change and directory flags
+        # itself. This is only valid without a path pattern; pattern cases
+        # still exercise the Stage 1 flags-from-Python path below.
+        dir_paths = model._dir_paths
+        change_dir = [
+            model._dir_index.get(
+                model._change_paths[ci]
+                if model.changes[ci].kind is ObjectKind.DIRECTORY
+                else model._change_parents[ci],
+                0,
+            )
+            for ci in range(len(model.changes))
+        ]
+        change_is_dir = [
+            change.kind is ObjectKind.DIRECTORY for change in model.changes
+        ]
+        change_action = [
+            ACTION_CODE[action.value]
+            for action in model._change_effective_actions
+        ]
+        dir_parent = [
+            model._dir_index.get(model._directories[path].parent, -1)
+            for path in dir_paths
+        ]
+        dir_own_change = [
+            model._directories[path].own_change_index for path in dir_paths
+        ]
+        comparison.set_structure(
+            change_dir,
+            change_is_dir,
+            change_action,
+            dir_parent,
+            dir_own_change,
+        )
+        visible_actions = model._visible_actions
+        mask = (
+            0
+            if visible_actions is None
+            else sum(1 << ACTION_CODE[action.value] for action in visible_actions)
+        )
+        comparison.filter(
+            mask,
+            model.filter_directories,
+            has_exclusion,
+            row_excluded,
+            model.show_excluded,
+            folded_parent,
+            0,
+        )
+    else:
+        row_visible: list[int] = []
+        row_path_ok: list[int] = []
+        row_faded: list[int] = []
+        row_explicit: list[int] = []
+        for row in rows:
+            if row.is_directory and row.directory is not None:
+                row_visible.append(1 if row.directory.visible else 0)
+                row_path_ok.append(1 if row.directory.path_ok else 0)
+                row_faded.append(1 if row.directory.faded else 0)
+            elif not row.is_directory:
+                ci = row.change_index
+                row_visible.append(1 if model._change_visible[ci] else 0)
+                row_path_ok.append(1 if model._change_path_ok[ci] else 0)
+                row_faded.append(0)
+            else:
+                row_visible.append(0)
+                row_path_ok.append(0)
+                row_faded.append(0)
+            row_explicit.append(1 if excluded_get(row.path, False) else 0)
+
+        comparison.apply(
+            row_visible,
+            row_path_ok,
+            row_faded,
+            row_excluded,
+            row_explicit,
+            folded_parent,
+            has_exclusion,
+            model.show_excluded,
+            0,
+        )
 
     counts = list(comparison.dir_counts)
     sizes = list(comparison.dir_sizes)
@@ -167,9 +239,11 @@ def native_signature(model: FlatChangeModel) -> dict[str, object]:
     }
 
 
-def compare(name: str, model: FlatChangeModel) -> None:
+def compare(
+    name: str, model: FlatChangeModel, *, native_filter: bool = False
+) -> None:
     python = python_signature(model)
-    native = native_signature(model)
+    native = native_signature(model, native_filter=native_filter)
     for key in python:
         if python[key] != native[key]:
             raise AssertionError(
@@ -177,34 +251,49 @@ def compare(name: str, model: FlatChangeModel) -> None:
                 f"  python: {python[key]}\n"
                 f"  native: {native[key]}"
             )
+    kind = "native-filter" if native_filter else "flags"
     print(
-        f"{name}: {len(python['rows'])} rows, "
+        f"{name} ({kind}): {len(python['rows'])} rows, "
         f"{len(python['changes'])} changes, matched"
     )
 
 
 def main() -> None:
-    scenarios: list[tuple[str, object]] = [
-        ("default", lambda m: None),
+    # (name, configure, native_filter). Pattern cases only exercise the
+    # Stage 1 flags path; the rest run the Stage 2 native flag kernel too.
+    scenarios: list[tuple[str, object, bool]] = [
+        ("default", lambda m: None, True),
         (
             "update-only",
             lambda m: m.set_visible_actions({ChangeAction.UPDATE_CONTENT}),
+            True,
         ),
         (
             "create-or-delete",
             lambda m: m.set_visible_actions(
                 {ChangeAction.CREATE, ChangeAction.DELETE}
             ),
+            True,
         ),
-        ("path-substring", lambda m: m.set_path_filter("lib")),
-        ("glob-name", lambda m: m.set_path_filter("*.py")),
-        ("dir-contents", lambda m: m.set_path_filter("src/lib/")),
+        (
+            "faded-dirs",
+            lambda m: (
+                m.set_visible_actions({ChangeAction.UPDATE_CONTENT}),
+                setattr(m, "filter_directories", True),
+                m._apply_filters(),
+            ),
+            True,
+        ),
+        ("path-substring", lambda m: m.set_path_filter("lib"), False),
+        ("glob-name", lambda m: m.set_path_filter("*.py"), False),
+        ("dir-contents", lambda m: m.set_path_filter("src/lib/"), False),
         (
             "excluded",
             lambda m: (
                 m.decisions.set("src/lib/x.py", ChangeDecision.EXCLUDE),
                 m.refresh_exclusions(),
             ),
+            True,
         ),
         (
             "excluded-shown",
@@ -214,16 +303,18 @@ def main() -> None:
                 setattr(m, "show_excluded", True),
                 m._apply_filters(),
             ),
+            True,
         ),
         (
             "collapsed",
             lambda m: (setattr(m, "collapsed", {"src"}), m._apply_filters()),
+            True,
         ),
     ]
-    for name, configure in scenarios:
+    for name, configure, native_filter in scenarios:
         model = build_model()
         configure(model)
-        compare(name, model)
+        compare(name, model, native_filter=native_filter)
 
 
 if __name__ == "__main__":

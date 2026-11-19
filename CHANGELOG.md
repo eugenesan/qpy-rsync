@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Native extension experiment: added a persistent `NativeComparison` kernel
+  that computes filter visibility, ancestor closure and aggregates in C++,
+  with a 520,000-item byte-for-byte differential harness. Not enabled in the
+  application; Python remains the only shipped path.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the

@@ -134,16 +134,14 @@ struct NativeComparison {
   const std::vector<u32>& counts() const { return dir_counts; }
   const std::vector<i64>& sizes_per_dir() const { return dir_sizes; }
 
-  // Recompute visibility and aggregates from per-row flags. Each flag buffer
-  // is indexed by row position. Returns a generation counter so a caller can
-  // discard a stale worker result.
-  u32 apply(const std::vector<u8>& row_visible,
-            const std::vector<u8>& row_path_ok,
-            const std::vector<u8>& row_faded,
-            const std::vector<u8>& row_excluded,
-            const std::vector<u8>& row_explicit,
-            const std::vector<u8>& folded_parent, bool has_exclusion,
-            bool show_excluded, u32 generation) {
+  // Shared row loop. Mirrors the final pass of FlatChangeModel._apply_filters:
+  // visibility, the visible change set and the per-directory aggregates.
+  u32 emit(const std::vector<u8>& row_visible,
+           const std::vector<u8>& row_path_ok,
+           const std::vector<u8>& row_faded,
+           const std::vector<u8>& row_excluded, bool has_exclusion,
+           bool show_excluded, const std::vector<u8>& folded_parent,
+           u32 generation) {
     visible_rows.clear();
     visible_changes.clear();
     std::fill(dir_counts.begin(), dir_counts.end(), 0);
@@ -155,20 +153,15 @@ struct NativeComparison {
     for (std::size_t i = 0; i < paths.size(); ++i) {
       const bool inherited =
           has_exclusion && i < row_excluded.size() && row_excluded[i] != 0;
-      const bool explicit_excluded =
-          has_exclusion && i < row_explicit.size() && row_explicit[i] != 0;
       const bool faded = i < row_faded.size() && row_faded[i] != 0;
-      const bool path_ok =
-          i < row_path_ok.size() && row_path_ok[i] != 0;
+      const bool path_ok = i < row_path_ok.size() && row_path_ok[i] != 0;
       const bool visible = i < row_visible.size() && row_visible[i] != 0;
       const u32 ci = i < change_index.size() ? change_index[i] : NO_INDEX;
       u32 di = i < dir_index.size() ? dir_index[i] : 0;
 
       if (is_dir[i]) {
-        // Mirror FlatChangeModel: an inherited exclusion keeps the folder
-        // when show_excluded is on and path_ok holds; otherwise the folder's
-        // own visibility flag decides. The explicit value only affects the
-        // row's drawn state, not its presence.
+        // An inherited exclusion keeps the folder when show_excluded is on
+        // and path_ok holds; otherwise the folder's own visibility decides.
         if (!inherited) {
           if (!visible) continue;
         } else if (check_excluded || !path_ok) {
@@ -207,6 +200,171 @@ struct NativeComparison {
     }
     return generation + 1;
   }
+
+  // Stage 1 API: every per-row flag is supplied by Python. The row_explicit
+  // buffer is accepted for compatibility; row presence never depends on it,
+  // matching FlatChangeModel.
+  u32 apply(const std::vector<u8>& row_visible,
+            const std::vector<u8>& row_path_ok,
+            const std::vector<u8>& row_faded,
+            const std::vector<u8>& row_excluded,
+            const std::vector<u8>&, const std::vector<u8>& folded_parent,
+            bool has_exclusion, bool show_excluded, u32 generation) {
+    return emit(row_visible, row_path_ok, row_faded, row_excluded,
+                has_exclusion, show_excluded, folded_parent, generation);
+  }
+
+  // ---- Stage 2: native computation of the change and directory flags ----
+  std::vector<u32> change_dir;        // per change -> owning directory
+  std::vector<u32> change_action;     // per change -> effective action code
+  std::vector<u32> dir_parent;        // per directory -> parent (NO_INDEX root)
+  std::vector<u32> dir_own_change;    // per directory -> own change (NO_INDEX)
+  std::vector<u32> dir_child_offsets; // CSR over dir_child_indices
+  std::vector<u32> dir_child_indices;
+  std::vector<u32> dir_file_offsets;  // CSR over dir_file_indices
+  std::vector<u32> dir_file_indices;
+  std::vector<u32> dir_order;         // children before parents, root excluded
+
+  std::vector<u8> change_visible;
+  std::vector<u8> change_path_ok;
+  std::vector<u8> dir_path_ok;
+  std::vector<u8> dir_action_ok;
+  std::vector<u8> dir_faded;
+  std::vector<u8> dir_visible;
+
+  void set_structure(std::vector<int> change_dir_,
+                     std::vector<bool> change_is_dir_,
+                     std::vector<int> change_action_,
+                     std::vector<int> dir_parent_,
+                     std::vector<int> dir_own_change_) {
+    change_dir.assign(change_dir_.begin(), change_dir_.end());
+    change_action.assign(change_action_.begin(), change_action_.end());
+    dir_parent.assign(dir_parent_.begin(), dir_parent_.end());
+    dir_own_change.assign(dir_own_change_.begin(), dir_own_change_.end());
+    const std::size_t ndirs = dir_parent.size();
+    const std::size_t nchanges = change_dir.size();
+
+    std::vector<u32> child_counts(ndirs, 0);
+    std::vector<u32> file_counts(ndirs, 0);
+    for (std::size_t ci = 0; ci < nchanges; ++ci) {
+      const u32 di = change_dir[ci];
+      if (di == NO_INDEX || di >= ndirs) continue;
+      if (ci < change_is_dir_.size() && change_is_dir_[ci]) continue;
+      ++file_counts[di];
+    }
+    for (std::size_t di = 1; di < ndirs; ++di) {
+      const u32 parent = dir_parent[di];
+      if (parent != NO_INDEX && parent < ndirs) ++child_counts[parent];
+    }
+    dir_child_offsets.assign(ndirs + 1, 0);
+    dir_file_offsets.assign(ndirs + 1, 0);
+    for (std::size_t di = 0; di < ndirs; ++di) {
+      dir_child_offsets[di + 1] = dir_child_offsets[di] + child_counts[di];
+      dir_file_offsets[di + 1] = dir_file_offsets[di] + file_counts[di];
+    }
+    dir_child_indices.assign(dir_child_offsets[ndirs], 0);
+    dir_file_indices.assign(dir_file_offsets[ndirs], 0);
+    std::vector<u32> child_cursor(dir_child_offsets.begin(),
+                                  dir_child_offsets.end());
+    std::vector<u32> file_cursor(dir_file_offsets.begin(),
+                                 dir_file_offsets.end());
+    for (std::size_t ci = 0; ci < nchanges; ++ci) {
+      const u32 di = change_dir[ci];
+      if (di == NO_INDEX || di >= ndirs) continue;
+      if (ci < change_is_dir_.size() && change_is_dir_[ci]) continue;
+      dir_file_indices[file_cursor[di]++] = static_cast<u32>(ci);
+    }
+    for (std::size_t di = 1; di < ndirs; ++di) {
+      const u32 parent = dir_parent[di];
+      if (parent != NO_INDEX && parent < ndirs) {
+        dir_child_indices[child_cursor[parent]++] = static_cast<u32>(di);
+      }
+    }
+    // Reverse insertion order puts every child before its parent.
+    dir_order.clear();
+    for (std::size_t di = ndirs; di-- > 1;) {
+      dir_order.push_back(static_cast<u32>(di));
+    }
+
+    change_visible.assign(nchanges, 0);
+    change_path_ok.assign(nchanges, 0);
+    dir_path_ok.assign(ndirs, 0);
+    dir_action_ok.assign(ndirs, 0);
+    dir_faded.assign(ndirs, 0);
+    dir_visible.assign(ndirs, 0);
+  }
+
+  // actions_mask == 0 means "no action filter". Otherwise bit N keeps changes
+  // whose effective action code is N. This replaces the Python change loop
+  // and the directory closure for comparisons without a path pattern.
+  u32 filter(u32 actions_mask, bool filter_directories, bool has_exclusion,
+             const std::vector<u8>& row_excluded, bool show_excluded,
+             const std::vector<u8>& folded_parent, u32 generation) {
+    const std::size_t nchanges = change_dir.size();
+    for (std::size_t ci = 0; ci < nchanges; ++ci) {
+      const u32 code = ci < change_action.size() ? change_action[ci] : 0;
+      const bool keep = actions_mask == 0 ||
+                        (code < 32 && ((actions_mask >> code) & 1u) != 0);
+      change_visible[ci] = keep ? 1 : 0;
+      change_path_ok[ci] = 1;  // no path pattern in this stage
+    }
+    for (u32 di : dir_order) {
+      bool child_action_ok = false;
+      bool child_path_ok = false;
+      for (u32 p = dir_child_offsets[di]; p < dir_child_offsets[di + 1]; ++p) {
+        const u32 child = dir_child_indices[p];
+        if (dir_action_ok[child]) child_action_ok = true;
+        if (dir_path_ok[child]) child_path_ok = true;
+      }
+      for (u32 p = dir_file_offsets[di]; p < dir_file_offsets[di + 1]; ++p) {
+        const u32 ci = dir_file_indices[p];
+        if (change_visible[ci]) child_action_ok = true;
+        if (change_path_ok[ci]) child_path_ok = true;
+      }
+      const u32 own = di < dir_own_change.size() ? dir_own_change[di] : NO_INDEX;
+      bool own_action_ok = false;
+      if (own != NO_INDEX && own < nchanges) {
+        const u32 code = own < change_action.size() ? change_action[own] : 0;
+        own_action_ok = actions_mask == 0 ||
+                        (code < 32 && ((actions_mask >> code) & 1u) != 0);
+        if (change_path_ok[own]) child_path_ok = true;
+        if (change_visible[own]) child_action_ok = true;
+      }
+      dir_path_ok[di] = 1;  // (not pattern_active) holds when no pattern
+      dir_action_ok[di] = (own_action_ok || child_action_ok) ? 1 : 0;
+      dir_faded[di] =
+          (filter_directories && own != NO_INDEX && !own_action_ok) ? 1 : 0;
+      dir_visible[di] = (dir_path_ok[di] && dir_action_ok[di]) ? 1 : 0;
+    }
+    // The compared folder is always shown so its totals stay reachable.
+    if (!dir_visible.empty()) {
+      dir_path_ok[0] = 1;
+      dir_action_ok[0] = 1;
+      dir_faded[0] = 0;
+      dir_visible[0] = nchanges != 0 ? 1 : 0;
+    }
+
+    std::vector<u8> row_visible(paths.size(), 0);
+    std::vector<u8> row_path_ok(paths.size(), 0);
+    std::vector<u8> row_faded(paths.size(), 0);
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+      const u32 ci = i < change_index.size() ? change_index[i] : NO_INDEX;
+      if (is_dir[i]) {
+        // Every directory row carries its own folder index, even when it has
+        // no change of its own (ci == NO_INDEX).
+        const u32 di = i < own_dir_index.size() ? own_dir_index[i] : 0;
+        row_visible[i] = di < dir_visible.size() ? dir_visible[di] : 0;
+        row_path_ok[i] = di < dir_path_ok.size() ? dir_path_ok[di] : 0;
+        row_faded[i] = di < dir_faded.size() ? dir_faded[di] : 0;
+      } else if (ci != NO_INDEX) {
+        row_visible[i] = ci < change_visible.size() ? change_visible[ci] : 0;
+        row_path_ok[i] = ci < change_path_ok.size() ? change_path_ok[ci] : 0;
+      }
+    }
+    return emit(row_visible, row_path_ok, row_faded, row_excluded,
+                has_exclusion, show_excluded, folded_parent, generation);
+  }
+
 };
 
 // Experimental rsync itemized-record parser. Mirrors backend/rsync_parser.py
@@ -321,8 +479,22 @@ NB_MODULE(_qpy_native, m) {
            nb::arg("row_excluded"), nb::arg("row_explicit"),
            nb::arg("folded_parent"), nb::arg("has_exclusion"),
            nb::arg("show_excluded"), nb::arg("generation"))
+      .def("set_structure", &NativeComparison::set_structure,
+           nb::arg("change_dir"), nb::arg("change_is_dir"),
+           nb::arg("change_action"), nb::arg("dir_parent"),
+           nb::arg("dir_own_change"))
+      .def("filter", &NativeComparison::filter, nb::arg("actions_mask"),
+           nb::arg("filter_directories"), nb::arg("has_exclusion"),
+           nb::arg("row_excluded"), nb::arg("show_excluded"),
+           nb::arg("folded_parent"), nb::arg("generation"))
       .def_ro("visible_rows", &NativeComparison::visible_rows)
       .def_ro("visible_changes", &NativeComparison::visible_changes)
+      .def_ro("dir_action_ok", &NativeComparison::dir_action_ok)
+      .def_ro("dir_visible", &NativeComparison::dir_visible)
+      .def_ro("change_visible", &NativeComparison::change_visible)
+      .def_ro("dir_file_offsets", &NativeComparison::dir_file_offsets)
+      .def_ro("dir_file_indices", &NativeComparison::dir_file_indices)
+      .def_ro("dir_own_change", &NativeComparison::dir_own_change)
       .def_ro("dir_counts", &NativeComparison::dir_counts)
       .def_ro("dir_sizes", &NativeComparison::dir_sizes);
   nb::class_<ParsedRecords>(m, "ParsedRecords")

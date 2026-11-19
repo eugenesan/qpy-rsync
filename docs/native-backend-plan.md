@@ -55,6 +55,20 @@ before the next one starts.
 
 ## Current status
 
-- Stages 1–2 partially prototyped: `NativeFilter` and `parse_records()` exist
-  with synthetic benchmarks and a six-record differential check.
+- **Stage 1 done** (`cb8628b`): persistent `NativeComparison` mirror and a
+  nine-scenario differential harness in `native/check_model.py` comparing
+  visible rows, the visible change set and per-directory aggregates
+  byte-for-byte against `FlatChangeModel`.
+- **Stage 2a done** (this commit): the native kernel now computes change
+  visibility, directory ancestor closure, faded flags and the aggregates
+  itself. `native/check_model.py` runs ten scenarios, seven through the
+  native flag kernel; `native/bench_filter.py` checks a 520,000-item tree
+  byte-for-byte.
+  - Measured on 520k changes / 550,590 rows / 30,590 folders: Python
+    `_apply_filters` 620 ms (all), 328 ms (updates-only), 602 ms (creates);
+    native `filter()` 10.1 ms, 7.3 ms, 10.3 ms — a 45–61x speedup and well
+    under the 200 ms target.
+  - Still in Python: path-pattern matching (`_matches`, glob, directories-only)
+    is deferred to Stage 6, and `row_excluded` / `folded_parent` are passed as
+    per-row flags (empty buffers on the common path, so no O(n) marshalling).
 - Stages 3–8 not started.
