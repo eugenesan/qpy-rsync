@@ -13,3 +13,6 @@ dist/
 /crash
 crash-info*.txt
 timing*.txt
+
+# Experimental native extension build output
+*.so
