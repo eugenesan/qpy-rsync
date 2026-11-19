@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A stale comparison is now visible outside the list: the Compare button gets
+  an orange outline and a STALE tooltip, and the status bar turns orange with
+  "Stale comparison — click Compare to refresh" when it was showing a neutral
+  ready state.
 - Added Ctrl+Up / Ctrl+Down for hierarchy navigation: they move between a
   folder and its parent or first child without folding anything, and expand
   folds when descending. Left/Right still fold and unfold.

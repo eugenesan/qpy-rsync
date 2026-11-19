@@ -84,6 +84,14 @@ _PAUSE_TOOLTIP = (
 )
 _RESUME_TOOLTIP = "Continue the paused rsync operation.\n\nShortcut: F11"
 
+_COMPARE_TOOLTIP = (
+    "Compare Source and Destination using an rsync dry run.\n"
+    "No files are changed.\n"
+    "For SSH endpoints this connects to the remote host, so the remote "
+    "host must be reachable and credentials must be available."
+)
+_STALE_STATE_TEXT = "Stale comparison — click Compare to refresh"
+
 _VERIFY_TOOLTIP = (
     "Verify the selected decisions.\n"
     "When no checkbox decisions were changed after the comparison, the\n"
@@ -387,6 +395,7 @@ class MainWindow(QMainWindow):
         self.comparison = FlatComparisonView()
         self.comparison.diff_requested.connect(self._open_diff_tool)
         self.comparison.decision_changed.connect(self._on_decision_changed)
+        self.comparison.stale_changed.connect(self._update_stale_indicators)
         self.comparison.changes_updated.connect(self._overview_updated)
         self.comparison.reset_exclusions_requested.connect(self._reset_exclusions)
         self.comparison.tool_requested.connect(self._run_external_tool)
@@ -417,12 +426,7 @@ class MainWindow(QMainWindow):
         controls.addWidget(vertical_separator())
         self.compare_button = QToolButton()
         self.compare_button.setIcon(compare_icon())
-        self.compare_button.setToolTip(
-            "Compare Source and Destination using an rsync dry run.\n"
-            "No files are changed.\n"
-            "For SSH endpoints this connects to the remote host, so the remote "
-            "host must be reachable and credentials must be available."
-        )
+        self.compare_button.setToolTip(_COMPARE_TOOLTIP)
         self.compare_button.setAccessibleName("Compare")
         self.cancel_button = QToolButton()
         self.cancel_button.setIcon(cancel_icon())
@@ -1300,6 +1304,24 @@ class MainWindow(QMainWindow):
             play_completion_sound(kind)
         except Exception:  # noqa: BLE001 - a sound must never break the sync
             pass
+
+    def _update_stale_indicators(self, stale: bool) -> None:
+        """Mark the Compare button and status bar when results are stale."""
+        if stale:
+            self.compare_button.setStyleSheet(
+                "QToolButton { border: 2px solid #EA580C; border-radius: 4px; }"
+            )
+            self.compare_button.setToolTip(
+                "STALE: this comparison no longer matches the current profile.\n"
+                "Click Compare (F5) to refresh it."
+            )
+            if self.status_edit.text() in {"", "Ready for compare"}:
+                self._set_state(_STALE_STATE_TEXT, "stale")
+        else:
+            self.compare_button.setStyleSheet("")
+            self.compare_button.setToolTip(_COMPARE_TOOLTIP)
+            if self.status_edit.text() == _STALE_STATE_TEXT:
+                self._update_startup_status()
 
     def _set_state(self, text: str, severity: str = "info") -> None:
         """Update the current operation state shown in the status bar."""

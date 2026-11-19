@@ -1538,3 +1538,25 @@ def test_decision_changes_mark_the_plan_stale_without_rebuild() -> None:
     assert not window._current_plan.items[0].included
     window.close()
     application.processEvents()
+
+
+def test_stale_comparison_marks_compare_button_and_status() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._set_state("Ready for compare")
+    assert window.status_edit.text() == "Ready for compare"
+    assert "#EA580C" not in window.compare_button.styleSheet()
+    window.comparison.set_stale(True)
+    application.processEvents()
+    assert "#EA580C" in window.compare_button.styleSheet()
+    assert "STALE" in window.compare_button.toolTip()
+    assert window.status_edit.text() == "Stale comparison — click Compare to refresh"
+    assert "#EA580C" in window.status_edit.styleSheet()
+    window.comparison.set_stale(False)
+    application.processEvents()
+    assert "#EA580C" not in window.compare_button.styleSheet()
+    window.close()
+    application.processEvents()

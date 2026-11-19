@@ -383,6 +383,7 @@ class FlatComparisonView(QWidget):
 
     diff_requested = Signal(object)
     decision_changed = Signal(object)
+    stale_changed = Signal(bool)
     inventory_toggled = Signal(bool)
     changes_updated = Signal(str)
     reset_exclusions_requested = Signal()
@@ -1224,6 +1225,7 @@ class FlatComparisonView(QWidget):
         self.action.setToolTip(
             STALE_HELP_TEXT if stale else ""
         )
+        self.stale_changed.emit(bool(stale))
 
     def focus_search(self) -> None:
         self.search_edit.setFocus(Qt.FocusReason.ShortcutFocusReason)
