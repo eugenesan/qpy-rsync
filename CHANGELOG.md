@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- File log timestamps and session headers use local time with the local UTC
+  offset instead of UTC.
 - Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
   `app-<profile>.log` for application messages and `rsync-<profile>.log` for
   raw rsync output. Unsaved profiles use `default`. The log button's context

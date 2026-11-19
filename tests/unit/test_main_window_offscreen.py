@@ -2083,3 +2083,20 @@ def test_automatically_loaded_profile_is_logged(monkeypatch) -> None:
     assert "Profile loaded automatically: laptop" in window.log.toPlainText()
     window.close()
     application.processEvents()
+
+
+def test_session_log_uses_local_time(tmp_path, monkeypatch) -> None:
+    from datetime import datetime
+
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    window._write_session_log("local timestamp")
+    content = window._log_file_path.read_text(encoding="utf-8")
+    stamp = content.splitlines()[-1].split(" ", 1)[0]
+    parsed = datetime.fromisoformat(stamp)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == datetime.now().astimezone().utcoffset()
+    window.close()
+    application.processEvents()

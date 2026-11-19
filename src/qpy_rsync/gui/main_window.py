@@ -8,7 +8,7 @@ import shutil
 import time
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -1272,7 +1272,7 @@ class MainWindow(QMainWindow):
         path.parent.mkdir(parents=True, exist_ok=True)
         handle = path.open("a", encoding="utf-8")
         handle.write(
-            f"\n===== qpy-rsync session {datetime.now(timezone.utc).isoformat()} =====\n"
+            f"\n===== qpy-rsync session {datetime.now().astimezone().isoformat()} =====\n"
         )
         handle.flush()
         return handle
@@ -1309,7 +1309,7 @@ class MainWindow(QMainWindow):
         if not self._log_file_enabled:
             return
         handle = self._open_rsync_log() if rsync else self._open_session_log()
-        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
         for line in text.splitlines() or [""]:
             handle.write(f"{timestamp} {line}\n")
         # Buffered writes avoid one fsync (and one open/close) per rsync line.
