@@ -1412,8 +1412,16 @@ class MainWindow(QMainWindow):
             reason = "Source or Destination changed"
         elif self._last_compare_filters and self._filters_text != self._last_compare_filters:
             reason = "filter rules changed"
-        self._preserve_for_compare = self._preserve_decisions and not reason
-        self._preserve_reason = reason
+        # A deliberately re-checked box overrides the automatic exception.
+        forced = bool(reason) and self.preserve_box.isChecked()
+        self._preserve_for_compare = self._preserve_decisions and (
+            not reason or forced
+        )
+        self._preserve_reason = "" if forced else reason
+        if forced:
+            self._append_log(
+                f"Keeping decisions although {reason}, as requested."
+            )
         self._next_compare_locations = locations
         self._next_compare_filters = self._filters_text
 
@@ -1444,14 +1452,16 @@ class MainWindow(QMainWindow):
         # A stale comparison means the locations, profile or filters changed.
         # Preserving decisions across it would silently apply old choices to
         # a different job, so uncheck and disable until a Compare clears it.
-        self.preserve_box.setEnabled(not stale)
+        # The box stays enabled: the user may deliberately check it again to
+        # force preservation despite the changed locations or filters.
         if stale and self.preserve_box.isChecked():
             self._set_preserve_checked(False)
             self._preserve_decisions = False
             self.comparison.model.preserve_decisions = False
             self._append_log(
                 "Preserve decisions turned off: the comparison is stale "
-                "because the locations, profile or filters changed."
+                "because the locations, profile or filters changed. Check it "
+                "again before Compare to keep decisions intentionally."
             )
         plan_warning = stale or self._plan_stale
         self.validate_plan_button.setIcon(
@@ -3021,7 +3031,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
-            if answer is not QMessageBox.StandardButton.Ok:
+            if answer != QMessageBox.StandardButton.Ok:
                 return
         try:
             profile = self._profile()

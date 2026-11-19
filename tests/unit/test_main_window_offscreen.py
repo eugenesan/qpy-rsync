@@ -1897,7 +1897,7 @@ def test_preserve_checkbox_sits_by_compare_and_is_checked_by_default() -> None:
     application.processEvents()
 
 
-def test_stale_comparison_unchecks_and_disables_preserve(monkeypatch) -> None:
+def test_stale_comparison_unchecks_preserve_but_allows_forcing_it(monkeypatch) -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 
     application = app()
@@ -1910,12 +1910,14 @@ def test_stale_comparison_unchecks_and_disables_preserve(monkeypatch) -> None:
     assert window.preserve_box.isChecked()
     window.comparison.set_stale(True)
     application.processEvents()
-    assert not window.preserve_box.isEnabled()
-    assert not window.preserve_box.isChecked()
-    window.comparison.set_stale(False)
-    application.processEvents()
     assert window.preserve_box.isEnabled()
     assert not window.preserve_box.isChecked()
+    window.preserve_box.setChecked(True)
+    application.processEvents()
+    assert window._preserve_decisions is True
+    window.comparison.set_stale(False)
+    application.processEvents()
+    assert window.preserve_box.isChecked()
     window.close()
     application.processEvents()
 
