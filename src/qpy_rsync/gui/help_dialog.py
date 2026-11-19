@@ -29,7 +29,13 @@ result.
 3. Compare (F5)
    Runs rsync in dry-run mode. Nothing is written. The three panes show the
    source, the action and the destination of every item, and the overview
-   summarizes the folders.
+   summarizes the folders. The "Preserve decisions" checkbox beside Compare
+   is on by default: a new comparison keeps your manual decisions, even when
+   a live directory reports a different action for an item. Uncheck it to
+   force a fresh comparison; Compare will ask for confirmation because the
+   decisions are discarded. A stale comparison unchecks and disables the box
+   until the next Compare; check it again before that Compare to keep the
+   decisions intentionally.
 
 4. Actions
    Each row carries an action in the middle pane:

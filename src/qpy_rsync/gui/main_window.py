@@ -571,6 +571,14 @@ class MainWindow(QMainWindow):
             self._inventory_after_compare_changed
         )
         controls.addWidget(self.compare_button)
+        self.preserve_box = QCheckBox("Preserve decisions", self)
+        self.preserve_box.setObjectName("preserve-decisions")
+        self.preserve_box.setAccessibleName("Preserve decisions")
+        self.preserve_box.setChecked(self._preserve_decisions)
+        self.preserve_box.toggled.connect(self._preserve_toggled)
+        self._apply_preserve_style()
+        self.preserve_box.setToolTip(self._preserve_tooltip())
+        controls.addWidget(self.preserve_box)
         controls.addWidget(self.inventory_after_compare_button)
         for widget in (
             self.validate_plan_button,
@@ -610,8 +618,6 @@ class MainWindow(QMainWindow):
         self.action_filters.directory_filter_toggled.connect(
             self._filter_directories_changed
         )
-        self.action_filters.preserve_toggled.connect(self._preserve_toggled)
-        self.action_filters.preserve_box.setChecked(self._preserve_decisions)
         self.action_filters.unchanged_toggled.connect(self._apply_inventory_mode)
         self.show_unchanged = self.action_filters.unchanged_box
         destination_panel = self._location_panel("Destination", self.destination_edit)
@@ -1340,9 +1346,43 @@ class MainWindow(QMainWindow):
         except Exception:  # noqa: BLE001 - a sound must never break the sync
             pass
 
+    def _preserve_tooltip(self) -> str:
+        if self.preserve_box.isChecked():
+            return (
+                "Keep manual include and exclude decisions when Compare runs "
+                "again, even when the reported action of an item changed.\n"
+                "Uncheck to force a fresh comparison: all decisions will be "
+                "discarded and Compare will ask for confirmation."
+            )
+        return (
+            "UNCHECKED: the next Compare will discard every manual include "
+            "and exclude decision and start from the rsync results.\n"
+            "Check this box again before Compare to keep decisions even when "
+            "Source, Destination or filter rules changed."
+        )
+
+    def _apply_preserve_style(self) -> None:
+        """Highlight the checkbox when it is about to discard work."""
+        if self.preserve_box.isChecked():
+            self.preserve_box.setStyleSheet("")
+        else:
+            self.preserve_box.setStyleSheet(
+                "QCheckBox { background-color: #fecaca; color: #991b1b; "
+                "padding: 2px 5px; border-radius: 3px; }"
+            )
+
+    def _set_preserve_checked(self, checked: bool) -> None:
+        self.preserve_box.blockSignals(True)
+        self.preserve_box.setChecked(checked)
+        self.preserve_box.blockSignals(False)
+        self._apply_preserve_style()
+        self.preserve_box.setToolTip(self._preserve_tooltip())
+
     def _preserve_toggled(self, enabled: bool) -> None:
         self._preserve_decisions = bool(enabled)
         self.comparison.model.preserve_decisions = self._preserve_decisions
+        self._apply_preserve_style()
+        self.preserve_box.setToolTip(self._preserve_tooltip())
         settings = app_settings()
         settings.setValue("decisions/preserve", self._preserve_decisions)
         settings.sync()
@@ -1398,6 +1438,18 @@ class MainWindow(QMainWindow):
         """Use the same three-state badge as the filter and profile buttons."""
         fresh = bool(self.comparison.model.changes) and not stale
         self.compare_button.setIcon(compare_icon(info=fresh, warning=stale))
+        # A stale comparison means the locations, profile or filters changed.
+        # Preserving decisions across it would silently apply old choices to
+        # a different job, so uncheck and disable until a Compare clears it.
+        self.preserve_box.setEnabled(not stale)
+        if stale and self.preserve_box.isChecked():
+            self._set_preserve_checked(False)
+            self._preserve_decisions = False
+            self.comparison.model.preserve_decisions = False
+            self._append_log(
+                "Preserve decisions turned off: the comparison is stale "
+                "because the locations, profile or filters changed."
+            )
         plan_warning = stale or self._plan_stale
         self.validate_plan_button.setIcon(
             verify_icon(
@@ -2956,6 +3008,18 @@ class MainWindow(QMainWindow):
             self._compare()
 
     def _compare(self) -> None:
+        if not self.preserve_box.isChecked():
+            answer = QMessageBox.warning(
+                self,
+                "Fresh comparison",
+                "Preserve decisions is off. This comparison will discard all "
+                "manual include and exclude decisions. Check the box to keep "
+                "them, or continue to start fresh.",
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer is not QMessageBox.StandardButton.Ok:
+                return
         try:
             profile = self._profile()
             spec = build_compare_spec(profile)

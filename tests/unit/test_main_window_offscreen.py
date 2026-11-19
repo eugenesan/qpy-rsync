@@ -1881,3 +1881,68 @@ def test_second_rsync_run_is_only_used_when_both_flags_are_enabled() -> None:
     assert "no second rsync run" in window.log.toPlainText()
     window.close()
     application.processEvents()
+
+
+def test_preserve_checkbox_sits_by_compare_and_is_checked_by_default() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window.preserve_box.isChecked()
+    assert "#fecaca" not in window.preserve_box.styleSheet()
+    window.preserve_box.setChecked(False)
+    application.processEvents()
+    assert "#fecaca" in window.preserve_box.styleSheet()
+    assert "UNCHECKED" in window.preserve_box.toolTip()
+    window.close()
+    application.processEvents()
+
+
+def test_stale_comparison_unchecks_and_disables_preserve(monkeypatch) -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    application.processEvents()
+    assert window.preserve_box.isChecked()
+    window.comparison.set_stale(True)
+    application.processEvents()
+    assert not window.preserve_box.isEnabled()
+    assert not window.preserve_box.isChecked()
+    window.comparison.set_stale(False)
+    application.processEvents()
+    assert window.preserve_box.isEnabled()
+    assert not window.preserve_box.isChecked()
+    window.close()
+    application.processEvents()
+
+
+def test_compare_warns_before_discarding_decisions(monkeypatch) -> None:
+    import qpy_rsync.gui.main_window as main_window
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.preserve_box.setChecked(False)
+    application.processEvents()
+    calls: list[object] = []
+
+    def warning(*args, **kwargs):
+        calls.append(args)
+        return main_window.QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(main_window.QMessageBox, "warning", warning)
+    window._compare()
+    assert calls
+    assert "discard all" in str(calls[0][2])
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: main_window.QMessageBox.StandardButton.Ok,
+    )
+    window._compare()
+    window.close()
+    application.processEvents()
