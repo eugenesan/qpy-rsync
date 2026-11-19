@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Search navigation buttons now sit next to the search field and stay hidden
+  until a search is active.
+- Tooltips and context-menu headings use the relative path, wrapped over two
+  lines at 40% of the window width.
+- Comparison progress no longer shows unreliable percentages or a "remaining"
+  count; it reports how many itemized records were received.
+- The orange stale state colour clears when a new comparison starts.
+- The comparison is not marked complete until the destination metadata listing
+  finishes, so its status and journal message no longer appear late.
 - Cancelling the synchronization confirmation now clears the "Preparing the
   synchronization" status; the same happens when synchronization is blocked.
 - The Settings dialog is larger so the General tab fits, and the Advanced tab

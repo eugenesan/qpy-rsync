@@ -344,6 +344,8 @@ class MainWindow(QMainWindow):
         self._preserve_for_compare = True
         self._preserve_reason = ""
         self._preserve_before_force: bool | None = None
+        self._metadata_pending = False
+        self._last_compare_count = 0
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
         self._build_ui()
@@ -1537,6 +1539,9 @@ class MainWindow(QMainWindow):
         self.status_edit.setToolTip(text)
         self._apply_status_style(colors.get(severity, ""))
         self.status_edit.setText(text.replace("\n", " "))
+        # The "State:" label is orange only while the comparison is stale.
+        if severity != "stale":
+            self.state_label.setStyleSheet("")
 
     def _set_status(self, text: str, severity: str = "info") -> None:
         """Write a message to the journal; warnings do not replace the state."""
@@ -3327,12 +3332,17 @@ class MainWindow(QMainWindow):
         self.progress_label.setText(f"Comparing... {count:,} item(s) found")
 
     def _comparison_progress(self, progress: object) -> None:
-        percent = int(getattr(progress, "percent", 0))
+        # rsync's incremental counter has no stable total for a dry run, so
+        # percentages and "remaining" values are meaningless. Show only the
+        # number of itemized records actually received.
         completed = int(getattr(progress, "files_completed", 0))
         remaining = int(getattr(progress, "files_remaining", 0))
-        self.progress_bar.setValue(percent)
+        total = int(getattr(progress, "files_total", 0))
+        inspected = max(completed, total - remaining, 0)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
         self.progress_label.setText(
-            f"Comparing... {percent}% ({completed} files inspected, {remaining} remaining)"
+            f"Comparing... {inspected:,} item(s) inspected"
         )
 
     def _comparison_cancelled(self) -> None:
@@ -3386,7 +3396,7 @@ class MainWindow(QMainWindow):
         self.comparison.destination_is_local = (
             self._active_profile.destination.kind is EndpointKind.LOCAL
         )
-        self._fetch_destination_metadata()
+        metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
         discarded = self.comparison.model.discarded_decisions
         conflicts = self.comparison.model.conflicts()
@@ -3420,12 +3430,17 @@ class MainWindow(QMainWindow):
         # the plan; avoid a second full rebuild here.
         for message in result.parsed.diagnostics:
             self._append_log(message)
-        count = len(result.parsed.changes)
-        self._set_state(
-            f"Comparison complete: {count} changed item(s).", "success"
-        )
+        self._last_compare_count = len(result.parsed.changes)
+        if metadata_started:
+            self._metadata_pending = True
+            self.progress_bar.setRange(0, 0)
+            self.progress_label.setText("Gathering destination metadata...")
+        else:
+            self._finish_comparison_status()
         self._play_completion_sound("success")
-        self._append_log(f"STATE comparison-complete changes={count}")
+        self._append_log(
+            f"STATE comparison-complete changes={self._last_compare_count}"
+        )
         self._end_bulk_logging()
 
     def _add_shortcut(self, key: str, slot) -> None:
@@ -3719,18 +3734,22 @@ class MainWindow(QMainWindow):
     def _inventory_summary(self, unchanged: int) -> str:
         return f"Showing {unchanged:,} unchanged item(s)."
 
-    def _fetch_destination_metadata(self) -> None:
-        """Fill in the size and date of the destination-only objects."""
+    def _fetch_destination_metadata(self) -> bool:
+        """Start the destination listing; return whether it is still running."""
         if self._active_profile is None:
-            return
+            return False
         if getattr(self.comparison.model, "exclusion", None) is None:
-            return
+            return False
         # The inventory already knows the destination metadata.
         if self.inventory_after_compare_button.isChecked():
-            return
+            return False
+        changes = list(self._changed_changes())
+        if not changes:
+            return False
         self._metadata_token = self._metadata_service.gather(
-            deepcopy(self._active_profile), list(self._changed_changes())
+            deepcopy(self._active_profile), changes
         )
+        return True
 
     def _changed_changes(self) -> list[object]:
         return [
@@ -3740,12 +3759,25 @@ class MainWindow(QMainWindow):
             is not ChangeAction.NO_CHANGE
         ]
 
+    def _finish_comparison_status(self) -> None:
+        count = self._last_compare_count
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.progress_label.setText("Comparison completed")
+        self._set_state(
+            f"Comparison complete: {count} changed item(s).", "success"
+        )
+
     def _metadata_finished(self, token: int, extra: object) -> None:
         if self._closing or token != self._metadata_token:
             return
         self._metadata_token = 0
+        was_pending = self._metadata_pending
+        self._metadata_pending = False
         result = _inventory_result(extra)
         if not result.destination_metadata:
+            if was_pending:
+                self._finish_comparison_status()
             return
         with timed("metadata.merge", entries=len(result.destination_metadata)):
             merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
@@ -3759,6 +3791,8 @@ class MainWindow(QMainWindow):
         self._append_log(
             f"Destination metadata: {len(result.destination_metadata)} object(s)."
         )
+        if was_pending:
+            self._finish_comparison_status()
 
     def _start_inventory(self, key: object, changed: list[object]) -> None:
         """List both trees in the background."""
@@ -4246,7 +4280,7 @@ class MainWindow(QMainWindow):
         ):
             # Turning the toggle on for an existing comparison starts the
             # inventory that would otherwise have run after the comparison.
-            self._fetch_destination_metadata()
+            metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
 
     def _shutdown_operations(self) -> None:

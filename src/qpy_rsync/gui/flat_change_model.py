@@ -41,7 +41,7 @@ from qpy_rsync.core.changes import (
 from qpy_rsync.core.units import format_size
 
 from .action_colours import colour_for
-from .text_elide import elide_path
+from .text_elide import elide_path, wrap_path
 
 class ExcludedPaths:
     """The EXCLUDE decisions, exposed as the old exclusion API.
@@ -2084,10 +2084,9 @@ class FlatChangeModel(QAbstractTableModel):
     def _tooltip_for(self, row: FlatRow, column: int) -> str:
         if not row.path and self.stale:
             return STALE_HELP_TEXT
-        source_full = full_path(self.source_root, row.path)
-        destination_full = full_path(self.destination_root, row.path)
-        source_display = elide_path(source_full, self.tooltip_width)
-        destination_display = elide_path(destination_full, self.tooltip_width)
+        relative = row.path or "/"
+        source_display = wrap_path(relative, self.tooltip_width)
+        destination_display = wrap_path(relative, self.tooltip_width)
         destination_column = column in {
             self.DESTINATION_NAME,
             self.DESTINATION_ITEMS,

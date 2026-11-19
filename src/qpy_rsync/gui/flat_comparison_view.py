@@ -67,7 +67,7 @@ from .icons import (
     unchanged_icon,
 )
 from .paths import full_path
-from .text_elide import elide_path
+from .text_elide import elide_path, wrap_path
 from qpy_rsync.storage.settings import app_settings
 
 # The colour of the dimmed path that precedes the name of a directory.
@@ -484,7 +484,6 @@ class FlatComparisonView(QWidget):
         self.find_button.setAccessibleName("Find next")
         self.find_button.clicked.connect(self.find_next)
         controls.addWidget(self.find_button)
-        controls.addWidget(self.search_edit, 1)
         self.search_previous_button = QToolButton()
         self.search_previous_button.setIcon(search_previous_icon())
         self.search_previous_button.setIconSize(
@@ -505,11 +504,15 @@ class FlatComparisonView(QWidget):
         self.search_next_button.setAccessibleName("Next search match")
         self.search_next_button.clicked.connect(self.find_next)
         controls.addWidget(self.search_next_button)
+        controls.addWidget(self.search_edit, 1)
         self.search_status = QLabel()
         self.search_status.setObjectName("search-status")
         self.search_status.setToolTip("Search matches in the visible list")
         self.search_status.setMinimumWidth(52)
         controls.addWidget(self.search_status)
+        self.search_previous_button.hide()
+        self.search_next_button.hide()
+        self.search_status.hide()
         self.menu_button = QToolButton()
         self.menu_button.setIcon(app_menu_icon())
         self.menu_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
@@ -682,13 +685,14 @@ class FlatComparisonView(QWidget):
                 self.model.DESTINATION_SIZE_BYTES,
             } or column in destination_hidden)
 
+    def _path_display_width(self) -> int:
+        """A path may use at most 40% of the current window width."""
+        window = self.window()
+        width = int(window.width() * 0.4) if window is not None else 256
+        return max(256, width)
+
     def _update_tooltip_width(self) -> None:
-        """Match tooltip eliding to the widest visible Item column."""
-        self.model.tooltip_width = max(
-            256,
-            self.source.columnWidth(self.model.SOURCE_NAME),
-            self.destination.columnWidth(self.model.DESTINATION_NAME),
-        )
+        self.model.tooltip_width = self._path_display_width()
 
     def _show_column_menu(self, pane: str, tree: QTableView, point: object) -> None:
         """Offer the optional columns of a pane as a checkable menu."""
@@ -1288,8 +1292,14 @@ class FlatComparisonView(QWidget):
         self._search_position = -1
         if not text:
             self.search_status.setText("")
+            self.search_status.hide()
+            self.search_previous_button.hide()
+            self.search_next_button.hide()
             return
         count = len(self._search_rows)
+        self.search_status.show()
+        self.search_previous_button.show()
+        self.search_next_button.show()
         self.search_status.setText(f"0/{count}" if count else "no match")
         if count and jump:
             self._step_search(1)
@@ -1534,7 +1544,7 @@ class FlatComparisonView(QWidget):
             change is not None
             and getattr(change, "action", None) is ChangeAction.NO_CHANGE
         )
-        absolute_path = self._absolute_path(tree, path)
+        absolute_path = path or ""
         menu = QMenu(tree)
         actions: dict[str, object] = {
             "copy": None,
@@ -1559,7 +1569,7 @@ class FlatComparisonView(QWidget):
         }
         if absolute_path:
             heading = menu.addAction(
-                elide_path(absolute_path, max(240, tree.columnWidth(tree.model().SOURCE_NAME)))
+                wrap_path(absolute_path, self._path_display_width())
             )
             heading.setEnabled(False)
             menu.addSeparator()
