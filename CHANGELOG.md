@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- A destination size that was never listed now shows a blank cell instead of
-  a misleading "0 B". Deletions still show their real destination size, and
-  directory rows keep their "affected items only" totals.
+- Destination sizes are gathered for every changed path that exists on the
+  destination, so updated and metadata-only items show their real size again
+  instead of "0 B". The listing uses the profile's own filters in one pass
+  rather than a pattern per changed item; CREATE items are skipped because
+  they have no destination counterpart. Genuinely unknown sizes stay blank.
 - Optional (off by default) detection of new destination-only items below a
   folder-level INCLUDE decision, configurable in Settings > Advanced. It is
   off because a subtree decision is often a deliberate choice, and rotating

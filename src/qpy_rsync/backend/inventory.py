@@ -8,8 +8,7 @@ from typing import Callable, Iterable
 
 from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
-from qpy_rsync.core.enums import FilterRuleType
-from qpy_rsync.core.models import FilterRule, SyncProfile
+from qpy_rsync.core.models import SyncProfile
 
 from .rsync_command import build_inventory_spec
 
@@ -171,13 +170,14 @@ def gather_destination_metadata(
     callback = (
         (lambda count: progress("Destination", count)) if progress is not None else None
     )
-    # Only deletions need destination metadata: rsync gives no size for a
-    # *deleting record. Listing the whole destination (hundreds of thousands
-    # of objects) just to size a few thousand deletions freezes the GUI when
-    # the result is merged. List only the deleted paths and their ancestors.
+    # rsync reports source metadata for changes, so the destination columns
+    # need one listing of every changed path that exists there. CREATE items
+    # are excluded: by definition they have no destination counterpart.
+    # Listing only deletions used to be faster, but it made every other
+    # destination size show as zero, which is worse.
     paths: set[str] = set()
     for change in changed:
-        if change.action not in {ChangeAction.DELETE, ChangeAction.DESTINATION_ONLY}:
+        if change.action is ChangeAction.CREATE:
             continue
         clean = str(change.path).rstrip("/")
         if not clean:
@@ -190,13 +190,23 @@ def gather_destination_metadata(
     if not paths:
         return InventoryResult(unchanged=[], destination_metadata={})
 
-    rules = [f"+ /{path}" for path in sorted(paths)] + ["- *"]
-    narrow = deepcopy(profile)
-    narrow.filters = [
-        FilterRule(rule, rule_type=FilterRuleType.ADVANCED) for rule in rules
-    ]
-    entries = inventory_paths(profile.destination, narrow, callback)
+    # One listing with the profile's own rules is much cheaper than half a
+    # million include patterns: rsync checks filter rules per path, so a
+    # pattern per changed item would be quadratic. Keep only the paths we
+    # actually need, and repeat without filters for anything the profile's
+    # rules hid (a deleted item may be excluded by a user filter).
+    entries = inventory_paths(profile.destination, profile, callback)
     metadata = {
-        path: (entry.size, entry.modified_time) for path, entry in entries.items()
+        path: (entry.size, entry.modified_time)
+        for path, entry in entries.items()
+        if path in paths
     }
+    missing = paths - metadata.keys()
+    if missing:
+        unfiltered = deepcopy(profile)
+        unfiltered.filters = []
+        extra = inventory_paths(profile.destination, unfiltered, callback)
+        for path, entry in extra.items():
+            if path in missing:
+                metadata[path] = (entry.size, entry.modified_time)
     return InventoryResult(unchanged=[], destination_metadata=metadata)

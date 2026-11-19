@@ -74,7 +74,7 @@ def test_destination_metadata_uses_a_single_narrow_listing(tmp_path, monkeypatch
     assert len(calls) == 1
 
 
-def test_destination_metadata_lists_only_deleted_paths(tmp_path, monkeypatch) -> None:
+def test_destination_metadata_lists_all_changed_paths_except_creates(tmp_path, monkeypatch) -> None:
     from qpy_rsync.backend.inventory import gather_destination_metadata
     from qpy_rsync.core.changes import Change
 
@@ -83,16 +83,22 @@ def test_destination_metadata_lists_only_deleted_paths(tmp_path, monkeypatch) ->
 
     def fake(endpoint, prof=None, progress=None):
         captured.append(prof)
-        return {"old/a": InventoryEntry(ObjectKind.FILE, 12, "t")}
+        return {
+            "old/a": InventoryEntry(ObjectKind.FILE, 12, "t"),
+            "changed.txt": InventoryEntry(ObjectKind.FILE, 44, "t"),
+            "keep.txt": InventoryEntry(ObjectKind.FILE, 99, "t"),
+        }
 
     monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
     changes = [
         Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting"),
+        Change("changed.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......"),
         Change("keep.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f"),
     ]
     result = gather_destination_metadata(profile, changes)
     assert result.destination_metadata["old/a"][0] == 12
-    rules = [rule.rule for rule in captured[0].filters]
-    assert "+ /old/" in rules
-    assert "+ /old/a" in rules
-    assert "- *" in rules
+    assert result.destination_metadata["changed.txt"][0] == 44
+    # One profile-filtered listing, not a pattern per changed item.
+    assert captured[0] is profile
+    assert [rule.rule for rule in profile.filters] == ["*.tmp"]
+    assert "keep.txt" not in result.destination_metadata
