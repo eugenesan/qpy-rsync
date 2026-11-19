@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Each log session header records the full `qpy-rsync` version and git commit
+  once, so timing snapshots from different builds can be told apart.
+- Post-parse comparison phases are timed in the application log: how long the
+  view/model rebuild took, and how long from receiving the parsed result until
+  the comparison is ready (including the destination metadata listing).
+- Comparison progress no longer alternates between two counters: the parsed
+  change count is the only visible number, while rsync's unstable incremental
+  counter only drives the indeterminate progress bar.
+- Raw rsync output is written to its log in batches of 1,000 lines instead of
+  one timestamped, flushed write per record, removing most of the journal-write
+  cost measured on large comparisons.
+- Compare parsing now reports its own timing in the application log and as a
+  `compare.parse` timing probe: number of lines, time spent parsing records
+  and time spent writing journal entries. The elapsed rsync message now says
+  "dry run" to distinguish the child process from the whole comparison.
+- File log timestamps and session headers use local time with the local UTC
+  offset instead of UTC.
+- Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
+  `app-<profile>.log` for application messages and `rsync-<profile>.log` for
+  raw rsync output. Unsaved profiles use `default`. The log button's context
+  menu clears both files.
+- Journal timestamps now include seconds and hundredths (`12:04:01.55`).
+- Automatically loaded profiles are logged at startup, and each rsync run
+  logs its elapsed time after completion, cancellation or failure.
+- A log file reaching 1 GB adds an orange journal warning pointing to the
+  "Clear Log" context-menu entry.
 - Dropped the "Replaced" action type entirely. rsync's replacement attribute
   is so rare that it is classified as a metadata update; the summary, filter
   bar, colours, help and design documents no longer mention a replacement

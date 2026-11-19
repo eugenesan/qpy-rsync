@@ -94,3 +94,16 @@ def test_transfer_progress_stays_out_of_the_journal() -> None:
     assert transient == ["8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)"]
     assert len(progress) == 1
     assert progress[0].percent == 100
+
+
+def test_compare_service_logs_parse_timing_on_finish() -> None:
+    app()
+    service = CompareService()
+    logs: list[str] = []
+    diagnostics: list[str] = []
+    service.on_log = logs.append
+    service.on_diagnostic = diagnostics.append
+    service._stdout_chunk(">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt\r")
+    service._finish(ProcessResult(0, "", ""))
+    assert any("Compare parse:" in line and "line(s)" in line for line in diagnostics)
+    assert not any("Compare parse:" in line for line in logs)

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from time import perf_counter
 from typing import Callable
 
-from qpy_rsync.backend.diagnostics import debug
+from qpy_rsync.backend.diagnostics import debug, debug_timing
 from qpy_rsync.backend.process_runner import (
     ProcessResult,
     ProcessState,
@@ -37,12 +38,16 @@ class CompareService:
         self._changes: list[object] = []
         self._diagnostics: list[str] = []
         self._parse_error: str | None = None
+        self._parse_seconds = 0.0
+        self._log_seconds = 0.0
+        self._line_count = 0
         self._runner = QtProcessRunner(parent)  # type: ignore[arg-type]
         self.on_started: Callable[[], None] = lambda: None
         self.on_finished: Callable[[CompareResult], None] = lambda _result: None
         self.on_error: Callable[[str], None] = lambda _message: None
         self.on_cancelled: Callable[[], None] = lambda: None
         self.on_log: Callable[[str], None] = lambda _message: None
+        self.on_diagnostic: Callable[[str], None] = lambda _message: None
         self.on_progress: Callable[[SyncProgress], None] = lambda _progress: None
         self.on_transient: Callable[[str], None] = lambda _text: None
         # The number of items the comparison has found so far.
@@ -60,6 +65,9 @@ class CompareService:
         self._changes = []
         self._diagnostics = []
         self._parse_error = None
+        self._parse_seconds = 0.0
+        self._log_seconds = 0.0
+        self._line_count = 0
         self.on_started()
         self._runner.start(build_compare_spec(profile))
 
@@ -115,14 +123,20 @@ class CompareService:
             self.on_progress(progress)
             self.on_transient(cleaned)
             return
+        log_started = perf_counter()
         self.on_log(cleaned)
+        self._log_seconds += perf_counter() - log_started
         if self._parse_error is not None:
             return
+        parse_started = perf_counter()
         try:
             change = parse_record(cleaned, delete_enabled=self._delete_enabled)
         except RsyncParseError as exc:
+            self._parse_seconds += perf_counter() - parse_started
             self._parse_error = str(exc)
             return
+        self._parse_seconds += perf_counter() - parse_started
+        self._line_count += 1
         if change is None:
             self._diagnostics.append(cleaned)
             return
@@ -137,6 +151,17 @@ class CompareService:
             self._emit_line(self._buffer)
             self._buffer = ""
         self.on_items(len(self._changes))
+        debug_timing(
+            "compare.parse",
+            lines=self._line_count,
+            parse_ms=round(self._parse_seconds * 1000, 1),
+            log_ms=round(self._log_seconds * 1000, 1),
+        )
+        self.on_diagnostic(
+            f"Compare parse: {self._line_count:,} line(s), "
+            f"parsing {self._parse_seconds:.2f} s, "
+            f"journal writes {self._log_seconds:.2f} s."
+        )
         debug("compare.finish", exit_code=process.exit_code, stdout=repr(process.stdout[:2000]), stderr=repr(process.stderr[:2000]))
         if self._cancelled:
             self.on_cancelled()

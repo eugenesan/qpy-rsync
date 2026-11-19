@@ -5,9 +5,10 @@ from copy import deepcopy
 from dataclasses import asdict, replace
 import shlex
 import shutil
+import time
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qpy_rsync import __version__ as APP_VERSION
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
@@ -236,6 +238,7 @@ class MainWindow(QMainWindow):
         self._service.on_error = self._comparison_error
         self._service.on_cancelled = self._comparison_cancelled
         self._service.on_log = self._append_rsync_log
+        self._service.on_diagnostic = self._append_log
         self._service.on_progress = self._comparison_progress
         self._service.on_transient = self._append_transient_log
         self._service.on_items = self._comparison_items
@@ -311,9 +314,15 @@ class MainWindow(QMainWindow):
         self._wide_overview_width: int | None = None
         self._overview_min_width: int | None = None
         self._log_file_enabled = True
-        self._log_file_path = self._default_log_file_path()
+        self._log_file_path = self._default_log_file_path("app")
         self._log_initialized = False
         self._log_handle = None
+        self._rsync_log_path = self._default_log_file_path("rsync")
+        self._rsync_log_handle = None
+        self._log_size_warned = False
+        self._rsync_pending: list[str] = []
+        self._last_phase_started: float | None = None
+        self._rsync_started_at: dict[str, float] = {}
         self._log_buffer: list[str] = []
         self._bulk_logging = False
         self._bulk_rsync = False
@@ -350,9 +359,15 @@ class MainWindow(QMainWindow):
         self._next_compare_filters: str = ""
         self._build_ui()
         self._restore_window_state()
-        if not self._restore_recent_profile():
+        profile_loaded = self._restore_recent_profile()
+        if not profile_loaded:
             self._restore_backup()
         self._restore_logging_settings()
+        if profile_loaded:
+            self._append_log(
+                f"Profile loaded automatically: {self._profile_name()}",
+                severity="info",
+            )
         filter_directories = app_settings().value(
             "comparison/filter-directories", False, type=bool
         )
@@ -1187,37 +1202,55 @@ class MainWindow(QMainWindow):
         return container
 
     @staticmethod
-    def _default_log_file_path() -> Path:
-        state_home = os.environ.get("XDG_STATE_HOME", "").strip()
-        root = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
-        return root / "qpy-rsync.log"
+    def _log_directory() -> Path:
+        cache_home = os.environ.get("XDG_CACHE_HOME", "").strip()
+        root = Path(cache_home).expanduser() if cache_home else Path.home() / ".cache"
+        return root / "qpy-rsync"
+
+    def _profile_name(self) -> str:
+        """The name used for the ad-hoc profile and for per-profile logs."""
+        if self._profile_path is not None:
+            return self._profile_path.stem or "default"
+        return "default"
+
+    def _default_log_file_path(self, kind: str = "app") -> Path:
+        import re
+
+        slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", self._profile_name()).strip("._") or "default"
+        return self._log_directory() / f"{kind}-{slug}.log"
+
+    def _update_log_paths(self) -> None:
+        """App and rsync logs are kept separately, one pair per profile."""
+        app_path = self._default_log_file_path("app")
+        rsync_path = self._default_log_file_path("rsync")
+        if app_path == self._log_file_path and rsync_path == self._rsync_log_path:
+            return
+        self._flush_log()
+        self._close_session_log()
+        self._close_rsync_log()
+        self._log_file_path = app_path
+        self._rsync_log_path = rsync_path
+        self._log_size_warned = False
+        self.log_file_edit.setText(str(app_path))
 
     def _restore_logging_settings(self) -> None:
         settings = app_settings()
         self._log_file_enabled = settings.value("logging/enabled", True, type=bool)
-        stored = str(settings.value("logging/path", str(self._default_log_file_path())))
-        self._log_file_path = Path(stored).expanduser()
+        self._update_log_paths()
         self.log_file_checkbox.blockSignals(True)
-        self.log_file_edit.blockSignals(True)
         self.log_file_checkbox.setChecked(self._log_file_enabled)
-        self.log_file_edit.setText(str(self._log_file_path))
         self.log_file_checkbox.blockSignals(False)
-        self.log_file_edit.blockSignals(False)
         self._update_logging_controls()
 
     def _logging_settings_changed(self, _checked: bool | None = None, *, save: bool = True) -> None:
         self._flush_log()
         self._close_session_log()
         self._log_file_enabled = self.log_file_checkbox.isChecked()
-        value = self.log_file_edit.text().strip()
-        self._log_file_path = Path(value).expanduser() if value else self._default_log_file_path()
-        if not value:
-            self.log_file_edit.setText(str(self._log_file_path))
+        self._update_log_paths()
         self._update_logging_controls()
         if save:
             settings = app_settings()
             settings.setValue("logging/enabled", self._log_file_enabled)
-            settings.setValue("logging/path", str(self._log_file_path))
             settings.sync()
 
     def _update_logging_controls(self) -> None:
@@ -1237,36 +1270,91 @@ class MainWindow(QMainWindow):
             self.log_file_edit.setText(selected)
             self._logging_settings_changed()
 
-    def _open_session_log(self):
-        if self._log_handle is not None:
-            return self._log_handle
-        self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
-        self._log_handle = self._log_file_path.open("a", encoding="utf-8")
-        self._log_handle.write(
-            f"\n===== qpy-rsync session {datetime.now(timezone.utc).isoformat()} =====\n"
+    @staticmethod
+    def _app_identity() -> str:
+        commit = "unknown"
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(__file__).resolve().parent.parent.parent,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                commit = result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return f"qpy-rsync {APP_VERSION} ({commit})"
+
+    def _open_log(self, path: Path, handle):
+        if handle is not None:
+            return handle
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a", encoding="utf-8")
+        handle.write(
+            f"\n===== qpy-rsync session {datetime.now().astimezone().isoformat()} "
+            f"[{self._app_identity()}] =====\n"
         )
-        self._log_handle.flush()
+        handle.flush()
+        return handle
+
+    def _open_session_log(self):
+        self._log_handle = self._open_log(self._log_file_path, self._log_handle)
         self._log_initialized = True
         return self._log_handle
 
-    def _close_session_log(self) -> None:
-        if self._log_handle is not None:
+    def _open_rsync_log(self):
+        self._rsync_log_handle = self._open_log(
+            self._rsync_log_path, self._rsync_log_handle
+        )
+        return self._rsync_log_handle
+
+    @staticmethod
+    def _close_handle(handle):
+        if handle is not None:
             try:
-                self._log_handle.flush()
+                handle.flush()
             finally:
-                self._log_handle.close()
-                self._log_handle = None
+                handle.close()
+
+    def _close_session_log(self) -> None:
+        self._close_handle(self._log_handle)
+        self._log_handle = None
         self._log_initialized = False
 
-    def _write_session_log(self, text: str) -> None:
+    def _close_rsync_log(self) -> None:
+        self._flush_rsync_pending()
+        self._close_handle(self._rsync_log_handle)
+        self._rsync_log_handle = None
+
+    def _write_session_log(self, text: str, *, rsync: bool = False) -> None:
         if not self._log_file_enabled:
             return
-        handle = self._open_session_log()
-        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        handle = self._open_rsync_log() if rsync else self._open_session_log()
+        timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
         for line in text.splitlines() or [""]:
             handle.write(f"{timestamp} {line}\n")
         # Buffered writes avoid one fsync (and one open/close) per rsync line.
         handle.flush()
+        if not rsync:
+            self._check_log_size()
+
+    def _check_log_size(self) -> None:
+        if self._log_size_warned:
+            return
+        try:
+            size = self._log_file_path.stat().st_size
+        except OSError:
+            return
+        if size < 1_000_000_000:
+            return
+        self._log_size_warned = True
+        self._append_log(
+            "The application log reached 1 GB. Old entries can be removed "
+            "with the Log button's context menu entry \"Clear Log\".",
+            severity="logsize",
+        )
 
     @staticmethod
     def _browse_start_directory(value: str) -> str:
@@ -1525,6 +1613,7 @@ class MainWindow(QMainWindow):
         severity = severity.lower()
         colors = {
             "warning": "#0891B2",
+            "logsize": "#EA580C",
             "stale": "#EA580C",
             "error": "#B91C1C",
             "success": "#15803D",
@@ -1581,7 +1670,7 @@ class MainWindow(QMainWindow):
 
     def _profile(self) -> SyncProfile:
         return SyncProfile(
-            name="ad-hoc comparison",
+            name="default",
             source=parse_endpoint(self.source_edit.text()),
             destination=parse_endpoint(self.destination_edit.text()),
             filters=list(self._filters),
@@ -1695,21 +1784,23 @@ class MainWindow(QMainWindow):
                 self._edit_settings(section)
 
     def _clear_log(self) -> None:
-        """Empty the session log file and keep logging into it."""
-        text = self.log_file_edit.text().strip()
-        target = Path(text).expanduser() if text else self._log_file_path
+        """Empty both log files of the current profile and keep logging."""
         self._close_session_log()
+        self._close_rsync_log()
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text("", encoding="utf-8")
+            for path in (self._log_file_path, self._rsync_log_path):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
         except OSError as exc:
-            self._set_status(f"Could not clear the log file: {exc}", "error")
+            self._set_status(f"Could not clear the log files: {exc}", "error")
             return
-        # The session continues in the file that was cleared.
-        self._log_file_path = target
-        self._write_session_log("The log file was cleared.")
-        self._append_log(f"The log file was cleared: {target}", severity="info")
-        self._set_status(f"The log file was cleared: {target}")
+        self._log_size_warned = False
+        self._write_session_log("The application log was cleared.")
+        self._append_log(
+            f"Log files cleared: {self._log_file_path}, {self._rsync_log_path}",
+            severity="info",
+        )
+        self._set_status("Log files cleared.")
 
     def _edit_settings(self, section: str = "general") -> None:
         """Open the settings dialog on the given section."""
@@ -1881,6 +1972,7 @@ class MainWindow(QMainWindow):
 
     def _remember_profile_path(self, path: Path) -> None:
         self._profile_path = path
+        self._update_log_paths()
         import json
 
         paths = [path] + [
@@ -2685,6 +2777,7 @@ class MainWindow(QMainWindow):
         )
 
     def _plan_validation_started(self) -> None:
+        self._start_rsync_clock("verification")
         self._begin_bulk_logging()
         self._set_hovered_action("verify")
         self._execution_gate.verification_started()
@@ -2703,6 +2796,7 @@ class MainWindow(QMainWindow):
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
         if self._closing:
             return
+        self._log_rsync_elapsed("verification")
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
@@ -2776,6 +2870,7 @@ class MainWindow(QMainWindow):
     def _plan_validation_cancelled(self) -> None:
         if self._closing:
             return
+        self._log_rsync_elapsed("verification")
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
@@ -2792,6 +2887,7 @@ class MainWindow(QMainWindow):
         self._end_bulk_logging()
 
     def _plan_validation_error(self, message: str) -> None:
+        self._log_rsync_elapsed("verification")
         self.cancel_button.setEnabled(False)
         self._validated_plan = None
         self._verified_plan = None
@@ -2962,6 +3058,7 @@ class MainWindow(QMainWindow):
             self._reset_pause_button()
 
     def _sync_started(self) -> None:
+        self._start_rsync_clock("synchronization")
         self._begin_bulk_logging()
         self._set_hovered_action("synchronize")
         self._execution_gate.execution_started()
@@ -2991,6 +3088,7 @@ class MainWindow(QMainWindow):
         self._cleanup_dialog_filter()
         if self._closing:
             return
+        self._log_rsync_elapsed("synchronization")
         self.progress_bar.setValue(100)
         self.progress_label.setText("Synchronization completed")
         self._execution_gate.execution_completed()
@@ -3017,6 +3115,7 @@ class MainWindow(QMainWindow):
         self._cleanup_dialog_filter()
         if self._closing:
             return
+        self._log_rsync_elapsed("synchronization")
         if self._execution_gate.state is ExecutionGateState.EXECUTING:
             if cancelled:
                 self._execution_gate.execution_cancelled()
@@ -3285,6 +3384,7 @@ class MainWindow(QMainWindow):
         self._set_state(f"Started {tool.name}.", "success")
 
     def _comparison_started(self) -> None:
+        self._start_rsync_clock("dry run")
         self._begin_bulk_logging()
         self._set_hovered_action("compare")
         self._inventory_service.cancel()
@@ -3317,23 +3417,18 @@ class MainWindow(QMainWindow):
             return
         self.progress_label.setText(f"Comparing... {count:,} item(s) found")
 
-    def _comparison_progress(self, progress: object) -> None:
-        # rsync's incremental counter has no stable total for a dry run, so
-        # percentages and "remaining" values are meaningless. Show only the
-        # number of itemized records actually received.
-        completed = int(getattr(progress, "files_completed", 0))
-        remaining = int(getattr(progress, "files_remaining", 0))
-        total = int(getattr(progress, "files_total", 0))
-        inspected = max(completed, total - remaining, 0)
+    def _comparison_progress(self, _progress: object) -> None:
+        # rsync's incremental counter has no stable total for a dry run. Its
+        # values can fall when rsync revises the total, so it must not drive
+        # the visible count: _comparison_items owns that label and uses the
+        # monotonically growing number of parsed changes.
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
-        self.progress_label.setText(
-            f"Comparing... {inspected:,} item(s) inspected"
-        )
 
     def _comparison_cancelled(self) -> None:
         if self._closing:
             return
+        self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
@@ -3348,6 +3443,8 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         if self._closing:
             return
+        self._last_phase_started = time.monotonic()
+        self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
@@ -3382,8 +3479,12 @@ class MainWindow(QMainWindow):
         self.comparison.destination_is_local = (
             self._active_profile.destination.kind is EndpointKind.LOCAL
         )
+        view_started = time.monotonic()
         metadata_started = self._fetch_destination_metadata()
         self._apply_inventory_after_compare()
+        self._append_log(
+            f"Comparison view built in {time.monotonic() - view_started:.2f} s."
+        )
         discarded = self.comparison.model.discarded_decisions
         conflicts = self.comparison.model.conflicts()
         if discarded or conflicts:
@@ -3747,6 +3848,12 @@ class MainWindow(QMainWindow):
 
     def _finish_comparison_status(self) -> None:
         count = self._last_compare_count
+        if self._last_phase_started is not None:
+            self._append_log(
+                "Comparison ready in "
+                f"{time.monotonic() - self._last_phase_started:.2f} s."
+            )
+            self._last_phase_started = None
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
@@ -3877,6 +3984,7 @@ class MainWindow(QMainWindow):
     def _comparison_error(self, message: str) -> None:
         if self._closing:
             return
+        self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
@@ -3884,6 +3992,22 @@ class MainWindow(QMainWindow):
         self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Comparison failed", message)
+
+    def _start_rsync_clock(self, label: str) -> None:
+        self._rsync_started_at[label] = (time.monotonic(), datetime.now())
+        self._append_log(f"rsync {label} start clock set.")
+
+    def _log_rsync_elapsed(self, label: str) -> None:
+        started = self._rsync_started_at.pop(label, None)
+        if started is None:
+            return
+        monotonic_start, wall_start = started
+        elapsed = time.monotonic() - monotonic_start
+        wall = (datetime.now() - wall_start).total_seconds()
+        self._append_log(
+            f"rsync {label} finished in {elapsed:.2f} s "
+            f"(wall {wall:.2f} s)."
+        )
 
     def _log_spec(self, spec: object) -> None:
         argv = getattr(spec, "argv", None)
@@ -3908,7 +4032,7 @@ class MainWindow(QMainWindow):
         normalized = text.rstrip("\r\n")
         if not normalized:
             return
-        timestamp = datetime.now().strftime("%H:%M")
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-4]
         for line in normalized.replace("\r", "\n").splitlines() or [""]:
             self._log_buffer.append((line, rsync, severity.lower(), timestamp))
         if self._bulk_logging:
@@ -3917,14 +4041,25 @@ class MainWindow(QMainWindow):
             return
         self._flush_log()
 
+    def _flush_rsync_pending(self) -> None:
+        if not self._rsync_pending:
+            return
+        lines = self._rsync_pending
+        self._rsync_pending = []
+        self._write_session_log("\n".join(lines), rsync=True)
+
     def _append_rsync_log(self, text: str) -> None:
         if self._bulk_logging or self._bulk_rsync:
             # Never let an itemized record reach the journal widget during a
             # bulk comparison, including late lines after the final flush.
+            # Batch the raw file writes: one timestamp and one flush per
+            # thousand lines instead of one per record.
             lines = text.rstrip("\r\n").splitlines()
             if lines:
-                self._write_session_log("\n".join(lines))
+                self._rsync_pending.extend(lines)
                 self._bulk_record_count += len(lines)
+                if len(self._rsync_pending) >= 1000:
+                    self._flush_rsync_pending()
             return
         self._append_log(text, rsync=True)
 
@@ -3939,7 +4074,12 @@ class MainWindow(QMainWindow):
         # itemized rsync records go only there: inserting hundreds of
         # thousands of blocks into the journal widget costs minutes even when
         # batched, and the session log is the complete record.
-        self._write_session_log("\n".join(line for line, _r, _s, _t in entries))
+        app_lines = [line for line, rsync, _s, _t in entries if not rsync]
+        rsync_lines = [line for line, rsync, _s, _t in entries if rsync]
+        if app_lines:
+            self._write_session_log("\n".join(app_lines))
+        if rsync_lines:
+            self._write_session_log("\n".join(rsync_lines), rsync=True)
         journal_entries = [
             entry for entry in entries if not (self._bulk_rsync and entry[1])
         ]
@@ -3973,6 +4113,8 @@ class MainWindow(QMainWindow):
         dark = palette.color(QPalette.ColorRole.Base).lightness() < 128
         if rsync:
             color = QColor("#cbd5e1" if dark else "#6b7280")
+        elif severity == "logsize":
+            color = QColor("#fb923c" if dark else "#EA580C")
         elif severity == "warning":
             color = QColor("#22d3ee" if dark else "#0891B2")
         elif severity == "error":
@@ -3989,7 +4131,7 @@ class MainWindow(QMainWindow):
         """Keep rsync progress in the session log, not in the journal."""
         normalized = text.rstrip("\r\n")
         if normalized:
-            self._write_session_log(normalized)
+            self._write_session_log(normalized, rsync=True)
 
     def _begin_bulk_logging(self) -> None:
         self._bulk_logging = True
@@ -3997,6 +4139,7 @@ class MainWindow(QMainWindow):
         self._bulk_record_count = 0
 
     def _end_bulk_logging(self) -> None:
+        self._flush_rsync_pending()
         self._bulk_logging = False
         if self._log_flush_timer.isActive():
             self._log_flush_timer.stop()
