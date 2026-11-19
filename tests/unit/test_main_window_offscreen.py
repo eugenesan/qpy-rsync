@@ -2124,3 +2124,19 @@ def test_bulk_rsync_output_is_written_in_batches(tmp_path, monkeypatch) -> None:
     assert "record 0" in content and "record 2499" in content
     window.close()
     application.processEvents()
+
+
+def test_compare_progress_does_not_override_the_item_count() -> None:
+    from types import SimpleNamespace
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._comparison_items(1234)
+    label = window.progress_label.text()
+    window._comparison_progress(
+        SimpleNamespace(percent=99, files_completed=999, files_remaining=5, files_total=1000)
+    )
+    assert window.progress_label.text() == label
+    window.close()
+    application.processEvents()

@@ -3397,19 +3397,13 @@ class MainWindow(QMainWindow):
             return
         self.progress_label.setText(f"Comparing... {count:,} item(s) found")
 
-    def _comparison_progress(self, progress: object) -> None:
-        # rsync's incremental counter has no stable total for a dry run, so
-        # percentages and "remaining" values are meaningless. Show only the
-        # number of itemized records actually received.
-        completed = int(getattr(progress, "files_completed", 0))
-        remaining = int(getattr(progress, "files_remaining", 0))
-        total = int(getattr(progress, "files_total", 0))
-        inspected = max(completed, total - remaining, 0)
+    def _comparison_progress(self, _progress: object) -> None:
+        # rsync's incremental counter has no stable total for a dry run. Its
+        # values can fall when rsync revises the total, so it must not drive
+        # the visible count: _comparison_items owns that label and uses the
+        # monotonically growing number of parsed changes.
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
-        self.progress_label.setText(
-            f"Comparing... {inspected:,} item(s) inspected"
-        )
 
     def _comparison_cancelled(self) -> None:
         if self._closing:

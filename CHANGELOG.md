@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Comparison progress no longer alternates between two counters: the parsed
+  change count is the only visible number, while rsync's unstable incremental
+  counter only drives the indeterminate progress bar.
 - Raw rsync output is written to its log in batches of 1,000 lines instead of
   one timestamped, flushed write per record, removing most of the journal-write
   cost measured on large comparisons.
