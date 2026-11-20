@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Enabling inventory-after-compare no longer rebuilds the already-displayed
+  comparison before the listing starts, removing a multi-second freeze ahead
+  of the progress messages.
 - Destination metadata is merged in place, recomputing only changes whose path
   or an ancestor appears in the new listing. The destination listing is a
   single rsync run instead of a filtered run plus a fallback; set

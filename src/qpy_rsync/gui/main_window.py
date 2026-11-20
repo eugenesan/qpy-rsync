@@ -3749,8 +3749,11 @@ class MainWindow(QMainWindow):
         if self._inventory_pending_key == key and self._inventory_token:
             return
         # The compared items are shown right away, the unchanged items
-        # stay hidden until the user asks for them.
-        self.comparison.set_changes(changed)
+        # stay hidden until the user asks for them. With the unchanged toggle
+        # off the model already displays exactly this set; rebuilding it would
+        # freeze the GUI for seconds before the listing even starts.
+        if self.show_unchanged.isChecked() or not self.comparison.model.changes:
+            self.comparison.set_changes(changed)
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
