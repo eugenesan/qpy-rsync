@@ -121,4 +121,19 @@ before the next one starts.
     fast enough that GUI-thread execution stays under 1 s. The snapshot and
     generation boundary is in place so a worker can be added without changing
     the publication path.
-- Stage 8 not started.
+- **Stage 8 done** (this commit): CMake is a real subproject with an install
+  target and optional warnings-as-errors; `.github/workflows/native-experiment.yml`
+  runs the Python suite, the native suite, the three differential harnesses and
+  the environment-gated timing gates; `native/timing_gates.py` compares ratios
+  to the Python path on the same machine (filter 0.43, plan 0.23, parse 0.34 —
+  all passing).
+  - Debian packaging deliberately stays `Architecture: all`. The extension is
+    opt-in and off by default, so shipping the Python-only package must not
+    require a compiler or nanobind. A native-enabled package is a separate
+    decision for a release that makes the backend default-on.
+  - Rollout: keep the flag off by default for two releases; then opt-in via
+    settings/`QPY_RSYNC_NATIVE=1`; switch to `auto` only after the full
+    520,000-item differential suite and timing gates stay green.
+- **All eight stages have an implementation checkpoint.** Remaining work is
+  the Stage 4b model refactor, a queued QThread worker, `decision_filter_lines`,
+  and the release/packaging decision above.

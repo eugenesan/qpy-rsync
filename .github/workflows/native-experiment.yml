@@ -1,0 +1,58 @@
+name: native experiment
+
+on:
+  push:
+    branches: [native-extension-experiment]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python-parity:
+    name: Python path (flag off)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PySide6
+          sudo apt-get update
+          sudo apt-get install -y rsync
+      - name: Full suite, Python default
+        run: QPY_RSYNC_SYSTEM_PYTHON="$(python -c 'import sys; print(sys.executable)')" ./qpy-rsync-test.sh -q
+
+  native-parity:
+    name: Native path (flag on)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PySide6 nanobind
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ rsync
+      - name: Build extension
+        run: |
+          PY="$(python -c 'import sys; print(sys.executable)')"
+          QPY_RSYNC_SYSTEM_PYTHON="$PY" ./native/build.sh
+      - name: Full suite with native backend
+        run: |
+          PY="$(python -c 'import sys; print(sys.executable)')"
+          QPY_RSYNC_NATIVE=1 QPY_RSYNC_SYSTEM_PYTHON="$PY" ./qpy-rsync-test.sh -q
+      - name: Differential harnesses
+        run: |
+          export PYTHONPATH=src
+          python native/check_parse.py
+          python native/check_plan.py
+          python native/check_model.py
+      - name: Environment-gated timing gates
+        run: |
+          export PYTHONPATH=src
+          python native/timing_gates.py

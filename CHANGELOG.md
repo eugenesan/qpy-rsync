@@ -12,6 +12,8 @@
   items fingerprint, supports native path-pattern searching and restores the
   "Filter list" mode when the backend is active. Native kernels release the
   GIL, and results are published through generation-checked snapshots.
+  CMake install target, CI workflow and environment-gated timing checks are
+  included; Python stays the default and Debian stays architecture-independent.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the

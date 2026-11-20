@@ -147,6 +147,24 @@ pass with the flag on and off.
 A worker thread is not yet used; kernels are fast enough that the GUI thread
 still meets the <1 s target. The snapshot boundary is worker-ready.
 
+## Build, CI and rollout (Stage 8)
+
+`native/CMakeLists.txt` is a standalone CMake project with an optional
+install target and `QPY_NATIVE_WERROR`. `native/build.sh` still copies the
+built module into `src/qpy_rsync/` for local experiments; the generated `.so`
+is gitignored. GitHub Actions (`.github/workflows/native-experiment.yml`) runs
+the suite with the flag off and on, all three differential harnesses, and
+`native/timing_gates.py`. The gates compare native time as a ratio to Python
+on the same machine: filter 0.43, plan 0.23, parse 0.34 (all below their
+limits).
+
+Debian packaging intentionally remains `Architecture: all` because the
+extension is optional and off by default; a native-enabled package would need
+`Architecture: any` plus build-dependencies on a compiler, CMake and nanobind.
+
+Rollout plan: two releases with the flag off, then document opt-in, then
+consider `auto` once the 520,000-item differential and timing gates stay green.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,
