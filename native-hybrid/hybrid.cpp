@@ -7,6 +7,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QHeaderView>
 #include <QScrollBar>
 #include <QSplitter>
@@ -129,6 +130,16 @@ NB_MODULE(native_hybrid, m) {
     g_selection_callback = nb::object();
   });
 
+  m.def("overview_folder_count", []() {
+    Session& s = session();
+    if (s.overview == nullptr) return 0;
+    QModelIndex root = s.overview->index(0, 0);
+    if (!root.isValid()) return 0;
+    QModelIndex all = s.overview->index(0, 0, root);
+    if (!all.isValid()) return 0;
+    return s.overview->rowCount(all);
+  });
+
   m.def("row_count", []() {
     return static_cast<int>(session().store.visible.size());
   });
@@ -137,7 +148,11 @@ NB_MODULE(native_hybrid, m) {
     Session& s = session();
     if (s.widget == nullptr) {
       s.widget = new QWidget();
+      auto* outer = new QVBoxLayout(s.widget);
+      outer->setContentsMargins(0, 0, 0, 0);
       auto* layout = new QSplitter(Qt::Horizontal, s.widget);
+      layout->setChildrenCollapsible(false);
+      outer->addWidget(layout);
       QTableView* views[3];
       for (int i = 0; i < 3; ++i) {
         views[i] = new QTableView(s.widget);
@@ -185,6 +200,11 @@ NB_MODULE(native_hybrid, m) {
               }
             });
       }
+      layout->setStretchFactor(0, 1);
+      layout->setStretchFactor(1, 1);
+      layout->setStretchFactor(2, 1);
+      layout->setStretchFactor(3, 1);
+      s.widget->setMinimumSize(900, 500);
       s.widget->resize(1600, 800);
     }
     return reinterpret_cast<std::uintptr_t>(s.widget);
@@ -237,6 +257,16 @@ NB_MODULE(native_hybrid, m) {
     Session& s = session();
     if (row < 0 || row >= static_cast<int>(s.store.visible.size())) return std::string();
     return s.store.paths[s.store.visible[row]];
+  });
+
+  m.def("refresh_after_decision", [](int path_id, int decision) {
+    Session& s = session();
+    // The checkbox cell was already repainted by dataChanged. Only an
+    // exclusion changes which rows are visible, and the overview totals are
+    // independent of decisions, so it is left alone.
+    if (decision != Exclude) return;
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
   });
 
   m.def("refresh", []() {

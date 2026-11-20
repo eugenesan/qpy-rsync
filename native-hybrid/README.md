@@ -22,6 +22,8 @@ parity with `FlatComparisonView`; see "Not yet wired" below.
 - Selection is shared across the three native panes and reported to Python.
 - The existing action-filter checkbox, path filter/search box, sort and
   directory folds are routed to the native models when hybrid mode is active.
+  Decision toggles take ~19 ms: only the checkbox row is repainted unless the
+  decision actually hides rows.
 - Python pulls the compact `(path_id, decision)` diff whenever it needs it.
 
 ## Build

@@ -143,6 +143,9 @@ class NativeHybridView:
         """Call ``callback(path_id, decision)`` when the user edits a decision."""
         self._native.set_decision_callback(callback)
 
+    def refresh_after_decision(self, path_id: int, decision: int) -> None:
+        self._native.refresh_after_decision(path_id, decision)
+
     def refresh(self) -> None:
         self._native.refresh_visible()
         self._native.refresh()

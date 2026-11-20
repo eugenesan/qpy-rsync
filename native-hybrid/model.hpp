@@ -435,21 +435,14 @@ class OverviewModel : public QAbstractItemModel {
 
     // One folder node per distinct first path component, as the real
     // overview does for its 30k folders.
-    std::vector<OverviewNode*> folders(30000, nullptr);
+    std::unordered_map<std::string, OverviewNode*> folders;
     for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) {
       const std::string& path = store.paths[i];
       auto slash = path.find('/');
       if (slash == std::string::npos) continue;
       std::string name = path.substr(0, slash);
-      if (name.empty() || name[0] == '*') continue;
-      int id = 0;
-      try {
-        id = std::stoi(name.substr(1));
-      } catch (...) {
-        continue;
-      }
-      if (id < 0 || id >= 30000) continue;
-      OverviewNode*& folder = folders[id];
+      if (name.empty()) continue;
+      OverviewNode*& folder = folders[name];
       if (folder == nullptr) {
         folder = new OverviewNode{name, 0, 0, 0, 0, base, {}};
         base->children.push_back(folder);

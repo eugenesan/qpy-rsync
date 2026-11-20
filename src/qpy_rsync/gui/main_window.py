@@ -3952,6 +3952,7 @@ class MainWindow(QMainWindow):
 
         comparison.set_path_filter = set_path_filter  # type: ignore[method-assign]
         comparison.set_visible_actions = set_visible_actions  # type: ignore[method-assign]
+        comparison.set_action_filter = set_visible_actions  # type: ignore[method-assign]
         comparison.search_matches = search_matches  # type: ignore[method-assign]
         comparison.sort = sort  # type: ignore[method-assign]
         comparison.select_path = select_path  # type: ignore[method-assign]
@@ -3977,7 +3978,7 @@ class MainWindow(QMainWindow):
             decisions.reset(path)
         self.comparison.model._refresh_effective_actions({path})
         if self._hybrid_view is not None:
-            self._hybrid_view.refresh()
+            self._hybrid_view.refresh_after_decision(path_id, decision)
         self._on_decision_changed({path})
         self._invalidate_validated_plan()
 
