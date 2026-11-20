@@ -1,5 +1,8 @@
 # Where the native experiment left us, and the Python tuning plan
 
+For the consolidated assessment of bottlenecks, causes and attempted fixes,
+see [performance-analysis.md](performance-analysis.md).
+
 ## Conclusion of the hybrid-extension experiment
 
 The single-module native extension (`_qpy_native`) is correct and well tested:
