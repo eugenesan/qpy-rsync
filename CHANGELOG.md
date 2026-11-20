@@ -8,6 +8,8 @@
   `QPY_DEST_METADATA_TWO_PASS=1` to restore the old two-run behaviour.
 - The inventory-complete label no longer claims items are being shown when the
   Show unchanged toggle is off.
+- Added end-to-end timing probes around view set_changes, search and the
+  space-bar exclusion toggle for Python-side performance tuning.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the
