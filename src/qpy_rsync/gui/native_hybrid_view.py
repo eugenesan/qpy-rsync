@@ -176,7 +176,7 @@ class NativeHybridView:
         self._native.refresh()
 
     def set_action_filter(self, actions) -> None:
-        mask = 0
+        mask = -1 if not actions else 0
         for action in actions:
             code = _NATIVE_ACTION_CODE.get(getattr(action, "value", action), 6)
             if code < 32:

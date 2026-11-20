@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Native list actions (folding, decisions, filters) now preserve the focused
+  pane and the current row across model resets.
+- The Decisions pane supports keyboard navigation; its checkbox also sets the
+  current row when clicked.
+- Ctrl+click on the excluded/unchanged switches now toggles them when no
+  action filter is soloed.
+- The overview is rebuilt from the visible rows, so it matches the lists and
+  jumping to a folder always lands on a row that exists.
+- Clearing the native view on shutdown drops stale widget pointers.
+
 - The middle comparison column is now labelled "Decisions" in both the Python
   and hybrid views (including the modified-decision marker and help text).
 - Only the destination list shows a scrollbar; Source and Decisions follow it.

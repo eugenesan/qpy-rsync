@@ -110,11 +110,21 @@ void header_context_hook(int pane, int x, int y) {
   }
 }
 
+int first_visible_column(const Session& s, int pane);
+void select_path_id_impl(Session& s, int path_id);
+
 void refresh_native_models(Session& s) {
+  QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
+  int current_id = -1;
   for (int i = 0; i < 3; ++i) {
-    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
+    if (s.views[i] == nullptr) continue;
+    if (s.views[i]->verticalScrollBar() != nullptr) {
       positions[i] = s.views[i]->verticalScrollBar()->value();
+    }
+    const int row = s.views[i]->currentIndex().row();
+    if (row >= 0 && row < static_cast<int>(s.store.visible.size())) {
+      current_id = s.store.visible[row];
     }
   }
   for (TableModel* model : s.models) model->reset();
@@ -123,15 +133,31 @@ void refresh_native_models(Session& s) {
       s.views[i]->verticalScrollBar()->setValue(positions[i]);
     }
   }
+  if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size()) &&
+      s.store.row_of_id[current_id] >= 0) {
+    select_path_id_impl(s, current_id);
+  }
+  if (focus != nullptr) focus->setFocus();
+  if (s.overview != nullptr && s.overview_view != nullptr) {
+    s.overview->build(s.store, true);
+    s.overview_view->expandToDepth(2);
+  }
+}
+
+int first_visible_column(const Session& s, int pane) {
+  if (pane == 1) return 4;
+  if (pane == 2) return 5;
+  return 0;
 }
 
 void select_path_id_impl(Session& s, int path_id) {
   if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
   int row = s.store.row_of_id[path_id];
   g_in_select = true;
-  for (QTableView* view : s.views) {
+  for (int i = 0; i < 3; ++i) {
+    QTableView* view = s.views[i];
     if (view == nullptr || view->model() == nullptr) continue;
-    QModelIndex index = view->model()->index(row, 0);
+    QModelIndex index = view->model()->index(row, first_visible_column(s, i));
     if (!index.isValid()) continue;
     view->selectionModel()->select(
         index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
@@ -295,7 +321,7 @@ class HybridKeyFilter : public QObject {
   static void toggle_collapse(Session& s, int id) {
     s.store.collapsed[id] = s.store.collapsed[id] ? 0 : 1;
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   }
 };
 
@@ -315,6 +341,17 @@ class HybridDelegate : public QStyledItemDelegate {
     const int row = index.row();
     if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
     const int id = store.visible[row];
+    if (pane_ == 1 && index.column() == 4) {
+      QRect indicator(option.rect.left() + 4, option.rect.center().y() - 7,
+                      14, 14);
+      if (indicator.contains(mouse->pos())) {
+        const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
+        s.models[1]->setData(index, checked ? Qt::Checked : Qt::Unchecked,
+                             Qt::CheckStateRole);
+        s.views[1]->setCurrentIndex(index);
+        return true;
+      }
+    }
     if (!(id < static_cast<int>(store.is_dir.size()) && store.is_dir[id])) {
       return false;
     }
@@ -324,7 +361,7 @@ class HybridDelegate : public QStyledItemDelegate {
     if (!hit.contains(mouse->pos())) return false;
     s.store.collapsed[id] = s.store.collapsed[id] ? 0 : 1;
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
     return true;
   }
 
@@ -613,7 +650,8 @@ QWidget* ensure_tables_widget(Session& s) {
               Session& s = session();
               QTableView* target = s.views[j];
               if (target == nullptr || target->model() == nullptr) return;
-              QModelIndex index = target->model()->index(current.row(), 0);
+              QModelIndex index = target->model()->index(
+                  current.row(), first_visible_column(s, j));
               if (!index.isValid()) return;
               g_in_sync = true;
               target->setCurrentIndex(index);
@@ -743,6 +781,16 @@ NB_MODULE(native_hybrid, m) {
     g_decision_callback = nb::object();
     g_context_callback = nb::object();
     g_header_context_callback = nb::object();
+    Session& session_ref = session();
+    for (int i = 0; i < 3; ++i) {
+      session_ref.views[i] = nullptr;
+      session_ref.models[i] = nullptr;
+    }
+    session_ref.overview_view = nullptr;
+    session_ref.overview = nullptr;
+    session_ref.stats_label = nullptr;
+    session_ref.tables_widget = nullptr;
+    session_ref.overview_widget = nullptr;
   });
 
   m.def("debug_row_of_id", [](int path_id) {
@@ -779,7 +827,7 @@ NB_MODULE(native_hybrid, m) {
     }
     if (changed) {
       s.store.rebuild_visible();
-      for (TableModel* model : s.models) model->reset();
+      refresh_native_models(s);
     }
     select_path_id_impl(s, id);
   });
@@ -854,7 +902,7 @@ NB_MODULE(native_hybrid, m) {
       s.store.collapsed[root_it->second] = 0;
     }
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("decision_for_path", [](const std::string& path) {
@@ -903,7 +951,7 @@ NB_MODULE(native_hybrid, m) {
       s.store.decision_log.emplace_back(i, Inherit);
     }
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("set_decision_by_path", [](const std::string& path, int decision) {
@@ -915,7 +963,7 @@ NB_MODULE(native_hybrid, m) {
     s.store.decision_log.emplace_back(id, decision);
     if (g_native_decision_hook != nullptr) g_native_decision_hook(id, decision);
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("set_action_colours", [](const std::vector<std::string>& colours) {
@@ -1030,10 +1078,6 @@ NB_MODULE(native_hybrid, m) {
     if (s.tables_widget == nullptr) {
       // Standalone callers may not have created widgets yet.
       return;
-    }
-    if (s.overview != nullptr) {
-      s.overview->build(s.store);
-      s.overview_view->expandToDepth(2);
     }
     refresh_native_models(s);
     update_stats(s);

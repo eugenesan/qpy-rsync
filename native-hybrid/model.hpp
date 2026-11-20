@@ -383,6 +383,11 @@ struct DataStore {
   }
 
   bool matches(int id) const {
+    if (action_mask == -1) {
+      // No action is selected: nothing matches (except the virtual root,
+      // which is handled by the caller).
+      return false;
+    }
     if (action_mask != 0 && id < static_cast<int>(actions.size())) {
       int bit = actions[id];
       if (bit < 0 || bit >= 32 || (action_mask & (1 << bit)) == 0) return false;
@@ -770,7 +775,7 @@ class OverviewModel : public QAbstractItemModel {
     for (OverviewNode* node : nodes_) delete node;
   }
 
-  void build(const DataStore& store) {
+  void build(const DataStore& store, bool visible_only = false) {
     beginResetModel();
     for (OverviewNode* node : nodes_) delete node;
     nodes_.clear();
@@ -782,13 +787,14 @@ class OverviewModel : public QAbstractItemModel {
 
     // One folder node per distinct first path component, counting files only.
     std::unordered_map<std::string, OverviewNode*> folders;
-    for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) {
-      if (i < static_cast<int>(store.is_dir.size()) && store.is_dir[i]) continue;
+    auto consider = [&](int i) {
+      if (i < 0 || i >= static_cast<int>(store.paths.size())) return;
+      if (i < static_cast<int>(store.is_dir.size()) && store.is_dir[i]) return;
       const std::string& path = store.paths[i];
       auto slash = path.find('/');
-      if (slash == std::string::npos) continue;
+      if (slash == std::string::npos) return;
       std::string name = path.substr(0, slash);
-      if (name.empty()) continue;
+      if (name.empty()) return;
       OverviewNode*& folder = folders[name];
       if (folder == nullptr) {
         folder = new OverviewNode{name, path.substr(0, slash), 0, 0, 0, 0, root_, {}};
@@ -797,6 +803,11 @@ class OverviewModel : public QAbstractItemModel {
       }
       ++folder->count;
       folder->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
+    };
+    if (visible_only) {
+      for (int id : store.visible) consider(id);
+    } else {
+      for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) consider(i);
     }
     std::sort(root_->children.begin() + 1, root_->children.end(),
               [](const OverviewNode* a, const OverviewNode* b) {

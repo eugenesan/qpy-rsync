@@ -283,6 +283,14 @@ class ActionFilterBar(QWidget):
         toggles keep their state.
         """
         boxes = self._all_boxes()
+        if (
+            not box.isChecked()
+            and box in (self.excluded_box, self.unchanged_box)
+            and all(other.isChecked() for other in self._boxes.values())
+        ):
+            # With no action soloed, Ctrl+click flips the switch itself.
+            self._set_states({box: True})
+            return
         if box.isChecked():
             others = [other for other in boxes if other is not box]
             if any(other.isChecked() for other in others):
