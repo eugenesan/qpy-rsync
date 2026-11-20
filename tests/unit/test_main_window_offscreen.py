@@ -718,6 +718,15 @@ def test_turning_inventory_on_runs_it_for_the_current_comparison(tmp_path) -> No
     window.inventory_after_compare_button.setChecked(True)
     assert gathered
     assert gathered[0][1][0].path == "file.txt"
+
+    rebuilds: list[object] = []
+    original = window.comparison.set_changes
+    window.comparison.set_changes = lambda *args, **kwargs: rebuilds.append(args)  # type: ignore[method-assign]
+    window.inventory_after_compare_button.setChecked(False)
+    window.comparison.set_changes = original  # type: ignore[method-assign]
+    # Disabling the button is only a profile setting; the view already shows
+    # exactly these changes and must not be rebuilt.
+    assert rebuilds == []
     window.close()
     application.processEvents()
 

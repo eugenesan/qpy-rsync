@@ -294,6 +294,7 @@ class MainWindow(QMainWindow):
         )
         self._source_preload_token = 0
         self._cached_source_paths: object | None = None
+        self._showing_unchanged = False
         self._metadata_token = 0
         self._inventory_token = 0
         self._inventory_pending_key: object | None = None
@@ -3468,6 +3469,7 @@ class MainWindow(QMainWindow):
         self._set_cached_destination(None)
         self._inventory_service.set_cached_source(None)
         self._cached_source_paths = None
+        self._showing_unchanged = False
         self._last_phase_started = time.monotonic()
         self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
@@ -3795,7 +3797,12 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
             self.progress_label.setText("Unchanged items hidden")
-            self.comparison.set_changes(changed)
+            # Toggling the inventory button is only a configuration change
+            # when the tree is not showing unchanged items; rebuilding the
+            # identical view would freeze the GUI for seconds.
+            if self._showing_unchanged or not self.comparison.model.changes:
+                self.comparison.set_changes(changed)
+                self._showing_unchanged = False
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
@@ -3820,6 +3827,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.comparison.set_changes(changed)
+        self._showing_unchanged = False
 
     def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
         """Add the unchanged items to the comparison.
@@ -3842,6 +3850,7 @@ class MainWindow(QMainWindow):
             self.comparison.set_changes(changes)
         finally:
             QApplication.restoreOverrideCursor()
+        self._showing_unchanged = True
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_label.setText(self._inventory_summary(unchanged))
