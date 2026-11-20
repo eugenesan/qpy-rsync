@@ -252,6 +252,32 @@ struct DataStore {
     }
   }
 
+  // Fast path for a single decision edit: update the visible vector without
+  // re-sorting half a million rows.
+  bool update_single_visibility(int path_id, int decision) {
+    if (path_id < 0 || path_id >= static_cast<int>(decisions.size())) return false;
+    bool was_hidden = decisions[path_id] == Exclude;
+    bool now_hidden = decision == Exclude;
+    decisions[path_id] = decision;
+    if (was_hidden == now_hidden) return false;
+    if (sort_column != 0 || !pattern.empty()) return false;
+    int row = row_of_id[path_id];
+    if (now_hidden) {
+      if (row < 0) return false;
+      visible.erase(visible.begin() + row);
+    } else {
+      auto at = std::lower_bound(
+          visible.begin(), visible.end(), path_id,
+          [this](int a, int b) { return paths[a] < paths[b]; });
+      visible.insert(at, path_id);
+      row = static_cast<int>(at - visible.begin());
+    }
+    for (int r = row; r < static_cast<int>(visible.size()); ++r) {
+      row_of_id[visible[r]] = r;
+    }
+    return true;
+  }
+
   std::vector<int> search(const std::string& text) const {
     std::vector<int> result;
     for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
@@ -358,6 +384,8 @@ class TableModel : public QAbstractTableModel {
     beginResetModel();
     endResetModel();
   }
+
+  void layout_refresh() { emit layoutChanged(); }
 
   Qt::ItemFlags flags(const QModelIndex& index) const override {
     if (pane_ == 1 && index.column() == 1 && index.isValid()) {

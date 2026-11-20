@@ -334,6 +334,9 @@ class FlatChangeModel(QAbstractTableModel):
         self.beginResetModel()
         self.hovered_row = None
         self.changes = list(changes)
+        # The directory pass normally fills this; keep it indexable when it
+        # is skipped because a native view owns the display.
+        self._change_destination_sizes = [0] * len(self.changes)
         self.discarded_decisions = self.decisions.reconcile(
             self.changes,
             preserve=self.preserve_decisions,
@@ -2171,7 +2174,8 @@ class FlatChangeModel(QAbstractTableModel):
         self.layoutChanged.emit()
 
     def merge_destination_metadata(
-        self, metadata: dict[str, tuple[int | None, str | None]]
+        self, metadata: dict[str, tuple[int | None, str | None]],
+        *, skip_view: bool = False,
     ) -> None:
         """Add a listing in place, recomputing only affected changes.
 
@@ -2205,7 +2209,8 @@ class FlatChangeModel(QAbstractTableModel):
                         change, self._destination_index
                     )
         self.layoutAboutToBeChanged.emit()
-        self._apply_filters()
+        if not skip_view:
+            self._apply_filters()
         self.layoutChanged.emit()
 
     def _refresh_destination_sizes(self) -> None:

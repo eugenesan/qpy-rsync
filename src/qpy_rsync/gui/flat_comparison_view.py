@@ -1225,10 +1225,11 @@ class FlatComparisonView(QWidget):
         self.model.set_destination_metadata(metadata)
 
     def merge_destination_metadata(
-        self, metadata: dict[str, tuple[int | None, str | None]]
+        self, metadata: dict[str, tuple[int | None, str | None]],
+        *, skip_view: bool = False,
     ) -> None:
         """Add a new listing without replacing the metadata already loaded."""
-        self.model.merge_destination_metadata(metadata)
+        self.model.merge_destination_metadata(metadata, skip_view=skip_view)
 
     def visible_changes(self) -> list[object]:
         """The items of the comparison that the filters show."""

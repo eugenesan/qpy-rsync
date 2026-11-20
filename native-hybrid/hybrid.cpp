@@ -48,6 +48,21 @@ void emit_selection(int path_id) {
   if (!g_in_select && g_selection_hook != nullptr) g_selection_hook(path_id);
 }
 
+void refresh_native_models(Session& s) {
+  int positions[3] = {0, 0, 0};
+  for (int i = 0; i < 3; ++i) {
+    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
+      positions[i] = s.views[i]->verticalScrollBar()->value();
+    }
+  }
+  for (TableModel* model : s.models) model->reset();
+  for (int i = 0; i < 3; ++i) {
+    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
+      s.views[i]->verticalScrollBar()->setValue(positions[i]);
+    }
+  }
+}
+
 nb::object g_selection_callback;
 
 void selection_hook(int path_id) {
@@ -241,7 +256,7 @@ NB_MODULE(native_hybrid, m) {
   m.def("refresh_visible", []() {
     Session& s = session();
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
   m.def("search_text", [](const std::string& text) {
     return session().store.search(text);
@@ -266,7 +281,7 @@ NB_MODULE(native_hybrid, m) {
     Session& s = session();
     s.store.show_excluded = show;
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("apply_python_decisions", [](const std::vector<std::pair<int, int>>& pairs) {
@@ -277,18 +292,21 @@ NB_MODULE(native_hybrid, m) {
         target[pair.first] = pair.second;
       }
     }
-    bool visibility_changed = false;
+    int changed_id = -1;
+    int changed_count = 0;
     for (std::size_t i = 0; i < target.size(); ++i) {
       if (target[i] == s.store.decisions[i]) continue;
-      bool was_hidden = s.store.decisions[i] == Exclude;
-      bool now_hidden = target[i] == Exclude;
+      ++changed_count;
+      changed_id = static_cast<int>(i);
       s.store.decisions[i] = target[i];
-      if (was_hidden != now_hidden) visibility_changed = true;
     }
     s.store.decision_log.clear();
-    if (visibility_changed) {
+    if (changed_count == 1 &&
+        s.store.update_single_visibility(changed_id, target[changed_id])) {
+      for (TableModel* model : s.models) model->layout_refresh();
+    } else if (changed_count > 0) {
       s.store.rebuild_visible();
-      for (TableModel* model : s.models) model->reset();
+      refresh_native_models(s);
     }
   });
 
@@ -299,7 +317,7 @@ NB_MODULE(native_hybrid, m) {
     // independent of decisions, so it is left alone.
     if (decision != Exclude) return;
     s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("refresh", []() {
@@ -307,7 +325,7 @@ NB_MODULE(native_hybrid, m) {
     s.store.rebuild_visible();
     if (s.widget == nullptr) return;
     s.overview->build(s.store);
-    for (TableModel* model : s.models) model->reset();
+    refresh_native_models(s);
   });
 
   m.def("set_checkstate", [](int row, int checked) {

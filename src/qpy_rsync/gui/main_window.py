@@ -2567,6 +2567,15 @@ class MainWindow(QMainWindow):
         signature = decision_signature(self.comparison.model.decisions)
         if plan.decision_signature != signature:
             return False
+        if self._plan_comparison_unchanged:
+            # Decision edits never change the comparison itself. Rebuilding a
+            # 520k-element identity set here made every undo take seconds.
+            profile = self._profile()
+            return (
+                plan.profile_fingerprint == profile_fingerprint(profile)
+                and plan.source_operand == profile.source.rsync_operand()
+                and plan.destination_operand == profile.destination.rsync_operand()
+            )
         return check_plan_freshness(
             plan,
             self._profile(),
@@ -2752,6 +2761,7 @@ class MainWindow(QMainWindow):
         self._last_explicit_decisions = (
             self.comparison.model.decisions.explicit_items()
         )
+        self._plan_comparison_unchanged = True
         self._plan_stale = False
         self._stale_summary_timer.stop()
         self._refresh_verify_button()
@@ -3897,6 +3907,7 @@ class MainWindow(QMainWindow):
 
     def _set_comparison_changes(self, changes) -> None:
         """Feed the Python model, skipping row/filter work in native mode."""
+        self._plan_comparison_unchanged = False
         self.comparison.set_changes(
             changes,
             skip_view=self._hybrid_view is not None,
@@ -4114,7 +4125,10 @@ class MainWindow(QMainWindow):
                 self._finish_comparison_status()
             return
         with timed("metadata.merge", entries=len(result.destination_metadata)):
-            self.comparison.merge_destination_metadata(result.destination_metadata)
+            self.comparison.merge_destination_metadata(
+                result.destination_metadata,
+                skip_view=self._hybrid_view is not None,
+            )
         # The plan was first built before this asynchronous listing arrived.
         # Only the deleted-size summary depends on it, so avoid a full rebuild.
         with timed("metadata.plan"):
