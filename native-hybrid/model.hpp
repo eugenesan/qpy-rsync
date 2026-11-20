@@ -209,6 +209,27 @@ struct DataStore {
     std::iota(visible.begin(), visible.end(), 0);
   }
 
+  // Drop trailing records when unchanged items are removed.
+  void truncate(int count) {
+    if (count < 0 || count >= static_cast<int>(paths.size())) return;
+    paths.resize(count);
+    actions.resize(count);
+    kinds.resize(count);
+    sizes.resize(count);
+    times.resize(count);
+    decisions.resize(count);
+    parents.resize(count);
+    is_dir.resize(count);
+    folded_names.resize(count);
+    folded_paths.resize(count);
+    collapsed.resize(count);
+    path_to_id.clear();
+    for (int i = 0; i < count; ++i) path_to_id[paths[i]] = i;
+    decision_log.clear();
+    visible.resize(count);
+    std::iota(visible.begin(), visible.end(), 0);
+  }
+
   void set_collapsed(int path_id, bool value) {
     if (path_id >= 0 && path_id < static_cast<int>(collapsed.size())) {
       collapsed[path_id] = value ? 1 : 0;

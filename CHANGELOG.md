@@ -6,8 +6,10 @@
   no execution plan: the model was skipped because it was non-empty.
 - Fixed a crash in the estimated summary (`excluded` was used as both a set
   and a counter), triggered by hybrid decision flows.
-- Hybrid unchanged-item handoff now appends only new records instead of
-  rebuilding all rows.
+- Hybrid unchanged-item handoff appends only new records and truncates on
+  removal; the plan is reused across unchanged-only transitions since those
+  items are never plan items. Removing 200k unchanged items now takes ~0.8 s
+  instead of ~10 s.
 - Hybrid view overview split into its own native widget, placed in the
   existing overview slot with a Python compatibility shim.
 - Hybrid search now handles the `dir/` variant; unchanged flows skip redundant

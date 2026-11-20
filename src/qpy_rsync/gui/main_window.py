@@ -390,6 +390,8 @@ class MainWindow(QMainWindow):
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
         self._build_ui()
+        self._plan_non_nochange_count = -1
+        self._skip_next_plan_rebuild = False
         self._hybrid_view: object | None = None
         if self._hybrid_enabled:
             self._enable_hybrid_view()
@@ -2723,6 +2725,9 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_plan_summary(self) -> None:
+        if self._skip_next_plan_rebuild:
+            self._skip_next_plan_rebuild = False
+            return
         with timed("ui.plan_rebuild"):
             self._rebuild_plan_summary()
 
@@ -2762,6 +2767,11 @@ class MainWindow(QMainWindow):
             self.comparison.model.decisions.explicit_items()
         )
         self._plan_comparison_unchanged = True
+        self._plan_non_nochange_count = sum(
+            1
+            for change in self.comparison.model.changes
+            if change.action not in (ChangeAction.NO_CHANGE, ChangeAction.MESSAGE)
+        )
         self._plan_stale = False
         self._stale_summary_timer.stop()
         self._refresh_verify_button()
@@ -3914,6 +3924,18 @@ class MainWindow(QMainWindow):
             return
         self._fed_change_signature = signature
         self._plan_comparison_unchanged = False
+        if self._current_plan is not None:
+            executable = sum(
+                1
+                for change in changes
+                if change.action not in (
+                    ChangeAction.NO_CHANGE, ChangeAction.MESSAGE
+                )
+            )
+            if executable == self._plan_non_nochange_count:
+                # Adding/removing unchanged items cannot change the plan:
+                # NO_CHANGE items are never plan items.
+                self._skip_next_plan_rebuild = True
         self.comparison.set_changes(
             changes,
             skip_view=self._hybrid_view is not None,

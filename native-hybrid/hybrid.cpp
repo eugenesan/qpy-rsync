@@ -188,6 +188,11 @@ NB_MODULE(native_hybrid, m) {
     session().store.load_direct(paths, actions, kinds, sizes, decisions, times);
   });
 
+  m.def("truncate", [](int count) {
+    Session& s = session();
+    s.store.truncate(count);
+  });
+
   m.def("append", [](const std::vector<std::string>& paths,
                      const std::vector<int>& actions,
                      const std::vector<int>& kinds,

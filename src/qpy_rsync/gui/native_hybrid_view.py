@@ -89,6 +89,12 @@ class NativeHybridView:
         if self._handed_paths == paths:
             return
         prefix = self._handed_paths or []
+        if prefix and len(paths) < len(prefix) and prefix[: len(paths)] == paths:
+            self._native.truncate(len(paths))
+            self._handed_paths = list(paths)
+            self._paths = paths
+            self._native.refresh()
+            return
         start = len(prefix) if paths[: len(prefix)] == prefix else 0
         subset = changes[start:] if start else changes
         arrays = (
