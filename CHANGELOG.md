@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Destination metadata is merged in place, recomputing only changes whose path
+  or an ancestor appears in the new listing. The destination listing is a
+  single rsync run instead of a filtered run plus a fallback; set
+  `QPY_DEST_METADATA_TWO_PASS=1` to restore the old two-run behaviour.
+- The inventory-complete label no longer claims items are being shown when the
+  Show unchanged toggle is off.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the

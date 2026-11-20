@@ -98,7 +98,32 @@ def test_destination_metadata_lists_all_changed_paths_except_creates(tmp_path, m
     result = gather_destination_metadata(profile, changes)
     assert result.destination_metadata["old/a"][0] == 12
     assert result.destination_metadata["changed.txt"][0] == 44
-    # One profile-filtered listing, not a pattern per changed item.
-    assert captured[0] is profile
+    # One unfiltered listing of the destination, not a pattern per changed
+    # item and not a second listing for paths hidden by profile filters. The
+    # original profile is left untouched.
+    assert len(captured) == 1
+    assert captured[0] is not profile
+    assert captured[0].filters == []
     assert [rule.rule for rule in profile.filters] == ["*.tmp"]
     assert "keep.txt" not in result.destination_metadata
+
+
+def test_destination_metadata_two_pass_is_available_for_ab(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.backend.inventory import gather_destination_metadata
+    from qpy_rsync.core.changes import Change
+
+    profile = _profile(tmp_path)
+    captured: list[object] = []
+
+    def fake(endpoint, prof=None, progress=None):
+        captured.append(prof)
+        return {}
+
+    monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
+    monkeypatch.setenv("QPY_DEST_METADATA_TWO_PASS", "1")
+    changes = [Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
+    gather_destination_metadata(profile, changes)
+    assert len(captured) == 2
+    assert captured[0] is profile
+    assert captured[1] is not profile
+    assert captured[1].filters == []

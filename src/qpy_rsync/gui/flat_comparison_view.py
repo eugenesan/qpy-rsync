@@ -1216,6 +1216,12 @@ class FlatComparisonView(QWidget):
         """Show the size and the date of the listed destination items."""
         self.model.set_destination_metadata(metadata)
 
+    def merge_destination_metadata(
+        self, metadata: dict[str, tuple[int | None, str | None]]
+    ) -> None:
+        """Add a new listing without replacing the metadata already loaded."""
+        self.model.merge_destination_metadata(metadata)
+
     def visible_changes(self) -> list[object]:
         """The items of the comparison that the filters show."""
         return self.model.visible_changes()
