@@ -374,7 +374,9 @@ class MainWindow(QMainWindow):
         self._inventory_preload = settings.value(
             "advanced/inventory_preload", False, type=bool
         )
-        self._apply_inventory_env()
+        self._metadata_service.set_gather_option(
+            "two_pass", self._metadata_two_pass
+        )
         self._last_compare_locations: tuple[str, str] | None = None
         self._last_compare_filters: str = ""
         self._preserve_for_compare = True
@@ -1884,7 +1886,9 @@ class MainWindow(QMainWindow):
             settings.setValue(
                 "advanced/inventory_preload", self._inventory_preload
             )
-            self._apply_inventory_env()
+            self._metadata_service.set_gather_option(
+                "two_pass", self._metadata_two_pass
+            )
             settings.sync()
             self._update_verification_visibility()
             self._update_conflict_ui()
@@ -3887,25 +3891,6 @@ class MainWindow(QMainWindow):
         if setter is not None:
             setter(paths)
 
-    def _apply_inventory_env(self) -> None:
-        """Mirror the Advanced choices into the flags the backend reads.
-
-        An explicit ``=1`` on the command line wins, so A/B measurements keep
-        working without having to change the saved settings.
-        """
-        if os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1":
-            self._metadata_two_pass = True
-        else:
-            os.environ["QPY_DEST_METADATA_TWO_PASS"] = (
-                "1" if self._metadata_two_pass else ""
-            )
-        if os.environ.get("QPY_INVENTORY_PRELOAD", "") == "1":
-            self._inventory_preload = True
-        else:
-            os.environ["QPY_INVENTORY_PRELOAD"] = (
-                "1" if self._inventory_preload else ""
-            )
-
     def _source_preload_finished(self, token: int, extra: object) -> None:
         if self._closing or token != self._source_preload_token:
             return
@@ -3928,15 +3913,18 @@ class MainWindow(QMainWindow):
         changes = list(self._changed_changes())
         if not changes:
             return False
-        two_pass = os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1"
-        listing_profile = self._active_profile if two_pass else unfiltered_profile(self._active_profile)
+        listing_profile = (
+            self._active_profile
+            if self._metadata_two_pass
+            else unfiltered_profile(self._active_profile)
+        )
         self._log_spec(
             build_inventory_spec(listing_profile, listing_profile.destination)
         )
         self._metadata_token = self._metadata_service.gather(
             deepcopy(self._active_profile), changes
         )
-        if os.environ.get("QPY_INVENTORY_PRELOAD", "") == "1":
+        if self._inventory_preload:
             self._log_spec(
                 build_inventory_spec(
                     self._active_profile, self._active_profile.source

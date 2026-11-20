@@ -50,8 +50,8 @@ owns the model and views.
 - `python-tuning` is branched from `main` and contains only changes that help
   the shipped Python build:
   - in-place metadata merge (affected changes only);
-  - one-pass destination listing (`QPY_DEST_METADATA_TWO_PASS=1` restores the
-    old two-run behaviour for measurement);
+  - one-pass destination listing (the two-run behaviour is available as an
+    Advanced setting);
   - raw rsync output logging is opt-in in Advanced settings;
   - the exit-time profile prompt explains the changed field and saves to the
     known profile file;
@@ -65,8 +65,7 @@ Nothing in `python-tuning` depends on the extension.
 the `InventoryResult`. `main_window` hands it to the inventory service, so a
 later Show-unchanged calls `gather_inventory` with `destination_paths` set and
 only `inventory_paths(profile.source, ...)` runs. The cache is cleared on each
-new compare. `QPY_DEST_METADATA_TWO_PASS=1` still restores the old two-run
-metadata listing.
+new compare. The two-run metadata listing is available from Advanced settings.
 
 The commands themselves are written to the journal with a `$ rsync ...` line,
 including a note when the destination listing is being reused.

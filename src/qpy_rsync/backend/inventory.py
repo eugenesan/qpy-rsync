@@ -215,6 +215,7 @@ def gather_destination_metadata(
     profile,
     changed: Iterable[Change],
     progress: Callable[[str, int], None] | None = None,
+    two_pass: bool = False,
 ) -> InventoryResult:
     """List the destination only, for the size and date of its objects.
 
@@ -250,9 +251,7 @@ def gather_destination_metadata(
     # followed by a second unfiltered one for the misses used to cost two
     # rsync runs (and two SSH handshakes on remote endpoints). Keep the
     # profile object so the remote-shell argument survives, just drop its
-    # filters. Set QPY_DEST_METADATA_TWO_PASS=1 to restore the old behaviour
-    # for A/B measurement on profiles with large excluded subtrees.
-    two_pass = os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1"
+    # filters. The Advanced setting controls two_pass.
     unfiltered = deepcopy(profile)
     unfiltered.filters = []
     with timed("inventory.destination_listing"):

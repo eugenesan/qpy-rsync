@@ -120,9 +120,8 @@ def test_destination_metadata_two_pass_is_available_for_ab(tmp_path, monkeypatch
         return {}
 
     monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
-    monkeypatch.setenv("QPY_DEST_METADATA_TWO_PASS", "1")
     changes = [Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting")]
-    gather_destination_metadata(profile, changes)
+    gather_destination_metadata(profile, changes, two_pass=True)
     assert len(captured) == 2
     assert captured[0] is profile
     assert captured[1] is not profile

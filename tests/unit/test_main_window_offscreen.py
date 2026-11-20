@@ -2189,27 +2189,14 @@ def test_version_and_commit_are_logged_once_in_the_session_header(tmp_path, monk
     application.processEvents()
 
 
-def test_inventory_advanced_options_default_off_and_mirror_env(tmp_path, monkeypatch) -> None:
-    import os
-
+def test_inventory_advanced_options_default_off(tmp_path, monkeypatch) -> None:
     application = app()
     app_settings().clear()
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     window = MainWindow()
     assert window._metadata_two_pass is False
     assert window._inventory_preload is False
-    window._metadata_two_pass = True
-    window._inventory_preload = True
-    window._apply_inventory_env()
-    assert os.environ["QPY_DEST_METADATA_TWO_PASS"] == "1"
-    assert os.environ["QPY_INVENTORY_PRELOAD"] == "1"
-    monkeypatch.delenv("QPY_DEST_METADATA_TWO_PASS", raising=False)
-    monkeypatch.delenv("QPY_INVENTORY_PRELOAD", raising=False)
-    window._metadata_two_pass = False
-    window._inventory_preload = False
-    window._apply_inventory_env()
-    assert os.environ["QPY_DEST_METADATA_TWO_PASS"] == ""
-    assert os.environ["QPY_INVENTORY_PRELOAD"] == ""
+    assert window._metadata_service._gather_options["two_pass"] is False
     window.close()
     application.processEvents()
 

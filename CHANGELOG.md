@@ -22,8 +22,8 @@
   of the progress messages.
 - Destination metadata is merged in place, recomputing only changes whose path
   or an ancestor appears in the new listing. The destination listing is a
-  single rsync run instead of a filtered run plus a fallback; set
-  `QPY_DEST_METADATA_TWO_PASS=1` to restore the old two-run behaviour.
+  single rsync run instead of a filtered run plus a fallback. The two-run
+  behaviour is available as an Advanced setting.
 - The inventory-complete label no longer claims items are being shown when the
   Show unchanged toggle is off.
 - Added end-to-end timing probes around view set_changes, search and the

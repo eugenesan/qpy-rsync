@@ -32,6 +32,7 @@ class _InventoryTask(QRunnable):
         gather: Callable[[SyncProfile, list[Change]], list[Change]],
         destination_paths: object | None = None,
         source_paths: object | None = None,
+        gather_options: dict[str, object] | None = None,
     ) -> None:
         super().__init__()
         self._token = token
@@ -39,6 +40,7 @@ class _InventoryTask(QRunnable):
         self._changed = changed
         self._destination_paths = destination_paths
         self._source_paths = source_paths
+        self._gather_options = dict(gather_options or {})
         self._signals = signals
         self._results = results
         self._results_lock = results_lock
@@ -49,14 +51,14 @@ class _InventoryTask(QRunnable):
             self._signals.progress.emit(self._token, phase, count)
 
         try:
-            cached: dict[str, object] = {}
+            options: dict[str, object] = dict(self._gather_options)
             if self._destination_paths is not None:
-                cached["destination_paths"] = self._destination_paths
+                options["destination_paths"] = self._destination_paths
             if self._source_paths is not None:
-                cached["source_paths"] = self._source_paths
-            if cached:
+                options["source_paths"] = self._source_paths
+            if options:
                 result = self._gather(
-                    self._profile, self._changed, progress, **cached
+                    self._profile, self._changed, progress, **options
                 )
             elif _accepts_progress(self._gather):
                 result = self._gather(self._profile, self._changed, progress)
@@ -106,11 +108,13 @@ class InventoryService(QObject):
         *,
         gather: Callable[[SyncProfile, list[Change]], object] | None = None,
         pool: QThreadPool | None = None,
+        gather_options: dict[str, object] | None = None,
     ) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
         self._gather = gather or gather_inventory
         self._destination_paths: object | None = None
         self._source_paths: object | None = None
+        self._gather_options = dict(gather_options or {})
         self._pool = pool or QThreadPool.globalInstance()
         self._token = 0
         self._signals = _WorkerSignals(self)
@@ -128,6 +132,9 @@ class InventoryService(QObject):
 
     def has_cached_destination(self) -> bool:
         return self._destination_paths is not None
+
+    def set_gather_option(self, name: str, value: object) -> None:
+        self._gather_options[name] = value
 
     def set_cached_source(self, paths: object | None) -> None:
         self._source_paths = paths
@@ -148,6 +155,7 @@ class InventoryService(QObject):
             self._gather,
             self._destination_paths,
             self._source_paths,
+            self._gather_options,
         )
         self._tasks[token] = task
         self._pool.start(task)
