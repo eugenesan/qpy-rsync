@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed a hang in the native backend at large comparison sizes: the lazy plan
+  item sequence copied whole native arrays on every item, turning the post-
+  compare plan/overview rebuild into an O(n^2) pass. The arrays are now
+  snapshotted once, with a regression test.
 - Native extension experiment: added a persistent `NativeComparison` kernel
   that computes filter visibility, ancestor closure and aggregates in C++,
   with a 520,000-item byte-for-byte differential harness. The optional backend

@@ -88,11 +88,20 @@ class _LazyPlanItems(Sequence[PlanItem]):
     """A PlanItem sequence backed by compact native arrays."""
 
     def __init__(self, arrays: object) -> None:
-        self._arrays = arrays
+        # nanobind copies a def_ro vector on every property access. Snapshot
+        # each array once here or the per-item loop becomes O(n^2).
+        self._paths = list(arrays.paths)
+        self._actions = list(arrays.actions)
+        self._comparison_actions = list(arrays.comparison_actions)
+        self._kinds = list(arrays.kinds)
+        self._included = list(arrays.included)
+        self._destructive = list(arrays.destructive)
+        self._sizes = list(arrays.sizes)
+        self._size_none = list(arrays.size_none)
         self._cache: dict[int, PlanItem] = {}
 
     def __len__(self) -> int:
-        return len(self._arrays.paths)
+        return len(self._paths)
 
     @overload
     def __getitem__(self, index: int) -> PlanItem: ...
@@ -116,17 +125,16 @@ class _LazyPlanItems(Sequence[PlanItem]):
     def _item_at(self, index: int) -> PlanItem:
         item = self._cache.get(index)
         if item is None:
-            arrays = self._arrays
             item = PlanItem(
-                path=arrays.paths[index],
-                action=_NATIVE_ACTIONS[arrays.actions[index]],
+                path=self._paths[index],
+                action=_NATIVE_ACTIONS[self._actions[index]],
                 comparison_action=_NATIVE_ACTIONS[
-                    arrays.comparison_actions[index]
+                    self._comparison_actions[index]
                 ],
-                kind=_NATIVE_KINDS[arrays.kinds[index]],
-                included=bool(arrays.included[index]),
-                destructive=bool(arrays.destructive[index]),
-                size=None if arrays.size_none[index] else arrays.sizes[index],
+                kind=_NATIVE_KINDS[self._kinds[index]],
+                included=bool(self._included[index]),
+                destructive=bool(self._destructive[index]),
+                size=None if self._size_none[index] else self._sizes[index],
             )
             self._cache[index] = item
         return item

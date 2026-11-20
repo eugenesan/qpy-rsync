@@ -71,6 +71,65 @@ def test_native_folding_keeps_totals(monkeypatch: pytest.MonkeyPatch) -> None:
     assert signature(python) == signature(native)
 
 
+def test_lazy_plan_items_read_native_arrays_only_once() -> None:
+    """Guard against the O(n^2) that froze the GUI on large comparisons."""
+    from qpy_rsync.core.execution_plan import _LazyPlanItems
+
+    class CountingArrays:
+        def __init__(self, size: int) -> None:
+            self.reads = 0
+            self._paths = [f"p{i}" for i in range(size)]
+            self._actions = [0] * size
+            self._comparison_actions = [0] * size
+            self._kinds = [0] * size
+            self._included = [1] * size
+            self._destructive = [0] * size
+            self._sizes = [1] * size
+            self._size_none = [0] * size
+
+        def _read(self, name: str):
+            self.reads += 1
+            return getattr(self, f"_{name}")
+
+        @property
+        def paths(self):
+            return self._read("paths")
+
+        @property
+        def actions(self):
+            return self._read("actions")
+
+        @property
+        def comparison_actions(self):
+            return self._read("comparison_actions")
+
+        @property
+        def kinds(self):
+            return self._read("kinds")
+
+        @property
+        def included(self):
+            return self._read("included")
+
+        @property
+        def destructive(self):
+            return self._read("destructive")
+
+        @property
+        def sizes(self):
+            return self._read("sizes")
+
+        @property
+        def size_none(self):
+            return self._read("size_none")
+
+    arrays = CountingArrays(1000)
+    items = _LazyPlanItems(arrays)
+    assert len(items) == 1000
+    assert len(list(items)) == 1000
+    assert arrays.reads == 8
+
+
 def test_stale_native_snapshot_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     from qpy_rsync.gui.flat_change_model import _NativeSnapshot
 

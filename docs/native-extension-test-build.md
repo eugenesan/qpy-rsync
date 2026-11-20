@@ -147,6 +147,20 @@ pass with the flag on and off.
 A worker thread is not yet used; kernels are fast enough that the GUI thread
 still meets the <1 s target. The snapshot boundary is worker-ready.
 
+## Fixed: post-compare hang at large sizes
+
+The first end-to-end run with the native backend froze between "comparison
+complete" and the first UI update. A `faulthandler` stack showed the O(n^2) in
+`_LazyPlanItems._item_at`: nanobind's `def_ro` vectors are copied on every
+property access, and the main window iterates `plan.items` several times. The
+arrays are now snapshotted once in `_LazyPlanItems.__init__`, with a regression
+test asserting that each native array is read exactly once.
+
+A 520,000-record compare now reaches the populated view in about 10 s with the
+native backend (about 8 s on the Python path). The remaining gap is the Stage
+4b work: records are parsed natively but still materialized into `Change`
+objects twice before the model consumes them.
+
 ## Build, CI and rollout (Stage 8)
 
 `native/CMakeLists.txt` is a standalone CMake project with an optional
