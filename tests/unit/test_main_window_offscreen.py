@@ -2203,6 +2203,8 @@ def test_inventory_advanced_options_default_off_and_mirror_env(tmp_path, monkeyp
     window._apply_inventory_env()
     assert os.environ["QPY_DEST_METADATA_TWO_PASS"] == "1"
     assert os.environ["QPY_INVENTORY_PRELOAD"] == "1"
+    monkeypatch.delenv("QPY_DEST_METADATA_TWO_PASS", raising=False)
+    monkeypatch.delenv("QPY_INVENTORY_PRELOAD", raising=False)
     window._metadata_two_pass = False
     window._inventory_preload = False
     window._apply_inventory_env()

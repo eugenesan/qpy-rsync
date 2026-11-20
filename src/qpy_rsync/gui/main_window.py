@@ -3888,13 +3888,23 @@ class MainWindow(QMainWindow):
             setter(paths)
 
     def _apply_inventory_env(self) -> None:
-        """Mirror the Advanced choices into the flags the backend reads."""
-        os.environ["QPY_DEST_METADATA_TWO_PASS"] = (
-            "1" if self._metadata_two_pass else ""
-        )
-        os.environ["QPY_INVENTORY_PRELOAD"] = (
-            "1" if self._inventory_preload else ""
-        )
+        """Mirror the Advanced choices into the flags the backend reads.
+
+        An explicit ``=1`` on the command line wins, so A/B measurements keep
+        working without having to change the saved settings.
+        """
+        if os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1":
+            self._metadata_two_pass = True
+        else:
+            os.environ["QPY_DEST_METADATA_TWO_PASS"] = (
+                "1" if self._metadata_two_pass else ""
+            )
+        if os.environ.get("QPY_INVENTORY_PRELOAD", "") == "1":
+            self._inventory_preload = True
+        else:
+            os.environ["QPY_INVENTORY_PRELOAD"] = (
+                "1" if self._inventory_preload else ""
+            )
 
     def _source_preload_finished(self, token: int, extra: object) -> None:
         if self._closing or token != self._source_preload_token:
