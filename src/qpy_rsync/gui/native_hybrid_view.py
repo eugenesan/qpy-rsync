@@ -83,23 +83,30 @@ class NativeHybridView:
         self._native.shutdown()
 
     def set_changes(self, changes: Sequence[Any]) -> None:
-        """Hand the dataset to native exactly once."""
+        """Hand the dataset to native once; append only when it grows."""
         paths = [str(change.path).rstrip("/") for change in changes]
         self._paths = paths
         if self._handed_paths == paths:
             return
-        self._handed_paths = list(paths)
-        self._native.load(
-            paths,
+        prefix = self._handed_paths or []
+        start = len(prefix) if paths[: len(prefix)] == prefix else 0
+        subset = changes[start:] if start else changes
+        arrays = (
             [
                 _NATIVE_ACTION_CODE.get(change.action.value, 6)
-                for change in changes
+                for change in subset
             ],
-            [_NATIVE_KINDS.index(change.kind.value) for change in changes],
-            [int(change.size or 0) for change in changes],
-            [0] * len(changes),
-            [str(change.modified_time or "") for change in changes],
+            [_NATIVE_KINDS.index(change.kind.value) for change in subset],
+            [int(change.size or 0) for change in subset],
+            [0] * len(subset),
+            [str(change.modified_time or "") for change in subset],
         )
+        new_paths = paths[start:] if start else paths
+        if start:
+            self._native.append(new_paths, *arrays)
+        else:
+            self._native.load(new_paths, *arrays)
+        self._handed_paths = list(paths)
         self._native.refresh()
 
     def set_action_filter(self, actions) -> None:

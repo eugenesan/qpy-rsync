@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed a hybrid-mode bug where a second Compare after changing profiles left
+  no execution plan: the model was skipped because it was non-empty.
+- Fixed a crash in the estimated summary (`excluded` was used as both a set
+  and a counter), triggered by hybrid decision flows.
+- Hybrid unchanged-item handoff now appends only new records instead of
+  rebuilding all rows.
 - Hybrid view overview split into its own native widget, placed in the
   existing overview slot with a Python compatibility shim.
 - Hybrid search now handles the `dir/` variant; unchanged flows skip redundant

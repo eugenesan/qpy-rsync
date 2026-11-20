@@ -2654,7 +2654,7 @@ class MainWindow(QMainWindow):
             ("creates", "updates", "metadata", "deletions", "kept"),
             0,
         )
-        included = excluded = destructive = 0
+        included = excluded_count = destructive = 0
         total_size = included_size = deleted_size = 0
         for change in changes:
             action = change.action
@@ -2664,14 +2664,14 @@ class MainWindow(QMainWindow):
             if any(
                 parent in excluded for parent in (path, *self._parent_paths(path))
             ):
-                excluded += 1
+                excluded_count += 1
                 continue
             selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
             if not selected:
                 if action is ChangeAction.DESTINATION_ONLY:
                     counts["kept"] += 1
                 else:
-                    excluded += 1
+                    excluded_count += 1
                 continue
             included += 1
             size = int(change.size or 0)
@@ -2692,7 +2692,7 @@ class MainWindow(QMainWindow):
                 )
         return PlanSummary(
             included=included,
-            excluded=excluded,
+            excluded=excluded_count,
             modified=decisions.modified_count(changes),
             retained_destination_only=counts["kept"],
             destructive=destructive,
@@ -3811,11 +3811,10 @@ class MainWindow(QMainWindow):
         if self._inventory_pending_key == key and self._inventory_token:
             return
         # The compared items are shown right away, the unchanged items
-        # stay hidden until the user asks for them. With the unchanged toggle
-        # off the model already displays exactly this set; rebuilding it would
-        # freeze the GUI for seconds before the listing even starts.
-        if self.show_unchanged.isChecked() or not self.comparison.model.changes:
-            self._set_comparison_changes(changed)
+        # stay hidden until the user asks for them. A fresh comparison must
+        # always feed the model: its previous change list belongs to another
+        # profile and cannot be skipped just because it is non-empty.
+        self._set_comparison_changes(changed)
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
@@ -3838,12 +3837,11 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
             self.progress_label.setText("Unchanged items hidden")
-            # Toggling the inventory button is only a configuration change
-            # when the tree is not showing unchanged items; rebuilding the
-            # identical view would freeze the GUI for seconds.
-            if self._showing_unchanged or not self.comparison.model.changes:
-                self._set_comparison_changes(changed)
-                self._showing_unchanged = False
+            # A fresh comparison or a transition out of Show-unchanged must
+            # feed the model. Native handoff skips identical path sets, so the
+            # expensive Qt rebuild is already avoided in hybrid mode.
+            self._set_comparison_changes(changed)
+            self._showing_unchanged = False
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
@@ -3907,6 +3905,14 @@ class MainWindow(QMainWindow):
 
     def _set_comparison_changes(self, changes) -> None:
         """Feed the Python model, skipping row/filter work in native mode."""
+        signature = (
+            len(changes),
+            str(changes[0].path) if changes else "",
+            str(changes[-1].path) if changes else "",
+        )
+        if signature == getattr(self, "_fed_change_signature", None):
+            return
+        self._fed_change_signature = signature
         self._plan_comparison_unchanged = False
         self.comparison.set_changes(
             changes,

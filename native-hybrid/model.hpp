@@ -125,26 +125,8 @@ struct DataStore {
     return true;
   }
 
-  void load_direct(const std::vector<std::string>& paths_,
-                   const std::vector<int>& actions_,
-                   const std::vector<int>& kinds_,
-                   const std::vector<long long>& sizes_,
-                   const std::vector<int>& decisions_,
-                   const std::vector<std::string>& times_) {
-    paths = paths_;
-    actions = actions_;
-    kinds = kinds_;
-    sizes = sizes_;
-    times = times_;
-    decisions = decisions_;
-    const int count = static_cast<int>(paths.size());
-    parents.resize(count);
-    is_dir.resize(count);
-    folded_names.resize(count);
-    folded_paths.resize(count);
-    path_to_id.clear();
-    for (int i = 0; i < count; ++i) path_to_id[paths[i]] = i;
-    for (int i = 0; i < count; ++i) {
+  void derive_range(int start, int end) {
+    for (int i = start; i < end; ++i) {
       const std::string& path = paths[i];
       std::size_t slash = path.rfind('/');
       parents[i] = -1;
@@ -167,6 +149,28 @@ struct DataStore {
             std::tolower(static_cast<unsigned char>(path[j])));
       }
     }
+  }
+
+  void load_direct(const std::vector<std::string>& paths_,
+                   const std::vector<int>& actions_,
+                   const std::vector<int>& kinds_,
+                   const std::vector<long long>& sizes_,
+                   const std::vector<int>& decisions_,
+                   const std::vector<std::string>& times_) {
+    paths = paths_;
+    actions = actions_;
+    kinds = kinds_;
+    sizes = sizes_;
+    times = times_;
+    decisions = decisions_;
+    const int count = static_cast<int>(paths.size());
+    parents.resize(count);
+    is_dir.resize(count);
+    folded_names.resize(count);
+    folded_paths.resize(count);
+    path_to_id.clear();
+    for (int i = 0; i < count; ++i) path_to_id[paths[i]] = i;
+    derive_range(0, count);
     decision_log.clear();
     collapsed.assign(paths.size(), 0);
     action_mask = 0;
@@ -174,6 +178,34 @@ struct DataStore {
     sort_column = 0;
     sort_desc = false;
     visible.resize(paths.size());
+    std::iota(visible.begin(), visible.end(), 0);
+  }
+
+  // Append extra records (typically unchanged items) without re-deriving the
+  // rows that were already loaded.
+  void append_direct(const std::vector<std::string>& paths_,
+                     const std::vector<int>& actions_,
+                     const std::vector<int>& kinds_,
+                     const std::vector<long long>& sizes_,
+                     const std::vector<int>& decisions_,
+                     const std::vector<std::string>& times_) {
+    const int start = static_cast<int>(paths.size());
+    const int added = static_cast<int>(paths_.size());
+    paths.insert(paths.end(), paths_.begin(), paths_.end());
+    actions.insert(actions.end(), actions_.begin(), actions_.end());
+    kinds.insert(kinds.end(), kinds_.begin(), kinds_.end());
+    sizes.insert(sizes.end(), sizes_.begin(), sizes_.end());
+    times.insert(times.end(), times_.begin(), times_.end());
+    decisions.insert(decisions.end(), decisions_.begin(), decisions_.end());
+    const int count = static_cast<int>(paths.size());
+    parents.resize(count);
+    is_dir.resize(count);
+    folded_names.resize(count);
+    folded_paths.resize(count);
+    for (int i = start; i < count; ++i) path_to_id[paths[i]] = i;
+    derive_range(start, count);
+    collapsed.resize(count, 0);
+    visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
   }
 

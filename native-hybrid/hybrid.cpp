@@ -188,6 +188,15 @@ NB_MODULE(native_hybrid, m) {
     session().store.load_direct(paths, actions, kinds, sizes, decisions, times);
   });
 
+  m.def("append", [](const std::vector<std::string>& paths,
+                     const std::vector<int>& actions,
+                     const std::vector<int>& kinds,
+                     const std::vector<long long>& sizes,
+                     const std::vector<int>& decisions,
+                     const std::vector<std::string>& times) {
+    session().store.append_direct(paths, actions, kinds, sizes, decisions, times);
+  });
+
   m.def("set_selection_callback", [](nb::object callback) {
     g_selection_callback = callback;
     g_selection_hook = &selection_hook;
