@@ -143,6 +143,19 @@ class NativeHybridView:
         """Call ``callback(path_id, decision)`` when the user edits a decision."""
         self._native.set_decision_callback(callback)
 
+    def set_show_excluded(self, show: bool) -> None:
+        self._native.set_show_excluded(show)
+
+    def apply_python_decisions(self, decisions) -> None:
+        pairs = []
+        for path, decision in decisions.items():
+            try:
+                path_id = self._paths.index(str(path).rstrip("/"))
+            except ValueError:
+                continue
+            pairs.append((path_id, int(decision)))
+        self._native.apply_python_decisions(pairs)
+
     def refresh_after_decision(self, path_id: int, decision: int) -> None:
         self._native.refresh_after_decision(path_id, decision)
 

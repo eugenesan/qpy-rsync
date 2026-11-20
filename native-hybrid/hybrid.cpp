@@ -259,6 +259,26 @@ NB_MODULE(native_hybrid, m) {
     return s.store.paths[s.store.visible[row]];
   });
 
+  m.def("set_show_excluded", [](bool show) {
+    Session& s = session();
+    s.store.show_excluded = show;
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  });
+
+  m.def("apply_python_decisions", [](const std::vector<std::pair<int, int>>& pairs) {
+    Session& s = session();
+    std::fill(s.store.decisions.begin(), s.store.decisions.end(), Inherit);
+    for (const auto& pair : pairs) {
+      if (pair.first >= 0 && pair.first < static_cast<int>(s.store.decisions.size())) {
+        s.store.decisions[pair.first] = pair.second;
+      }
+    }
+    s.store.decision_log.clear();
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  });
+
   m.def("refresh_after_decision", [](int path_id, int decision) {
     Session& s = session();
     // The checkbox cell was already repainted by dataChanged. Only an

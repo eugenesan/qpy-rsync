@@ -3509,8 +3509,6 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
-        if self._hybrid_view is not None:
-            self._hybrid_view.set_changes(self._last_changed_changes)
         self.comparison.model.preserve_decisions = getattr(
             self, "_preserve_for_compare", self._preserve_decisions
         )
@@ -3724,6 +3722,8 @@ class MainWindow(QMainWindow):
     def _apply_show_excluded(self, show: bool) -> None:
         """Show the excluded items, or hide them again."""
         self.comparison.set_show_excluded(show)
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_show_excluded(show)
         total = self.comparison.model.exclusions.count()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
@@ -3900,6 +3900,8 @@ class MainWindow(QMainWindow):
         self.comparison.set_changes(
             changes, skip_view=self._hybrid_view is not None
         )
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_changes(changes)
 
     def _enable_hybrid_view(self) -> None:
         """Replace the comparison panes with native Qt models (opt-in)."""
@@ -3957,6 +3959,39 @@ class MainWindow(QMainWindow):
         comparison.sort = sort  # type: ignore[method-assign]
         comparison.select_path = select_path  # type: ignore[method-assign]
         comparison.row_path = row_path  # type: ignore[method-assign]
+
+        def undo_decision(*_args, **_kwargs):
+            result = original_undo()
+            if result and self._hybrid_view is not None:
+                self._sync_native_decisions()
+            return result
+
+        def redo_decision(*_args, **_kwargs):
+            result = original_redo()
+            if result and self._hybrid_view is not None:
+                self._sync_native_decisions()
+            return result
+
+        original_undo = comparison.undo_decision
+        original_redo = comparison.redo_decision
+        comparison.undo_decision = undo_decision  # type: ignore[method-assign]
+        comparison.redo_decision = redo_decision  # type: ignore[method-assign]
+        self.undo_decision_action.triggered.disconnect()
+        self.undo_decision_action.triggered.connect(undo_decision)
+        self.redo_decision_action.triggered.disconnect()
+        self.redo_decision_action.triggered.connect(redo_decision)
+
+    def _sync_native_decisions(self) -> None:
+        if self._hybrid_view is None:
+            return
+        from qpy_rsync.core.changes import ChangeDecision
+
+        explicit = self.comparison.model.decisions.explicit_items()
+        values = {
+            path: 2 if decision is ChangeDecision.EXCLUDE else 1
+            for path, decision in explicit
+        }
+        self._hybrid_view.apply_python_decisions(values)
 
     def _on_native_selection(self, path_id: int) -> None:
         changes = self._last_changed_changes
