@@ -60,6 +60,7 @@ class SettingsDialog(QDialog):
         rsync_output_logging: bool = False,
         metadata_two_pass: bool = False,
         inventory_preload: bool = False,
+        hybrid_view: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -193,6 +194,17 @@ class SettingsDialog(QDialog):
             "It also keeps roughly a million extra entries in memory."
         )
         advanced_layout.addWidget(self.inventory_preload_checkbox)
+        self.hybrid_view_checkbox = QCheckBox(
+            "Use native Qt comparison views (experimental)", advanced
+        )
+        self.hybrid_view_checkbox.setChecked(bool(hybrid_view))
+        self.hybrid_view_checkbox.setToolTip(
+            "Off by default. Requires the native_hybrid extension. Hands the "
+            "comparison once to native Qt models for the three tables and the "
+            "overview; decision edits flow back into Python. Selection, search "
+            "and folds are not yet wired natively, so this is a prototype."
+        )
+        advanced_layout.addWidget(self.hybrid_view_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Both checks are diagnostics, not gates. The synchronization "
@@ -267,6 +279,9 @@ class SettingsDialog(QDialog):
 
     def inventory_preload(self) -> bool:
         return self.inventory_preload_checkbox.isChecked()
+
+    def hybrid_view(self) -> bool:
+        return self.hybrid_view_checkbox.isChecked()
 
     def detect_inherited_conflicts(self) -> bool:
         return self.inherited_checkbox.isChecked()

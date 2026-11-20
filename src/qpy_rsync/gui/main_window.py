@@ -374,6 +374,9 @@ class MainWindow(QMainWindow):
         self._inventory_preload = settings.value(
             "advanced/inventory_preload", False, type=bool
         )
+        self._hybrid_enabled = settings.value(
+            "advanced/hybrid_view", False, type=bool
+        ) or os.environ.get("QPY_HYBRID_VIEW", "") == "1"
         self._metadata_service.set_gather_option(
             "two_pass", self._metadata_two_pass
         )
@@ -388,7 +391,7 @@ class MainWindow(QMainWindow):
         self._next_compare_filters: str = ""
         self._build_ui()
         self._hybrid_view: object | None = None
-        if os.environ.get("QPY_HYBRID_VIEW", "") == "1":
+        if self._hybrid_enabled:
             self._enable_hybrid_view()
         self._restore_window_state()
         profile_loaded = self._restore_recent_profile()
@@ -1856,6 +1859,7 @@ class MainWindow(QMainWindow):
             rsync_output_logging=self._rsync_output_logging,
             metadata_two_pass=self._metadata_two_pass,
             inventory_preload=self._inventory_preload,
+            hybrid_view=self._hybrid_enabled,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()

@@ -28,12 +28,15 @@ Requires `qt6-base-dev`, Ninja and nanobind. The module is copied to
 
 ## Run
 
+Enable **Settings → Advanced → Use native Qt comparison views (experimental)**,
+or use `QPY_HYBRID_VIEW=1` for a one-off run:
+
 ```sh
 QPY_HYBRID_VIEW=1 ./qpy-rsync.sh
 ```
 
-With the flag unset nothing changes: the Python view is the default and all
-417 tests pass. A minimal smoke test is available:
+With the setting/flag off nothing changes: the Python view is the default and
+all 417 tests pass. A minimal smoke test is available:
 
 ```sh
 PYTHONPATH=src /usr/bin/python3 native-hybrid/test_hybrid.py
@@ -72,7 +75,8 @@ view or missing from the native side:
 - native filter and sort controls driven from the toolbar;
 - sync confirmation and validation still read the Python plan;
 - packaging (Debian build-dependency on `qt6-base-dev`);
-- command-line/settings toggle (currently only `QPY_HYBRID_VIEW=1`).
+- command-line and Advanced-setting toggle both work; enable requires a new
+  comparison or restart to take effect.
 
 Do not switch this on for production use. The purpose is to validate that the
 boundary, embedding and decision round-trip work in the real application
