@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from PySide6.QtCore import QObject, Signal
+
 _NATIVE_ACTION_CODE = {
     "create": 0,
     "update_content": 1,
@@ -56,9 +58,11 @@ class NativeHybridView:
         native = module()
         if native is None:
             raise RuntimeError("native_hybrid extension is not available")
-        pointer = native.create_widget()
+        pointer = native.create_tables_widget()
         self._widget = shiboken6.wrapInstance(pointer, QWidget)
-        if self._widget is None:
+        overview_pointer = native.create_overview_widget()
+        self.overview_widget = shiboken6.wrapInstance(overview_pointer, QWidget)
+        if self._widget is None or self.overview_widget is None:
             raise RuntimeError("could not wrap the native QWidget")
         self._native = native
         self._paths: list[str] = []
@@ -176,3 +180,44 @@ class NativeHybridView:
 
     def decision_diff(self) -> list[tuple[int, int]]:
         return [tuple(pair) for pair in self._native.decision_diff()]
+
+
+class NativeOverviewShim(QObject):
+    """Drop-in for OverviewPane when the native overview owns the display."""
+
+    folder_activated = Signal(str)
+    exclusion_requested = Signal(str)
+    restore_requested = Signal(str)
+    filter_requested = Signal(str)
+
+    def __init__(self, widget: QWidget) -> None:
+        super().__init__()
+        self.tree = widget
+        self._widget = widget
+
+    def set_paths(self, *_args, **_kwargs) -> None:
+        pass
+
+    def set_aggregates(self, *_args, **_kwargs) -> None:
+        pass
+
+    def set_statistics(self, *_args, **_kwargs) -> None:
+        pass
+
+    def minimumWidth(self) -> int:
+        return int(self._widget.minimumWidth())
+
+    def setMinimumWidth(self, width: int) -> None:
+        self._widget.setMinimumWidth(width)
+
+    def width(self) -> int:
+        return int(self._widget.width())
+
+    def setParent(self, parent) -> None:
+        self._widget.setParent(parent)
+
+    def show(self) -> None:
+        self._widget.show()
+
+    def hide(self) -> None:
+        self._widget.hide()

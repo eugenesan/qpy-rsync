@@ -13,10 +13,15 @@
 - Measured at 520k: compare 0.9 s, undo 0.11 s, decision ~0.1 s, metadata
   merge 0.1 s.
 
-## 1. Overview pane
+## 1. Overview pane — DONE
 
-The user asked whether the native overview can be moved into the existing
-Python overview slot. **Yes** — the native side can expose a second factory:
+The native side now exposes separate `create_tables_widget()` and
+`create_overview_widget()` factories. `MainWindow` places the native overview
+in the existing `log_splitter` slot through `NativeOverviewShim`, which
+provides the signals and small API the rest of the window expects. Verified
+offscreen: 30,000 overview folders, 100,000 table rows, compare 0.91 s.
+
+Original plan for reference:
 
 ```
 create_tables_widget() -> QWidget*

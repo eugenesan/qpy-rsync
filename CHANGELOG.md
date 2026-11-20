@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hybrid view overview split into its own native widget, placed in the
+  existing overview slot with a Python compatibility shim.
 - Hybrid search now handles the `dir/` variant; unchanged flows skip redundant
   handoffs and plan rebuilds, and report matching progress.
 - Hybrid view fixes: 64-bit overview sizes and real folder names, resizable and

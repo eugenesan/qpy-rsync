@@ -3918,7 +3918,10 @@ class MainWindow(QMainWindow):
 
     def _enable_hybrid_view(self) -> None:
         """Replace the comparison panes with native Qt models (opt-in)."""
-        from qpy_rsync.gui.native_hybrid_view import NativeHybridView
+        from qpy_rsync.gui.native_hybrid_view import (
+            NativeHybridView,
+            NativeOverviewShim,
+        )
 
         try:
             view = NativeHybridView()
@@ -3926,6 +3929,16 @@ class MainWindow(QMainWindow):
             return
         self._hybrid_view = view
         self._hybrid_selected_path = ""
+        self._python_overview = self.overview
+        shim = NativeOverviewShim(view.overview_widget)
+        index = self.log_splitter.indexOf(self.overview)
+        if index >= 0:
+            self.log_splitter.replaceWidget(index, view.overview_widget)
+        self.overview = shim
+        shim.folder_activated.connect(self._overview_folder_activated)
+        shim.exclusion_requested.connect(self._exclude_path)
+        shim.restore_requested.connect(self._restore_path)
+        shim.filter_requested.connect(self._add_filter_phrase)
         view.on_decision_changed(self._on_native_decision)
         view.on_selection_changed(self._on_native_selection)
         self._route_controls_to_native(view)
