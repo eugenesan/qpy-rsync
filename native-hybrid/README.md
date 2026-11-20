@@ -1,0 +1,88 @@
+# Hybrid app: native Qt view layer (working slice)
+
+Branch: `hybrid-app`. This is the first integrated slice of the architecture
+recommended in `native-qt-model/CONCLUSION.md`.
+
+## Status
+
+**Working, opt-in, display-and-decision slice.** It is not yet full feature
+parity with `FlatComparisonView`; see "Not yet wired" below.
+
+- Python keeps rsync, parsing, decisions semantics, plan, validation and sync.
+- Native Qt owns the four view models (three tables plus the overview tree),
+  the volatile decision table and the decision diff.
+- The dataset crosses Python → native exactly once per comparison.
+- A checkbox in the native Action pane edits a decision; the change is
+  mirrored into `ChangeDecisions` and the plan is marked stale through the
+  existing Python path.
+- Python pulls the compact `(path_id, decision)` diff whenever it needs it.
+
+## Build
+
+```sh
+./native-hybrid/build.sh
+```
+
+Requires `qt6-base-dev`, Ninja and nanobind. The module is copied to
+`src/qpy_rsync/native_hybrid.so` (gitignored).
+
+## Run
+
+```sh
+QPY_HYBRID_VIEW=1 ./qpy-rsync.sh
+```
+
+With the flag unset nothing changes: the Python view is the default and all
+417 tests pass. A minimal smoke test is available:
+
+```sh
+PYTHONPATH=src /usr/bin/python3 native-hybrid/test_hybrid.py
+```
+
+## Measured on this slice
+
+| | Result |
+|---|---:|
+| Python → native handoff of 1M changes | 0.70 s |
+| native `row_count` | 1,000,000 |
+| native decision diff, 1000 entries pulled into Python | 0.1 ms |
+| startup with hybrid view on X11 `:50` | ok |
+
+The handoff is the in-process vector API (no binary file), so it is the real
+integration cost.
+
+## API
+
+`qpy_rsync.gui.native_hybrid_view.NativeHybridView`:
+
+- `set_changes(changes)` — one-time handoff, then `refresh()`
+- `widget` — the native `QWidget`, wrapped with `shiboken6.wrapInstance`
+- `on_decision_changed(callback)` — native → Python decision edits
+- `set_checkstate(row, checked)` — test hook that exercises the checkbox path
+- `decision_diff()` — compact change log for validation/sync
+- `shutdown()` — drop the Python callback before interpreter shutdown
+
+## Not yet wired
+
+This is a vertical slice, not a completed migration. Still using the Python
+view or missing from the native side:
+
+- selection, scroll preservation and folds;
+- search and jump-to-match;
+- native filter and sort controls driven from the toolbar;
+- sync confirmation and validation still read the Python plan;
+- packaging (Debian build-dependency on `qt6-base-dev`);
+- command-line/settings toggle (currently only `QPY_HYBRID_VIEW=1`).
+
+Do not switch this on for production use. The purpose is to validate that the
+boundary, embedding and decision round-trip work in the real application
+before investing in full feature parity.
+
+## Next steps
+
+1. Wire native selection/fold/search so the hybrid view is usable interactively.
+2. Skips the Python view's `set_changes` work when hybrid is active, so the
+   measured gains can be realised rather than paid twice.
+3. Add the Advanced-setting toggle and packaging.
+4. Re-measure against `docs/performance-analysis.md` and decide whether to
+   complete the migration.

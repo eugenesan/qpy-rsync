@@ -387,6 +387,9 @@ class MainWindow(QMainWindow):
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
         self._build_ui()
+        self._hybrid_view: object | None = None
+        if os.environ.get("QPY_HYBRID_VIEW", "") == "1":
+            self._enable_hybrid_view()
         self._restore_window_state()
         profile_loaded = self._restore_recent_profile()
         if not profile_loaded:
@@ -3502,6 +3505,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_changes(self._last_changed_changes)
         self.comparison.model.preserve_decisions = getattr(
             self, "_preserve_for_compare", self._preserve_decisions
         )
@@ -3885,6 +3890,36 @@ class MainWindow(QMainWindow):
             self._inventory_service, "has_cached_destination", None
         )
         return bool(getter()) if getter is not None else False
+
+    def _enable_hybrid_view(self) -> None:
+        """Replace the comparison panes with native Qt models (opt-in)."""
+        from qpy_rsync.gui.native_hybrid_view import NativeHybridView
+
+        try:
+            view = NativeHybridView()
+        except (RuntimeError, ImportError, OSError):
+            return
+        self._hybrid_view = view
+        view.on_decision_changed(self._on_native_decision)
+        self.main_splitter.insertWidget(0, view.widget)
+        self.comparison.hide()
+
+    def _on_native_decision(self, path_id: int, decision: int) -> None:
+        """Mirror a native decision edit into Python's decision store."""
+        from qpy_rsync.core.changes import ChangeDecision
+
+        changes = self._last_changed_changes
+        if not 0 <= path_id < len(changes):
+            return
+        path = str(changes[path_id].path).rstrip("/")
+        decisions = self.comparison.model.decisions
+        if decision == 2:  # Exclude
+            decisions.set(path, ChangeDecision.EXCLUDE)
+        else:
+            decisions.reset(path)
+        self.comparison.model._refresh_effective_actions({path})
+        self._on_decision_changed({path})
+        self._invalidate_validated_plan()
 
     def _set_cached_destination(self, paths: object | None) -> None:
         setter = getattr(self._inventory_service, "set_cached_destination", None)
@@ -4578,6 +4613,8 @@ class MainWindow(QMainWindow):
         # so a process that is still running would be destroyed with it.
         self._closing = True
         self._shutdown_operations()
+        if self._hybrid_view is not None:
+            self._hybrid_view.shutdown()
         settings = app_settings()
         settings.setValue(
             "main-window/geometry", encode_binary(self.saveGeometry())

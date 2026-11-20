@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added an opt-in hybrid view slice (`QPY_HYBRID_VIEW=1`): parsed changes are
+  handed once to native Qt models for three comparison tables and the overview,
+  and native decision edits are mirrored into Python's decision store. Python
+  remains the default and keeps parsing, plan, validation and sync.
 - The two advanced inventory switches are now Settings > Advanced options,
   off by default: two-pass destination metadata and source-listing preload.
   Their tooltips explain when they help and their costs.
