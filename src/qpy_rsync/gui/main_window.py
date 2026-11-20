@@ -348,6 +348,9 @@ class MainWindow(QMainWindow):
         self._detect_inherited_conflicts = settings.value(
             "decisions/detect-inherited", False, type=bool
         )
+        self._rsync_output_logging = settings.value(
+            "logging/rsync_output", False, type=bool
+        )
         self._last_compare_locations: tuple[str, str] | None = None
         self._last_compare_filters: str = ""
         self._preserve_for_compare = True
@@ -1821,6 +1824,7 @@ class MainWindow(QMainWindow):
             verification_enabled=self._verification_enabled,
             verification_rsync=self._verification_rsync,
             detect_inherited_conflicts=self._detect_inherited_conflicts,
+            rsync_output_logging=self._rsync_output_logging,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1844,6 +1848,8 @@ class MainWindow(QMainWindow):
             settings.setValue(
                 "decisions/detect-inherited", self._detect_inherited_conflicts
             )
+            self._rsync_output_logging = dialog.rsync_output_logging()
+            settings.setValue("logging/rsync_output", self._rsync_output_logging)
             settings.sync()
             self._update_verification_visibility()
             self._update_conflict_ui()
@@ -4049,6 +4055,10 @@ class MainWindow(QMainWindow):
         self._write_session_log("\n".join(lines), rsync=True)
 
     def _append_rsync_log(self, text: str) -> None:
+        # Raw rsync output is opt-in: on a large tree it can reach hundreds of
+        # MB per run and costs measurable time in this single-threaded path.
+        if not self._rsync_output_logging:
+            return
         if self._bulk_logging or self._bulk_rsync:
             # Never let an itemized record reach the journal widget during a
             # bulk comparison, including late lines after the final flush.
@@ -4129,6 +4139,8 @@ class MainWindow(QMainWindow):
 
     def _append_transient_log(self, text: str) -> None:
         """Keep rsync progress in the session log, not in the journal."""
+        if not self._rsync_output_logging:
+            return
         normalized = text.rstrip("\r\n")
         if normalized:
             self._write_session_log(normalized, rsync=True)

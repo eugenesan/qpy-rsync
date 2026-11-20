@@ -147,6 +147,15 @@ pass with the flag on and off.
 A worker thread is not yet used; kernels are fast enough that the GUI thread
 still meets the <1 s target. The snapshot boundary is worker-ready.
 
+## Raw rsync output logging
+
+Your 18:09 run also showed that raw output is a large cost: the rsync log
+carries every itemized record with a timestamp. It is now opt-in in
+Settings > Advanced ("Log raw rsync output"), default off. With it off,
+`_append_rsync_log` and `_append_transient_log` return immediately, so the
+"journal writes" phase measured by `CompareService` drops to near zero.
+Application events and timing lines are unaffected.
+
 ## Fixed: post-compare hang at large sizes
 
 The first end-to-end run with the native backend froze between "comparison

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Raw rsync output logging is now opt-in via Settings > Advanced > "Log raw
+  rsync output", off by default. On large trees this avoids hundreds of MB of
+  log writes per comparison and removes that work from the single-threaded
+  Python log path. Application events and timing lines are still logged.
 - Fixed a hang in the native backend at large comparison sizes: the lazy plan
   item sequence copied whole native arrays on every item, turning the post-
   compare plan/overview rebuild into an O(n^2) pass. The arrays are now
