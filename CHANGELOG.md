@@ -9,7 +9,8 @@
   The optional path also accumulates compare records in native arrays and
   exposes them lazily, with a full parser differential check. The optional
   path also builds execution plans in the native kernel with an identical
-  items fingerprint.
+  items fingerprint, supports native path-pattern searching and restores the
+  "Filter list" mode when the backend is active.
 - Each log session header records the full `qpy-rsync` version and git commit
   once, so timing snapshots from different builds can be told apart.
 - Post-parse comparison phases are timed in the application log: how long the

@@ -139,7 +139,10 @@ ACTION_CODE = {
 
 
 def native_signature(
-    model: FlatChangeModel, *, native_filter: bool = False
+    model: FlatChangeModel,
+    *,
+    native_filter: bool = False,
+    native_pattern: bool = False,
 ) -> dict[str, object]:
     rows = model._rows
     paths = [row.path for row in rows]
@@ -216,15 +219,41 @@ def native_signature(
         dir_own_change,
     )
 
-    if native_filter:
+    visible_actions = model._visible_actions
+    mask = (
+        0
+        if visible_actions is None
+        else sum(1 << ACTION_CODE[action.value] for action in visible_actions)
+    )
+    if native_pattern:
+        # The real model runs a pattern-less pass first (set_changes); seed
+        # the directory-own change flags the same way.
+        comparison.filter(
+            0,
+            model.filter_directories,
+            False,
+            [],
+            [],
+            model.show_excluded,
+            [],
+            0,
+        )
+        comparison.set_action_filter(mask)
+        comparison.filter_pattern(
+            model._pattern,
+            model._pattern_is_glob,
+            model._directories_only,
+            model._include_directory_contents,
+            has_exclusion,
+            row_excluded,
+            row_explicit,
+            model.show_excluded,
+            folded_parent,
+            0,
+        )
+    elif native_filter:
         # The kernel computes change and directory flags itself. Valid only
         # without a path pattern; those cases use the Stage 1 path below.
-        visible_actions = model._visible_actions
-        mask = (
-            0
-            if visible_actions is None
-            else sum(1 << ACTION_CODE[action.value] for action in visible_actions)
-        )
         comparison.filter(
             mask,
             model.filter_directories,
@@ -285,10 +314,16 @@ def native_signature(
 
 
 def compare(
-    name: str, model: FlatChangeModel, *, native_filter: bool = False
+    name: str,
+    model: FlatChangeModel,
+    *,
+    native_filter: bool = False,
+    native_pattern: bool = False,
 ) -> None:
     python = python_signature(model)
-    native = native_signature(model, native_filter=native_filter)
+    native = native_signature(
+        model, native_filter=native_filter, native_pattern=native_pattern
+    )
     for key in python:
         if python[key] != native[key]:
             raise AssertionError(
@@ -296,7 +331,13 @@ def compare(
                 f"  python: {python[key]}\n"
                 f"  native: {native[key]}"
             )
-    kind = "native-filter" if native_filter else "flags"
+    kind = (
+        "native-pattern"
+        if native_pattern
+        else "native-filter"
+        if native_filter
+        else "flags"
+    )
     print(
         f"{name} ({kind}): {len(python['rows'])} rows, "
         f"{len(python['changes'])} changes, matched"
@@ -306,7 +347,7 @@ def compare(
 def main() -> None:
     # (name, configure, native_filter). Pattern cases only exercise the
     # Stage 1 flags path; the rest run the Stage 2 native flag kernel too.
-    scenarios: list[tuple[str, object, bool]] = [
+    scenarios: list[tuple[str, object, object]] = [
         ("default", lambda m: None, True),
         (
             "update-only",
@@ -329,9 +370,12 @@ def main() -> None:
             ),
             True,
         ),
-        ("path-substring", lambda m: m.set_path_filter("lib"), False),
-        ("glob-name", lambda m: m.set_path_filter("*.py"), False),
-        ("dir-contents", lambda m: m.set_path_filter("src/lib/"), False),
+        ("path-substring", lambda m: m.set_path_filter("lib"), "pattern"),
+        ("glob-name", lambda m: m.set_path_filter("*.py"), "pattern"),
+        ("dir-contents", lambda m: m.set_path_filter("src/lib/"), "pattern"),
+        ("glob-path", lambda m: m.set_path_filter("src/*/*.py"), "pattern"),
+        ("glob-bracket", lambda m: m.set_path_filter("[ax]*.txt"), "pattern"),
+        ("glob-question", lambda m: m.set_path_filter("?.txt"), "pattern"),
         (
             "excluded",
             lambda m: (
@@ -356,10 +400,15 @@ def main() -> None:
             True,
         ),
     ]
-    for name, configure, native_filter in scenarios:
+    for name, configure, mode in scenarios:
         model = build_model()
         configure(model)
-        compare(name, model, native_filter=native_filter)
+        compare(
+            name,
+            model,
+            native_filter=mode is True,
+            native_pattern=mode == "pattern",
+        )
 
 
 if __name__ == "__main__":

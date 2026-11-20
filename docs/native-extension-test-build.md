@@ -123,6 +123,18 @@ the Python implementation in four decision scenarios.
 On 520,000 changes: **1,386 ms → 466 ms** (3x), identical fingerprint. All 413
 tests pass with the flag on and off.
 
+## Search and filter-list mode (Stage 6)
+
+The extension now implements the same path-pattern semantics as the Python
+model (substring, `*` / `?` / `[...]` globs, slash paths, trailing-slash
+directory patterns) in a `filter_pattern()` kernel, plus a `search_rows()`
+index. `native/check_model.py` validates six pattern scenarios byte-for-byte.
+
+The **Filter list** toggle is back in the comparison controls, but only shown
+when the native backend is active; the Python path keeps search jump-only.
+On 520,000 rows a glob search drops from 207 ms to 42 ms. All 415 tests pass
+in both modes.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

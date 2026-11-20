@@ -71,6 +71,41 @@ def test_native_folding_keeps_totals(monkeypatch: pytest.MonkeyPatch) -> None:
     assert signature(python) == signature(native)
 
 
+def test_filter_list_mode_filters_and_restores(monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+    application = QApplication.instance() or QApplication([])
+    monkeypatch.setenv("QPY_RSYNC_NATIVE", "1")
+    view = FlatComparisonView()
+    view.set_changes(changes())
+    before = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert not view.filter_mode_button.isHidden()
+
+    view.search_edit.setText("docs")
+    view._search_timer.stop()
+    view._run_search(jump=False)
+    view.filter_mode_button.setChecked(True)
+    application.processEvents()
+    filtered = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert filtered and all("docs" in path for path in filtered if path)
+
+    view.filter_mode_button.setChecked(False)
+    application.processEvents()
+    restored = [view.model.row_path(row) for row in range(view.model.rowCount())]
+    assert restored == before
+    view.close()
+    application.processEvents()
+
+
+def test_native_search_parity(monkeypatch: pytest.MonkeyPatch) -> None:
+    python = model_with(monkeypatch, "0")
+    native = model_with(monkeypatch, "1")
+    for text in ("txt", "docs/", "*.txt", "docs/a", "[ac]*.txt", "?"):
+        assert python.search_matches(text) == native.search_matches(text)
+
+
 def test_native_plan_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     from qpy_rsync.core.changes import ChangeDecisions, ChangeDecision
     from qpy_rsync.core.enums import EndpointKind

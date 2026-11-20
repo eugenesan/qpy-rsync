@@ -623,11 +623,9 @@ class FlatChangeModel(QAbstractTableModel):
         self._native_comparison = comparison
 
     def _native_filter_applicable(self) -> bool:
-        """The native flag kernel covers every case except path patterns."""
-        pattern_active = bool(self._pattern) and self._pattern != "*"
+        """The native kernels cover path patterns, folds and action filters."""
         return (
             self._native_comparison is not None
-            and not pattern_active
             and not self._conflicts_only
         )
 
@@ -649,7 +647,8 @@ class FlatChangeModel(QAbstractTableModel):
         else:
             row_excluded = []
             row_explicit = []
-        collapse_active = bool(self.collapsed)
+        pattern_active = bool(self._pattern) and self._pattern != "*"
+        collapse_active = bool(self.collapsed) and not pattern_active
         if collapse_active:
             directory_folded: dict[str, bool] = {"": False}
             for path, directory in self._directories.items():
@@ -672,16 +671,32 @@ class FlatChangeModel(QAbstractTableModel):
                 for action in visible_actions
             )
         )
-        comparison.filter(
-            mask,
-            self.filter_directories,
-            has_exclusion,
-            row_excluded,
-            row_explicit,
-            self.show_excluded,
-            folded_parent,
-            self.layout_token,
-        )
+        if pattern_active:
+            comparison.set_action_filter(mask)
+            comparison.set_filter_directories(self.filter_directories)
+            comparison.filter_pattern(
+                self._pattern,
+                self._pattern_is_glob,
+                self._directories_only,
+                self._include_directory_contents,
+                has_exclusion,
+                row_excluded,
+                row_explicit,
+                self.show_excluded,
+                folded_parent,
+                self.layout_token,
+            )
+        else:
+            comparison.filter(
+                mask,
+                self.filter_directories,
+                has_exclusion,
+                row_excluded,
+                row_explicit,
+                self.show_excluded,
+                folded_parent,
+                self.layout_token,
+            )
 
         # nanobind copies a def_ro vector on every property access, so bind
         # each one once before the loops instead of indexing the property.
@@ -1517,6 +1532,25 @@ class FlatChangeModel(QAbstractTableModel):
         key = (value, self.layout_token)
         if key == self._search_cache_key:
             return self._search_cache
+        if self._native_comparison is not None:
+            if not value:
+                matches = []
+            else:
+                directories_only = value.endswith("/")
+                pattern = value.rstrip("/") if directories_only else value
+                is_glob = any(character in pattern for character in "*?[")
+                matches = list(
+                    self._native_comparison.search_rows(
+                        pattern,
+                        is_glob,
+                        directories_only,
+                        self.show_excluded,
+                        [int(flag) for flag in self._row_excluded],
+                    )
+                )
+            self._search_cache_key = key
+            self._search_cache = matches
+            return matches
         if not value:
             matches: list[int] = []
         else:

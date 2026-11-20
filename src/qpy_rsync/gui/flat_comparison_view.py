@@ -510,6 +510,19 @@ class FlatComparisonView(QWidget):
         self.search_status.setToolTip("Search matches in the visible list")
         self.search_status.setMinimumWidth(52)
         controls.addWidget(self.search_status)
+        # The list-filter mode is only offered when the native backend is
+        # active; the Python path keeps search as jump-only.
+        self.filter_mode_button = QToolButton()
+        self.filter_mode_button.setCheckable(True)
+        self.filter_mode_button.setText("Filter list")
+        self.filter_mode_button.setToolTip(
+            "Show only the search matches in the list (native backend only)"
+        )
+        self.filter_mode_button.setAccessibleName("Filter list to search matches")
+        self.filter_mode_button.toggled.connect(self._filter_mode_toggled)
+        controls.addWidget(self.filter_mode_button)
+        if getattr(self.model, "_native", None) is None:
+            self.filter_mode_button.hide()
         self.search_previous_button.hide()
         self.search_next_button.hide()
         self.search_status.hide()
@@ -1284,10 +1297,21 @@ class FlatComparisonView(QWidget):
         """Restart the debounce; the scan itself runs once for the text."""
         self._search_timer.start()
 
+    def _filter_mode_toggled(self, checked: bool) -> None:
+        """Switch between jumping to matches and filtering the list to them."""
+        if not checked:
+            self.model.set_path_filter("")
+            return
+        text = self.search_edit.text().strip()
+        if text:
+            self.model.set_path_filter(text)
+
     def _run_search(self, *, jump: bool = True) -> None:
         """Build the match list once and show where the search stands."""
         text = self.search_edit.text().strip().casefold()
         self._search_text = text
+        if self.filter_mode_button.isChecked():
+            self.model.set_path_filter(text)
         self._search_rows = self.model.search_matches(text) if text else []
         self._search_position = -1
         if not text:

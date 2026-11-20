@@ -102,4 +102,13 @@ before the next one starts.
     an identical `items_fingerprint`.
   - `decision_filter_lines` (~200 ms) is not moved yet; the analysis rates it
     lower value because it is cached by plan content (Stage 5b).
-- Stages 6–8 not started.
+- **Stage 6 done** (this commit): native glob/substring pattern filtering
+  (`filter_pattern`), a native `search_rows` index, and the restored
+  **Filter list** toggle in `FlatComparisonView` (shown only with the native
+  backend). `native/check_model.py` now runs six pattern scenarios, including
+  `*`, `?`, `[...]`, slash paths and directory-only patterns, all matched
+  byte-for-byte against `FlatChangeModel`.
+  - Native glob search on 520,000 rows: 207 ms (Python) → 42 ms.
+  - pytest parity covers search and the filter-mode toggle; all 415 tests pass
+    with the flag off and on.
+- Stages 7–8 not started.
