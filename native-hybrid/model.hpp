@@ -36,6 +36,7 @@ struct DataStore {
   // Volatile view state owned by native.
   std::vector<int> parents;
   std::vector<int> is_dir;
+  std::vector<int> depth;
   std::vector<std::string> folded_names;
   std::vector<std::string> folded_paths;
   std::vector<char> collapsed;
@@ -135,6 +136,7 @@ struct DataStore {
         if (parent_it != path_to_id.end()) parents[i] = parent_it->second;
       }
       is_dir[i] = (i < static_cast<int>(kinds.size()) && kinds[i] == 1) ? 1 : 0;
+      depth[i] = parents[i] >= 0 ? depth[parents[i]] + 1 : 0;
       std::string name = slash == std::string::npos
                              ? path
                              : path.substr(slash + 1);
@@ -166,6 +168,7 @@ struct DataStore {
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
     is_dir.resize(count);
+    depth.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     path_to_id.clear();
@@ -200,6 +203,7 @@ struct DataStore {
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
     is_dir.resize(count);
+    depth.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     for (int i = start; i < count; ++i) path_to_id[paths[i]] = i;
@@ -220,6 +224,7 @@ struct DataStore {
     decisions.resize(count);
     parents.resize(count);
     is_dir.resize(count);
+    depth.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     collapsed.resize(count);

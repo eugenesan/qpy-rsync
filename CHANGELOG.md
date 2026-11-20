@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Hybrid table views now use native delegates for action colours, stripes,
+  excluded dimming and folder chevrons, with a fixed-width Action pane and
+  context menus wired to external tools.
 - Fixed a hybrid-mode bug where a second Compare after changing profiles left
   no execution plan: the model was skipped because it was non-empty.
 - Fixed a crash in the estimated summary (`excluded` was used as both a set

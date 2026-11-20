@@ -1917,6 +1917,8 @@ class MainWindow(QMainWindow):
         save_colours(colours)
         self.action_filters.refresh_icons()
         self.comparison.model.action_colours_changed()
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_action_colours()
 
     def _add_filter_phrase(self, label: str, path: object) -> None:
         """Add an rsync exclude rule produced by the context menu."""
@@ -3969,6 +3971,7 @@ class MainWindow(QMainWindow):
         shim.filter_requested.connect(self._add_filter_phrase)
         view.on_decision_changed(self._on_native_decision)
         view.on_selection_changed(self._on_native_selection)
+        view.on_context_menu(self._native_context_menu)
         self._route_controls_to_native(view)
         self.main_splitter.insertWidget(0, view.widget)
         self.comparison.hide()
@@ -4048,6 +4051,35 @@ class MainWindow(QMainWindow):
             for path, decision in explicit
         }
         self._hybrid_view.apply_python_decisions(values)
+
+    def _native_context_menu(self, pane: int, path: str, x: int, y: int) -> None:
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        change = next(
+            (
+                item
+                for item in self._last_changed_changes
+                if str(item.path).rstrip("/") == path
+            ),
+            None,
+        )
+        if change is not None:
+            action = menu.addAction("Diff")
+            action.triggered.connect(lambda _checked=False: self._open_diff_tool(change))
+        for tool in self._external_tools:
+            action = menu.addAction(tool.name)
+            action.triggered.connect(
+                lambda _checked=False, name=tool.name: self._run_external_tool(
+                    name,
+                    path,
+                    "source" if pane == 0 else "destination",
+                    False,
+                )
+            )
+        if not menu.isEmpty():
+            menu.exec(QPoint(x, y))
 
     def _on_native_selection(self, path_id: int) -> None:
         changes = self._last_changed_changes

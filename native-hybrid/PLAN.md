@@ -50,10 +50,14 @@ Work needed:
 This is a contained change to the bridge and the two wrappers; no changes to
 data ownership.
 
-## 2. Table panes matching the Python view
+## 2. Table panes matching the Python view — DONE (first pass)
 
-Current native columns mirror the Python columns by name, but the visual
-language is missing:
+Native delegates now paint action colours, alternating stripes, excluded
+dimming, folder chevrons/indentation; the Action pane has a fixed width and
+native context menus reach the existing external-tool and diff actions.
+Icons and exact status colours still need a visual comparison pass.
+
+Original scope for reference:
 
 - action colour per row (the palette is defined in Python:
   `gui/action_colours.py`);

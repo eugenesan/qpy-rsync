@@ -6,13 +6,20 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <QColor>
+#include <QCursor>
 #include <QHBoxLayout>
+#include <QMenu>
+#include <QPainter>
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QScrollBar>
+#include <QSizePolicy>
+#include <QStyledItemDelegate>
 #include <QSplitter>
 #include <QTableView>
+#include <QStyleOptionViewItem>
 #include <QTreeView>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -33,6 +40,7 @@ struct Session {
   QWidget* overview_widget = nullptr;
   QTreeView* overview_view = nullptr;
   QLabel* stats_label = nullptr;
+  std::vector<QString> action_colours;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
   QTableView* views[3] = {nullptr, nullptr, nullptr};
@@ -45,12 +53,14 @@ Session& session() {
 
 using SelectionHook = void (*)(int path_id);
 using DecisionHook = void (*)(int path_id, int decision);
+using ContextHook = void (*)(int pane, const char* path, int x, int y);
 
 inline SelectionHook g_selection_hook = nullptr;
 inline DecisionHook g_native_decision_hook = nullptr;
 inline bool g_in_select = false;
 inline nb::object g_selection_callback;
 inline nb::object g_decision_callback;
+inline nb::object g_context_callback;
 
 void emit_selection(int path_id) {
   if (!g_in_select && g_selection_hook != nullptr) g_selection_hook(path_id);
@@ -74,6 +84,15 @@ void native_decision_hook(int path_id, int decision) {
   }
 }
 
+void context_hook(int pane, const char* path, int x, int y) {
+  if (!g_context_callback.is_valid()) return;
+  nb::gil_scoped_acquire gil;
+  try {
+    g_context_callback(pane, nb::str(path), x, y);
+  } catch (...) {
+  }
+}
+
 void refresh_native_models(Session& s) {
   int positions[3] = {0, 0, 0};
   for (int i = 0; i < 3; ++i) {
@@ -88,6 +107,56 @@ void refresh_native_models(Session& s) {
     }
   }
 }
+
+class HybridDelegate : public QStyledItemDelegate {
+ public:
+  HybridDelegate(Session* session, int pane, QObject* parent = nullptr)
+      : QStyledItemDelegate(parent), session_(session), pane_(pane) {}
+
+  void paint(QPainter* painter, const QStyleOptionViewItem& option,
+             const QModelIndex& index) const override {
+    QStyleOptionViewItem opt(option);
+    initStyleOption(&opt, index);
+    Session& s = *session_;
+    const int row = index.row();
+    const DataStore& store = s.store;
+    if (row >= 0 && row < static_cast<int>(store.visible.size())) {
+      const int id = store.visible[row];
+      if (row % 2 == 0) opt.features |= QStyleOptionViewItem::Alternate;
+      if (pane_ != 1 && id >= 0 && id < static_cast<int>(store.actions.size()) &&
+          id < static_cast<int>(s.action_colours.size())) {
+        const QString& colour = s.action_colours[store.actions[id]];
+        if (!colour.isEmpty()) opt.palette.setColor(QPalette::Text, QColor(colour));
+      }
+      if (id < static_cast<int>(store.decisions.size()) && store.decisions[id] == Exclude) {
+        opt.palette.setColor(QPalette::Text, Qt::gray);
+      }
+      if (index.column() == 0 && id < static_cast<int>(store.depth.size())) {
+        const int indent = store.depth[id] * 14;
+        opt.rect.adjust(indent, 0, 0, 0);
+      }
+      QStyledItemDelegate::paint(painter, opt, index);
+      if (index.column() == 0 && id < static_cast<int>(store.is_dir.size()) &&
+          store.is_dir[id]) {
+        painter->save();
+        painter->setBrush(QColor("#0891B2"));
+        painter->setPen(Qt::NoPen);
+        QRect r = opt.rect;
+        int x = r.left() - 11;
+        int y = r.center().y();
+        QPoint points[3] = {{x, y - 4}, {x + 7, y}, {x, y + 4}};
+        painter->drawPolygon(points, 3);
+        painter->restore();
+      }
+      return;
+    }
+    QStyledItemDelegate::paint(painter, opt, index);
+  }
+
+ private:
+  Session* session_;
+  int pane_;
+};
 
 QWidget* ensure_tables_widget(Session& s) {
   if (s.tables_widget == nullptr) {
@@ -114,6 +183,24 @@ QWidget* ensure_tables_widget(Session& s) {
     views[1]->setModel(s.models[1]);
     views[2]->setModel(s.models[2]);
     for (int i = 0; i < 3; ++i) {
+      views[i]->setItemDelegate(new HybridDelegate(&s, i, s.tables_widget));
+      views[i]->setContextMenuPolicy(Qt::CustomContextMenu);
+      QObject::connect(
+          views[i], &QTableView::customContextMenuRequested,
+          [i](const QPoint& pos) {
+            Session& current = session();
+            if (current.views[i] == nullptr) return;
+            QModelIndex index = current.views[i]->indexAt(pos);
+            if (!index.isValid()) return;
+            int row = index.row();
+            if (row < 0 || row >= static_cast<int>(current.store.visible.size())) return;
+            int id = current.store.visible[row];
+            std::string path = current.store.paths[id];
+            QPoint global = current.views[i]->viewport()->mapToGlobal(pos);
+            context_hook(i, path.c_str(), global.x(), global.y());
+          });
+    }
+    for (int i = 0; i < 3; ++i) {
       for (int j = i + 1; j < 3; ++j) {
         QObject::connect(views[i]->verticalScrollBar(), &QScrollBar::valueChanged,
                          views[j]->verticalScrollBar(), &QScrollBar::setValue);
@@ -135,8 +222,12 @@ QWidget* ensure_tables_widget(Session& s) {
           });
     }
     splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(1, 0);
     splitter->setStretchFactor(2, 1);
+    QSizePolicy policy = views[1]->sizePolicy();
+    policy.setHorizontalPolicy(QSizePolicy::Fixed);
+    views[1]->setSizePolicy(policy);
+    views[1]->setFixedWidth(180);
     s.tables_widget->setMinimumWidth(700);
   }
   return s.tables_widget;
@@ -174,6 +265,8 @@ void update_stats(Session& s) {
   }
   s.stats_label->setText(QString("%1 item(s), %2 B").arg(count).arg(size));
 }
+
+
 }  // namespace
 
 NB_MODULE(native_hybrid, m) {
@@ -219,6 +312,7 @@ NB_MODULE(native_hybrid, m) {
     g_decision_hook = nullptr;
     g_selection_callback = nb::object();
     g_decision_callback = nb::object();
+    g_context_callback = nb::object();
   });
 
   m.def("debug_row_of_id", [](int path_id) {
@@ -287,6 +381,19 @@ NB_MODULE(native_hybrid, m) {
       s.widget->resize(1600, 800);
     }
     return reinterpret_cast<std::uintptr_t>(s.widget);
+  });
+
+  m.def("set_context_callback", [](nb::object callback) {
+    g_context_callback = callback;
+  });
+
+  m.def("set_action_colours", [](const std::vector<std::string>& colours) {
+    Session& s = session();
+    s.action_colours.clear();
+    for (const std::string& value : colours) {
+      s.action_colours.push_back(QString::fromStdString(value));
+    }
+    for (TableModel* model : s.models) model->layout_refresh();
   });
 
   m.def("set_action_filter", [](int mask) { session().store.action_mask = mask; });

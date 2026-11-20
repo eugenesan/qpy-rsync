@@ -65,6 +65,7 @@ class NativeHybridView:
         if self._widget is None or self.overview_widget is None:
             raise RuntimeError("could not wrap the native QWidget")
         self._native = native
+        self.set_action_colours()
         self._paths: list[str] = []
         self._handed_paths: list[str] | None = None
         global _ACTIVE
@@ -77,6 +78,25 @@ class NativeHybridView:
     @classmethod
     def active(cls) -> NativeHybridView | None:
         return _ACTIVE  # type: ignore[return-value]
+
+    def on_context_menu(self, callback) -> None:
+        self._native.set_context_callback(callback)
+
+    def set_action_colours(self) -> None:
+        from qpy_rsync.core.changes import ChangeAction
+        from qpy_rsync.gui.action_colours import current_colours
+
+        colours = current_colours()
+        order = (
+            ChangeAction.CREATE,
+            ChangeAction.UPDATE_CONTENT,
+            ChangeAction.UPDATE_METADATA,
+            ChangeAction.DELETE,
+            ChangeAction.DESTINATION_ONLY,
+            ChangeAction.NO_CHANGE,
+            ChangeAction.MESSAGE,
+        )
+        self._native.set_action_colours([str(colours.get(a) or "") for a in order])
 
     def shutdown(self) -> None:
         """Drop Python callbacks before the interpreter shuts down."""
