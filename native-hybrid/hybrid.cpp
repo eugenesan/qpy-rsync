@@ -742,6 +742,9 @@ QWidget* ensure_overview_widget(Session& s) {
           auto it = current.store.path_to_id.find(path.toStdString());
           if (it != current.store.path_to_id.end()) {
             select_path_id_impl(current, it->second);
+            // Put keyboard focus back on the lists so arrows and shortcuts
+            // act on the jumped-to row immediately.
+            if (current.views[0] != nullptr) current.views[0]->setFocus();
           }
         });
   }
