@@ -3879,9 +3879,7 @@ class MainWindow(QMainWindow):
                 self._finish_comparison_status()
             return
         with timed("metadata.merge", entries=len(result.destination_metadata)):
-            merged = dict(getattr(self.comparison, "_destination_metadata", {}) or {})
-            merged.update(result.destination_metadata)
-            self.comparison.set_destination_metadata(merged)
+            self.comparison.merge_destination_metadata(result.destination_metadata)
         # The plan was first built before this asynchronous listing arrived.
         # Only the deleted-size summary depends on it, so avoid a full rebuild.
         with timed("metadata.plan"):

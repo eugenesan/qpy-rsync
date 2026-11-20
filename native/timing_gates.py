@@ -27,6 +27,7 @@ from qpy_rsync.core.models import Endpoint, SyncProfile  # noqa: E402
 from qpy_rsync.gui.flat_change_model import FlatChangeModel  # noqa: E402
 
 from bench_filter import build_model_large  # noqa: E402
+from bench_metadata import build_metadata, old_style  # noqa: E402
 
 COUNT = int(os.environ.get("QPY_GATE_COUNT", "100000"))
 
@@ -104,6 +105,19 @@ def main() -> None:
         store.append(lines)
 
     gate("parse", timed(parse_python), timed(parse_native), 0.8)
+
+    os.environ["QPY_RSYNC_NATIVE"] = "1"
+    metadata_model = FlatChangeModel()
+    metadata_model.set_changes(changes)
+    metadata = build_metadata(changes)
+
+    def metadata_old() -> None:
+        old_style(metadata_model, metadata)
+
+    def metadata_new() -> None:
+        metadata_model.merge_destination_metadata(metadata)
+
+    gate("metadata", timed(metadata_old), timed(metadata_new), 0.7)
 
 
 if __name__ == "__main__":

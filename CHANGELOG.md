@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Destination metadata is merged in place and only affected changes are
+  recomputed; the listing is now a single rsync run. Set
+  `QPY_DEST_METADATA_TWO_PASS=1` to restore the previous two-run behaviour for
+  comparison. On 520k changes / 100k metadata entries the merge is 2.94x faster.
 - Raw rsync output logging is now opt-in via Settings > Advanced > "Log raw
   rsync output", off by default. On large trees this avoids hundreds of MB of
   log writes per comparison and removes that work from the single-threaded

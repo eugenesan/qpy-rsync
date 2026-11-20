@@ -2428,7 +2428,52 @@ class FlatChangeModel(QAbstractTableModel):
             self._destination_metadata
         )
         self._refresh_destination_sizes()
-        self._rebuild_native_comparison()
+        if self._native_comparison is None:
+            self._rebuild_native_comparison()
+        else:
+            self._native_comparison.set_dest_sizes(
+                self._change_destination_sizes
+            )
+        self.layoutAboutToBeChanged.emit()
+        self._apply_filters()
+        self.layoutChanged.emit()
+
+    def merge_destination_metadata(
+        self, metadata: dict[str, tuple[int | None, str | None]]
+    ) -> None:
+        """Add a listing to the metadata without recopying the existing data.
+
+        Only changes whose own path or an ancestor appears in the new listing
+        can have a different destination size. Everything else keeps the value
+        computed by the previous pass.
+        """
+        if not metadata:
+            return
+        clean = {path.rstrip("/"): value for path, value in metadata.items()}
+        changed = {
+            path
+            for path, value in clean.items()
+            if self._destination_metadata.get(path) != value
+        }
+        self._destination_metadata.update(clean)
+        self._destination_index = build_destination_size_index(
+            self._destination_metadata
+        )
+        if changed:
+            affected = set(changed)
+            for path in changed:
+                parent = path.rpartition("/")[0]
+                while parent:
+                    affected.add(parent)
+                    parent = parent.rpartition("/")[0]
+            sizes = self._change_destination_sizes
+            for index, change in enumerate(self.changes):
+                if str(change.path).rstrip("/") in affected:
+                    sizes[index] = destination_size(
+                        change, self._destination_index
+                    )
+            if self._native_comparison is not None:
+                self._native_comparison.set_dest_sizes(sizes)
         self.layoutAboutToBeChanged.emit()
         self._apply_filters()
         self.layoutChanged.emit()

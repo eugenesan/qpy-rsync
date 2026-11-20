@@ -345,6 +345,12 @@ struct NativeComparison {
 
   void set_filter_directories(bool enabled) { filter_directories_ = enabled; }
 
+  // Refresh only destination sizes after a metadata listing arrives; the
+  // hierarchy does not change, so this avoids a full set_structure rebuild.
+  void set_dest_sizes(const std::vector<i64>& sizes) {
+    change_dest_sizes = sizes;
+  }
+
   void set_structure(std::vector<int> change_dir_,
                      std::vector<bool> change_is_dir_,
                      std::vector<int> change_action_,
@@ -970,6 +976,8 @@ NB_MODULE(_qpy_native, m) {
            nb::arg("mask"))
       .def("set_filter_directories",
            &NativeComparison::set_filter_directories, nb::arg("enabled"))
+      .def("set_dest_sizes", &NativeComparison::set_dest_sizes,
+           nb::arg("sizes"))
       .def("filter_pattern", &NativeComparison::filter_pattern,
            nb::arg("pattern"), nb::arg("pattern_is_glob"),
            nb::arg("directories_only"), nb::arg("include_contents"),

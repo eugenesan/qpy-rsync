@@ -147,6 +147,19 @@ pass with the flag on and off.
 A worker thread is not yet used; kernels are fast enough that the GUI thread
 still meets the <1 s target. The snapshot boundary is worker-ready.
 
+## Metadata merge and listing (checkpoint 1)
+
+The post-compare metadata update now merges in place and recomputes only the
+affected changes; the native mirror receives a size-array update instead of a
+full rebuild. The destination listing is a single unfiltered
+`rsync --list-only` run instead of a filtered run plus a fallback. Set
+`QPY_DEST_METADATA_TWO_PASS=1` to compare against the old two-run behaviour.
+
+`native/bench_metadata.py` on 520,000 changes / 100,000 metadata entries:
+**1158 ms -> 394 ms (2.94x)** for the model path. The new metadata gate in
+`native/timing_gates.py` passes with a 0.32 ratio. All 419 tests pass with the
+native flag both off and on.
+
 ## Raw rsync output logging
 
 Your 18:09 run also showed that raw output is a large cost: the rsync log

@@ -190,23 +190,29 @@ def gather_destination_metadata(
     if not paths:
         return InventoryResult(unchanged=[], destination_metadata={})
 
-    # One listing with the profile's own rules is much cheaper than half a
-    # million include patterns: rsync checks filter rules per path, so a
-    # pattern per changed item would be quadratic. Keep only the paths we
-    # actually need, and repeat without filters for anything the profile's
-    # rules hid (a deleted item may be excluded by a user filter).
-    entries = inventory_paths(profile.destination, profile, callback)
+    # One unfiltered listing is enough: rsync checks filter rules per path,
+    # so a pattern per changed item would be quadratic. A filtered listing
+    # followed by a second unfiltered one for the misses used to cost two
+    # rsync runs (and two SSH handshakes on remote endpoints). Keep the
+    # profile object so the remote-shell argument survives, just drop its
+    # filters. Set QPY_DEST_METADATA_TWO_PASS=1 to restore the old behaviour
+    # for A/B measurement on profiles with large excluded subtrees.
+    two_pass = os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1"
+    unfiltered = deepcopy(profile)
+    unfiltered.filters = []
+    entries = inventory_paths(
+        profile.destination, profile if two_pass else unfiltered, callback
+    )
     metadata = {
         path: (entry.size, entry.modified_time)
         for path, entry in entries.items()
         if path in paths
     }
-    missing = paths - metadata.keys()
-    if missing:
-        unfiltered = deepcopy(profile)
-        unfiltered.filters = []
-        extra = inventory_paths(profile.destination, unfiltered, callback)
-        for path, entry in extra.items():
-            if path in missing:
-                metadata[path] = (entry.size, entry.modified_time)
+    if two_pass:
+        missing = paths - metadata.keys()
+        if missing:
+            extra = inventory_paths(profile.destination, unfiltered, callback)
+            for path, entry in extra.items():
+                if path in missing:
+                    metadata[path] = (entry.size, entry.modified_time)
     return InventoryResult(unchanged=[], destination_metadata=metadata)

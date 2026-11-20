@@ -5,6 +5,22 @@ the eight workstreams in the final recommendation of
 `cpp-extension-analysis.md`. Each stage ends with a checkpoint that must pass
 before the next one starts.
 
+## Checkpoint 1 — metadata path (A + B), done
+
+- **A:** `FlatChangeModel.merge_destination_metadata` updates the existing
+  dict in place, builds the size index once, and recomputes destination sizes
+  only for changes whose path or an ancestor appears in the new listing. The
+  native mirror gets a `set_dest_sizes` update instead of a full rebuild.
+- **B:** `gather_destination_metadata` now uses one unfiltered
+  `rsync --list-only` listing (profile copy with `filters = []`, preserving
+  the remote-shell argument) instead of a filtered listing plus a fallback.
+  `QPY_DEST_METADATA_TWO_PASS=1` restores the old path for A/B measurement.
+- Evaluation: `native/bench_metadata.py` measures the full model path at
+  520k changes / 100k metadata entries: **1158 ms -> 394 ms (2.94x)**.
+  `timing_gates.py` adds a metadata gate. 419 tests pass in both modes.
+  The listing itself needs A/B on the real remote tree; the env flag exists
+  for that and the single-pass path wins one rsync invocation / SSH handshake.
+
 ## Guiding constraints
 
 - One shared object (`_qpy_native`), one build. No per-call O(n) marshalling.
