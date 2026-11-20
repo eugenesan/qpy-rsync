@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
+from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.core.endpoints import Endpoint
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.core.models import SyncProfile
@@ -100,14 +101,22 @@ class InventoryResult:
 
     unchanged: list[Change]
     destination_metadata: dict[str, tuple[int | None, str | None]]
+    # The full destination listing, retained so a later inventory can list
+    # only the source instead of both trees. None for the plain inventory.
+    destination_paths: dict[str, InventoryEntry] | None = None
 
 
 def gather_inventory(
     profile,
     changed: Iterable[Change],
     progress: Callable[[str, int], None] | None = None,
+    destination_paths: dict[str, InventoryEntry] | None = None,
 ) -> InventoryResult:
-    """List both trees and report the unchanged objects and the metadata."""
+    """List both trees and report the unchanged objects and the metadata.
+
+    Pass ``destination_paths`` to reuse a listing taken earlier for metadata;
+    then only the source tree is enumerated.
+    """
     changed_paths = {change.path.rstrip("/") for change in changed}
     ancestor_paths = set()
     for changed_path in changed_paths:
@@ -122,33 +131,45 @@ def gather_inventory(
         if progress is not None
         else None
     )
-    source_paths = inventory_paths(profile.source, profile, source_progress)
-    destination_paths = inventory_paths(profile.destination, profile, destination_progress)
+    if destination_paths is None:
+        with timed("inventory.destination_listing"):
+            destination_paths = inventory_paths(
+                profile.destination, profile, destination_progress
+            )
+    else:
+        destination_paths = dict(destination_paths)
+    with timed("inventory.source_listing"):
+        source_paths = inventory_paths(profile.source, profile, source_progress)
     if progress is not None:
         progress("Matching", 0)
     unchanged: list[Change] = []
-    for path in sorted(source_paths.keys() & destination_paths.keys()):
-        if path in changed_paths or path in ancestor_paths:
-            continue
-        source = source_paths[path]
-        destination = destination_paths[path]
-        unchanged.append(
-            Change(
-                path,
-                ChangeAction.NO_CHANGE,
-                source.kind,
-                "=",
-                size=source.size,
-                modified_time=source.modified_time,
-                destination_size=destination.size,
-                destination_time=destination.modified_time,
-            )
-        )
+    with timed("inventory.matching", paths=len(destination_paths)):
+        for path in sorted(source_paths.keys() & destination_paths.keys()):
+          if path in changed_paths or path in ancestor_paths:
+              continue
+          source = source_paths[path]
+          destination = destination_paths[path]
+          unchanged.append(
+              Change(
+                  path,
+                  ChangeAction.NO_CHANGE,
+                  source.kind,
+                  "=",
+                  size=source.size,
+                  modified_time=source.modified_time,
+                  destination_size=destination.size,
+                  destination_time=destination.modified_time,
+              )
+          )
     metadata = {
         path: (entry.size, entry.modified_time)
         for path, entry in destination_paths.items()
     }
-    return InventoryResult(unchanged=unchanged, destination_metadata=metadata)
+    return InventoryResult(
+        unchanged=unchanged,
+        destination_metadata=metadata,
+        destination_paths=destination_paths,
+    )
 
 
 def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
@@ -200,9 +221,10 @@ def gather_destination_metadata(
     two_pass = os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1"
     unfiltered = deepcopy(profile)
     unfiltered.filters = []
-    entries = inventory_paths(
-        profile.destination, profile if two_pass else unfiltered, callback
-    )
+    with timed("inventory.destination_listing"):
+        entries = inventory_paths(
+            profile.destination, profile if two_pass else unfiltered, callback
+        )
     metadata = {
         path: (entry.size, entry.modified_time)
         for path, entry in entries.items()
@@ -215,4 +237,8 @@ def gather_destination_metadata(
             for path, entry in extra.items():
                 if path in missing:
                     metadata[path] = (entry.size, entry.modified_time)
-    return InventoryResult(unchanged=[], destination_metadata=metadata)
+    return InventoryResult(
+        unchanged=[],
+        destination_metadata=metadata,
+        destination_paths=entries if not two_pass else None,
+    )

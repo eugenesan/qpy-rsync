@@ -3449,6 +3449,7 @@ class MainWindow(QMainWindow):
     def _comparison_finished(self, result: CompareResult) -> None:
         if self._closing:
             return
+        self._set_cached_destination(None)
         self._last_phase_started = time.monotonic()
         self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
@@ -3830,6 +3831,11 @@ class MainWindow(QMainWindow):
     def _inventory_summary(self, unchanged: int) -> str:
         return f"Showing {unchanged:,} unchanged item(s)."
 
+    def _set_cached_destination(self, paths: object | None) -> None:
+        setter = getattr(self._inventory_service, "set_cached_destination", None)
+        if setter is not None:
+            setter(paths)
+
     def _fetch_destination_metadata(self) -> bool:
         """Start the destination listing; return whether it is still running."""
         if self._active_profile is None:
@@ -3877,6 +3883,9 @@ class MainWindow(QMainWindow):
         was_pending = self._metadata_pending
         self._metadata_pending = False
         result = _inventory_result(extra)
+        # Keep the full destination listing so a later Show-unchanged only
+        # needs to enumerate the source tree.
+        self._set_cached_destination(result.destination_paths)
         if not result.destination_metadata:
             if was_pending:
                 self._finish_comparison_status()
@@ -3952,6 +3961,7 @@ class MainWindow(QMainWindow):
         if key != self._inventory_pending_key:
             return
         result = _inventory_result(extra)
+        self._set_cached_destination(result.destination_paths)
         self._inventory_cache_key = key
         self._inventory_cache = list(result.unchanged)
         # The listing knows the destination of every object, so the tree can

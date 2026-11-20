@@ -59,6 +59,19 @@ owns the model and views.
 
 Nothing in `python-tuning` depends on the extension.
 
+## Cached destination listing
+
+`gather_destination_metadata` now retains the full destination entry map on
+the `InventoryResult`. `main_window` hands it to the inventory service, so a
+later Show-unchanged calls `gather_inventory` with `destination_paths` set and
+only `inventory_paths(profile.source, ...)` runs. The cache is cleared on each
+new compare. `QPY_DEST_METADATA_TWO_PASS=1` still restores the old two-run
+metadata listing.
+
+Timing probes: `inventory.destination_listing`, `inventory.source_listing` and
+`inventory.matching`. Use them to measure the real cost of a source-only run
+and decide whether the retained entries (~1M objects) are worth the memory.
+
 ## Python tuning targets, ranked by measured cost
 
 From `timing28.txt` / `timing30.txt` (520k changes):

@@ -127,3 +127,34 @@ def test_destination_metadata_two_pass_is_available_for_ab(tmp_path, monkeypatch
     assert captured[0] is profile
     assert captured[1] is not profile
     assert captured[1].filters == []
+
+
+def test_inventory_reuses_cached_destination_and_lists_source_only(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.backend.inventory import gather_inventory
+    from qpy_rsync.core.changes import Change
+
+    profile = _profile(tmp_path)
+    seen: list[object] = []
+
+    def fake(endpoint, prof=None, progress=None):
+        seen.append(endpoint)
+        if endpoint == profile.source:
+            return {
+                "same.txt": InventoryEntry(ObjectKind.FILE, 10, "t"),
+                "new.txt": InventoryEntry(ObjectKind.FILE, 20, "t"),
+            }
+        raise AssertionError("destination must not be listed when cached")
+
+    monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
+    cached = {
+        "same.txt": InventoryEntry(ObjectKind.FILE, 10, "t"),
+        "gone.txt": InventoryEntry(ObjectKind.FILE, 30, "t"),
+    }
+    result = gather_inventory(
+        profile,
+        [Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")],
+        destination_paths=cached,
+    )
+    assert seen == [profile.source]
+    assert [change.path for change in result.unchanged] == ["same.txt"]
+    assert result.destination_metadata["gone.txt"][0] == 30

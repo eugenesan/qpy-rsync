@@ -30,11 +30,13 @@ class _InventoryTask(QRunnable):
         results: dict[int, object],
         results_lock: Lock,
         gather: Callable[[SyncProfile, list[Change]], list[Change]],
+        destination_paths: object | None = None,
     ) -> None:
         super().__init__()
         self._token = token
         self._profile = profile
         self._changed = changed
+        self._destination_paths = destination_paths
         self._signals = signals
         self._results = results
         self._results_lock = results_lock
@@ -96,6 +98,7 @@ class InventoryService(QObject):
     ) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
         self._gather = gather or gather_inventory
+        self._destination_paths: object | None = None
         self._pool = pool or QThreadPool.globalInstance()
         self._token = 0
         self._signals = _WorkerSignals(self)
@@ -106,6 +109,10 @@ class InventoryService(QObject):
         self._tasks: dict[int, _InventoryTask] = {}
         self._results: dict[int, object] = {}
         self._results_lock = Lock()
+
+    def set_cached_destination(self, paths: object | None) -> None:
+        """Reuse a destination listing so a later inventory lists only source."""
+        self._destination_paths = paths
 
     def gather(self, profile: SyncProfile, changed: list[Change]) -> int:
         self._token += 1
@@ -118,6 +125,7 @@ class InventoryService(QObject):
             self._results,
             self._results_lock,
             self._gather,
+            self._destination_paths,
         )
         self._tasks[token] = task
         self._pool.start(task)
