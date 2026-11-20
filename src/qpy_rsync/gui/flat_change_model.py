@@ -2162,7 +2162,8 @@ class FlatChangeModel(QAbstractTableModel):
         return self._destination_metadata
 
     def set_destination_metadata(
-        self, metadata: dict[str, tuple[int | None, str | None]]
+        self, metadata: dict[str, tuple[int | None, str | None]],
+        *, skip_view: bool = False,
     ) -> None:
         self._destination_metadata = dict(metadata)
         self._destination_index = build_destination_size_index(
@@ -2170,7 +2171,8 @@ class FlatChangeModel(QAbstractTableModel):
         )
         self._refresh_destination_sizes()
         self.layoutAboutToBeChanged.emit()
-        self._apply_filters()
+        if not skip_view:
+            self._apply_filters()
         self.layoutChanged.emit()
 
     def merge_destination_metadata(

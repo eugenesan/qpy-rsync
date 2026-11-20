@@ -1219,10 +1219,11 @@ class FlatComparisonView(QWidget):
             self.changes_updated.emit("display")
 
     def set_destination_metadata(
-        self, metadata: dict[str, tuple[int | None, str | None]]
+        self, metadata: dict[str, tuple[int | None, str | None]],
+        *, skip_view: bool = False,
     ) -> None:
         """Show the size and the date of the listed destination items."""
-        self.model.set_destination_metadata(metadata)
+        self.model.set_destination_metadata(metadata, skip_view=skip_view)
 
     def merge_destination_metadata(
         self, metadata: dict[str, tuple[int | None, str | None]],

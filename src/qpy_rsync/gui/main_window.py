@@ -4224,7 +4224,10 @@ class MainWindow(QMainWindow):
         self._inventory_cache = list(result.unchanged)
         # The listing knows the destination of every object, so the tree can
         # show its size and date.
-        self.comparison.set_destination_metadata(result.destination_metadata)
+        self.comparison.set_destination_metadata(
+            result.destination_metadata,
+            skip_view=self._hybrid_view is not None,
+        )
         self._refresh_plan_summary()
         if self.show_unchanged.isChecked():
             self._populate_unchanged(

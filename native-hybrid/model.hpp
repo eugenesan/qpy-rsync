@@ -152,7 +152,7 @@ struct DataStore {
         auto parent_it = path_to_id.find(path.substr(0, slash));
         if (parent_it != path_to_id.end()) parents[i] = parent_it->second;
       }
-      is_dir[i] = !path.empty() && path.back() == '/' ? 1 : 0;
+      is_dir[i] = (i < static_cast<int>(kinds.size()) && kinds[i] == 1) ? 1 : 0;
       std::string name = slash == std::string::npos
                              ? path
                              : path.substr(slash + 1);
@@ -188,10 +188,17 @@ struct DataStore {
       int bit = actions[id];
       if (bit < 0 || bit >= 32 || (action_mask & (1 << bit)) == 0) return false;
     }
+    if (dirs_only && (id >= static_cast<int>(is_dir.size()) || !is_dir[id])) {
+      return false;
+    }
     if (!pattern.empty() && id < static_cast<int>(folded_paths.size())) {
-      const std::string& candidate =
-          pattern.find('/') != std::string::npos ? folded_paths[id]
-                                                  : folded_names[id];
+      const bool by_path = pattern.find('/') != std::string::npos;
+      const std::string& candidate = by_path ? folded_paths[id] : folded_names[id];
+      if (dirs_only && !pattern_glob) {
+        const std::string& exact = by_path ? folded_paths[id] : folded_names[id];
+        if (exact != pattern) return false;
+        return true;
+      }
       if (pattern_glob) {
         // Minimal glob: '*' and '?' over the folded candidate.
         const std::string& p = pattern;
@@ -227,9 +234,33 @@ struct DataStore {
   void rebuild_visible() {
     visible.clear();
     row_of_id.assign(paths.size(), -1);
+    std::vector<char> matched(paths.size(), 0);
+    if (include_contents) {
+      for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+        if (is_dir[i] && matches(i)) matched[i] = 1;
+      }
+      // Ancestors of a matched directory also match, so their children are
+      // included when the pattern names a parent folder.
+      for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+        if (!matched[i]) continue;
+        int parent = parents[i];
+        while (parent >= 0) {
+          matched[parent] = 1;
+          parent = parents[parent];
+        }
+      }
+    }
     for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
       if (!show_excluded && decisions[i] == Exclude) continue;
-      if (!matches(i)) continue;
+      bool path_ok = matches(i);
+      if (!path_ok && include_contents) {
+        int parent = parents[i];
+        while (parent >= 0) {
+          if (matched[parent]) { path_ok = true; break; }
+          parent = parents[parent];
+        }
+      }
+      if (!path_ok) continue;
       if (folded_out(i)) continue;
       visible.push_back(i);
     }

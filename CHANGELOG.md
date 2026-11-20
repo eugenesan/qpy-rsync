@@ -4,9 +4,9 @@
 
 - Hybrid view fixes: 64-bit overview sizes and real folder names, resizable and
   vertically synchronised panes, scroll preservation, decision edits in ~19 ms,
-  undo in ~0.1 s, search, undo/redo, show-excluded, metadata merges and
-  unchanged transitions routed to the native models. The Python model skips
-  row/filter and directory rebuilds while native is active.
+  undo in ~0.1 s, search (including `dir/`), undo/redo, show-excluded, metadata
+  merges and unchanged transitions routed to the native models. The Python
+  model skips row/filter and directory rebuilds while native is active.
 - Added an opt-in hybrid view slice (`QPY_HYBRID_VIEW=1`): parsed changes are
   handed once to native Qt models for three comparison tables and the overview,
   and native decision edits are mirrored into Python's decision store. Python
