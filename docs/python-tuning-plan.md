@@ -68,8 +68,11 @@ only `inventory_paths(profile.source, ...)` runs. The cache is cleared on each
 new compare. `QPY_DEST_METADATA_TWO_PASS=1` still restores the old two-run
 metadata listing.
 
-Timing probes: `inventory.destination_listing`, `inventory.source_listing` and
-`inventory.matching`. Use them to measure the real cost of a source-only run
+The commands themselves are written to the journal with a `$ rsync ...` line,
+including a note when the destination listing is being reused.
+
+Timing probes: `rsync.inventory_list` (the subprocess), `inventory.destination_listing`,
+`inventory.source_listing` and `inventory.matching`. Use them to measure the real cost of a source-only run
 and decide whether the retained entries (~1M objects) are worth the memory.
 
 ## Python tuning targets, ranked by measured cost

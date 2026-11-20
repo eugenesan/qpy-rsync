@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The journal now records every rsync inventory command: the destination
+  metadata listing, and the source (and destination when not cached) listing
+  for unchanged items. A cached destination is reported explicitly rather than
+  silently skipped.
 - The destination listing taken after a compare is now retained, so asking for
   unchanged items only lists the source tree instead of both. New timing lines
   separate the rsync subprocess (`rsync.inventory_list`) from our parsing

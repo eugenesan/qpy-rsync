@@ -56,9 +56,14 @@ from qpy_rsync.backend.diagnostics import debug_timing, timed
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
+    unfiltered_profile,
 )
 from qpy_rsync.backend.process_runner import ProcessState
-from qpy_rsync.backend.rsync_command import build_compare_spec, build_sync_spec
+from qpy_rsync.backend.rsync_command import (
+    build_compare_spec,
+    build_inventory_spec,
+    build_sync_spec,
+)
 from qpy_rsync.backend.rsync_filters import filter_text_to_rules
 from qpy_rsync.core.changes import ChangeAction, ChangeDecision
 from qpy_rsync.core.endpoints import parse_endpoint
@@ -3831,6 +3836,12 @@ class MainWindow(QMainWindow):
     def _inventory_summary(self, unchanged: int) -> str:
         return f"Showing {unchanged:,} unchanged item(s)."
 
+    def _has_cached_destination(self) -> bool:
+        getter = getattr(
+            self._inventory_service, "has_cached_destination", None
+        )
+        return bool(getter()) if getter is not None else False
+
     def _set_cached_destination(self, paths: object | None) -> None:
         setter = getattr(self._inventory_service, "set_cached_destination", None)
         if setter is not None:
@@ -3848,6 +3859,11 @@ class MainWindow(QMainWindow):
         changes = list(self._changed_changes())
         if not changes:
             return False
+        two_pass = os.environ.get("QPY_DEST_METADATA_TWO_PASS", "") == "1"
+        listing_profile = self._active_profile if two_pass else unfiltered_profile(self._active_profile)
+        self._log_spec(
+            build_inventory_spec(listing_profile, listing_profile.destination)
+        )
         self._metadata_token = self._metadata_service.gather(
             deepcopy(self._active_profile), changes
         )
@@ -3911,6 +3927,20 @@ class MainWindow(QMainWindow):
                 self._warn_missing_local_directories(missing, "Inventory")
                 return
         self._inventory_pending_key = key
+        if self._active_profile is not None:
+            self._log_spec(
+                build_inventory_spec(self._active_profile, self._active_profile.source)
+            )
+            if self._has_cached_destination():
+                self._append_log(
+                    "$ rsync --list-only <destination> (reused from metadata listing)"
+                )
+            else:
+                self._log_spec(
+                    build_inventory_spec(
+                        self._active_profile, self._active_profile.destination
+                    )
+                )
         if self.show_unchanged.isChecked():
             self.progress_label.setText(
                 "Listing both trees for the unchanged items..."

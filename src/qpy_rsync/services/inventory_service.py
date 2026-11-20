@@ -121,6 +121,9 @@ class InventoryService(QObject):
         """Reuse a destination listing so a later inventory lists only source."""
         self._destination_paths = paths
 
+    def has_cached_destination(self) -> bool:
+        return self._destination_paths is not None
+
     def gather(self, profile: SyncProfile, changed: list[Change]) -> int:
         self._token += 1
         token = self._token

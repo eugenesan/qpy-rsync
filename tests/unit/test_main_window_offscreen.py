@@ -2180,6 +2180,41 @@ def test_version_and_commit_are_logged_once_in_the_session_header(tmp_path, monk
     application.processEvents()
 
 
+def test_journal_reports_inventory_rsync_commands(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+
+    class FakeInventory:
+        def gather(self, *_args):
+            return 1
+
+        def cancel(self):
+            pass
+
+        def has_cached_destination(self):
+            return False
+
+        def set_cached_destination(self, _paths):
+            pass
+
+    window._inventory_service = FakeInventory()
+    monkeypatch.setattr(
+        MainWindow, "_missing_local_directories", lambda self, profile: []
+    )
+    window._start_inventory("key", [])
+    text = window.log.toPlainText()
+    assert "$ rsync" in text
+    assert "/src/" in text
+    assert "/dst/" in text
+    window.close()
+    application.processEvents()
+
+
 def test_exit_prompt_saves_to_the_known_profile_path(tmp_path, monkeypatch) -> None:
     from copy import deepcopy
 

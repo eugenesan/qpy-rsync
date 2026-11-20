@@ -178,6 +178,13 @@ def unchanged_changes(profile, changed: Iterable[Change]) -> list[Change]:
     return gather_inventory(profile, changed).unchanged
 
 
+def unfiltered_profile(profile: SyncProfile) -> SyncProfile:
+    """A profile copy with filters dropped, keeping the remote-shell settings."""
+    copy = deepcopy(profile)
+    copy.filters = []
+    return copy
+
+
 def gather_destination_metadata(
     profile,
     changed: Iterable[Change],
