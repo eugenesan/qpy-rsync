@@ -130,10 +130,11 @@ model (substring, `*` / `?` / `[...]` globs, slash paths, trailing-slash
 directory patterns) in a `filter_pattern()` kernel, plus a `search_rows()`
 index. `native/check_model.py` validates six pattern scenarios byte-for-byte.
 
-The **Filter list** toggle is back in the comparison controls, but only shown
-when the native backend is active; the Python path keeps search jump-only.
-On 520,000 rows a glob search drops from 207 ms to 42 ms. All 415 tests pass
-in both modes.
+A **Filter list** toggle was tried in the comparison controls, but removed
+after real-tree testing: it rebuilt the whole path filter on every search
+debounce, which hung the UI and produced unpredictable results. Search is
+jump-only again; the native pattern kernels are still used by the existing
+path-filter controls. On 520,000 rows a glob search drops from 207 ms to 42 ms.
 
 ## GIL and generation safety (Stage 7)
 

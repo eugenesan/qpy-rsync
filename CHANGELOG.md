@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Removed the experimental "Filter list" toggle. On a large comparison it
+  triggered a full path-filter rebuild on every search debounce, which hung
+  the UI and made search results unpredictable. Search is jump-only again;
+  the native pattern kernels remain available through the existing path-filter
+  controls.
 - The native backend now carries parsed arrays straight into the comparison
   model, removing the repeated materialisation of half a million `Change`
   objects. End-to-end post-compare work drops to about 10 s at 520k items.

@@ -144,34 +144,6 @@ def test_stale_native_snapshot_is_ignored(monkeypatch: pytest.MonkeyPatch) -> No
     assert signature(model) == before
 
 
-def test_filter_list_mode_filters_and_restores(monkeypatch: pytest.MonkeyPatch) -> None:
-    from PySide6.QtWidgets import QApplication
-
-    from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
-
-    application = QApplication.instance() or QApplication([])
-    monkeypatch.setenv("QPY_RSYNC_NATIVE", "1")
-    view = FlatComparisonView()
-    view.set_changes(changes())
-    before = [view.model.row_path(row) for row in range(view.model.rowCount())]
-    assert not view.filter_mode_button.isHidden()
-
-    view.search_edit.setText("docs")
-    view._search_timer.stop()
-    view._run_search(jump=False)
-    view.filter_mode_button.setChecked(True)
-    application.processEvents()
-    filtered = [view.model.row_path(row) for row in range(view.model.rowCount())]
-    assert filtered and all("docs" in path for path in filtered if path)
-
-    view.filter_mode_button.setChecked(False)
-    application.processEvents()
-    restored = [view.model.row_path(row) for row in range(view.model.rowCount())]
-    assert restored == before
-    view.close()
-    application.processEvents()
-
-
 def test_native_search_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     python = model_with(monkeypatch, "0")
     native = model_with(monkeypatch, "1")
