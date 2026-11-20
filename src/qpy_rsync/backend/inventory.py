@@ -105,6 +105,7 @@ class InventoryResult:
     # The full destination listing, retained so a later inventory can list
     # only the source instead of both trees. None for the plain inventory.
     destination_paths: dict[str, InventoryEntry] | None = None
+    source_paths: dict[str, InventoryEntry] | None = None
 
 
 def gather_inventory(
@@ -112,11 +113,12 @@ def gather_inventory(
     changed: Iterable[Change],
     progress: Callable[[str, int], None] | None = None,
     destination_paths: dict[str, InventoryEntry] | None = None,
+    source_paths: dict[str, InventoryEntry] | None = None,
 ) -> InventoryResult:
     """List both trees and report the unchanged objects and the metadata.
 
-    Pass ``destination_paths`` to reuse a listing taken earlier for metadata;
-    then only the source tree is enumerated.
+    Pass cached ``destination_paths`` and/or ``source_paths`` to reuse listings
+    taken earlier; only the missing side is enumerated by rsync.
     """
     changed_paths = {change.path.rstrip("/") for change in changed}
     ancestor_paths = set()
@@ -139,8 +141,13 @@ def gather_inventory(
             )
     else:
         destination_paths = dict(destination_paths)
-    with timed("inventory.source_listing"):
-        source_paths = inventory_paths(profile.source, profile, source_progress)
+    if source_paths is None:
+        with timed("inventory.source_listing"):
+            source_paths = inventory_paths(
+                profile.source, profile, source_progress
+            )
+    else:
+        source_paths = dict(source_paths)
     if progress is not None:
         progress("Matching", 0)
     unchanged: list[Change] = []
@@ -170,6 +177,25 @@ def gather_inventory(
         unchanged=unchanged,
         destination_metadata=metadata,
         destination_paths=destination_paths,
+        source_paths=source_paths,
+    )
+
+
+def gather_source_paths(
+    profile,
+    _changed: Iterable[Change] | None = None,
+    progress: Callable[[str, int], None] | None = None,
+) -> InventoryResult:
+    """List only the source, to be held until a user asks for unchanged items."""
+    callback = (
+        (lambda count: progress("Source", count)) if progress is not None else None
+    )
+    with timed("inventory.source_listing"):
+        paths = inventory_paths(profile.source, profile, callback)
+    return InventoryResult(
+        unchanged=[],
+        destination_metadata={},
+        source_paths=paths,
     )
 
 

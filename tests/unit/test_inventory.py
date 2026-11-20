@@ -129,6 +129,27 @@ def test_destination_metadata_two_pass_is_available_for_ab(tmp_path, monkeypatch
     assert captured[1].filters == []
 
 
+def test_inventory_with_both_caches_needs_no_rsync(tmp_path, monkeypatch) -> None:
+    from qpy_rsync.backend.inventory import gather_inventory
+    from qpy_rsync.core.changes import Change
+
+    profile = _profile(tmp_path)
+
+    def fake(*_args, **_kwargs):
+        raise AssertionError("no rsync should run when both sides are cached")
+
+    monkeypatch.setattr("qpy_rsync.backend.inventory.inventory_paths", fake)
+    source = {"same.txt": InventoryEntry(ObjectKind.FILE, 10, "t")}
+    destination = {"same.txt": InventoryEntry(ObjectKind.FILE, 10, "t")}
+    result = gather_inventory(
+        profile,
+        [Change("new.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")],
+        destination_paths=destination,
+        source_paths=source,
+    )
+    assert [change.path for change in result.unchanged] == ["same.txt"]
+
+
 def test_inventory_reuses_cached_destination_and_lists_source_only(tmp_path, monkeypatch) -> None:
     from qpy_rsync.backend.inventory import gather_inventory
     from qpy_rsync.core.changes import Change

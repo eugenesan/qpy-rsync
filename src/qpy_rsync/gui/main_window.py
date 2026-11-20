@@ -56,6 +56,7 @@ from qpy_rsync.backend.diagnostics import debug_timing, timed
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
+    gather_source_paths,
     unfiltered_profile,
 )
 from qpy_rsync.backend.process_runner import ProcessState
@@ -283,6 +284,16 @@ class MainWindow(QMainWindow):
             self, gather=gather_destination_metadata
         )
         self._metadata_service.finished.connect(self._metadata_finished)
+        # Optional preload: list the source alongside the metadata so a later
+        # Show unchanged needs no rsync at all.
+        self._source_preload_service = InventoryService(
+            self, gather=gather_source_paths
+        )
+        self._source_preload_service.finished.connect(
+            self._source_preload_finished
+        )
+        self._source_preload_token = 0
+        self._cached_source_paths: object | None = None
         self._metadata_token = 0
         self._inventory_token = 0
         self._inventory_pending_key: object | None = None
@@ -3455,6 +3466,8 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._set_cached_destination(None)
+        self._inventory_service.set_cached_source(None)
+        self._cached_source_paths = None
         self._last_phase_started = time.monotonic()
         self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
@@ -3847,6 +3860,16 @@ class MainWindow(QMainWindow):
         if setter is not None:
             setter(paths)
 
+    def _source_preload_finished(self, token: int, extra: object) -> None:
+        if self._closing or token != self._source_preload_token:
+            return
+        self._source_preload_token = 0
+        result = _inventory_result(extra)
+        self._cached_source_paths = result.source_paths
+        self._inventory_service.set_cached_source(result.source_paths)
+        count = len(result.source_paths or {})
+        self._append_log(f"Source listing cached: {count:,} object(s).")
+
     def _fetch_destination_metadata(self) -> bool:
         """Start the destination listing; return whether it is still running."""
         if self._active_profile is None:
@@ -3867,6 +3890,15 @@ class MainWindow(QMainWindow):
         self._metadata_token = self._metadata_service.gather(
             deepcopy(self._active_profile), changes
         )
+        if os.environ.get("QPY_INVENTORY_PRELOAD", "") == "1":
+            self._log_spec(
+                build_inventory_spec(
+                    self._active_profile, self._active_profile.source
+                )
+            )
+            self._source_preload_token = self._source_preload_service.gather(
+                deepcopy(self._active_profile), changes
+            )
         return True
 
     def _changed_changes(self) -> list[object]:
@@ -3928,9 +3960,16 @@ class MainWindow(QMainWindow):
                 return
         self._inventory_pending_key = key
         if self._active_profile is not None:
-            self._log_spec(
-                build_inventory_spec(self._active_profile, self._active_profile.source)
-            )
+            if self._cached_source_paths is not None:
+                self._append_log(
+                    "$ rsync --list-only <source> (reused from preload)"
+                )
+            else:
+                self._log_spec(
+                    build_inventory_spec(
+                        self._active_profile, self._active_profile.source
+                    )
+                )
             if self._has_cached_destination():
                 self._append_log(
                     "$ rsync --list-only <destination> (reused from metadata listing)"
