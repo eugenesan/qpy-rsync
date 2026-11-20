@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added end-to-end timing probes around view set_changes, search and the
+  space-bar exclusion toggle, so the Qt-side cost hidden between model timing
+  lines is visible in `QPY_RSYNC_TIMING` output.
 - Removed the experimental "Filter list" toggle. On a large comparison it
   triggered a full path-filter rebuild on every search debounce, which hung
   the UI and made search results unpredictable. Search is jump-only again;

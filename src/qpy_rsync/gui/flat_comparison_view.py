@@ -1028,10 +1028,13 @@ class FlatComparisonView(QWidget):
         paths = self._selected_paths()
         if not paths:
             return False
-        with self._keeping_the_selection(), self.model.decision_batch():
-            for path in paths:
-                self.model.set_excluded(path, not self.model.exclusions.is_excluded(path))
-        self.changes_updated.emit("decision")
+        with timed("view.toggle_excluded", paths=len(paths)):
+            with self._keeping_the_selection(), self.model.decision_batch():
+                for path in paths:
+                    self.model.set_excluded(
+                        path, not self.model.exclusions.is_excluded(path)
+                    )
+            self.changes_updated.emit("decision")
         return True
 
     def undo_decision(self) -> bool:
@@ -1188,11 +1191,12 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     def set_changes(self, changes: list[object], *, store: object = None) -> None:
         """Show a new comparison."""
-        for tree in (self.source, self.action, self.destination):
-            tree.setCurrentIndex(QModelIndex())
-            tree.selectionModel().clear()
-        self.model.set_changes(changes, store=store)  # type: ignore[arg-type]
-        self.changes_updated.emit("new")
+        with timed("view.set_changes"):
+            for tree in (self.source, self.action, self.destination):
+                tree.setCurrentIndex(QModelIndex())
+                tree.selectionModel().clear()
+            self.model.set_changes(changes, store=store)  # type: ignore[arg-type]
+            self.changes_updated.emit("new")
 
     def set_external_tools(self, tools: list[ExternalTool]) -> None:
         """The tools the context menu offers on an item."""
@@ -1292,6 +1296,10 @@ class FlatComparisonView(QWidget):
 
     def _run_search(self, *, jump: bool = True) -> None:
         """Build the match list once and show where the search stands."""
+        with timed("view.search"):
+            self._run_search_inner(jump=jump)
+
+    def _run_search_inner(self, *, jump: bool = True) -> None:
         text = self.search_edit.text().strip().casefold()
         self._search_text = text
         self._search_rows = self.model.search_matches(text) if text else []
