@@ -9,6 +9,7 @@
 #include <QHeaderView>
 #include <QString>
 #include <QTableView>
+#include <QTreeView>
 #include <QVariant>
 #include <QWidget>
 
@@ -50,8 +51,7 @@ struct DataStore {
     sizes.reserve(count);
     decisions.reserve(count);
     for (int i = 0; i < count; ++i) {
-      std::string path = "d" + std::to_string(i / 100) +
-                         "/s" + std::to_string((i / 10) % 10) +
+      std::string path = "d" + std::to_string(i % 30000) +
                          "/f" + std::to_string(i) + ".txt";
       paths.push_back(std::move(path));
       actions.push_back(i % 17 == 0 ? Delete : (i % 5 == 0 ? Update : Create));
@@ -141,6 +141,119 @@ class TableModel : public QAbstractTableModel {
   int pane_;
 };
 
+
+struct OverviewNode {
+  std::string name;
+  int count = 0;
+  int size = 0;
+  int total_count = 0;
+  int total_size = 0;
+  OverviewNode* parent = nullptr;
+  std::vector<OverviewNode*> children;
+};
+
+class OverviewModel : public QAbstractItemModel {
+ public:
+  explicit OverviewModel(QObject* parent = nullptr) : QAbstractItemModel(parent) {
+    root_ = new OverviewNode{"", 0, 0, 0, 0, nullptr, {}};
+    nodes_.push_back(root_);
+  }
+
+  ~OverviewModel() override {
+    for (OverviewNode* node : nodes_) delete node;
+  }
+
+  void build(const DataStore& store) {
+    beginResetModel();
+    for (OverviewNode* node : nodes_) delete node;
+    nodes_.clear();
+    root_ = new OverviewNode{"", 0, 0, 0, 0, nullptr, {}};
+    nodes_.push_back(root_);
+    auto* total = new OverviewNode{"Total", 0, 0, 0, 0, root_, {}};
+    root_->children.push_back(total);
+    nodes_.push_back(total);
+    auto* base = new OverviewNode{"source", 0, 0, 0, 0, total, {}};
+    total->children.push_back(base);
+    nodes_.push_back(base);
+
+    // One folder node per distinct first path component, as the real
+    // overview does for its 30k folders.
+    std::vector<OverviewNode*> folders(30000, nullptr);
+    for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) {
+      const std::string& path = store.paths[i];
+      auto slash = path.find('/');
+      if (slash == std::string::npos) continue;
+      int id = std::atoi(path.c_str() + 1);
+      if (id < 0 || id >= 30000) continue;
+      OverviewNode*& folder = folders[id];
+      if (folder == nullptr) {
+        folder = new OverviewNode{path.substr(0, slash), 0, 0, 0, 0, base, {}};
+        base->children.push_back(folder);
+        nodes_.push_back(folder);
+      }
+      ++folder->count;
+      folder->size += store.sizes[i];
+    }
+    compute_totals(root_);
+    endResetModel();
+  }
+
+  int rowCount(const QModelIndex& parent = QModelIndex()) const override {
+    if (parent.isValid() && parent.column() != 0) return 0;
+    return static_cast<int>(node(parent)->children.size());
+  }
+
+  int columnCount(const QModelIndex&) const override { return 3; }
+
+  QModelIndex index(int row, int column,
+                    const QModelIndex& parent = QModelIndex()) const override {
+    if (!hasIndex(row, column, parent)) return {};
+    auto* node = node_at(parent)->children[row];
+    return createIndex(row, column, node);
+  }
+
+  QModelIndex parent(const QModelIndex& index) const override {
+    if (!index.isValid()) return {};
+    OverviewNode* parent = node(index)->parent;
+    if (!parent || parent == root_) return {};
+    OverviewNode* grandparent = parent->parent;
+    int row = 0;
+    for (OverviewNode* child : grandparent->children) {
+      if (child == parent) break;
+      ++row;
+    }
+    return createIndex(row, 0, parent);
+  }
+
+  QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
+    if (!index.isValid() || role != Qt::DisplayRole) return {};
+    OverviewNode* item = node(index);
+    if (index.column() == 0) return QString::fromStdString(item->name);
+    if (index.column() == 1) return QString::number(item->total_count);
+    return QString::number(item->total_size);
+  }
+
+ private:
+  static void compute_totals(OverviewNode* node) {
+    for (OverviewNode* child : node->children) compute_totals(child);
+    node->total_count = node->count;
+    node->total_size = node->size;
+    for (OverviewNode* child : node->children) {
+      node->total_count += child->total_count;
+      node->total_size += child->total_size;
+    }
+  }
+
+  OverviewNode* node(const QModelIndex& index) const {
+    return index.isValid() ? static_cast<OverviewNode*>(index.internalPointer())
+                           : root_;
+  }
+  OverviewNode* node_at(const QModelIndex& index) const { return node(index); }
+
+  std::vector<OverviewNode*> nodes_;
+  OverviewNode* root_ = nullptr;
+};
+
 void report(const char* label, qint64 ms) {
   std::printf("%-34s %10lld ms\n", label, static_cast<long long>(ms));
 }
@@ -185,11 +298,22 @@ int main(int argc, char** argv) {
     views[i].horizontalHeader()->setStretchLastSection(true);
     layout->addWidget(&views[i]);
   }
+  QTreeView overview_view;
+  overview_view.setUniformRowHeights(true);
+  overview_view.header()->setStretchLastSection(true);
+  layout->addWidget(&overview_view);
+  OverviewModel overview_model;
   timer.start();
   views[0].setModel(&source);
   views[1].setModel(&action);
   views[2].setModel(&destination);
-  window.resize(1200, 800);
+  timer.start();
+  overview_model.build(store);
+  report("overview.build (30k folders)", timer.elapsed());
+  timer.start();
+  overview_view.setModel(&overview_model);
+  overview_view.expandToDepth(0);
+  window.resize(1600, 800);
   window.show();
   app.processEvents();
   app.processEvents();

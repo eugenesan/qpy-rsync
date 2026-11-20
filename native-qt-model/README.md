@@ -17,6 +17,8 @@ Branch: `native-qt-model-experiment`.
 - One `QAbstractTableModel` per pane over the shared store. Each model maps the
   same records to that pane's columns, so there is no data duplication.
 - Three `QTableView`s with uniform row heights, laid out side by side.
+- A fourth pane: a native `QTreeView` with an `OverviewModel` (`QAbstractItemModel`)
+  built from the same paths, with 30k folder nodes and per-folder totals.
 
 ## Build and run
 
@@ -25,6 +27,7 @@ Requires `qt6-base-dev` and Ninja (installed on the host for this experiment).
 ```sh
 ./native-qt-model/build.sh
 QT_QPA_PLATFORM=offscreen /tmp/opencode/qpy-qt-model-build/native_qt_model --items=1000000
+DISPLAY=:50 /tmp/opencode/qpy-qt-model-build/native_qt_model --items=1000000
 ```
 
 `--items=N` sets the dataset size (default 1,000,000).
@@ -33,18 +36,19 @@ QT_QPA_PLATFORM=offscreen /tmp/opencode/qpy-qt-model-build/native_qt_model --ite
 
 Host: Qt 6.10.2, GCC 15.2, Release build, offscreen platform.
 
-| Operation | 1M rows | 1.5M rows |
-|---|---:|---:|
-| store.generate | 149 ms | 233 ms |
-| models.create | 0 ms | 0 ms |
-| first paint, 3 views, two `processEvents()` | 17 ms | 17 ms |
-| sort by size + reset + paint | 56 ms | 80 ms |
-| filter (show excluded) + reset + paint | 11 ms | 12 ms |
-| 1000 decision toggles | 0 ms | 0 ms |
-| repaint after decision batch | 9 ms | 8 ms |
-| diff snapshot (1000 entries) | 0 ms | 0 ms |
-| full reset with a new dataset | 156 ms | 229 ms |
-| resident memory | 131 MB | 178 MB |
+| Operation | offscreen 1M | offscreen 1.5M | X11 (:50) 1M |
+|---|---:|---:|---:|
+| store.generate | 130 ms | 233 ms | 137 ms |
+| models.create | 0 ms | 0 ms | 0 ms |
+| overview.build (30k folders) | 25 ms | — | 26 ms |
+| first paint, 4 panes, two `processEvents()` | 17 ms | 17 ms | 16 ms |
+| sort by size + reset + paint | 50 ms | 80 ms | **886 ms** |
+| filter (show excluded) + reset + paint | 11 ms | 12 ms | 79 ms |
+| 1000 decision toggles | 0 ms | 0 ms | 0 ms |
+| repaint after decision batch | 9 ms | 8 ms | 22 ms |
+| diff snapshot (1000 entries) | 0 ms | 0 ms | 0 ms |
+| full reset with a new dataset | 140 ms | 229 ms | 197 ms |
+| resident memory | 134 MB | 178 MB | 138 MB |
 
 For comparison, the current Python implementation takes **12–23 s** for
 `view.set_changes` at 520k rows, and that climbs with row count. The native
@@ -52,9 +56,11 @@ upper bound is two to three orders of magnitude faster.
 
 ## Caveats — read before drawing conclusions
 
-1. **Offscreen does not paint pixels.** `processEvents()` performs layout and
-   model calls but not real rasterisation. An X11 run will be slower for first
-   paint. The numbers measure model/layout overhead, not GPU/xrender cost.
+1. **X11 column is the realistic one.** Offscreen performs layout and model
+   calls but no rasterisation. On X11, sorting with real repaint costs 886 ms
+   rather than 50 ms; first paint stays ~16 ms because only the visible rows
+   are painted. Even the X11 figures are two orders of magnitude below the
+   Python implementation.
 2. **No delegates.** The real application draws icons, colours, stripes,
    chevrons and elided paths. Those are C++ in the real app too, but they are
    not simulated here.
