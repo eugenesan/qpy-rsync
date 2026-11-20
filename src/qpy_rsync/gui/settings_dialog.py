@@ -58,6 +58,8 @@ class SettingsDialog(QDialog):
         verification_rsync: bool = False,
         detect_inherited_conflicts: bool = False,
         rsync_output_logging: bool = False,
+        metadata_two_pass: bool = False,
+        inventory_preload: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -165,6 +167,32 @@ class SettingsDialog(QDialog):
             "Application events and timing lines are always logged."
         )
         advanced_layout.addWidget(self.rsync_output_checkbox)
+        self.metadata_two_pass_checkbox = QCheckBox(
+            "Use two rsync runs for destination metadata", advanced
+        )
+        self.metadata_two_pass_checkbox.setChecked(bool(metadata_two_pass))
+        self.metadata_two_pass_checkbox.setToolTip(
+            "Off by default: one unfiltered rsync listing fills in destination "
+            "sizes and dates after a compare. Turn on to run a filtered listing "
+            "first and an unfiltered one only for paths the filters hid. This "
+            "can be faster when the profile excludes very large subtrees, but "
+            "normally costs an extra rsync process and SSH handshake."
+        )
+        advanced_layout.addWidget(self.metadata_two_pass_checkbox)
+        self.inventory_preload_checkbox = QCheckBox(
+            "Preload the source listing for unchanged items", advanced
+        )
+        self.inventory_preload_checkbox.setChecked(bool(inventory_preload))
+        self.inventory_preload_checkbox.setToolTip(
+            "Off by default: the source is listed only when you ask to show "
+            "unchanged items. Turn on to list source and destination together "
+            "after each compare, so showing unchanged needs no extra rsync. "
+            "Useful when you routinely browse unchanged items, but endpoint "
+            "I/O contention can cancel the benefit: two listings at once may "
+            "be no faster than one, and every compare pays the extra work. "
+            "It also keeps roughly a million extra entries in memory."
+        )
+        advanced_layout.addWidget(self.inventory_preload_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Both checks are diagnostics, not gates. The synchronization "
@@ -233,6 +261,12 @@ class SettingsDialog(QDialog):
 
     def rsync_output_logging(self) -> bool:
         return self.rsync_output_checkbox.isChecked()
+
+    def metadata_two_pass(self) -> bool:
+        return self.metadata_two_pass_checkbox.isChecked()
+
+    def inventory_preload(self) -> bool:
+        return self.inventory_preload_checkbox.isChecked()
 
     def detect_inherited_conflicts(self) -> bool:
         return self.inherited_checkbox.isChecked()

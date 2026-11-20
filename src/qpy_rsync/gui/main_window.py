@@ -368,6 +368,13 @@ class MainWindow(QMainWindow):
         self._rsync_output_logging = settings.value(
             "logging/rsync_output", False, type=bool
         )
+        self._metadata_two_pass = settings.value(
+            "advanced/dest_metadata_two_pass", False, type=bool
+        )
+        self._inventory_preload = settings.value(
+            "advanced/inventory_preload", False, type=bool
+        )
+        self._apply_inventory_env()
         self._last_compare_locations: tuple[str, str] | None = None
         self._last_compare_filters: str = ""
         self._preserve_for_compare = True
@@ -1842,6 +1849,8 @@ class MainWindow(QMainWindow):
             verification_rsync=self._verification_rsync,
             detect_inherited_conflicts=self._detect_inherited_conflicts,
             rsync_output_logging=self._rsync_output_logging,
+            metadata_two_pass=self._metadata_two_pass,
+            inventory_preload=self._inventory_preload,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1867,6 +1876,15 @@ class MainWindow(QMainWindow):
             )
             self._rsync_output_logging = dialog.rsync_output_logging()
             settings.setValue("logging/rsync_output", self._rsync_output_logging)
+            self._metadata_two_pass = dialog.metadata_two_pass()
+            self._inventory_preload = dialog.inventory_preload()
+            settings.setValue(
+                "advanced/dest_metadata_two_pass", self._metadata_two_pass
+            )
+            settings.setValue(
+                "advanced/inventory_preload", self._inventory_preload
+            )
+            self._apply_inventory_env()
             settings.sync()
             self._update_verification_visibility()
             self._update_conflict_ui()
@@ -3869,6 +3887,15 @@ class MainWindow(QMainWindow):
         if setter is not None:
             setter(paths)
 
+    def _apply_inventory_env(self) -> None:
+        """Mirror the Advanced choices into the flags the backend reads."""
+        os.environ["QPY_DEST_METADATA_TWO_PASS"] = (
+            "1" if self._metadata_two_pass else ""
+        )
+        os.environ["QPY_INVENTORY_PRELOAD"] = (
+            "1" if self._inventory_preload else ""
+        )
+
     def _source_preload_finished(self, token: int, extra: object) -> None:
         if self._closing or token != self._source_preload_token:
             return
@@ -4507,6 +4534,13 @@ class MainWindow(QMainWindow):
     def _inventory_after_compare_changed(self, checked: bool) -> None:
         """The auto-inventory choice is now part of the current profile."""
         self._refresh_profile_marker()
+        if not checked:
+            # Disabling is only a profile setting. Stop a listing already in
+            # flight, but do not rebuild the view or change other toggles.
+            self._inventory_service.cancel()
+            self._inventory_token = 0
+            self._inventory_pending_key = None
+            return
         if (
             checked
             and self._active_profile is not None

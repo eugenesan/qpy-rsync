@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The two advanced inventory switches are now Settings > Advanced options,
+  off by default: two-pass destination metadata and source-listing preload.
+  Their tooltips explain when they help and their costs.
+- Disabling inventory-after-compare is now a pure profile setting: it stops
+  any in-flight listing but does not rebuild the view or change the Show
+  unchanged toggle.
 - The journal now records every rsync inventory command: the destination
   metadata listing, and the source (and destination when not cached) listing
   for unchanged items. A cached destination is reported explicitly rather than
