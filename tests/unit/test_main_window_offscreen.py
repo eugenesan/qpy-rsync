@@ -2279,3 +2279,31 @@ def test_exit_prompt_saves_to_the_known_profile_path(tmp_path, monkeypatch) -> N
     assert saved == [target]
     window.close()
     application.processEvents()
+
+
+def test_failed_destination_metadata_clears_the_busy_status() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._metadata_token = 7
+    window._metadata_pending = True
+    window.progress_bar.setRange(0, 0)
+    window.progress_label.setText("Gathering destination metadata...")
+
+    window._metadata_failed(7, "rsync is missing")
+
+    assert window._metadata_pending is False
+    assert window._metadata_token == 0
+    assert window.progress_bar.maximum() == 100
+    assert "Gathering" not in window.progress_label.text()
+    window.close()
+    application.processEvents()
+
+
+def test_swap_button_lives_with_the_source_controls() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window.swap_button.parent() is window.source_open_button.parent()
+    window.close()
+    application.processEvents()

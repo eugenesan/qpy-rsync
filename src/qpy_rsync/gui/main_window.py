@@ -284,6 +284,10 @@ class MainWindow(QMainWindow):
             self, gather=gather_destination_metadata
         )
         self._metadata_service.finished.connect(self._metadata_finished)
+        # A failed listing emits `failed`, never `finished`. Without this
+        # handler the busy bar and "Gathering destination metadata..." stay up
+        # forever after any rsync error (missing rsync, bad SSH, bad args).
+        self._metadata_service.failed.connect(self._metadata_failed)
         # Optional preload: list the source alongside the metadata so a later
         # Show unchanged needs no rsync at all.
         self._source_preload_service = InventoryService(
@@ -488,6 +492,7 @@ class MainWindow(QMainWindow):
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
+        controls.addWidget(vertical_separator())
         self.sync_mode = QComboBox()
         self.sync_mode.addItem("Update", SyncMode.UPDATE)
         self.sync_mode.addItem("Mirror", SyncMode.MIRROR)
@@ -503,8 +508,6 @@ class MainWindow(QMainWindow):
         self.swap_button.setIcon(swap_icon())
         self.swap_button.setToolTip("Swap Source and Destination")
         self.swap_button.setAccessibleName("Swap Source and Destination")
-        controls.addWidget(self.swap_button)
-        controls.addWidget(vertical_separator())
         self.compare_button = QToolButton()
         self.compare_button.setIcon(compare_icon())
         self.compare_button.setToolTip(_COMPARE_TOOLTIP)
@@ -1200,6 +1203,9 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(panel)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
+        if title == "Source":
+            # Keep Swap away from Compare: it sits with the Source controls.
+            row.addWidget(self.swap_button)
         open_button = self._external_open_button(
             f"{title.lower()}-open-button",
             cloud_upload_icon() if title == "Source" else cloud_download_icon(),
@@ -4365,6 +4371,23 @@ class MainWindow(QMainWindow):
             if getattr(change, "action", None)
             is not ChangeAction.NO_CHANGE
         ]
+
+    def _metadata_failed(self, token: int, message: str) -> None:
+        if self._closing or token != self._metadata_token:
+            return
+        self._metadata_token = 0
+        was_pending = self._metadata_pending
+        self._metadata_pending = False
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Destination metadata unavailable")
+        self._append_log(f"Destination metadata failed: {message}", severity="warning")
+        if was_pending:
+            self._set_status(
+                "Comparison complete; destination metadata could not be read.",
+                "warning",
+            )
+            self._finish_comparison_status()
 
     def _finish_comparison_status(self) -> None:
         count = self._last_compare_count

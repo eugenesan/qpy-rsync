@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Moved Swap Source/Destination next to the Source controls, away from Compare,
+  and moved the toolbar separator to the left of the sync-mode selector.
+- Hiding the current row no longer drops the cursor on the virtual root; it
+  moves to the next visible item (or the previous one at the end).
+- Destination folders now show only the items that exist on the destination;
+  folders with no destination items are blank like in the Python view.
+- A failed destination-metadata listing now clears the busy bar and restores
+  the comparison status instead of hanging on "Gathering destination metadata".
+
 - Fixed a profile-switch hang: destination metadata updates no longer run the
   hidden Python comparison view's filter pass in hybrid mode, so the next
   Compare starts and clears the stale state.

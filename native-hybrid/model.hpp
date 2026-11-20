@@ -351,6 +351,21 @@ struct DataStore {
     compute_stripes();
   }
 
+  void compute_destination_counts() {
+    dest_items.assign(paths.size(), 0);
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      if (i < static_cast<int>(is_dir.size()) && is_dir[i]) continue;
+      const int action = i < static_cast<int>(actions.size()) ? actions[i] : NoChange;
+      if (action == Create) continue;
+      if (i < static_cast<int>(decisions.size()) && decisions[i] == Exclude) continue;
+      int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+      while (parent >= 0) {
+        dest_items[parent] += 1;
+        parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
+      }
+    }
+  }
+
   void apply_destination_metadata(
       const std::unordered_map<std::string, std::pair<long long, std::string>>& metadata,
       bool merge) {
@@ -373,6 +388,9 @@ struct DataStore {
       long long items = 0;
       for (int j = 0; j < static_cast<int>(paths.size()); ++j) {
         if (j < static_cast<int>(is_dir.size()) && is_dir[j]) continue;
+        const int action = j < static_cast<int>(actions.size()) ? actions[j] : NoChange;
+        if (action == Create) continue;
+        if (j < static_cast<int>(decisions.size()) && decisions[j] == Exclude) continue;
         if (paths[j].compare(0, prefix.size(), prefix) != 0) continue;
         total += dest_sizes[j];
         ++items;
@@ -380,6 +398,7 @@ struct DataStore {
       dest_sizes[i] = total;
       dest_items[i] = items;
     }
+    compute_destination_counts();
   }
 
   void compute_aggregates() {
@@ -583,6 +602,7 @@ struct DataStore {
     for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
       row_of_id[visible[row]] = row;
     }
+    compute_destination_counts();
     compute_stripes();
   }
 
@@ -762,6 +782,13 @@ class TableModel : public QAbstractTableModel {
                                  ? store_->times[id] : std::string();
     const bool is_dir = id < static_cast<int>(store_->is_dir.size()) && store_->is_dir[id];
     const bool is_root = path == DataStore::root_path();
+    // A folder with no destination-side items is blank in the Destination
+    // pane, the same way the Python model blanks it.
+    if (pane_ == 2 && is_dir && !is_root && column >= 5) {
+      const long long owned = id < static_cast<int>(store_->dest_items.size())
+                                  ? store_->dest_items[id] : 0;
+      if (owned == 0 || action == Create) return {};
+    }
     if (column == 0 || column == 5) {
       if (is_root) {
         return QString::fromStdString(pane_ == 0 ? store_->root_source : store_->root_dest);
@@ -791,7 +818,7 @@ class TableModel : public QAbstractTableModel {
     if (column == 7 || column == 10) {
       long long size = id < static_cast<int>(store_->dest_sizes.size())
                            ? store_->dest_sizes[id] : 0;
-      if (size == 0 && !is_dir) return QString();
+      if (size == 0) return QString();
       return qpy_format_size(size);
     }
     if (column == 3) return QString::fromStdString(time);

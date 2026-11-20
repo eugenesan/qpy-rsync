@@ -140,9 +140,37 @@ void refresh_native_models(Session& s) {
       s.views[i]->verticalScrollBar()->setValue(positions[i]);
     }
   }
-  if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size()) &&
-      s.store.row_of_id[current_id] >= 0) {
-    select_path_id_impl(s, current_id);
+  if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size())) {
+    if (s.store.row_of_id[current_id] < 0) {
+      // The row was just hidden (for example by excluding it). Move to the
+      // next visible item, or the previous one when it was the last.
+      int nearest = -1;
+      for (int candidate : s.store.visible) {
+        if (candidate < 0 || candidate >= static_cast<int>(s.store.paths.size()) ||
+            s.store.paths[candidate] == DataStore::root_path()) {
+          continue;
+        }
+        if (candidate > current_id) { nearest = candidate; break; }
+      }
+      if (nearest < 0) {
+        for (int index = static_cast<int>(s.store.visible.size()) - 1;
+             index >= 0; --index) {
+          const int candidate = s.store.visible[index];
+          if (candidate < 0 || candidate >= static_cast<int>(s.store.paths.size()) ||
+              s.store.paths[candidate] == DataStore::root_path()) {
+            continue;
+          }
+          nearest = candidate;
+          break;
+        }
+      }
+      current_id = nearest;
+      s.current_path_id = current_id;
+    }
+    if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size()) &&
+        s.store.row_of_id[current_id] >= 0) {
+      select_path_id_impl(s, current_id);
+    }
   }
   if (focus != nullptr) focus->setFocus();
   if (s.overview != nullptr && s.overview_view != nullptr) {
@@ -679,8 +707,13 @@ QWidget* ensure_tables_widget(Session& s) {
         QObject::connect(
             views[i]->selectionModel(), &QItemSelectionModel::currentChanged,
             [j](const QModelIndex& current, const QModelIndex&) {
-              if (g_in_select || g_in_sync || !current.isValid()) return;
+              if (g_in_select || g_in_sync) return;
               Session& s = session();
+              if (current.isValid() && current.row() >= 0 &&
+                  current.row() < static_cast<int>(s.store.visible.size())) {
+                s.current_path_id = s.store.visible[current.row()];
+              }
+              if (!current.isValid()) return;
               QTableView* target = s.views[j];
               if (target == nullptr || target->model() == nullptr) return;
               QModelIndex index = target->model()->index(
