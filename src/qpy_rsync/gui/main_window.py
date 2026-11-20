@@ -3264,7 +3264,7 @@ class MainWindow(QMainWindow):
             1: "Items",
             2: "Size",
             3: "Modified",
-            4: "Actions",
+            4: "Decisions",
             5: "Item",
             6: "Items",
             7: "Size",

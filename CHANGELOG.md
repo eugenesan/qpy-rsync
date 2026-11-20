@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The middle comparison column is now labelled "Decisions" in both the Python
+  and hybrid views (including the modified-decision marker and help text).
+- Only the destination list shows a scrollbar; Source and Decisions follow it.
+
 - Hybrid comparison views now use the desktop palette for row striping, so
   dark themes no longer show inverted white bands.
 - Removed the empty space between the Actions pane and the destination list;

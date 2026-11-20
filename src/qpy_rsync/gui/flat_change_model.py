@@ -208,7 +208,7 @@ class FlatChangeModel(QAbstractTableModel):
         "Items",
         "Size",
         "Modified",
-        "Action",
+        "Decision",
         "Item",
         "Items",
         "Size",
@@ -246,8 +246,8 @@ class FlatChangeModel(QAbstractTableModel):
         self.discarded_decisions = 0
         self.decisions_enabled = True
         self.stale = False
-        self._action_header = "Actions"
-        self._action_header_tooltip = "Actions"
+        self._action_header = "Decisions"
+        self._action_header_tooltip = "Decisions"
         self._modified_count = 0
         self._destination_metadata: dict[str, tuple[int | None, str | None]] = {}
         self._destination_index = build_destination_size_index({})
@@ -2248,9 +2248,9 @@ class FlatChangeModel(QAbstractTableModel):
     def _refresh_action_header(self) -> None:
         modified = len(self._override_paths)
         self._modified_count = modified
-        self._action_header = "Actions*" if modified else "Actions"
+        self._action_header = "Decisions*" if modified else "Decisions"
         self._action_header_tooltip = (
-            f"Actions* ({modified} modified)" if modified else "Actions"
+            f"Decisions* ({modified} modified)" if modified else "Decisions"
         )
         self.headerDataChanged.emit(
             Qt.Orientation.Horizontal, self.ACTION, self.ACTION

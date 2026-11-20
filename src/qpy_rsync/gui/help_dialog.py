@@ -37,7 +37,7 @@ result.
    until the next Compare; check it again before that Compare to keep the
    decisions intentionally.
 
-4. Actions
+4. Decisions
    Each row carries an action in the middle pane:
      +  new item             =  unchanged item (faded checkmark)
      up updated content      =  folder on both sides
@@ -52,7 +52,7 @@ result.
    default for all of them.
 
    Space excludes the selected item: it is temporarily left out of the sync
-   and kept aside for this comparison only. The checkbox in the Actions column
+   and kept aside for this comparison only. The checkbox in the Decisions column
    includes or excludes it, the filter bar has a "Show excluded items" toggle,
    and its right-click menu offers "Reset All Exclusions".
    The arrow in front of a folder collapses or expands its contents in the
@@ -119,7 +119,7 @@ result.
     Alt+S / Alt+D  focus the Source / Destination location field
     Ctrl+W         focus the Overview pane
     Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
-    Ctrl+N          focus the Actions column
+    Ctrl+N          focus the Decisions column
     Alt+Enter / Ctrl+T  open the context menu of the current row
     Alt+1..8       click the numbered checkbox in the actions bar
     Ctrl+1..8      Ctrl-click (invert) the numbered checkbox

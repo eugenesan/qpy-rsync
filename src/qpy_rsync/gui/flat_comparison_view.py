@@ -1434,7 +1434,7 @@ class FlatComparisonView(QWidget):
     def _show_context_menu(self, tree: QTableView, point: object) -> None:
         index = tree.indexAt(point)
         if not index.isValid():
-            # An empty part of the Actions pane still offers the one action
+            # An empty part of the Decisions pane still offers the one action
             # that belongs to the list as a whole.
             if tree is self.action:
                 menu = QMenu(tree)

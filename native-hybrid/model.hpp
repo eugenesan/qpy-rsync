@@ -685,7 +685,7 @@ class TableModel : public QAbstractTableModel {
   QVariant headerData(int section, Qt::Orientation, int role) const override {
     if (role != Qt::DisplayRole) return {};
     static const char* headers[11] = {
-        "Item", "Items", "Size", "Modified", "Actions",
+        "Item", "Items", "Size", "Modified", "Decisions",
         "Item", "Items", "Size", "Modified", "Size (bytes)", "Size (bytes)"};
     return section >= 0 && section < 11 ? QString(headers[section]) : QString();
   }

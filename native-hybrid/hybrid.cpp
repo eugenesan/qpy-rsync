@@ -515,7 +515,9 @@ QWidget* ensure_tables_widget(Session& s) {
       views[i]->verticalHeader()->setDefaultSectionSize(22);
       views[i]->verticalHeader()->hide();
       views[i]->horizontalHeader()->setStretchLastSection(true);
-      views[i]->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+      // Only the destination pane shows a scrollbar; the other two follow it.
+      views[i]->setVerticalScrollBarPolicy(
+          i == 2 ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAlwaysOff);
       splitter->addWidget(views[i]);
     }
     for (int i = 0; i < 3; ++i) s.views[i] = views[i];
