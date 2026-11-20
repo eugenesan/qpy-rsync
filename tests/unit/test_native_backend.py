@@ -71,6 +71,20 @@ def test_native_folding_keeps_totals(monkeypatch: pytest.MonkeyPatch) -> None:
     assert signature(python) == signature(native)
 
 
+def test_stale_native_snapshot_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    from qpy_rsync.gui.flat_change_model import _NativeSnapshot
+
+    model = model_with(monkeypatch, "1")
+    before = signature(model)
+    empty: list[int] = []
+    stale = _NativeSnapshot(
+        0, empty, empty, empty, empty, empty, empty, empty, empty, empty,
+        empty, empty, empty,
+    )
+    model._publish_native_snapshot(stale)
+    assert signature(model) == before
+
+
 def test_filter_list_mode_filters_and_restores(monkeypatch: pytest.MonkeyPatch) -> None:
     from PySide6.QtWidgets import QApplication
 

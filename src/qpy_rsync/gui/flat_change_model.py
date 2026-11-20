@@ -47,6 +47,25 @@ from qpy_rsync.core.units import format_size
 from .action_colours import colour_for
 from .text_elide import elide_path, wrap_path
 
+@dataclass
+class _NativeSnapshot:
+    """A complete native filter result, safe to hand to the GUI thread."""
+
+    generation: int
+    visible_rows: list[int]
+    visible_changes: list[int]
+    counts: list[int]
+    sizes: list[int]
+    totals: list[int]
+    dir_path_ok: list[int]
+    dir_action_ok: list[int]
+    dir_faded: list[int]
+    dir_visible: list[int]
+    change_visible: list[int]
+    change_action_ok: list[int]
+    change_path_ok: list[int]
+
+
 class ExcludedPaths:
     """The EXCLUDE decisions, exposed as the old exclusion API.
 
@@ -325,6 +344,7 @@ class FlatChangeModel(QAbstractTableModel):
         # per row layout and reused by every filter pass.
         self._native = native_module()
         self._native_comparison: object | None = None
+        self._native_generation = 0
 
     @property
     def show_excluded(self) -> bool:
@@ -699,57 +719,87 @@ class FlatChangeModel(QAbstractTableModel):
             )
 
         # nanobind copies a def_ro vector on every property access, so bind
-        # each one once before the loops instead of indexing the property.
-        dir_path_ok = comparison.dir_path_ok
-        dir_action_ok = comparison.dir_action_ok
-        dir_faded = comparison.dir_faded
-        dir_visible = comparison.dir_visible
-        change_visible = comparison.change_visible
-        change_path_ok = comparison.change_path_ok
+        # each one once instead of indexing the property in a loop.
+        width = len(self._dir_paths)
+        counts = list(comparison.dir_counts)
+        sizes = list(comparison.dir_sizes)
+        counts += [0] * (width - len(counts))
+        sizes += [0] * (width - len(sizes))
+        totals = list(comparison.dir_totals)
+        totals += [0] * (width * 5 - len(totals))
+        snapshot = _NativeSnapshot(
+            generation=self._native_generation + 1,
+            visible_rows=list(comparison.visible_rows),
+            visible_changes=list(comparison.visible_changes),
+            counts=counts,
+            sizes=sizes,
+            totals=totals,
+            dir_path_ok=list(comparison.dir_path_ok),
+            dir_action_ok=list(comparison.dir_action_ok),
+            dir_faded=list(comparison.dir_faded),
+            dir_visible=list(comparison.dir_visible),
+            change_visible=list(comparison.change_visible),
+            change_action_ok=list(comparison.change_action_ok),
+            change_path_ok=list(comparison.change_path_ok),
+        )
+        self._publish_native_snapshot(snapshot, has_exclusion, excluded_get)
+
+    def _publish_native_snapshot(
+        self,
+        snapshot: _NativeSnapshot,
+        has_exclusion: bool = False,
+        excluded_get=None,
+    ) -> None:
+        """Publish a snapshot from the GUI thread; discard stale generations."""
+        if snapshot.generation <= self._native_generation:
+            return
+        rows = self._rows
         dir_paths = self._dir_paths
         for index, path in enumerate(dir_paths):
             directory = self._directories[path]
-            directory.path_ok = bool(dir_path_ok[index])
-            directory.action_ok = bool(dir_action_ok[index])
-            directory.faded = bool(dir_faded[index])
-            directory.visible = bool(dir_visible[index])
+            directory.path_ok = bool(snapshot.dir_path_ok[index])
+            directory.action_ok = bool(snapshot.dir_action_ok[index])
+            directory.faded = bool(snapshot.dir_faded[index])
+            directory.visible = bool(snapshot.dir_visible[index])
 
         # The incremental fold and decision paths read these flags without
-        # rerunning the filter pass, so they must be kept in sync too. Slice
-        # assignment keeps this a C-level loop on large comparisons.
-        flags = [bool(value) for value in change_visible]
+        # rerunning the filter pass, so they must be kept in sync too.
+        flags = [bool(value) for value in snapshot.change_visible]
         self._change_visible[:] = flags
-        self._change_action_ok[:] = flags
-        self._change_path_ok[:] = [bool(value) for value in change_path_ok]
-        for row_index, row in enumerate(rows):
-            value = bool(excluded_get(row.path, False)) if has_exclusion else False
-            self._row_excluded[row_index] = value
-            row.excluded = value
+        self._change_action_ok[:] = [
+            bool(value) for value in snapshot.change_action_ok
+        ]
+        self._change_path_ok[:] = [
+            bool(value) for value in snapshot.change_path_ok
+        ]
+        if excluded_get is not None:
+            for row_index, row in enumerate(rows):
+                value = bool(excluded_get(row.path, False)) if has_exclusion else False
+                self._row_excluded[row_index] = value
+                row.excluded = value
 
-        visible_rows = list(comparison.visible_rows)
-        for position, row_index in enumerate(visible_rows):
+        for position, row_index in enumerate(snapshot.visible_rows):
             rows[row_index].alternate = position % 2 == 0
-        self._visible_rows = visible_rows
-        self._visible_change_indices = set(comparison.visible_changes)
+        self._visible_rows = snapshot.visible_rows
+        self._visible_change_indices = set(snapshot.visible_changes)
         self._visible_changes = [
             self.changes[index] for index in sorted(self._visible_change_indices)
         ]
         self._visible_position_of_row = self._position_array()
 
         width = len(dir_paths)
-        counts = list(comparison.dir_counts)
-        sizes = list(comparison.dir_sizes)
-        counts += [0] * (width - len(counts))
-        sizes += [0] * (width - len(sizes))
         self._aggregate_counts = [
-            [counts[index], sizes[index]] for index in range(width)
+            [snapshot.counts[index], snapshot.sizes[index]]
+            for index in range(width)
         ]
         self._publish_overview_aggregates()
-        flat = list(comparison.dir_totals)
-        flat += [0] * (width * 5 - len(flat))
         self._total_up_from_aggregates(
-            [flat[index * 5 : index * 5 + 5] for index in range(width)]
+            [
+                snapshot.totals[index * 5 : index * 5 + 5]
+                for index in range(width)
+            ]
         )
+        self._native_generation = snapshot.generation
         self.layout_token += 1
 
     # ------------------------------------------------------------------

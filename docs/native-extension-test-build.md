@@ -135,6 +135,18 @@ when the native backend is active; the Python path keeps search jump-only.
 On 520,000 rows a glob search drops from 207 ms to 42 ms. All 415 tests pass
 in both modes.
 
+## GIL and generation safety (Stage 7)
+
+All native kernels that only touch flat arrays now release the GIL for their
+computation. On the Python side, filter results are copied into a
+`_NativeSnapshot` with a generation number and published through
+`_publish_native_snapshot`, which ignores snapshots older than the latest
+published one. A regression test covers stale-result rejection. All 416 tests
+pass with the flag on and off.
+
+A worker thread is not yet used; kernels are fast enough that the GUI thread
+still meets the <1 s target. The snapshot boundary is worker-ready.
+
 ## What is still needed for a real integration
 
 1. Extend `NativeFilter` with the change/directory flag passes (`_matches`,

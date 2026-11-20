@@ -305,6 +305,7 @@ struct NativeComparison {
             const std::vector<u8>& row_explicit,
             const std::vector<u8>& folded_parent, bool has_exclusion,
             bool show_excluded, u32 generation) {
+    nb::gil_scoped_release release;
     return emit(row_visible, row_path_ok, row_faded, row_excluded, row_explicit,
                 has_exclusion, show_excluded, folded_parent, generation);
   }
@@ -425,6 +426,7 @@ struct NativeComparison {
   std::vector<u32> search_rows(const std::string& pattern, bool is_glob,
                                bool directories_only, bool show_excluded,
                                const std::vector<u8>& row_excluded) const {
+    nb::gil_scoped_release release;
     std::vector<u32> matches;
     matches.reserve(paths.size() / 8);
     for (std::size_t i = 0; i < paths.size(); ++i) {
@@ -456,6 +458,7 @@ struct NativeComparison {
     actions_mask_ = actions_mask;
     actions_mask_active_ = actions_mask != 0;
     filter_directories_ = filter_directories;
+    nb::gil_scoped_release release;
     const std::size_t nchanges = change_dir.size();
     for (std::size_t ci = 0; ci < nchanges; ++ci) {
       const u32 code = ci < change_action.size() ? change_action[ci] : 0;
@@ -539,6 +542,7 @@ struct NativeComparison {
                      bool has_exclusion, const std::vector<u8>& row_excluded,
                      const std::vector<u8>& row_explicit, bool show_excluded,
                      const std::vector<u8>& folded_parent, u32 generation) {
+    nb::gil_scoped_release release;
     const std::size_t ndirs = dir_parent.size();
     const std::size_t nchanges = change_dir.size();
     std::vector<u8> dir_matched(ndirs, 0);
@@ -679,6 +683,7 @@ static std::string describe_itemized(const std::string& code, bool deleting) {
 
 static ParsedRecords parse_records_native(const std::string& input,
                                           bool delete_enabled) {
+  nb::gil_scoped_release release;
   static const std::string sep = "|qpy-rsync|";
   static const std::string link_marker = " -> ";
   ParsedRecords out;
@@ -854,6 +859,7 @@ static PlanArrays build_plan_arrays(const std::vector<std::string>& paths,
                                     const std::vector<i64>& sizes,
                                     const std::vector<u8>& size_none,
                                     const std::vector<u8>& included) {
+  nb::gil_scoped_release release;
   PlanArrays out;
   const std::size_t count = paths.size();
   out.paths.reserve(count);

@@ -111,4 +111,14 @@ before the next one starts.
   - Native glob search on 520,000 rows: 207 ms (Python) → 42 ms.
   - pytest parity covers search and the filter-mode toggle; all 415 tests pass
     with the flag off and on.
-- Stages 7–8 not started.
+- **Stage 7 done** (this commit): every array-only kernel releases the GIL
+  (`apply`, `filter`, `filter_pattern`, `search_rows`, `build_plan_arrays`,
+  `parse_records`). The model now snapshots native results into a
+  `_NativeSnapshot` carrying a generation and publishes it through
+  `_publish_native_snapshot`, which discards stale generations. A regression
+  test verifies the discard. All 416 tests pass in both modes.
+  - The queued QThread worker itself is not wired up: the current kernels are
+    fast enough that GUI-thread execution stays under 1 s. The snapshot and
+    generation boundary is in place so a worker can be added without changing
+    the publication path.
+- Stage 8 not started.
