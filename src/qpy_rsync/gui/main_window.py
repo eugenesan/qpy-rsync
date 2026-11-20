@@ -4084,13 +4084,18 @@ class MainWindow(QMainWindow):
         original_merge_metadata = comparison.merge_destination_metadata
 
         def set_destination_metadata(metadata, *, skip_view=False):
-            original_set_metadata(metadata, skip_view=skip_view)
-            if self._hybrid_view is not None:
+            # The Python view is hidden in hybrid mode; its rows are not built,
+            # so a filter pass there would fail. Keep the data for the plan
+            # but never ask the hidden view to rebuild.
+            hidden = self._hybrid_view is not None
+            original_set_metadata(metadata, skip_view=skip_view or hidden)
+            if hidden:
                 self._hybrid_view.set_destination_metadata(metadata, merge=False)
 
         def merge_destination_metadata(metadata, *, skip_view=False):
-            original_merge_metadata(metadata, skip_view=skip_view)
-            if self._hybrid_view is not None:
+            hidden = self._hybrid_view is not None
+            original_merge_metadata(metadata, skip_view=skip_view or hidden)
+            if hidden:
                 self._hybrid_view.set_destination_metadata(metadata, merge=True)
 
         comparison.set_destination_metadata = set_destination_metadata  # type: ignore[method-assign]

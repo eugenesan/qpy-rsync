@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed a profile-switch hang: destination metadata updates no longer run the
+  hidden Python comparison view's filter pass in hybrid mode, so the next
+  Compare starts and clears the stale state.
+- The native overview jump restores focus to the comparison lists.
+
 - Folding a directory now applies the decision to its whole subtree.
 - Ctrl+click on Show excluded now switches to "only excluded" and a second
   Ctrl+click restores the default bar.
