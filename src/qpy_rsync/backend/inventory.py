@@ -52,7 +52,7 @@ def inventory_paths(
         command = spec.argv()
         environment = os.environ.copy()
         environment.update(spec.environment)
-    with timed("rsync.inventory_list", endpoint=endpoint.kind.value):
+    with timed("rsync.inventory_list", operand=operand, endpoint=endpoint.kind.value):
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,

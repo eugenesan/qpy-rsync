@@ -24,6 +24,27 @@ def profile() -> SyncProfile:
     )
 
 
+def test_inventory_service_passes_cached_destination_to_gather() -> None:
+    application = app()
+    seen: list[object] = []
+
+    def gather(_profile, _changed, _progress=None, *, destination_paths=None):
+        seen.append(destination_paths)
+        return []
+
+    service = InventoryService(gather=gather)
+    cached = {"cached.txt": object()}
+    service.set_cached_destination(cached)
+    loop = QEventLoop()
+    service.finished.connect(lambda *_: loop.quit())
+    QTimer.singleShot(5000, loop.quit)
+    service.gather(profile(), [])
+    loop.exec()
+    QThreadPool.globalInstance().waitForDone(5000)
+    application.processEvents()
+    assert seen == [cached]
+
+
 def test_inventory_service_runs_off_the_gui_thread() -> None:
     application = app()
     calls: list[tuple[str, int]] = []

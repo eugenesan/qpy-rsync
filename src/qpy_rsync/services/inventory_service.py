@@ -47,7 +47,14 @@ class _InventoryTask(QRunnable):
             self._signals.progress.emit(self._token, phase, count)
 
         try:
-            if _accepts_progress(self._gather):
+            if self._destination_paths is not None:
+                result = self._gather(
+                    self._profile,
+                    self._changed,
+                    progress,
+                    destination_paths=self._destination_paths,
+                )
+            elif _accepts_progress(self._gather):
                 result = self._gather(self._profile, self._changed, progress)
             else:
                 result = self._gather(self._profile, self._changed)
