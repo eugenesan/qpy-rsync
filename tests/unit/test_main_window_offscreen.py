@@ -2102,6 +2102,22 @@ def test_session_log_uses_local_time(tmp_path, monkeypatch) -> None:
     application.processEvents()
 
 
+def test_raw_rsync_output_logging_is_off_by_default(tmp_path, monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    window = MainWindow()
+    assert window._rsync_output_logging is False
+    window._append_rsync_log("itemized record")
+    window._append_transient_log("progress line")
+    window._end_bulk_logging()
+    assert not window._rsync_log_path.exists() or (
+        "itemized record" not in window._rsync_log_path.read_text(encoding="utf-8")
+    )
+    window.close()
+    application.processEvents()
+
+
 def test_bulk_rsync_output_is_written_in_batches(tmp_path, monkeypatch) -> None:
     application = app()
     app_settings().clear()
@@ -2115,6 +2131,7 @@ def test_bulk_rsync_output_is_written_in_batches(tmp_path, monkeypatch) -> None:
         return original(text, rsync=rsync)
 
     window._write_session_log = counted
+    window._rsync_output_logging = True
     window._bulk_logging = True
     for index in range(2500):
         window._append_rsync_log(f"record {index}")

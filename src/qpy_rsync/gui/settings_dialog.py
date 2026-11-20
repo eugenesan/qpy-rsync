@@ -57,6 +57,7 @@ class SettingsDialog(QDialog):
         verification_enabled: bool = False,
         verification_rsync: bool = False,
         detect_inherited_conflicts: bool = False,
+        rsync_output_logging: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -153,6 +154,17 @@ class SettingsDialog(QDialog):
             "confirmed explicitly."
         )
         advanced_layout.addWidget(self.inherited_checkbox)
+        self.rsync_output_checkbox = QCheckBox(
+            "Log raw rsync output", advanced
+        )
+        self.rsync_output_checkbox.setChecked(bool(rsync_output_logging))
+        self.rsync_output_checkbox.setToolTip(
+            "Off by default. Writes every itemized rsync record to the rsync "
+            "log file. On a large tree this can add hundreds of MB per "
+            "comparison and costs measurable time in the Python log path. "
+            "Application events and timing lines are always logged."
+        )
+        advanced_layout.addWidget(self.rsync_output_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Both checks are diagnostics, not gates. The synchronization "
@@ -218,6 +230,9 @@ class SettingsDialog(QDialog):
 
     def verification_enabled(self) -> bool:
         return self.verification_checkbox.isChecked()
+
+    def rsync_output_logging(self) -> bool:
+        return self.rsync_output_checkbox.isChecked()
 
     def detect_inherited_conflicts(self) -> bool:
         return self.inherited_checkbox.isChecked()
