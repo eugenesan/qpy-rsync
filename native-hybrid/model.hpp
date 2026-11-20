@@ -30,7 +30,7 @@ struct DataStore {
   std::vector<std::string> paths;
   std::vector<int> actions;
   std::vector<int> kinds;
-  std::vector<int> sizes;
+  std::vector<long long> sizes;
   std::vector<std::string> times;
   std::vector<int> decisions;
   // Volatile view state owned by native.
@@ -134,7 +134,7 @@ struct DataStore {
     paths = paths_;
     actions = actions_;
     kinds = kinds_;
-    sizes.assign(sizes_.begin(), sizes_.end());
+    sizes = sizes_;
     times = times_;
     decisions = decisions_;
     const int count = static_cast<int>(paths.size());
@@ -402,9 +402,9 @@ class TableModel : public QAbstractTableModel {
 struct OverviewNode {
   std::string name;
   int count = 0;
-  int size = 0;
-  int total_count = 0;
-  int total_size = 0;
+  long long size = 0;
+  long long total_count = 0;
+  long long total_size = 0;
   OverviewNode* parent = nullptr;
   std::vector<OverviewNode*> children;
 };
@@ -429,7 +429,7 @@ class OverviewModel : public QAbstractItemModel {
     auto* total = new OverviewNode{"Total", 0, 0, 0, 0, root_, {}};
     root_->children.push_back(total);
     nodes_.push_back(total);
-    auto* base = new OverviewNode{"source", 0, 0, 0, 0, total, {}};
+    auto* base = new OverviewNode{"All folders", 0, 0, 0, 0, total, {}};
     total->children.push_back(base);
     nodes_.push_back(base);
 
@@ -440,11 +440,18 @@ class OverviewModel : public QAbstractItemModel {
       const std::string& path = store.paths[i];
       auto slash = path.find('/');
       if (slash == std::string::npos) continue;
-      int id = std::atoi(path.c_str() + 1);
+      std::string name = path.substr(0, slash);
+      if (name.empty() || name[0] == '*') continue;
+      int id = 0;
+      try {
+        id = std::stoi(name.substr(1));
+      } catch (...) {
+        continue;
+      }
       if (id < 0 || id >= 30000) continue;
       OverviewNode*& folder = folders[id];
       if (folder == nullptr) {
-        folder = new OverviewNode{path.substr(0, slash), 0, 0, 0, 0, base, {}};
+        folder = new OverviewNode{name, 0, 0, 0, 0, base, {}};
         base->children.push_back(folder);
         nodes_.push_back(folder);
       }

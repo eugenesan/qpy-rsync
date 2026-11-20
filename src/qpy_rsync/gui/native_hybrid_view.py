@@ -143,6 +143,10 @@ class NativeHybridView:
         """Call ``callback(path_id, decision)`` when the user edits a decision."""
         self._native.set_decision_callback(callback)
 
+    def refresh(self) -> None:
+        self._native.refresh_visible()
+        self._native.refresh()
+
     def set_checkstate(self, row: int, checked: bool) -> None:
         """Simulate the user toggling the decision checkbox in the native view."""
         self._native.set_checkstate(row, checked)

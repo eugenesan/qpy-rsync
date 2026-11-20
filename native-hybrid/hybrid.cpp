@@ -8,6 +8,9 @@
 
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QScrollBar>
+#include <QSplitter>
+#include <QtCore/Qt>
 #include <QItemSelectionModel>
 #include <QTableView>
 #include <QTreeView>
@@ -134,7 +137,7 @@ NB_MODULE(native_hybrid, m) {
     Session& s = session();
     if (s.widget == nullptr) {
       s.widget = new QWidget();
-      auto* layout = new QHBoxLayout(s.widget);
+      auto* layout = new QSplitter(Qt::Horizontal, s.widget);
       QTableView* views[3];
       for (int i = 0; i < 3; ++i) {
         views[i] = new QTableView(s.widget);
@@ -158,6 +161,17 @@ NB_MODULE(native_hybrid, m) {
       views[2]->setModel(s.models[2]);
       overview_view->setModel(s.overview);
       overview_view->expandToDepth(0);
+      for (int i = 0; i < 3; ++i) {
+        views[i]->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+      }
+      for (int i = 0; i < 3; ++i) {
+        for (int j = i + 1; j < 3; ++j) {
+          QObject::connect(views[i]->verticalScrollBar(), &QScrollBar::valueChanged,
+                           views[j]->verticalScrollBar(), &QScrollBar::setValue);
+          QObject::connect(views[j]->verticalScrollBar(), &QScrollBar::valueChanged,
+                           views[i]->verticalScrollBar(), &QScrollBar::setValue);
+        }
+      }
       for (QTableView* view : views) {
         QObject::connect(
             view->selectionModel(), &QItemSelectionModel::selectionChanged,

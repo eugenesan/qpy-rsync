@@ -3976,6 +3976,8 @@ class MainWindow(QMainWindow):
         else:
             decisions.reset(path)
         self.comparison.model._refresh_effective_actions({path})
+        if self._hybrid_view is not None:
+            self._hybrid_view.refresh()
         self._on_decision_changed({path})
         self._invalidate_validated_plan()
 

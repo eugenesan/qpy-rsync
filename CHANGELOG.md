@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hybrid view fixes: 64-bit overview sizes, real folder names, resizable and
+  vertically synchronised panes, and native refresh after decision edits.
 - Added an opt-in hybrid view slice (`QPY_HYBRID_VIEW=1`): parsed changes are
   handed once to native Qt models for three comparison tables and the overview,
   and native decision edits are mirrored into Python's decision store. Python
