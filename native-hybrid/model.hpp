@@ -31,6 +31,7 @@ struct DataStore {
   std::vector<int> actions;
   std::vector<int> kinds;
   std::vector<int> sizes;
+  std::vector<std::string> times;
   std::vector<int> decisions;
   // Volatile view state owned by native.
   std::vector<int> parents;
@@ -128,11 +129,13 @@ struct DataStore {
                    const std::vector<int>& actions_,
                    const std::vector<int>& kinds_,
                    const std::vector<long long>& sizes_,
-                   const std::vector<int>& decisions_) {
+                   const std::vector<int>& decisions_,
+                   const std::vector<std::string>& times_) {
     paths = paths_;
     actions = actions_;
     kinds = kinds_;
     sizes.assign(sizes_.begin(), sizes_.end());
+    times = times_;
     decisions = decisions_;
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
@@ -313,20 +316,42 @@ class TableModel : public QAbstractTableModel {
     const int row = index.row();
     if (row < 0 || row >= static_cast<int>(store_->visible.size())) return {};
     const int record = store_->visible[row];
-    if (pane_ == 0) return QString::fromStdString(store_->paths[record]);
-    if (pane_ == 1) {
-      if (index.column() == 0) return action_name(store_->actions[record]);
-      return store_->actions[record] == Delete ? QString("delete") : QString("keep");
+    const int column = index.column();
+    if (pane_ == 0) {  // Source: name, size, modified
+      if (column == 0) return QString::fromStdString(store_->paths[record]);
+      if (column == 1) return QString::number(store_->sizes[record]);
+      return QString::fromStdString(
+          record < static_cast<int>(store_->times.size())
+              ? store_->times[record] : std::string());
     }
-    if (index.column() == 1) return QString::number(store_->sizes[record]);
-    return store_->decisions[record] == Exclude ? QString("excluded") : QString("included");
+    if (pane_ == 1) {  // Action: action, decision, reason
+      if (column == 0) return action_name(store_->actions[record]);
+      if (column == 1) {
+        return store_->decisions[record] == Exclude
+                   ? QString("excluded") : QString("included");
+      }
+      return QString("selection");
+    }
+    // Destination: path, size, modified (same values until metadata is handed over).
+    if (column == 0) return QString::fromStdString(store_->paths[record]);
+    if (column == 1) return QString::number(store_->sizes[record]);
+    return QString::fromStdString(
+        record < static_cast<int>(store_->times.size())
+            ? store_->times[record] : std::string());
   }
 
   QVariant headerData(int section, Qt::Orientation, int role) const override {
     if (role != Qt::DisplayRole) return {};
-    if (pane_ == 0) return section == 0 ? QString("Name") : QString("Size");
-    if (pane_ == 1) return section == 0 ? QString("Action") : QString("Decision");
-    return section == 0 ? QString("Destination") : QString("Date");
+    if (pane_ == 0) {
+      return section == 0 ? QString("Name")
+                          : (section == 1 ? QString("Size") : QString("Modified"));
+    }
+    if (pane_ == 1) {
+      return section == 0 ? QString("Action")
+                          : (section == 1 ? QString("Decision") : QString("Reason"));
+    }
+    return section == 0 ? QString("Path")
+                        : (section == 1 ? QString("Size") : QString("Modified"));
   }
 
   void reset() {

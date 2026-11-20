@@ -13,7 +13,9 @@ parity with `FlatComparisonView`; see "Not yet wired" below.
   the plan, but skips the expensive row/filter rebuild.
 - Native Qt owns the four view models (three tables plus the overview tree),
   the volatile decision table and the decision diff.
-- The dataset crosses Python → native exactly once per comparison.
+- The dataset crosses Python → native exactly once per comparison. The native
+  panes use real columns: Source (name/size/modified), Action (action/decision
+  checkbox/reason), Destination (path/size/modified), plus the overview tree.
 - A checkbox in the native Action pane edits a decision; the change is
   mirrored into `ChangeDecisions` and the plan is marked stale through the
   existing Python path.

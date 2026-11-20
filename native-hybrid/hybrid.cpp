@@ -75,8 +75,9 @@ NB_MODULE(native_hybrid, m) {
                    const std::vector<int>& actions,
                    const std::vector<int>& kinds,
                    const std::vector<long long>& sizes,
-                   const std::vector<int>& decisions) {
-    session().store.load_direct(paths, actions, kinds, sizes, decisions);
+                   const std::vector<int>& decisions,
+                   const std::vector<std::string>& times) {
+    session().store.load_direct(paths, actions, kinds, sizes, decisions, times);
   });
 
   m.def("set_selection_callback", [](nb::object callback) {

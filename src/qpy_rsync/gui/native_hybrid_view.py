@@ -90,6 +90,7 @@ class NativeHybridView:
             [_NATIVE_KINDS.index(change.kind.value) for change in changes],
             [int(change.size or 0) for change in changes],
             [0] * len(changes),
+            [str(change.modified_time or "") for change in changes],
         )
         self._native.refresh()
 
