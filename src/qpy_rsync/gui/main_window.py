@@ -293,6 +293,7 @@ class MainWindow(QMainWindow):
         self._diff_staging_directories: list[Path] = []
         self._last_backup_message: tuple[str, str] | None = None
         self._last_changed_changes: list[object] = []
+        self._current_change_store: object | None = None
         self._sync_service = SyncService(self)
         self._sync_service.on_started = self._sync_started
         self._sync_service.on_finished = self._sync_finished
@@ -3458,7 +3459,8 @@ class MainWindow(QMainWindow):
         self._reset_pause_button()
         self.progress_bar.setValue(100)
         self.progress_label.setText("Comparison completed")
-        self._last_changed_changes = list(result.parsed.changes)
+        self._last_changed_changes = result.parsed.changes
+        self._current_change_store = result.parsed.store
         self.comparison.model.preserve_decisions = getattr(
             self, "_preserve_for_compare", self._preserve_decisions
         )
@@ -3763,7 +3765,7 @@ class MainWindow(QMainWindow):
             # then starts the listing.
             self.inventory_after_compare_button.setChecked(True)
             return
-        changed = list(self._last_changed_changes)
+        changed = self._last_changed_changes
         if self._active_profile is None:
             return
         if not self.show_unchanged.isChecked():
@@ -3773,12 +3775,14 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
             self.progress_label.setText("Unchanged items hidden")
-            self.comparison.set_changes(changed)
+            self.comparison.set_changes(
+                changed, store=self._current_change_store
+            )
             return
         key = self._inventory_key(self._active_profile, changed)
         if self._inventory_cache_key == key and self._inventory_cache is not None:
             self._populate_unchanged(
-                changed + list(self._inventory_cache),
+                list(changed) + list(self._inventory_cache),
                 len(self._inventory_cache),
             )
             return
@@ -3787,7 +3791,7 @@ class MainWindow(QMainWindow):
         # Show the compared items right away. The unchanged items are
         # merged in when the inventory completes, so the tree never stays
         # empty and no second comparison is needed.
-        self.comparison.set_changes(changed)
+        self.comparison.set_changes(changed, store=self._current_change_store)
         self._start_inventory(key, changed)
 
     def _hide_unchanged(self, changed: list[object]) -> None:

@@ -232,9 +232,12 @@ class CompareService:
                 self._line_count = (
                     len(self._native_store) + len(self._native_store.diagnostics)
                 )
+            from qpy_rsync.core.change_store import build_native_store
+
             parsed = ParseResult(
                 self._native_store.changes() if len(self._native_store) else [],
                 self._native_store.diagnostics,
+                build_native_store(self._native_store),
             )
         else:
             # A caller that fed the whole output at the end instead of

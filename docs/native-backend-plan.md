@@ -5,6 +5,22 @@ the eight workstreams in the final recommendation of
 `cpp-extension-analysis.md`. Each stage ends with a checkpoint that must pass
 before the next one starts.
 
+## Checkpoint 2 — 4b storage, done
+
+- `core/change_store.py` provides `ChangeStore` with a Python implementation
+  (real `Change` objects) and a native one (flat arrays plus a lazy, cached
+  `Change` sequence). `ParseResult` carries the store so the GUI never calls
+  `list()` on half a million lazy records.
+- The model now uses store arrays for reconcile, directory building,
+  effective actions, destination sizes, subtree counts and the native mirror
+  instead of iterating `Change` objects. Pure Python keeps its original path.
+- Full GUI-path evaluation at 520,000 changes: **22.37 s -> 13.91 s (8.5 s
+  saved)** with the store. 419 tests pass in both modes; all three
+  differential harnesses pass.
+- A single `set_changes` is slightly slower with the store (building the
+  array views costs ~10%); the win comes from the many later passes over the
+  same comparison, which is how the real GUI uses it.
+
 ## Checkpoint 1 — metadata path (A + B), done
 
 - **A:** `FlatChangeModel.merge_destination_metadata` updates the existing

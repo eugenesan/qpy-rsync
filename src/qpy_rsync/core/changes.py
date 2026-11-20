@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -242,7 +243,34 @@ class ChangeDecisions:
         decision was made. It is off by default because a folder-wide INCLUDE
         is often a deliberate choice to own everything below that folder.
         """
-        current = {change.path.rstrip("/"): (change.action, change.kind) for change in changes}
+        current = {
+            change.path.rstrip("/"): (change.action, change.kind)
+            for change in changes
+        }
+        return self._reconcile_current(current, preserve, detect_inherited)
+
+    def reconcile_arrays(
+        self,
+        paths: Sequence[str],
+        actions: Sequence[ChangeAction],
+        kinds: Sequence[ObjectKind],
+        *,
+        preserve: bool = False,
+        detect_inherited: bool = False,
+    ) -> int:
+        """Reconcile from flat arrays without creating Change objects."""
+        current = {
+            str(path).rstrip("/"): (action, kind)
+            for path, action, kind in zip(paths, actions, kinds)
+        }
+        return self._reconcile_current(current, preserve, detect_inherited)
+
+    def _reconcile_current(
+        self,
+        current: dict[str, tuple[ChangeAction, ObjectKind]],
+        preserve: bool,
+        detect_inherited: bool,
+    ) -> int:
         current_paths = tuple(current)
         self._conflicts.clear()
         stale: list[str] = []

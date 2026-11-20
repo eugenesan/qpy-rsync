@@ -147,6 +147,18 @@ pass with the flag on and off.
 A worker thread is not yet used; kernels are fast enough that the GUI thread
 still meets the <1 s target. The snapshot boundary is worker-ready.
 
+## Flat change store (checkpoint 2 / 4b)
+
+The parsed native arrays are now carried all the way into `FlatChangeModel` as
+a `ChangeStore`, with a lazy `Change` view for the rows the GUI actually
+paints. Decision reconciliation, directory building, effective actions,
+destination sizes and subtree counts all read the flat arrays rather than
+materialising 520k `Change` objects. Pure Python keeps its existing path.
+
+End-to-end reproduction of the GUI's post-compare path at 520,000 records:
+**22.37 s -> 13.91 s** (1.61x, 8.5 s saved). All 419 tests pass with the flag
+both off and on, as do the three differential harnesses.
+
 ## Metadata merge and listing (checkpoint 1)
 
 The post-compare metadata update now merges in place and recomputes only the

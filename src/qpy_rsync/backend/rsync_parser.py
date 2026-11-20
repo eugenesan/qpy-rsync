@@ -25,6 +25,8 @@ _TYPE_MAP = {
 class ParseResult:
     changes: list[Change]
     diagnostics: list[str]
+    # The optional flat store lets the GUI skip materialising Change objects.
+    store: object | None = None
 
 
 def _action(code: str, *, delete_enabled: bool) -> ChangeAction:

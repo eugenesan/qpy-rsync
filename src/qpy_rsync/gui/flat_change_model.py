@@ -17,6 +17,7 @@ work with the flat rows without a change.
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
@@ -33,7 +34,9 @@ from qpy_rsync.backend.native_backend import (
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_size,
+    destination_subtree_size,
 )
+from qpy_rsync.core.change_store import ChangeStore, LazyChangeSequence
 from qpy_rsync.core.changes import (
     Change,
     ChangeAction,
@@ -264,6 +267,7 @@ class FlatChangeModel(QAbstractTableModel):
         # follows the item and not the cell.
         self.hovered_row: int | None = None
         self.changes: list[Change] = []
+        self._change_store: ChangeStore | None = None
         self.source_root = ""
         self.destination_root = ""
         self.discarded_decisions = 0
@@ -357,15 +361,34 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Building the flat structure
     # ------------------------------------------------------------------
-    def set_changes(self, changes: list[Change]) -> None:
+    def set_changes(
+        self,
+        changes: Sequence[Change] | LazyChangeSequence,
+        *,
+        store: ChangeStore | None = None,
+    ) -> None:
         self.beginResetModel()
         self.hovered_row = None
-        self.changes = list(changes)
-        self.discarded_decisions = self.decisions.reconcile(
-            self.changes,
-            preserve=self.preserve_decisions,
-            detect_inherited=self.detect_inherited_conflicts,
+        self._change_store = store
+        # A lazy sequence is kept as-is; materialising it here was the single
+        # largest avoidable cost of the native path.
+        self.changes = (
+            changes if isinstance(changes, Sequence) else list(changes)
         )
+        if self._change_store is not None:
+            self.discarded_decisions = self.decisions.reconcile_arrays(
+                store.paths,
+                store.actions,
+                store.kinds,
+                preserve=self.preserve_decisions,
+                detect_inherited=self.detect_inherited_conflicts,
+            )
+        else:
+            self.discarded_decisions = self.decisions.reconcile(
+                self.changes,
+                preserve=self.preserve_decisions,
+                detect_inherited=self.detect_inherited_conflicts,
+            )
         self._refresh_conflicts()
         self.decision_history.clear()
         self.history_changed.emit()
@@ -390,10 +413,19 @@ class FlatChangeModel(QAbstractTableModel):
         self._change_path_ok = []
         self._change_action_ok = []
         self._change_destination_sizes = []
-        self._change_sizes = [int(change.size or 0) for change in self.changes]
-        self._change_effective_actions = [
-            self.effective_action_of_change(change) for change in self.changes
-        ]
+        store = self._change_store
+        if store is not None:
+            self._change_sizes = store.sizes
+            self._change_effective_actions = [
+                self._effective_action_at(index)
+                for index in range(len(self.changes))
+            ]
+        else:
+            self._change_sizes = [int(change.size or 0) for change in self.changes]
+            self._change_effective_actions = [
+                self.effective_action_of_change(change)
+                for change in self.changes
+            ]
 
         def ensure(path: str) -> FlatDirectory:
             existing = self._directories.get(path)
@@ -411,12 +443,28 @@ class FlatChangeModel(QAbstractTableModel):
             parent.child_directories.append(path)
             return directory
 
-        for index, change in enumerate(self.changes):
-            path = str(change.path).rstrip("/")
-            # The compared folder itself is reported as "." or "./" by rsync.
-            # It is the root of the list, not an item inside it.
-            if path in {".", "./"}:
-                path = ""
+        for index in range(len(self.changes)):
+            if store is not None:
+                # Only directory rows need the Change object itself; files
+                # stay as indices into the flat arrays.
+                path = store.paths[index]
+                parent_path = store.parents[index]
+                name = store.names[index]
+                folded = store.folded[index]
+                kind = store.kinds[index]
+                change = (
+                    self.changes[index] if kind is ObjectKind.DIRECTORY else None
+                )
+            else:
+                change = self.changes[index]
+                path = str(change.path).rstrip("/")
+                # The compared folder itself is reported as "." or "./" by
+                # rsync. It is the root of the list, not an item inside it.
+                if path in {".", "./"}:
+                    path = ""
+                parent_path, _, name = path.rpartition("/")
+                folded = name.casefold()
+                kind = change.kind
             if not path:
                 self._change_paths.append("")
                 self._change_parents.append("")
@@ -426,15 +474,14 @@ class FlatChangeModel(QAbstractTableModel):
                 self._change_path_ok.append(False)
                 self._change_action_ok.append(False)
                 continue
-            parent_path, _, name = path.rpartition("/")
             self._change_paths.append(path)
             self._change_parents.append(parent_path)
             self._change_names.append(name)
-            self._change_folded.append(name.casefold())
+            self._change_folded.append(folded)
             self._change_visible.append(False)
             self._change_path_ok.append(False)
             self._change_action_ok.append(False)
-            if change.kind is ObjectKind.DIRECTORY:
+            if kind is ObjectKind.DIRECTORY:
                 # A directory that the comparison reported is a row of its
                 # own and carries the change.
                 directory = ensure(path)
@@ -617,13 +664,26 @@ class FlatChangeModel(QAbstractTableModel):
                 for row in rows
             ],
             [row.is_directory for row in rows],
-            [int(change.size or 0) for change in self.changes],
-            list(self._change_destination_sizes)
-            or [int(change.destination_size or 0) for change in self.changes],
+            self._change_sizes,
+            list(self._change_destination_sizes),
         )
         dir_paths = self._dir_paths
-        comparison.set_structure(
-            [
+        store = self._change_store
+        if store is not None:
+            change_dir = [
+                self._dir_index.get(
+                    store.paths[index]
+                    if store.kinds[index] is ObjectKind.DIRECTORY
+                    else store.parents[index],
+                    0,
+                )
+                for index in range(len(store))
+            ]
+            change_is_dir = [
+                kind is ObjectKind.DIRECTORY for kind in store.kinds
+            ]
+        else:
+            change_dir = [
                 self._dir_index.get(
                     self._change_paths[index]
                     if self.changes[index].kind is ObjectKind.DIRECTORY
@@ -631,8 +691,13 @@ class FlatChangeModel(QAbstractTableModel):
                     0,
                 )
                 for index in range(len(self.changes))
-            ],
-            [change.kind is ObjectKind.DIRECTORY for change in self.changes],
+            ]
+            change_is_dir = [
+                change.kind is ObjectKind.DIRECTORY for change in self.changes
+            ]
+        comparison.set_structure(
+            change_dir,
+            change_is_dir,
             self._native_action_codes(),
             [
                 self._dir_index.get(self._directories[path].parent, -1)
@@ -1829,15 +1894,24 @@ class FlatChangeModel(QAbstractTableModel):
         for directory in self._directories.values():
             directory.subtree_changed = 0
 
+        store = self._change_store
         for path in self._ordered_directories():
             directory = self._directories[path]
             changed = 0
             for index in directory.files:
-                change = self.changes[index]
-                if change.action is not ChangeAction.NO_CHANGE:
-                    changed += 1
+                if store is not None:
+                    if store.actions[index] is not ChangeAction.NO_CHANGE:
+                        changed += 1
+                else:
+                    change = self.changes[index]
+                    if change.action is not ChangeAction.NO_CHANGE:
+                        changed += 1
             if directory.own_change is not None:
-                if directory.own_change.action is not ChangeAction.NO_CHANGE:
+                if store is not None:
+                    action = store.actions[directory.own_change_index]
+                else:
+                    action = directory.own_change.action
+                if action is not ChangeAction.NO_CHANGE:
                     changed += 1
             for child_path in directory.child_directories:
                 changed += self._directories[child_path].subtree_changed
@@ -2121,6 +2195,16 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Decisions
     # ------------------------------------------------------------------
+    def _effective_action_at(self, index: int) -> ChangeAction:
+        """Array-only form of effective_action_of_change for stored changes."""
+        store = self._change_store
+        action = store.actions[index]
+        if action is ChangeAction.DESTINATION_ONLY:
+            inherited = self.decisions.inherited(store.paths[index])
+            if inherited is ChangeDecision.INCLUDE:
+                return ChangeAction.DELETE
+        return action
+
     def effective_action_of_change(self, change: Change) -> ChangeAction:
         action = change.action
         if (
@@ -2480,10 +2564,21 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _refresh_destination_sizes(self) -> None:
         """Cache the size of every change on the destination side."""
-        self._change_destination_sizes = [
-            destination_size(change, self._destination_index)
-            for change in self.changes
-        ]
+        store = self._change_store
+        if store is not None:
+            # Parsed records carry no explicit destination size, so the
+            # subtree index is the whole answer without a Change object.
+            self._change_destination_sizes = [
+                destination_subtree_size(
+                    store.paths[index], store.kinds[index], self._destination_index
+                )
+                for index in range(len(store))
+            ]
+        else:
+            self._change_destination_sizes = [
+                destination_size(change, self._destination_index)
+                for change in self.changes
+            ]
 
     def _destination_info(self, path: str) -> tuple[int | None, str | None]:
         return self._destination_metadata.get(path, (None, None))
