@@ -175,7 +175,10 @@ NB_MODULE(native_hybrid, m) {
       views[1]->setModel(s.models[1]);
       views[2]->setModel(s.models[2]);
       overview_view->setModel(s.overview);
-      overview_view->expandToDepth(0);
+      overview_view->setAlternatingRowColors(true);
+      overview_view->setRootIsDecorated(true);
+      overview_view->header()->setStretchLastSection(true);
+      overview_view->expandToDepth(2);
       for (int i = 0; i < 3; ++i) {
         views[i]->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
       }
@@ -268,15 +271,25 @@ NB_MODULE(native_hybrid, m) {
 
   m.def("apply_python_decisions", [](const std::vector<std::pair<int, int>>& pairs) {
     Session& s = session();
-    std::fill(s.store.decisions.begin(), s.store.decisions.end(), Inherit);
+    std::vector<int> target(s.store.decisions.size(), Inherit);
     for (const auto& pair : pairs) {
-      if (pair.first >= 0 && pair.first < static_cast<int>(s.store.decisions.size())) {
-        s.store.decisions[pair.first] = pair.second;
+      if (pair.first >= 0 && pair.first < static_cast<int>(target.size())) {
+        target[pair.first] = pair.second;
       }
     }
+    bool visibility_changed = false;
+    for (std::size_t i = 0; i < target.size(); ++i) {
+      if (target[i] == s.store.decisions[i]) continue;
+      bool was_hidden = s.store.decisions[i] == Exclude;
+      bool now_hidden = target[i] == Exclude;
+      s.store.decisions[i] = target[i];
+      if (was_hidden != now_hidden) visibility_changed = true;
+    }
     s.store.decision_log.clear();
-    s.store.rebuild_visible();
-    for (TableModel* model : s.models) model->reset();
+    if (visibility_changed) {
+      s.store.rebuild_visible();
+      for (TableModel* model : s.models) model->reset();
+    }
   });
 
   m.def("refresh_after_decision", [](int path_id, int decision) {

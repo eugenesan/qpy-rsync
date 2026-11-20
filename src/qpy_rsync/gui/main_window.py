@@ -3898,7 +3898,9 @@ class MainWindow(QMainWindow):
     def _set_comparison_changes(self, changes) -> None:
         """Feed the Python model, skipping row/filter work in native mode."""
         self.comparison.set_changes(
-            changes, skip_view=self._hybrid_view is not None
+            changes,
+            skip_view=self._hybrid_view is not None,
+            skip_directories=self._hybrid_view is not None,
         )
         if self._hybrid_view is not None:
             self._hybrid_view.set_changes(changes)
@@ -3956,6 +3958,8 @@ class MainWindow(QMainWindow):
         comparison.set_visible_actions = set_visible_actions  # type: ignore[method-assign]
         comparison.set_action_filter = set_visible_actions  # type: ignore[method-assign]
         comparison.search_matches = search_matches  # type: ignore[method-assign]
+        comparison.model.search_matches = search_matches  # type: ignore[method-assign]
+        comparison.model.path_of_row_index = row_path  # type: ignore[method-assign]
         comparison.sort = sort  # type: ignore[method-assign]
         comparison.select_path = select_path  # type: ignore[method-assign]
         comparison.row_path = row_path  # type: ignore[method-assign]
@@ -4006,11 +4010,17 @@ class MainWindow(QMainWindow):
         if not 0 <= path_id < len(changes):
             return
         path = str(changes[path_id].path).rstrip("/")
-        decisions = self.comparison.model.decisions
+        model = self.comparison.model
+        decisions = model.decisions
+        before = model._snapshot()
         if decision == 2:  # Exclude
             decisions.set(path, ChangeDecision.EXCLUDE)
         else:
             decisions.reset(path)
+        after = model._snapshot()
+        if before != after:
+            model.decision_history.record(before, after)
+            model.history_changed.emit()
         self.comparison.model._refresh_effective_actions({path})
         if self._hybrid_view is not None:
             self._hybrid_view.refresh_after_decision(path_id, decision)

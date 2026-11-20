@@ -329,7 +329,8 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Building the flat structure
     # ------------------------------------------------------------------
-    def set_changes(self, changes: list[Change], *, skip_view: bool = False) -> None:
+    def set_changes(self, changes: list[Change], *, skip_view: bool = False,
+                    skip_directories: bool = False) -> None:
         self.beginResetModel()
         self.hovered_row = None
         self.changes = list(changes)
@@ -341,10 +342,11 @@ class FlatChangeModel(QAbstractTableModel):
         self._refresh_conflicts()
         self.decision_history.clear()
         self.history_changed.emit()
-        self._build_directories()
-        # A fold is meaningless when its directory is gone; keep the folds of
-        # the directories that are still there.
-        self.collapsed &= set(self._directories)
+        if not skip_directories:
+            self._build_directories()
+            # A fold is meaningless when its directory is gone; keep the folds
+            # of the directories that are still there.
+            self.collapsed &= set(self._directories)
         if not skip_view:
             self._build_rows()
             self._apply_filters()
