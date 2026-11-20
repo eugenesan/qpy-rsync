@@ -9,6 +9,63 @@ from repeatable synthetic harnesses in `native/` on the experiment branch.
 Timings vary with cache state and endpoint load; the numbers below are ranges
 and each conclusion was checked against at least two runs where possible.
 
+## 0. Implementation overview
+
+This section is orientation for a reader who has not worked in the codebase.
+
+**Stack and entry point.** PySide6/Qt with system Python. `qpy_rsync.app`
+creates `MainWindow`; the tests run the same GUI offscreen. Long-running work
+lives in `QObject` services backed by `QThreadPool` workers, so rsync and
+inventory do not block the GUI thread.
+
+**Core data.** A `Change` is a frozen dataclass (path, action, kind, itemized
+code, size, times, link target, reason, optional destination metadata).
+`ChangeDecisions` holds explicit INCLUDE/EXCLUDE decisions keyed by normalized
+path, computes inheritance, tracks conflicts and keeps an undo/redo history.
+`ExecutionPlan` is the reviewed set of actions plus a summary and fingerprints.
+
+**The comparison view is deliberately flat.** `FlatChangeModel` is a
+`QAbstractTableModel`, not a tree. Each change is one row, and each directory
+is also a row; the hierarchy is drawn with indentation and chevrons by a
+custom delegate. The model keeps parallel flat arrays for paths, parents,
+names, folded names, actions, sizes, visibility flags and aggregates so the
+filter loops do not repeatedly dereference Python objects. Custom roles carry
+the comparison path, stripe state, exclusion state and conflict reason.
+
+**Three panes, one model.** `FlatComparisonView` contains three `QTableView`
+panes — Source, Action, Destination — sharing that model. Delegates
+(`UniformRowDelegate`, `ActionColumnDelegate`, `FlatPathDelegate`) paint icons,
+colours, stripes, chevrons and elided paths. Search is jump-only: it builds a
+match list and steps the selection through it; it does not filter the list.
+Selection and folds are preserved across model resets.
+
+**Overview.** A separate `OverviewPane` uses `QTreeView` with its own
+`OverviewModel` (`QAbstractItemModel`) of `OverviewNode` objects. It shows
+per-folder counts and sizes, a share bar per row, and a statistics strip. It
+is fed by aggregates the comparison model collects during its filter pass,
+so filtering does not rescan the whole change list.
+
+**Services and backend.**
+
+- `CompareService` streams rsync `--dry-run --itemize-changes` output and
+  reports progress and item counts.
+- `InventoryService` runs destination-metadata listings and full inventories
+  off-thread, with tokens that discard stale results.
+- `PlanValidationService` performs the optional second dry run;
+  `SyncService` performs the actual transfer.
+- `backend/rsync_command.py` builds argv, `backend/rsync_parser.py` parses
+  records, `backend/inventory.py` lists endpoints, and
+  `backend/destination_sizes.py` maintains prefix sums for subtree sizes.
+
+**Flow.** Compare → parse → `set_changes` → model reset → signal cascade that
+rebuilds the overview and the plan → asynchronous destination metadata (and
+optionally inventory) → reviewed confirmation dialog → sync.
+
+**Native extension.** The `native-extension-experiment` branch adds a single
+opt-in nanobind module with kernels for filtering, record parsing, plan
+construction and search. It is not part of this branch. See section 3 for why
+it was parked.
+
 ## 1. Where the time goes in a full compare
 
 | Phase | Typical range | Notes |
