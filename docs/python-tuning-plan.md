@@ -81,8 +81,8 @@ From `timing28.txt` / `timing30.txt` (520k changes):
 | Target | Measured | Idea |
 |---|---:|---|
 | `view.set_changes` repaint | 15–24 s | Avoid full rebuilds; reuse row objects, reset once for three views, and stop re-emitting redundant `changes_updated` cascades. |
-| `ui.overview_update` (initial) | 2.1–2.5 s | Partly done: sorting/row preparation is lazy per node and redundant totals passes are skipped. Needs a real-tree re-measurement. |
-| `ui.plan_rebuild` | 3.6–4.6 s | Partly done: digest computed in the plan loop and the four GUI index passes merged into `plan_indexes()`. Still subject to re-measurement. |
+| `ui.overview_update` (initial) | 2.1–2.5 s | Build the 30k-node tree incrementally or lazily; avoid setting every aggregate at once. |
+| `ui.plan_rebuild` | 3.6–4.6 s | Build the sorted path index and item map in one pass; avoid materialising 520k `PlanItem`s twice. |
 | show/hide excluded | ~1.8 s | Reuse `_rebuild_visible_rows` with a cached excluded set. |
 | `model.filter_refresh` | 0.5–1.8 s | Keep the flat-flag arrays; avoid re-deriving them from objects. |
 | decision refresh | ~190 ms | Already close to the floor; leave alone. |

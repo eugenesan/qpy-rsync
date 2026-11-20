@@ -2,11 +2,6 @@
 
 ## Unreleased
 
-- The plan rebuild now computes the items fingerprint inside the main plan
-  loop and builds the GUI's path indexes in one pass instead of four.
-- The overview defers sorting and row preparation until a folder is actually
-  displayed, and skips redundant subtree-total passes when the structure was
-  just rebuilt.
 - The two advanced inventory switches are now Settings > Advanced options,
   off by default: two-pass destination metadata and source-listing preload.
   Their tooltips explain when they help and their costs.

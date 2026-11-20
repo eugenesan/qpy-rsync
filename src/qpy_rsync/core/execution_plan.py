@@ -72,29 +72,6 @@ class ExecutionPlan:
         return tuple(item for item in self.items if item.included)
 
 
-def plan_indexes(plan: ExecutionPlan, changes: Iterable[Change]) -> tuple[
-    list[str], list[int], dict[str, PlanItem], dict[str, Change]
-]:
-    """Build the GUI's path indexes in one pass instead of four.
-
-    Returns sorted paths, the matching plan indices, items by path and changes
-    by path. This replaces four separate half-million-element passes in the
-    main window's plan rebuild.
-    """
-    paths: list[str] = []
-    items_by_path: dict[str, PlanItem] = {}
-    for index, item in enumerate(plan.items):
-        items_by_path[item.path] = item
-        paths.append(item.path)
-    order = sorted(range(len(paths)), key=paths.__getitem__)
-    sorted_paths = [paths[index] for index in order]
-    sorted_indices = order
-    changes_by_path = {
-        str(change.path).rstrip("/"): change for change in changes
-    }
-    return sorted_paths, sorted_indices, items_by_path, changes_by_path
-
-
 def profile_fingerprint(profile: SyncProfile) -> str:
     # Fingerprint synchronization semantics, not profile identity or labels.
     # Ad-hoc profiles are reconstructed by the GUI and therefore receive a new
@@ -136,7 +113,6 @@ def build_execution_plan(
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
 
-    digest = sha256()
     with timed("plan.loop", changes=len(changes_list)):
         for change in changes_list:
             action = change.action
@@ -165,10 +141,6 @@ def build_execution_plan(
                     size=change.size,
                 )
             )
-            digest.update(clean.encode("utf-8"))
-            digest.update(effective_action.value.encode("utf-8"))
-            digest.update(change.kind.value.encode("utf-8"))
-            digest.update(b"1" if selected else b"0")
             if selected:
                 included += 1
                 destructive += int(is_destructive)
@@ -229,6 +201,12 @@ def build_execution_plan(
         included_size=included_size,
     )
     signature = decision_signature(decisions)
+    digest = sha256()
+    for item in items:
+        digest.update(item.path.encode("utf-8"))
+        digest.update(item.action.value.encode("utf-8"))
+        digest.update(item.kind.value.encode("utf-8"))
+        digest.update(b"1" if item.included else b"0")
     return ExecutionPlan(
         items_fingerprint=digest.hexdigest(),
         decision_signature=signature,

@@ -153,7 +153,6 @@ from qpy_rsync.core.execution_plan import (
     build_execution_plan,
     check_plan_freshness,
     decision_signature,
-    plan_indexes,
     profile_fingerprint,
 )
 from qpy_rsync.core.models import (
@@ -2730,14 +2729,18 @@ class MainWindow(QMainWindow):
             self.comparison.model.decisions,
             self.comparison.model.destination_metadata(),
         )
-        (
-            self._plan_paths,
-            self._plan_item_indices,
-            self._plan_items,
-            self._plan_changes,
-        ) = plan_indexes(
-            self._current_plan, self.comparison.model.changes
+        entries = sorted(
+            (item.path, index) for index, item in enumerate(self._current_plan.items)
         )
+        self._plan_paths = [path for path, _index in entries]
+        self._plan_item_indices = [index for _path, index in entries]
+        self._plan_items = {
+            item.path: item for item in self._current_plan.items
+        }
+        self._plan_changes = {
+            str(change.path).rstrip("/"): change
+            for change in self.comparison.model.changes
+        }
         self._last_excluded_paths = set(self.comparison.excluded_paths())
         self._last_explicit_decisions = (
             self.comparison.model.decisions.explicit_items()
