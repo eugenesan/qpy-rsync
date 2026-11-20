@@ -76,6 +76,11 @@ struct DataStore {
   std::string root_source = "Source";
   std::string root_dest = "Destination";
   std::vector<QString> action_colours;
+  // Destination-side content, filled in by the async destination listing.
+  std::unordered_map<std::string, std::pair<long long, std::string>> dest_metadata;
+  std::vector<long long> dest_sizes;
+  std::vector<std::string> dest_times;
+  std::vector<long long> dest_items;
   static const char* root_path() {
     static const char* value = "\x01__qpy_root__";
     return value;
@@ -346,6 +351,37 @@ struct DataStore {
     compute_stripes();
   }
 
+  void apply_destination_metadata(
+      const std::unordered_map<std::string, std::pair<long long, std::string>>& metadata,
+      bool merge) {
+    if (!merge) dest_metadata.clear();
+    for (const auto& entry : metadata) dest_metadata[entry.first] = entry.second;
+    dest_sizes.assign(paths.size(), 0);
+    dest_times.assign(paths.size(), "");
+    dest_items.assign(paths.size(), 0);
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      auto it = dest_metadata.find(paths[i]);
+      if (it != dest_metadata.end()) {
+        dest_sizes[i] = it->second.first;
+        dest_times[i] = it->second.second;
+      }
+    }
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      if (i >= static_cast<int>(is_dir.size()) || !is_dir[i]) continue;
+      const std::string prefix = paths[i] + "/";
+      long long total = 0;
+      long long items = 0;
+      for (int j = 0; j < static_cast<int>(paths.size()); ++j) {
+        if (j < static_cast<int>(is_dir.size()) && is_dir[j]) continue;
+        if (paths[j].compare(0, prefix.size(), prefix) != 0) continue;
+        total += dest_sizes[j];
+        ++items;
+      }
+      dest_sizes[i] = total;
+      dest_items[i] = items;
+    }
+  }
+
   void compute_aggregates() {
     dir_items.assign(paths.size(), 0);
     dir_size.assign(paths.size(), 0);
@@ -384,9 +420,10 @@ struct DataStore {
 
   bool matches(int id) const {
     if (action_mask == -1) {
-      // No action is selected: nothing matches (except the virtual root,
-      // which is handled by the caller).
-      return false;
+      // "Only excluded" mode: only excluded items pass; their ancestor
+      // folders are added by rebuild_visible().
+      return show_excluded && id < static_cast<int>(decisions.size()) &&
+             decisions[id] == Exclude;
     }
     if (action_mask != 0 && id < static_cast<int>(actions.size())) {
       int bit = actions[id];
@@ -497,6 +534,29 @@ struct DataStore {
     int root_id = -1;
     auto root_it = path_to_id.find(root_path());
     if (root_it != path_to_id.end()) root_id = root_it->second;
+    if (action_mask == -1 && show_excluded) {
+      std::vector<char> keep(paths.size(), 0);
+      for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+        if (i >= static_cast<int>(decisions.size()) || decisions[i] != Exclude) continue;
+        keep[i] = 1;
+        int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+        while (parent >= 0) {
+          keep[parent] = 1;
+          parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
+        }
+      }
+      for (int i : order) {
+        if (i != root_id && !keep[i]) continue;
+        if (folded_out(i)) continue;
+        visible.push_back(i);
+      }
+      if (sort_column != 0) sort_visible(sort_column, sort_desc);
+      for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
+        row_of_id[visible[row]] = row;
+      }
+      compute_stripes();
+      return;
+    }
     for (int i : order) {
       if (i == root_id) {
         visible.push_back(i);
@@ -516,17 +576,10 @@ struct DataStore {
       visible.push_back(i);
     }
     if (sort_column == 0) {
-      // Column 0 is the natural folder-tree order built by add_directories().
-    } else if (sort_column == 1) {
-      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
-        return actions[a] < actions[b];
-      });
+      // Column 0 keeps the natural folder-tree order built by add_directories().
     } else {
-      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
-        return sizes[a] < sizes[b];
-      });
+      sort_visible(sort_column, sort_desc);
     }
-    if (sort_desc) std::reverse(visible.begin(), visible.end());
     for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
       row_of_id[visible[row]] = row;
     }
@@ -586,11 +639,57 @@ struct DataStore {
     }
   }
 
-  void toggle_decision(int path_id) {
+  void set_decision_id(int id, int decision, bool subtree = false) {
+    if (id < 0 || id >= static_cast<int>(decisions.size())) return;
+    decisions[id] = decision;
+    decision_log.emplace_back(id, decision);
+    if (!subtree || id >= static_cast<int>(is_dir.size()) || !is_dir[id]) return;
+    const std::string prefix = paths[id] + "/";
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      if (paths[i].compare(0, prefix.size(), prefix) != 0) continue;
+      if (decisions[i] == decision) continue;
+      decisions[i] = decision;
+      decision_log.emplace_back(i, decision);
+    }
+  }
+
+  void toggle_decision(int path_id, bool subtree = false) {
     if (path_id < 0 || path_id >= static_cast<int>(decisions.size())) return;
-    int next = decisions[path_id] == Exclude ? Inherit : Exclude;
-    decisions[path_id] = next;
-    decision_log.emplace_back(path_id, next);
+    const int next = decisions[path_id] == Exclude ? Inherit : Exclude;
+    set_decision_id(path_id, next, subtree);
+  }
+
+  void sort_visible(int column, bool descending) {
+    const bool by_name = column == 0 || column == 5;
+    auto ascending = [&](int a, int b) {
+      bool less = false;
+      if (by_name) {
+        less = a < static_cast<int>(folded_names.size()) &&
+                       b < static_cast<int>(folded_names.size())
+                   ? folded_names[a] < folded_names[b]
+                   : paths[a] < paths[b];
+      } else if (column == 1 || column == 6) {
+        long long av = a < static_cast<int>(dir_items.size()) ? dir_items[a] : 0;
+        long long bv = b < static_cast<int>(dir_items.size()) ? dir_items[b] : 0;
+        less = av < bv;
+      } else if (column == 3 || column == 8) {
+        const std::string at = a < static_cast<int>(times.size()) ? times[a] : "";
+        const std::string bt = b < static_cast<int>(times.size()) ? times[b] : "";
+        less = at < bt;
+      } else if (column == 4) {
+        int ai = a < static_cast<int>(actions.size()) ? actions[a] : 0;
+        int bi = b < static_cast<int>(actions.size()) ? actions[b] : 0;
+        less = ai < bi;
+      } else {
+        long long av = a < static_cast<int>(sizes.size()) ? sizes[a] : 0;
+        long long bv = b < static_cast<int>(sizes.size()) ? sizes[b] : 0;
+        less = av < bv;
+      }
+      return less;
+    };
+    std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
+      return descending ? ascending(b, a) : ascending(a, b);
+    });
   }
 };
 
@@ -651,6 +750,13 @@ class TableModel : public QAbstractTableModel {
     }
     if (role != Qt::DisplayRole) return {};
     const int column = index.column();
+    const int action = id < static_cast<int>(store_->actions.size())
+                           ? store_->actions[id] : NoChange;
+    const bool source_present = action != DestOnly && action != Delete;
+    const bool dest_present = action != Create;
+    if ((pane_ == 0 && !source_present) || (pane_ == 2 && !dest_present)) {
+      return {};
+    }
     const std::string& path = store_->paths[id];
     const std::string time = id < static_cast<int>(store_->times.size())
                                  ? store_->times[id] : std::string();
@@ -663,21 +769,37 @@ class TableModel : public QAbstractTableModel {
       return QString::fromStdString(
           id < static_cast<int>(store_->names.size()) ? store_->names[id] : path);
     }
-    if (column == 1 || column == 6) {
+    if (column == 1) {
       if (is_dir && id < static_cast<int>(store_->dir_items.size())) {
         return QVariant(static_cast<qlonglong>(store_->dir_items[id]));
       }
       return 0;
     }
-    if (column == 2 || column == 7) {
+    if (column == 6) {
+      if (is_dir && id < static_cast<int>(store_->dest_items.size())) {
+        return QVariant(static_cast<qlonglong>(store_->dest_items[id]));
+      }
+      return 0;
+    }
+    if (column == 2) {
       long long size = (is_dir && id < static_cast<int>(store_->dir_size.size()))
                            ? store_->dir_size[id]
                            : (id < static_cast<int>(store_->sizes.size())
                                   ? store_->sizes[id] : 0);
       return qpy_format_size(size);
     }
-    if (column == 3 || column == 8) return QString::fromStdString(time);
-    if (column == 9 || column == 10) {
+    if (column == 7 || column == 10) {
+      long long size = id < static_cast<int>(store_->dest_sizes.size())
+                           ? store_->dest_sizes[id] : 0;
+      if (size == 0 && !is_dir) return QString();
+      return qpy_format_size(size);
+    }
+    if (column == 3) return QString::fromStdString(time);
+    if (column == 8) {
+      return id < static_cast<int>(store_->dest_times.size())
+                 ? QString::fromStdString(store_->dest_times[id]) : QString();
+    }
+    if (column == 9) {
       return QVariant(static_cast<qlonglong>(
           id < static_cast<int>(store_->sizes.size()) ? store_->sizes[id] : 0));
     }
@@ -693,6 +815,13 @@ class TableModel : public QAbstractTableModel {
         "Item", "Items", "Size", "Modified", "Decisions",
         "Item", "Items", "Size", "Modified", "Size (bytes)", "Size (bytes)"};
     return section >= 0 && section < 11 ? QString(headers[section]) : QString();
+  }
+
+  void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override {
+    store_->sort_column = column;
+    store_->sort_desc = order == Qt::DescendingOrder;
+    store_->rebuild_visible();
+    reset();
   }
 
   void reset() {
@@ -717,7 +846,7 @@ class TableModel : public QAbstractTableModel {
     int row = index.row();
     if (row < 0 || row >= static_cast<int>(store_->visible.size())) return false;
     int path_id = store_->visible[row];
-    store_->toggle_decision(path_id);
+    store_->toggle_decision(path_id, true);
     if (g_decision_hook != nullptr) {
       g_decision_hook(path_id, store_->decisions[path_id]);
     }

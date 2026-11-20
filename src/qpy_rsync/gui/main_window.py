@@ -3309,7 +3309,7 @@ class MainWindow(QMainWindow):
     def _overview_folder_activated(self, path: str) -> None:
         """Select a folder of the overview in the tree panes."""
         if self._hybrid_view is not None:
-            self._hybrid_view.select_path(path)
+            self._hybrid_view.select_path(path, focus=True)
         else:
             self.comparison.select_path(path)
 
@@ -4079,6 +4079,22 @@ class MainWindow(QMainWindow):
         comparison.sort = sort  # type: ignore[method-assign]
         comparison.select_path = select_path  # type: ignore[method-assign]
         comparison.row_path = row_path  # type: ignore[method-assign]
+
+        original_set_metadata = comparison.set_destination_metadata
+        original_merge_metadata = comparison.merge_destination_metadata
+
+        def set_destination_metadata(metadata, *, skip_view=False):
+            original_set_metadata(metadata, skip_view=skip_view)
+            if self._hybrid_view is not None:
+                self._hybrid_view.set_destination_metadata(metadata, merge=False)
+
+        def merge_destination_metadata(metadata, *, skip_view=False):
+            original_merge_metadata(metadata, skip_view=skip_view)
+            if self._hybrid_view is not None:
+                self._hybrid_view.set_destination_metadata(metadata, merge=True)
+
+        comparison.set_destination_metadata = set_destination_metadata  # type: ignore[method-assign]
+        comparison.merge_destination_metadata = merge_destination_metadata  # type: ignore[method-assign]
 
         def undo_decision(*_args, **_kwargs):
             result = original_undo()

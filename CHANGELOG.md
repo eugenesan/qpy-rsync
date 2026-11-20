@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Folding a directory now applies the decision to its whole subtree.
+- Ctrl+click on Show excluded now switches to "only excluded" and a second
+  Ctrl+click restores the default bar.
+- Native lists now sort by any column, select whole rows, and no longer
+  highlight header sections.
+- Keyboard list navigation works without a pre-existing selection.
+- The overview jump keeps its target across refreshes and focuses the lists.
+- The native view now receives real destination metadata: destination sizes,
+  times, and source/destination-only cells are shown like the Python view.
+
 - Native list actions (folding, decisions, filters) now preserve the focused
   pane and the current row across model resets.
 - The Decisions pane supports keyboard navigation; its checkbox also sets the

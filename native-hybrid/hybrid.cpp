@@ -3,6 +3,7 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/pair.h>
+#include <nanobind/stl/unordered_map.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
@@ -47,6 +48,7 @@ struct Session {
   QTreeView* overview_view = nullptr;
   QLabel* stats_label = nullptr;
   std::vector<QString> action_colours;
+  int current_path_id = -1;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
   QTableView* views[3] = {nullptr, nullptr, nullptr};
@@ -116,15 +118,20 @@ void select_path_id_impl(Session& s, int path_id);
 void refresh_native_models(Session& s) {
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
-  int current_id = -1;
-  for (int i = 0; i < 3; ++i) {
-    if (s.views[i] == nullptr) continue;
-    if (s.views[i]->verticalScrollBar() != nullptr) {
-      positions[i] = s.views[i]->verticalScrollBar()->value();
+  int current_id = s.current_path_id;
+  if (current_id < 0) {
+    for (int i = 0; i < 3; ++i) {
+      if (s.views[i] == nullptr) continue;
+      const int row = s.views[i]->currentIndex().row();
+      if (row >= 0 && row < static_cast<int>(s.store.visible.size())) {
+        current_id = s.store.visible[row];
+        break;
+      }
     }
-    const int row = s.views[i]->currentIndex().row();
-    if (row >= 0 && row < static_cast<int>(s.store.visible.size())) {
-      current_id = s.store.visible[row];
+  }
+  for (int i = 0; i < 3; ++i) {
+    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
+      positions[i] = s.views[i]->verticalScrollBar()->value();
     }
   }
   for (TableModel* model : s.models) model->reset();
@@ -153,6 +160,7 @@ int first_visible_column(const Session& s, int pane) {
 void select_path_id_impl(Session& s, int path_id) {
   if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
   int row = s.store.row_of_id[path_id];
+  s.current_path_id = path_id;
   g_in_select = true;
   for (int i = 0; i < 3; ++i) {
     QTableView* view = s.views[i];
@@ -220,9 +228,15 @@ class HybridKeyFilter : public QObject {
       if (s.views[i] == watched) pane = i;
     }
     if (pane < 0) return false;
-    const int row = s.views[pane]->currentIndex().row();
+    int row = s.views[pane]->currentIndex().row();
     const DataStore& store = s.store;
-    if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
+    if (row < 0 || row >= static_cast<int>(store.visible.size())) {
+      if (store.visible.empty()) return false;
+      row = 0;
+      QModelIndex first = s.views[pane]->model()->index(
+          0, first_visible_column(s, pane));
+      if (first.isValid()) s.views[pane]->setCurrentIndex(first);
+    }
     const int id = store.visible[row];
     const int keyval = key->key();
 
@@ -346,8 +360,11 @@ class HybridDelegate : public QStyledItemDelegate {
                       14, 14);
       if (indicator.contains(mouse->pos())) {
         const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
-        s.models[1]->setData(index, checked ? Qt::Checked : Qt::Unchecked,
-                             Qt::CheckStateRole);
+        s.store.toggle_decision(id, true);
+        if (g_native_decision_hook != nullptr) {
+          g_native_decision_hook(id, s.store.decisions[id]);
+        }
+        refresh_native_models(s);
         s.views[1]->setCurrentIndex(index);
         return true;
       }
@@ -538,6 +555,8 @@ class HybridDelegate : public QStyledItemDelegate {
   int pane_;
 };
 
+void update_stats(Session& s);
+
 QWidget* ensure_tables_widget(Session& s) {
   if (s.tables_widget == nullptr) {
     s.tables_widget = new QWidget();
@@ -555,6 +574,19 @@ QWidget* ensure_tables_widget(Session& s) {
       // Only the destination pane shows a scrollbar; the other two follow it.
       views[i]->setVerticalScrollBarPolicy(
           i == 2 ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAlwaysOff);
+      views[i]->setSelectionBehavior(QAbstractItemView::SelectRows);
+      views[i]->horizontalHeader()->setHighlightSections(false);
+      views[i]->setSortingEnabled(true);
+      QObject::connect(
+          views[i]->horizontalHeader(), &QHeaderView::sortIndicatorChanged,
+          [](int, Qt::SortOrder) {
+            Session& current = session();
+            if (current.overview != nullptr && current.overview_view != nullptr) {
+              current.overview->build(current.store, true);
+              current.overview_view->expandToDepth(2);
+            }
+            update_stats(current);
+          });
       splitter->addWidget(views[i]);
     }
     for (int i = 0; i < 3; ++i) s.views[i] = views[i];
@@ -635,7 +667,8 @@ QWidget* ensure_tables_widget(Session& s) {
             Session& current = session();
             int row = index.row();
             if (row >= 0 && row < static_cast<int>(current.store.visible.size())) {
-              emit_selection(current.store.visible[row]);
+              current.current_path_id = current.store.visible[row];
+              emit_selection(current.current_path_id);
             }
           });
     }
@@ -686,6 +719,7 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->setUniformRowHeights(true);
     s.overview_view->setAlternatingRowColors(true);
     s.overview_view->setRootIsDecorated(true);
+    s.overview_view->header()->setHighlightSections(false);
     s.overview = new OverviewModel(s.overview_widget);
     s.overview_view->setModel(s.overview);
     s.overview_view->setItemDelegate(new OverviewDelegate(s.overview_widget));
@@ -832,6 +866,19 @@ NB_MODULE(native_hybrid, m) {
     select_path_id_impl(s, id);
   });
 
+  m.def("apply_destination_metadata",
+        [](const std::unordered_map<std::string, std::pair<long long, std::string>>& metadata,
+           bool merge) {
+          Session& s = session();
+          s.store.apply_destination_metadata(metadata, merge);
+          refresh_native_models(s);
+        });
+
+  m.def("focus_lists", []() {
+    Session& s = session();
+    if (s.views[0] != nullptr) s.views[0]->setFocus();
+  });
+
   m.def("overview_folder_count", []() {
     Session& s = session();
     if (s.overview == nullptr) return 0;
@@ -959,8 +1006,7 @@ NB_MODULE(native_hybrid, m) {
     auto it = s.store.path_to_id.find(path);
     if (it == s.store.path_to_id.end()) return;
     const int id = it->second;
-    s.store.decisions[id] = decision;
-    s.store.decision_log.emplace_back(id, decision);
+    s.store.set_decision_id(id, decision, true);
     if (g_native_decision_hook != nullptr) g_native_decision_hook(id, decision);
     s.store.rebuild_visible();
     refresh_native_models(s);

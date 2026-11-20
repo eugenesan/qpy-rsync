@@ -283,12 +283,23 @@ class ActionFilterBar(QWidget):
         toggles keep their state.
         """
         boxes = self._all_boxes()
+        if box is self.excluded_box:
+            checked = [item for item in self._boxes.values() if item.isChecked()]
+            if box.isChecked() or len(checked) != len(self._boxes):
+                # A solo is active, or this is already "only excluded":
+                # reverse back to the default bar.
+                self.reset_defaults()
+            else:
+                wanted = {item: False for item in self._boxes.values()}
+                wanted[self.unchanged_box] = False
+                wanted[self.excluded_box] = True
+                self._set_states(wanted)
+            return
         if (
             not box.isChecked()
-            and box in (self.excluded_box, self.unchanged_box)
+            and box is self.unchanged_box
             and all(other.isChecked() for other in self._boxes.values())
         ):
-            # With no action soloed, Ctrl+click flips the switch itself.
             self._set_states({box: True})
             return
         if box.isChecked():

@@ -86,8 +86,10 @@ class NativeHybridView:
     def set_root_names(self, source: str, destination: str) -> None:
         self._native.set_root_names(source, destination)
 
-    def select_path(self, path: str) -> None:
+    def select_path(self, path: str, *, focus: bool = False) -> None:
         self._native.select_path(path.rstrip("/"))
+        if focus:
+            self._native.focus_lists()
 
     def on_header_context_menu(self, callback) -> None:
         self._native.set_header_context_callback(callback)
@@ -226,6 +228,9 @@ class NativeHybridView:
 
     def set_show_excluded(self, show: bool) -> None:
         self._native.set_show_excluded(show)
+
+    def set_destination_metadata(self, metadata, *, merge: bool = False) -> None:
+        self._native.apply_destination_metadata(metadata, merge)
 
     def apply_python_decisions(self, decisions) -> None:
         pairs = []
