@@ -6,11 +6,15 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <QApplication>
 #include <QColor>
+#include <QIcon>
+#include <QStyle>
 #include <QCursor>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QPainter>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QLabel>
@@ -108,6 +112,22 @@ void refresh_native_models(Session& s) {
   }
 }
 
+void select_path_id_impl(Session& s, int path_id) {
+  if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
+  int row = s.store.row_of_id[path_id];
+  g_in_select = true;
+  for (QTableView* view : s.views) {
+    if (view == nullptr || view->model() == nullptr) continue;
+    QModelIndex index = view->model()->index(row, 0);
+    if (!index.isValid()) continue;
+    view->selectionModel()->select(
+        index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    view->scrollTo(index);
+  }
+  g_in_select = false;
+  emit_selection(path_id);
+}
+
 class HybridDelegate : public QStyledItemDelegate {
  public:
   HybridDelegate(Session* session, int pane, QObject* parent = nullptr)
@@ -115,45 +135,173 @@ class HybridDelegate : public QStyledItemDelegate {
 
   void paint(QPainter* painter, const QStyleOptionViewItem& option,
              const QModelIndex& index) const override {
-    QStyleOptionViewItem opt(option);
-    initStyleOption(&opt, index);
     Session& s = *session_;
-    const int row = index.row();
     const DataStore& store = s.store;
-    if (row >= 0 && row < static_cast<int>(store.visible.size())) {
-      const int id = store.visible[row];
-      if (row % 2 == 0) opt.features |= QStyleOptionViewItem::Alternate;
-      if (pane_ != 1 && id >= 0 && id < static_cast<int>(store.actions.size()) &&
-          id < static_cast<int>(s.action_colours.size())) {
-        const QString& colour = s.action_colours[store.actions[id]];
-        if (!colour.isEmpty()) opt.palette.setColor(QPalette::Text, QColor(colour));
-      }
-      if (id < static_cast<int>(store.decisions.size()) && store.decisions[id] == Exclude) {
-        opt.palette.setColor(QPalette::Text, Qt::gray);
-      }
-      if (index.column() == 0 && id < static_cast<int>(store.depth.size())) {
-        const int indent = store.depth[id] * 14;
-        opt.rect.adjust(indent, 0, 0, 0);
-      }
-      QStyledItemDelegate::paint(painter, opt, index);
-      if (index.column() == 0 && id < static_cast<int>(store.is_dir.size()) &&
-          store.is_dir[id]) {
-        painter->save();
-        painter->setBrush(QColor("#0891B2"));
-        painter->setPen(Qt::NoPen);
-        QRect r = opt.rect;
-        int x = r.left() - 11;
-        int y = r.center().y();
-        QPoint points[3] = {{x, y - 4}, {x + 7, y}, {x, y + 4}};
-        painter->drawPolygon(points, 3);
-        painter->restore();
-      }
+    const int row = index.row();
+    const int col = index.column();
+    if (row < 0 || row >= static_cast<int>(store.visible.size())) {
+      QStyledItemDelegate::paint(painter, option, index);
       return;
     }
-    QStyledItemDelegate::paint(painter, opt, index);
+    const int id = store.visible[row];
+    if (pane_ == 1) {
+      paint_check(painter, option, index, s, store, id);
+      return;
+    }
+
+    const bool name_col = (col == 0 || col == 5);
+    QStyleOptionViewItem opt(option);
+    initStyleOption(&opt, index);
+    const bool selected = opt.state & QStyle::State_Selected;
+    const bool striped = !selected && row < static_cast<int>(store.stripe.size()) &&
+                         store.stripe[row] != 0;
+    if (!name_col) {
+      QStyledItemDelegate::paint(painter, opt, index);
+      return;
+    }
+    // QStyledItemDelegate::paint re-reads the text from the model, so draw the
+    // background ourselves and lay out the name cell explicitly.
+    paint_background(painter, option, striped);
+
+    // Directory hierarchy: indentation, fold marker, icon and name.
+    const bool is_dir = id < static_cast<int>(store.is_dir.size()) && store.is_dir[id];
+    const int depth = id < static_cast<int>(store.depth.size()) ? store.depth[id] : 0;
+    QColor color = text_color(s, store, id, selected);
+    if (!color.isValid()) color = opt.palette.color(QPalette::Text);
+    int x = opt.rect.left() + 4 + depth * 14;
+    const int mid = opt.rect.center().y();
+    const int baseline = opt.rect.top() + opt.rect.height() / 2 +
+                         opt.fontMetrics.ascent() / 2 - 1;
+    painter->save();
+    if (is_dir) {
+      const bool expanded = !(id < static_cast<int>(store.collapsed.size()) &&
+                              store.collapsed[id]);
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(color);
+      QRect chev(x, mid - 4, 8, 8);
+      if (expanded) {
+        QPoint pts[3] = {{chev.left(), chev.top()},
+                         {chev.right(), chev.top()},
+                         {chev.center().x(), chev.bottom()}};
+        painter->drawPolygon(pts, 3);
+      } else {
+        QPoint pts[3] = {{chev.left(), chev.top()},
+                         {chev.right(), chev.center().y()},
+                         {chev.left(), chev.bottom()}};
+        painter->drawPolygon(pts, 3);
+      }
+      draw_folder_icon(painter, QRect(x + 12, mid - 7, 14, 12));
+      x += 30;
+    } else {
+      painter->setPen(QPen(QColor("#D0D7DE"), 1));
+      const int rule = x + 4;
+      painter->drawLine(rule, opt.rect.top(), rule, opt.rect.bottom());
+      draw_file_icon(painter, QRect(x + 12, mid - 8, 12, 14), color);
+      x += 30;
+    }
+    painter->setPen(color);
+    const int available = opt.rect.right() - x - 4;
+    const QString text = index.data(Qt::DisplayRole).toString();
+    painter->drawText(x, baseline,
+                      opt.fontMetrics.elidedText(text, Qt::ElideRight, available));
+    painter->restore();
   }
 
  private:
+  void paint_background(QPainter* painter, const QStyleOptionViewItem& option,
+                        bool striped) const {
+    QStyleOptionViewItem blank(option);
+    blank.text.clear();
+    blank.icon = QIcon();
+    blank.state &= ~(QStyle::State_HasFocus | QStyle::State_MouseOver);
+    if (striped) painter->fillRect(blank.rect, QColor("#F1F3F5"));
+    const QWidget* widget = blank.widget;
+    QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
+    style->drawPrimitive(QStyle::PE_PanelItemViewItem, &blank, painter, widget);
+  }
+
+  QColor text_color(const Session& s, const DataStore& store, int id,
+                    bool selected) const {
+    if (selected) return {};
+    const int action = id < static_cast<int>(store.actions.size())
+                           ? store.actions[id] : NoChange;
+    if (action >= 0 && action < static_cast<int>(s.action_colours.size())) {
+      const QString hex = s.action_colours[action];
+      if (!hex.isEmpty()) return QColor(hex);
+    }
+    if (id < static_cast<int>(store.decisions.size()) &&
+        store.decisions[id] == Exclude) {
+      return QColor("#9CA3AF");
+    }
+    return {};
+  }
+
+  void draw_folder_icon(QPainter* painter, const QRect& r) const {
+    painter->save();
+    painter->setPen(QPen(QColor("#B8860B"), 1));
+    painter->setBrush(QColor("#F4C542"));
+    painter->drawRect(QRect(r.left(), r.top() + 3, r.width(), r.height() - 3));
+    painter->drawRect(QRect(r.left(), r.top(), r.width() / 2, 4));
+    painter->restore();
+  }
+
+  void draw_file_icon(QPainter* painter, const QRect& r,
+                      const QColor& tint) const {
+    painter->save();
+    QColor fill = tint.isValid() ? tint : QColor("#EAB308");
+    fill.setAlpha(48);
+    painter->setBrush(fill);
+    painter->setPen(QPen(tint.isValid() ? tint : QColor("#B8860B"), 1));
+    painter->drawRect(r);
+    painter->drawLine(r.right() - 4, r.top(), r.right() - 4, r.top() + 4);
+    painter->drawLine(r.right() - 4, r.top() + 4, r.right(), r.top() + 4);
+    painter->restore();
+  }
+
+  void paint_check(QPainter* painter, const QStyleOptionViewItem& option,
+                   const QModelIndex& index, Session& s,
+                   const DataStore& store, int id) const {
+    QStyleOptionViewItem opt(option);
+    initStyleOption(&opt, index);
+    paint_background(painter, option, false);
+    const QWidget* widget = option.widget;
+    QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
+    QStyleOptionButton indicator;
+    indicator.state = option.state;
+    indicator.state &= ~QStyle::State_MouseOver;
+    indicator.rect = QRect(opt.rect.left() + 4, opt.rect.center().y() - 7, 14, 14);
+    const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
+    if (checked) indicator.state |= QStyle::State_On;
+    else indicator.state |= QStyle::State_Off;
+    style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator,
+                         painter, widget);
+    if (id >= static_cast<int>(store.actions.size())) return;
+    const int action = store.actions[id];
+    QColor color("#9CA3AF");
+    if (action >= 0 && action < static_cast<int>(s.action_colours.size())) {
+      const QString hex = s.action_colours[action];
+      if (!hex.isEmpty()) color = QColor(hex);
+    }
+    const int x = opt.rect.left() + 34;
+    const int y = opt.rect.center().y();
+    painter->save();
+    if (action == Delete) {
+      painter->setPen(QPen(color, 2));
+      painter->drawLine(x - 4, y - 4, x + 4, y + 4);
+      painter->drawLine(x + 4, y - 4, x - 4, y + 4);
+    } else if (action == NoChange) {
+      painter->setPen(QPen(color, 2));
+      painter->drawLine(x - 4, y, x - 1, y + 3);
+      painter->drawLine(x - 1, y + 3, x + 5, y - 4);
+    } else {
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(color);
+      QPoint pts[3] = {{x, y - 5}, {x + 5, y + 3}, {x - 5, y + 3}};
+      painter->drawPolygon(pts, 3);
+    }
+    painter->restore();
+  }
+
   Session* session_;
   int pane_;
 };
@@ -182,6 +330,30 @@ QWidget* ensure_tables_widget(Session& s) {
     views[0]->setModel(s.models[0]);
     views[1]->setModel(s.models[1]);
     views[2]->setModel(s.models[2]);
+    for (int hidden : {3, 4, 5, 6, 7, 8, 9, 10}) views[0]->setColumnHidden(hidden, true);
+    for (int column = 0; column < 11; ++column) {
+      views[1]->setColumnHidden(column, column != 4);
+    }
+    for (int hidden : {0, 1, 2, 3, 4, 8, 9, 10}) views[2]->setColumnHidden(hidden, true);
+    views[0]->horizontalHeader()->setStretchLastSection(false);
+    views[0]->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    views[0]->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
+    views[0]->horizontalHeader()->resizeSection(1, 60);
+    views[0]->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+    views[0]->horizontalHeader()->resizeSection(2, 96);
+    views[2]->horizontalHeader()->setStretchLastSection(false);
+    views[2]->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    views[2]->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Fixed);
+    views[2]->horizontalHeader()->resizeSection(6, 60);
+    views[2]->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Fixed);
+    views[2]->horizontalHeader()->resizeSection(7, 96);
+    views[1]->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
+    views[1]->horizontalHeader()->resizeSection(4, 72);
+    for (QTableView* view : views) {
+      view->horizontalHeader()->setFixedHeight(
+          qMax(16, view->fontMetrics().height() + 2));
+      view->setAlternatingRowColors(false);
+    }
     for (int i = 0; i < 3; ++i) {
       views[i]->setItemDelegate(new HybridDelegate(&s, i, s.tables_widget));
       views[i]->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -227,7 +399,7 @@ QWidget* ensure_tables_widget(Session& s) {
     QSizePolicy policy = views[1]->sizePolicy();
     policy.setHorizontalPolicy(QSizePolicy::Fixed);
     views[1]->setSizePolicy(policy);
-    views[1]->setFixedWidth(180);
+    views[1]->setFixedWidth(72);
     s.tables_widget->setMinimumWidth(700);
   }
   return s.tables_widget;
@@ -240,32 +412,56 @@ QWidget* ensure_overview_widget(Session& s) {
     layout->setContentsMargins(0, 0, 0, 0);
     s.stats_label = new QLabel(s.overview_widget);
     s.stats_label->setWordWrap(true);
-    layout->addWidget(s.stats_label);
     s.overview_view = new QTreeView(s.overview_widget);
     s.overview_view->setUniformRowHeights(true);
     s.overview_view->setAlternatingRowColors(true);
     s.overview_view->setRootIsDecorated(true);
-    s.overview_view->header()->setStretchLastSection(true);
+    s.overview_view->header()->setStretchLastSection(false);
+    s.overview_view->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    s.overview_view->header()->setSectionResizeMode(1, QHeaderView::Fixed);
+    s.overview_view->header()->resizeSection(1, 56);
+    s.overview_view->header()->setSectionResizeMode(2, QHeaderView::Fixed);
+    s.overview_view->header()->resizeSection(2, 64);
+    s.overview_view->header()->setSectionResizeMode(3, QHeaderView::Fixed);
+    s.overview_view->header()->resizeSection(3, 84);
     s.overview = new OverviewModel(s.overview_widget);
     s.overview_view->setModel(s.overview);
     s.overview_view->expandToDepth(2);
     layout->addWidget(s.overview_view);
+    layout->addWidget(s.stats_label);
+    QObject::connect(
+        s.overview_view, &QTreeView::doubleClicked,
+        [](const QModelIndex& index) {
+          Session& current = session();
+          QString path = current.overview->data(index, Qt::UserRole).toString();
+          auto it = current.store.path_to_id.find(path.toStdString());
+          if (it != current.store.path_to_id.end()) {
+            select_path_id_impl(current, it->second);
+          }
+        });
   }
   return s.overview_widget;
 }
 
 void update_stats(Session& s) {
   if (s.stats_label == nullptr) return;
-  long long count = 0, size = 0;
+  long long count = 0, size = 0, creates = 0, updates = 0, deletes = 0;
   for (int id : s.store.visible) {
-    if (id >= 0 && id < static_cast<int>(s.store.sizes.size())) {
-      ++count;
-      size += s.store.sizes[id];
-    }
+    if (id < 0 || id >= static_cast<int>(s.store.is_dir.size())) continue;
+    if (s.store.is_dir[id]) continue;
+    ++count;
+    size += id < static_cast<int>(s.store.sizes.size()) ? s.store.sizes[id] : 0;
+    int action = id < static_cast<int>(s.store.actions.size())
+                     ? s.store.actions[id] : NoChange;
+    if (action == Create) ++creates;
+    else if (action == Update || action == Metadata) ++updates;
+    else if (action == Delete) ++deletes;
   }
-  s.stats_label->setText(QString("%1 item(s), %2 B").arg(count).arg(size));
+  s.stats_label->setText(
+      QString("%1 item(s), %2   + %3   ↑ %4   ✗ %5")
+          .arg(count).arg(qpy_format_size(size))
+          .arg(creates).arg(updates).arg(deletes));
 }
-
 
 }  // namespace
 
@@ -328,22 +524,7 @@ NB_MODULE(native_hybrid, m) {
     return rows.isEmpty() ? -1 : rows.first().row();
   });
 
-  m.def("select_path_id", [](int path_id) {
-    Session& s = session();
-    if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
-    int row = s.store.row_of_id[path_id];
-    g_in_select = true;
-    for (QTableView* view : s.views) {
-      if (view == nullptr || view->model() == nullptr) continue;
-      QModelIndex index = view->model()->index(row, 0);
-      if (!index.isValid()) continue;
-      view->selectionModel()->select(
-          index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-      view->scrollTo(index);
-    }
-    g_in_select = false;
-    emit_selection(path_id);
-  });
+  m.def("select_path_id", [](int path_id) { select_path_id_impl(session(), path_id); });
 
   m.def("overview_folder_count", []() {
     Session& s = session();
@@ -392,6 +573,24 @@ NB_MODULE(native_hybrid, m) {
     s.action_colours.clear();
     for (const std::string& value : colours) {
       s.action_colours.push_back(QString::fromStdString(value));
+    }
+    s.store.action_colours = s.action_colours;
+    for (TableModel* model : s.models) model->layout_refresh();
+  });
+
+  m.def("set_root_names", [](const std::string& source,
+                             const std::string& destination) {
+    Session& s = session();
+    if (s.store.root_source == source && s.store.root_dest == destination) {
+      return;
+    }
+    s.store.root_source = source;
+    s.store.root_dest = destination;
+    if (s.store.path_to_id.count(DataStore::root_path())) {
+      int root = s.store.path_to_id[DataStore::root_path()];
+      if (root < static_cast<int>(s.store.names.size())) {
+        s.store.names[root] = source;
+      }
     }
     for (TableModel* model : s.models) model->layout_refresh();
   });
@@ -476,12 +675,16 @@ NB_MODULE(native_hybrid, m) {
 
   m.def("refresh", []() {
     Session& s = session();
+    s.store.add_directories();
     s.store.rebuild_visible();
     if (s.tables_widget == nullptr) {
       // Standalone callers may not have created widgets yet.
       return;
     }
-    if (s.overview != nullptr) s.overview->build(s.store);
+    if (s.overview != nullptr) {
+      s.overview->build(s.store);
+      s.overview_view->expandToDepth(2);
+    }
     refresh_native_models(s);
     update_stats(s);
   });
@@ -525,7 +728,7 @@ NB_MODULE(native_hybrid, m) {
   m.def("set_checkstate", [](int row, int checked) {
     Session& s = session();
     if (s.models[1] == nullptr) return;
-    QModelIndex index = s.models[1]->index(row, 1);
+    QModelIndex index = s.models[1]->index(row, 4);
     s.models[1]->setData(
         index, checked ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
   });

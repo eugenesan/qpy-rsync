@@ -3944,6 +3944,14 @@ class MainWindow(QMainWindow):
             skip_directories=self._hybrid_view is not None,
         )
         if self._hybrid_view is not None:
+            import os
+
+            source = self.source_edit.text().rstrip("/")
+            destination = self.destination_edit.text().rstrip("/")
+            self._hybrid_view.set_root_names(
+                os.path.basename(source) or "Source",
+                os.path.basename(destination) or "Destination",
+            )
             self._hybrid_view.set_changes(changes)
 
     def _enable_hybrid_view(self) -> None:
@@ -3963,7 +3971,7 @@ class MainWindow(QMainWindow):
         shim = NativeOverviewShim(view.overview_widget)
         index = self.log_splitter.indexOf(self.overview)
         if index >= 0:
-            self.log_splitter.replaceWidget(index, view.overview_widget)
+            self.log_splitter.replaceWidget(index, shim)
         self.overview = shim
         shim.folder_activated.connect(self._overview_folder_activated)
         shim.exclusion_requested.connect(self._exclude_path)
@@ -3973,7 +3981,9 @@ class MainWindow(QMainWindow):
         view.on_selection_changed(self._on_native_selection)
         view.on_context_menu(self._native_context_menu)
         self._route_controls_to_native(view)
-        self.main_splitter.insertWidget(0, view.widget)
+        index = self.main_splitter.indexOf(self.comparison)
+        if index >= 0:
+            self.main_splitter.replaceWidget(index, view.widget)
         self.comparison.hide()
 
     def _route_controls_to_native(self, view) -> None:

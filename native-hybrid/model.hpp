@@ -9,6 +9,8 @@
 #include <QAbstractItemModel>
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +28,19 @@ inline DecisionHook g_decision_hook = nullptr;
 enum Action { Create = 0, Update = 1, Metadata = 2, Delete = 3, DestOnly = 4, NoChange = 5 };
 enum Decision { Inherit = 0, Include = 1, Exclude = 2 };
 
+inline QString qpy_format_size(long long bytes) {
+  static const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+  double value = static_cast<double>(bytes);
+  for (int i = 0; i < 5; ++i) {
+    if (value < 1024.0 || i == 4) {
+      if (i == 0) return QString::number(static_cast<long long>(value)) + " B";
+      return QString::number(value, 'f', 1) + " " + QString(units[i]);
+    }
+    value /= 1024.0;
+  }
+  return {};
+}
+
 struct DataStore {
   std::vector<std::string> paths;
   std::vector<int> actions;
@@ -37,6 +52,7 @@ struct DataStore {
   std::vector<int> parents;
   std::vector<int> is_dir;
   std::vector<int> depth;
+  std::vector<std::string> names;
   std::vector<std::string> folded_names;
   std::vector<std::string> folded_paths;
   std::vector<char> collapsed;
@@ -53,6 +69,17 @@ struct DataStore {
   std::vector<int> visible;
   std::vector<int> row_of_id;
   bool show_excluded = false;
+  // Folder aggregates and per-visible-row striping owned by native.
+  std::vector<long long> dir_items;
+  std::vector<long long> dir_size;
+  std::vector<char> stripe;
+  std::string root_source = "Source";
+  std::string root_dest = "Destination";
+  std::vector<QString> action_colours;
+  static const char* root_path() {
+    static const char* value = "\x01__qpy_root__";
+    return value;
+  }
 
   void generate(int count) {
     paths.clear();
@@ -140,6 +167,7 @@ struct DataStore {
       std::string name = slash == std::string::npos
                              ? path
                              : path.substr(slash + 1);
+      names[i] = name;
       folded_names[i].resize(name.size());
       for (std::size_t j = 0; j < name.size(); ++j) {
         folded_names[i][j] = static_cast<char>(
@@ -169,6 +197,7 @@ struct DataStore {
     parents.resize(count);
     is_dir.resize(count);
     depth.resize(count);
+    names.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     path_to_id.clear();
@@ -204,6 +233,7 @@ struct DataStore {
     parents.resize(count);
     is_dir.resize(count);
     depth.resize(count);
+    names.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     for (int i = start; i < count; ++i) path_to_id[paths[i]] = i;
@@ -225,6 +255,7 @@ struct DataStore {
     parents.resize(count);
     is_dir.resize(count);
     depth.resize(count);
+    names.resize(count);
     folded_names.resize(count);
     folded_paths.resize(count);
     collapsed.resize(count);
@@ -233,6 +264,116 @@ struct DataStore {
     decision_log.clear();
     visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
+  }
+
+  // Synthesize one row per parent directory plus a virtual root row, then
+  // lay the rows out in tree order (folder, its files, then its subfolders).
+  void add_directories() {
+    std::set<std::string> dirs;
+    for (const std::string& path : paths) {
+      if (path == root_path()) continue;
+      std::size_t slash = path.rfind('/');
+      std::string parent = slash == std::string::npos ? "" : path.substr(0, slash);
+      while (!parent.empty()) {
+        dirs.insert(parent);
+        std::size_t next = parent.rfind('/');
+        parent = next == std::string::npos ? "" : parent.substr(0, next);
+      }
+    }
+    const int start = static_cast<int>(paths.size());
+    for (const std::string& dir : dirs) {
+      if (path_to_id.count(dir)) continue;
+      int id = static_cast<int>(paths.size());
+      paths.push_back(dir);
+      actions.push_back(NoChange);
+      kinds.push_back(1);
+      sizes.push_back(0);
+      times.push_back("");
+      decisions.push_back(Inherit);
+      path_to_id[dir] = id;
+    }
+    int root = -1;
+    auto root_it = path_to_id.find(root_path());
+    if (root_it == path_to_id.end()) {
+      root = static_cast<int>(paths.size());
+      paths.push_back(root_path());
+      actions.push_back(NoChange);
+      kinds.push_back(1);
+      sizes.push_back(0);
+      times.push_back("");
+      decisions.push_back(Inherit);
+      path_to_id[root_path()] = root;
+    } else {
+      root = root_it->second;
+    }
+    const int count = static_cast<int>(paths.size());
+    parents.resize(count);
+    is_dir.resize(count);
+    depth.resize(count);
+    names.resize(count);
+    folded_names.resize(count);
+    folded_paths.resize(count);
+    collapsed.resize(count, 0);
+    // Re-derive every row now that the synthesized folders are in the map,
+    // so files hang off their real parent folders instead of the root.
+    derive_range(0, count);
+    // Top-level rows hang off the virtual root.
+    for (int i = 0; i < count; ++i) {
+      if (i == root) continue;
+      if (parents[i] < 0) parents[i] = root;
+    }
+    parents[root] = -1;
+    is_dir[root] = 1;
+    for (int i = 0; i < count; ++i) {
+      int d = 0;
+      int parent = parents[i];
+      while (parent >= 0 && d < 64) {
+        ++d;
+        parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
+      }
+      depth[i] = d;
+    }
+    depth[root] = 0;
+    names[root] = root_source;
+    folded_names[root] = root_source;
+    folded_paths[root] = root_source;
+    compute_aggregates();
+    visible = tree_order();
+    row_of_id.assign(count, -1);
+    for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
+      row_of_id[visible[row]] = row;
+    }
+    compute_stripes();
+  }
+
+  void compute_aggregates() {
+    dir_items.assign(paths.size(), 0);
+    dir_size.assign(paths.size(), 0);
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      if (i < static_cast<int>(is_dir.size()) && is_dir[i]) continue;
+      long long size = i < static_cast<int>(sizes.size()) ? sizes[i] : 0;
+      int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+      while (parent >= 0) {
+        dir_items[parent] += 1;
+        dir_size[parent] += size;
+        parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
+      }
+    }
+  }
+
+  void compute_stripes() {
+    stripe.assign(visible.size(), 0);
+    int counter = 0;
+    for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
+      int id = visible[row];
+      if (id < static_cast<int>(is_dir.size()) && is_dir[id]) {
+        counter = 0;
+        stripe[row] = 0;
+      } else {
+        stripe[row] = static_cast<char>(counter % 2);
+        ++counter;
+      }
+    }
   }
 
   void set_collapsed(int path_id, bool value) {
@@ -289,9 +430,49 @@ struct DataStore {
     return false;
   }
 
+  std::vector<int> tree_order() const {
+    std::vector<std::vector<int>> children(paths.size());
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+      if (parent >= 0 && parent < static_cast<int>(children.size())) {
+        children[parent].push_back(i);
+      }
+    }
+    int root = -1;
+    auto it = path_to_id.find(root_path());
+    if (it != path_to_id.end()) root = it->second;
+    std::vector<int> order;
+    std::function<void(int)> walk = [&](int id) {
+      for (int child : children[id]) {
+        if (child < static_cast<int>(is_dir.size()) && is_dir[child]) {
+          order.push_back(child);
+          walk(child);
+        }
+      }
+      for (int child : children[id]) {
+        if (!(child < static_cast<int>(is_dir.size()) && is_dir[child])) {
+          order.push_back(child);
+        }
+      }
+    };
+    if (root >= 0) {
+      order.push_back(root);
+      walk(root);
+    }
+    if (order.size() != paths.size()) {
+      std::vector<char> seen(paths.size(), 0);
+      for (int id : order) seen[id] = 1;
+      for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+        if (!seen[i]) order.push_back(i);
+      }
+    }
+    return order;
+  }
+
   void rebuild_visible() {
     visible.clear();
     row_of_id.assign(paths.size(), -1);
+    std::vector<int> order = tree_order();
     std::vector<char> matched(paths.size(), 0);
     if (include_contents) {
       for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
@@ -308,7 +489,14 @@ struct DataStore {
         }
       }
     }
-    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+    int root_id = -1;
+    auto root_it = path_to_id.find(root_path());
+    if (root_it != path_to_id.end()) root_id = root_it->second;
+    for (int i : order) {
+      if (i == root_id) {
+        visible.push_back(i);
+        continue;
+      }
       if (!show_excluded && decisions[i] == Exclude) continue;
       bool path_ok = matches(i);
       if (!path_ok && include_contents) {
@@ -323,9 +511,7 @@ struct DataStore {
       visible.push_back(i);
     }
     if (sort_column == 0) {
-      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
-        return paths[a] < paths[b];
-      });
+      // Column 0 is the natural folder-tree order built by add_directories().
     } else if (sort_column == 1) {
       std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
         return actions[a] < actions[b];
@@ -339,6 +525,7 @@ struct DataStore {
     for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
       row_of_id[visible[row]] = row;
     }
+    compute_stripes();
   }
 
   // Fast path for a single decision edit: update the visible vector without
@@ -412,61 +599,78 @@ class TableModel : public QAbstractTableModel {
   }
 
   int columnCount(const QModelIndex& parent = QModelIndex()) const override {
-    return parent.isValid() ? 0 : 3;
+    return parent.isValid() ? 0 : 11;
   }
 
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
     if (!index.isValid()) return {};
+    int row = index.row();
+    if (row < 0 || row >= static_cast<int>(store_->visible.size())) return {};
+    int id = store_->visible[row];
     if (role == Qt::CheckStateRole) {
-      if (pane_ == 1 && index.column() == 1) {
-        int row = index.row();
-        if (row < 0 || row >= static_cast<int>(store_->visible.size())) return {};
-        int path_id = store_->visible[row];
-        return store_->decisions[path_id] == Exclude
-                   ? Qt::Unchecked : Qt::Checked;
+      if (pane_ == 1 && index.column() == 4) {
+        return store_->decisions[id] == Exclude ? Qt::Unchecked : Qt::Checked;
+      }
+      return {};
+    }
+    if (role == Qt::ForegroundRole) {
+      if (pane_ == 1) return {};
+      const int action = id < static_cast<int>(store_->actions.size())
+                             ? store_->actions[id] : NoChange;
+      if (action >= 0 && action < static_cast<int>(store_->action_colours.size())) {
+        const QString hex = store_->action_colours[action];
+        if (!hex.isEmpty()) return QColor(hex);
+      }
+      if (id < static_cast<int>(store_->decisions.size()) &&
+          store_->decisions[id] == Exclude) {
+        return QColor("#9CA3AF");
       }
       return {};
     }
     if (role != Qt::DisplayRole) return {};
-    const int row = index.row();
-    if (row < 0 || row >= static_cast<int>(store_->visible.size())) return {};
-    const int record = store_->visible[row];
     const int column = index.column();
-    if (pane_ == 0) {  // Source: name, size, modified
-      if (column == 0) return QString::fromStdString(store_->paths[record]);
-      if (column == 1) return QString::number(store_->sizes[record]);
-      return QString::fromStdString(
-          record < static_cast<int>(store_->times.size())
-              ? store_->times[record] : std::string());
-    }
-    if (pane_ == 1) {  // Action: action, decision, reason
-      if (column == 0) return action_name(store_->actions[record]);
-      if (column == 1) {
-        return store_->decisions[record] == Exclude
-                   ? QString("excluded") : QString("included");
+    const std::string& path = store_->paths[id];
+    const std::string time = id < static_cast<int>(store_->times.size())
+                                 ? store_->times[id] : std::string();
+    const bool is_dir = id < static_cast<int>(store_->is_dir.size()) && store_->is_dir[id];
+    const bool is_root = path == DataStore::root_path();
+    if (column == 0 || column == 5) {
+      if (is_root) {
+        return QString::fromStdString(pane_ == 0 ? store_->root_source : store_->root_dest);
       }
-      return QString("selection");
+      return QString::fromStdString(
+          id < static_cast<int>(store_->names.size()) ? store_->names[id] : path);
     }
-    // Destination: path, size, modified (same values until metadata is handed over).
-    if (column == 0) return QString::fromStdString(store_->paths[record]);
-    if (column == 1) return QString::number(store_->sizes[record]);
-    return QString::fromStdString(
-        record < static_cast<int>(store_->times.size())
-            ? store_->times[record] : std::string());
+    if (column == 1 || column == 6) {
+      if (is_dir && id < static_cast<int>(store_->dir_items.size())) {
+        return QVariant(static_cast<qlonglong>(store_->dir_items[id]));
+      }
+      return 0;
+    }
+    if (column == 2 || column == 7) {
+      long long size = (is_dir && id < static_cast<int>(store_->dir_size.size()))
+                           ? store_->dir_size[id]
+                           : (id < static_cast<int>(store_->sizes.size())
+                                  ? store_->sizes[id] : 0);
+      return qpy_format_size(size);
+    }
+    if (column == 3 || column == 8) return QString::fromStdString(time);
+    if (column == 9 || column == 10) {
+      return QVariant(static_cast<qlonglong>(
+          id < static_cast<int>(store_->sizes.size()) ? store_->sizes[id] : 0));
+    }
+    if (column == 4) {
+      return QString::fromStdString(action_label(store_->actions[id]));
+    }
+    return {};
   }
 
   QVariant headerData(int section, Qt::Orientation, int role) const override {
     if (role != Qt::DisplayRole) return {};
-    if (pane_ == 0) {
-      return section == 0 ? QString("Name")
-                          : (section == 1 ? QString("Size") : QString("Modified"));
-    }
-    if (pane_ == 1) {
-      return section == 0 ? QString("Action")
-                          : (section == 1 ? QString("Decision") : QString("Reason"));
-    }
-    return section == 0 ? QString("Path")
-                        : (section == 1 ? QString("Size") : QString("Modified"));
+    static const char* headers[11] = {
+        "Item", "Items", "Size", "Modified", "Actions",
+        "Item", "Items", "Size", "Modified", "Size (bytes)", "Size (bytes)"};
+    return section >= 0 && section < 11 ? QString(headers[section]) : QString();
   }
 
   void reset() {
@@ -477,7 +681,7 @@ class TableModel : public QAbstractTableModel {
   void layout_refresh() { emit layoutChanged(); }
 
   Qt::ItemFlags flags(const QModelIndex& index) const override {
-    if (pane_ == 1 && index.column() == 1 && index.isValid()) {
+    if (pane_ == 1 && index.column() == 4 && index.isValid()) {
       return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable;
     }
     return QAbstractTableModel::flags(index);
@@ -485,7 +689,7 @@ class TableModel : public QAbstractTableModel {
 
   bool setData(const QModelIndex& index, const QVariant& value,
                int role = Qt::EditRole) override {
-    if (pane_ != 1 || index.column() != 1 || role != Qt::CheckStateRole) {
+    if (pane_ != 1 || index.column() != 4 || role != Qt::CheckStateRole) {
       return false;
     }
     int row = index.row();
@@ -500,6 +704,17 @@ class TableModel : public QAbstractTableModel {
   }
 
  private:
+  static std::string action_label(int action) {
+    switch (action) {
+      case Create: return "new";
+      case Update: return "updated";
+      case Metadata: return "metadata";
+      case Delete: return "delete";
+      case DestOnly: return "destination only";
+      default: return "unchanged";
+    }
+  }
+
   static QString action_name(int action) {
     switch (action) {
       case Create: return QString("new");
@@ -518,6 +733,7 @@ class TableModel : public QAbstractTableModel {
 
 struct OverviewNode {
   std::string name;
+  std::string path;
   int count = 0;
   long long size = 0;
   long long total_count = 0;
@@ -529,7 +745,7 @@ struct OverviewNode {
 class OverviewModel : public QAbstractItemModel {
  public:
   explicit OverviewModel(QObject* parent = nullptr) : QAbstractItemModel(parent) {
-    root_ = new OverviewNode{"", 0, 0, 0, 0, nullptr, {}};
+    root_ = new OverviewNode{"", "", 0, 0, 0, 0, nullptr, {}};
     nodes_.push_back(root_);
   }
 
@@ -541,19 +757,16 @@ class OverviewModel : public QAbstractItemModel {
     beginResetModel();
     for (OverviewNode* node : nodes_) delete node;
     nodes_.clear();
-    root_ = new OverviewNode{"", 0, 0, 0, 0, nullptr, {}};
+    root_ = new OverviewNode{"", "", 0, 0, 0, 0, nullptr, {}};
     nodes_.push_back(root_);
-    auto* total = new OverviewNode{"Total", 0, 0, 0, 0, root_, {}};
+    auto* total = new OverviewNode{"Total", "", 0, 0, 0, 0, root_, {}};
     root_->children.push_back(total);
     nodes_.push_back(total);
-    auto* base = new OverviewNode{"All folders", 0, 0, 0, 0, total, {}};
-    total->children.push_back(base);
-    nodes_.push_back(base);
 
-    // One folder node per distinct first path component, as the real
-    // overview does for its 30k folders.
+    // One folder node per distinct first path component, counting files only.
     std::unordered_map<std::string, OverviewNode*> folders;
     for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) {
+      if (i < static_cast<int>(store.is_dir.size()) && store.is_dir[i]) continue;
       const std::string& path = store.paths[i];
       auto slash = path.find('/');
       if (slash == std::string::npos) continue;
@@ -561,14 +774,23 @@ class OverviewModel : public QAbstractItemModel {
       if (name.empty()) continue;
       OverviewNode*& folder = folders[name];
       if (folder == nullptr) {
-        folder = new OverviewNode{name, 0, 0, 0, 0, base, {}};
-        base->children.push_back(folder);
+        folder = new OverviewNode{name, path.substr(0, slash), 0, 0, 0, 0, root_, {}};
+        root_->children.push_back(folder);
         nodes_.push_back(folder);
       }
       ++folder->count;
-      folder->size += store.sizes[i];
+      folder->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
     }
+    std::sort(root_->children.begin() + 1, root_->children.end(),
+              [](const OverviewNode* a, const OverviewNode* b) {
+                if (a->size != b->size) return a->size > b->size;
+                return a->name > b->name;
+              });
     compute_totals(root_);
+    // The Total row carries the aggregate of the whole comparison.
+    total->total_count = root_->total_count;
+    total->total_size = root_->total_size;
+    grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
     endResetModel();
   }
 
@@ -577,7 +799,7 @@ class OverviewModel : public QAbstractItemModel {
     return static_cast<int>(node(parent)->children.size());
   }
 
-  int columnCount(const QModelIndex&) const override { return 3; }
+  int columnCount(const QModelIndex&) const override { return 4; }
 
   QModelIndex index(int row, int column,
                     const QModelIndex& parent = QModelIndex()) const override {
@@ -599,12 +821,31 @@ class OverviewModel : public QAbstractItemModel {
     return createIndex(row, 0, parent);
   }
 
+  QVariant headerData(int section, Qt::Orientation, int role) const override {
+    if (role != Qt::DisplayRole) return {};
+    static const char* headers[4] = {"Item", "Share", "Items", "Size"};
+    return section >= 0 && section < 4 ? QString(headers[section]) : QString();
+  }
+
   QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
-    if (!index.isValid() || role != Qt::DisplayRole) return {};
+    if (!index.isValid()) return {};
     OverviewNode* item = node(index);
-    if (index.column() == 0) return QString::fromStdString(item->name);
-    if (index.column() == 1) return QString::number(item->total_count);
-    return QString::number(item->total_size);
+    if (role == Qt::UserRole) return QString::fromStdString(item->path);
+    if (role == Qt::TextAlignmentRole && index.column() > 0) {
+      return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
+    }
+    if (role != Qt::DisplayRole) return {};
+    switch (index.column()) {
+      case 0: return QString::fromStdString(item->name);
+      case 1: {
+        int share = static_cast<int>(
+            item->total_count * 100.0 / static_cast<double>(grand_total_) + 0.5);
+        return QString::number(share) + "%";
+      }
+      case 2: return QVariant(static_cast<qlonglong>(item->total_count));
+      case 3: return qpy_format_size(item->total_size);
+    }
+    return {};
   }
 
  private:
@@ -626,6 +867,7 @@ class OverviewModel : public QAbstractItemModel {
 
   std::vector<OverviewNode*> nodes_;
   OverviewNode* root_ = nullptr;
+  long long grand_total_ = 1;
 };
 
 #endif  // QPY_NATIVE_QT_MODEL_HPP

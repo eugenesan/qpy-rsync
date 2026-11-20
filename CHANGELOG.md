@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Hybrid views now match the Python comparison layout: folder tree rows with
+  aggregates, painted file/folder icons, action colours, group stripes and a
+  compact Actions pane with a checkbox and action glyph.
+- The native overview now has Item / Share / Items / Size columns, a total
+  row with real aggregates, a stats footer and double-click-to-jump into the
+  comparison lists.
 - Hybrid table views now use native delegates for action colours, stripes,
   excluded dimming and folder chevrons, with a fixed-width Action pane and
   context menus wired to external tools.

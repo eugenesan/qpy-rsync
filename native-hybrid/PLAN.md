@@ -50,12 +50,16 @@ Work needed:
 This is a contained change to the bridge and the two wrappers; no changes to
 data ownership.
 
-## 2. Table panes matching the Python view — DONE (first pass)
+## 2. Table panes matching the Python view — DONE
 
-Native delegates now paint action colours, alternating stripes, excluded
-dimming, folder chevrons/indentation; the Action pane has a fixed width and
-native context menus reach the existing external-tool and diff actions.
-Icons and exact status colours still need a visual comparison pass.
+The native tables now mirror the Python layout: a wide Item column, Items and
+human-readable Size columns, a virtual root plus synthesized folder rows with
+aggregates, painted folder/file icons, fold chevrons, directory rules, group
+stripes and action colours. The Action pane shows a decision checkbox plus a
+coloured action glyph with no text or wasted width. The overview has Item /
+Share / Items / Size columns, a Total row, correct aggregates and a stats
+footer; double-clicking a folder selects that row in the three lists. Native
+context menus reach the existing external-tool and diff actions.
 
 Original scope for reference:
 

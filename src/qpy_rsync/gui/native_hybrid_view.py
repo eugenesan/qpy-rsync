@@ -11,7 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 _NATIVE_ACTION_CODE = {
     "create": 0,
@@ -81,6 +82,9 @@ class NativeHybridView:
 
     def on_context_menu(self, callback) -> None:
         self._native.set_context_callback(callback)
+
+    def set_root_names(self, source: str, destination: str) -> None:
+        self._native.set_root_names(source, destination)
 
     def set_action_colours(self) -> None:
         from qpy_rsync.core.changes import ChangeAction
@@ -215,8 +219,8 @@ class NativeHybridView:
         return [tuple(pair) for pair in self._native.decision_diff()]
 
 
-class NativeOverviewShim(QObject):
-    """Drop-in for OverviewPane when the native overview owns the display."""
+class NativeOverviewShim(QWidget):
+    """Real QWidget wrapper for the native overview (drop-in for OverviewPane)."""
 
     folder_activated = Signal(str)
     exclusion_requested = Signal(str)
@@ -226,7 +230,11 @@ class NativeOverviewShim(QObject):
     def __init__(self, widget: QWidget) -> None:
         super().__init__()
         self.tree = widget
-        self._widget = widget
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(widget)
+        widget.setMinimumHeight(160)
+        self.setMinimumHeight(180)
 
     def set_paths(self, *_args, **_kwargs) -> None:
         pass
@@ -236,21 +244,3 @@ class NativeOverviewShim(QObject):
 
     def set_statistics(self, *_args, **_kwargs) -> None:
         pass
-
-    def minimumWidth(self) -> int:
-        return int(self._widget.minimumWidth())
-
-    def setMinimumWidth(self, width: int) -> None:
-        self._widget.setMinimumWidth(width)
-
-    def width(self) -> int:
-        return int(self._widget.width())
-
-    def setParent(self, parent) -> None:
-        self._widget.setParent(parent)
-
-    def show(self) -> None:
-        self._widget.show()
-
-    def hide(self) -> None:
-        self._widget.hide()

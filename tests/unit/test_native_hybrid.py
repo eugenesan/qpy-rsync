@@ -24,7 +24,9 @@ def test_native_view_handoff_and_decision_diff() -> None:
     ]
     view = NativeHybridView()
     view.set_changes(changes)
-    assert view.row_count() == 30
+    # The native view adds one row per synthesized folder (d0..d2) plus the
+    # virtual root on top of the 30 change rows.
+    assert view.row_count() == 34
     before = view.decision_diff()
     view.set_checkstate(4, False)
     after = view.decision_diff()
