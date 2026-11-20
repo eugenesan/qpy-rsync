@@ -4528,6 +4528,10 @@ class MainWindow(QMainWindow):
 
     def _inventory_after_compare_changed(self, checked: bool) -> None:
         """The auto-inventory choice is now part of the current profile."""
+        with timed("ui.inventory_toggle", checked=checked):
+            self._inventory_toggle_body(checked)
+
+    def _inventory_toggle_body(self, checked: bool) -> None:
         self._refresh_profile_marker()
         if not checked:
             # Disabling is only a profile setting. Stop a listing already in
