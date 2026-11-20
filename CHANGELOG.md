@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Hybrid comparison views now use the desktop palette for row striping, so
+  dark themes no longer show inverted white bands.
+- Removed the empty space between the Actions pane and the destination list;
+  the pane shows the full "Actions" header, and no view has blank space after
+  its last column.
+- Folders in the native lists are collapsible by clicking their chevron, with
+  consistent cursors across the Source, Action and Destination panes.
+- Native lists carry the full Python context menu (copy/open, diff, decisions,
+  filters, external tools, folding), item tooltips, and a header menu for
+  showing/hiding columns and switching Size ↔ Size (bytes).
+- Ported the list keyboard shortcuts: Home/End, Left/Right, Ctrl+Up/Down,
+  Space, Ctrl+S/D/N/W pane focus and Alt+Return/Ctrl+T context menu.
+- The overview now paints share bars, has a stats footer, a stretching Item
+  column, and double-clicking a folder jumps to it in all three lists.
+- Showing the unchanged items no longer silently turns on the persistent
+  "Inventory after comparison" button.
+
 - Hybrid views now match the Python comparison layout: folder tree rows with
   aggregates, painted file/folder icons, action colours, group stripes and a
   compact Actions pane with a checkbox and action glyph.

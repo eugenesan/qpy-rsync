@@ -79,6 +79,14 @@ Selection parity: expose `selected_path()` (already done) and connect it to
 the existing external-tool and confirmation-dialog code paths in MainWindow;
 currently the value is reported to Python but unused.
 
+## 3. Parity follow-up — DONE (first pass)
+
+- Palette-based striping for dark themes; no trailing blank space in any view.
+- Chevron folding, synchronized cursors, full row and header context menus,
+  item tooltips and the Python list keyboard shortcuts are all wired.
+- Overview share bars, stretching Item column and working jump-to-folder.
+- Show-unchanged no longer flips the persistent inventory button on.
+
 ## 3. Search and filters
 
 - Jump search including the `dir/` variant is working (fixed by deriving

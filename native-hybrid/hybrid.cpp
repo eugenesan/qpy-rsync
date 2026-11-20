@@ -17,7 +17,9 @@
 #include <QFontMetrics>
 #include <QHeaderView>
 #include <QItemSelectionModel>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QStyledItemDelegate>
@@ -62,9 +64,11 @@ using ContextHook = void (*)(int pane, const char* path, int x, int y);
 inline SelectionHook g_selection_hook = nullptr;
 inline DecisionHook g_native_decision_hook = nullptr;
 inline bool g_in_select = false;
+inline bool g_in_sync = false;
 inline nb::object g_selection_callback;
 inline nb::object g_decision_callback;
 inline nb::object g_context_callback;
+inline nb::object g_header_context_callback;
 
 void emit_selection(int path_id) {
   if (!g_in_select && g_selection_hook != nullptr) g_selection_hook(path_id);
@@ -97,6 +101,15 @@ void context_hook(int pane, const char* path, int x, int y) {
   }
 }
 
+void header_context_hook(int pane, int x, int y) {
+  if (!g_header_context_callback.is_valid()) return;
+  nb::gil_scoped_acquire gil;
+  try {
+    g_header_context_callback(pane, x, y);
+  } catch (...) {
+  }
+}
+
 void refresh_native_models(Session& s) {
   int positions[3] = {0, 0, 0};
   for (int i = 0; i < 3; ++i) {
@@ -122,16 +135,198 @@ void select_path_id_impl(Session& s, int path_id) {
     if (!index.isValid()) continue;
     view->selectionModel()->select(
         index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-    view->scrollTo(index);
+    view->setCurrentIndex(index);
+    view->scrollTo(index, QAbstractItemView::PositionAtCenter);
   }
   g_in_select = false;
   emit_selection(path_id);
 }
 
+class OverviewDelegate : public QStyledItemDelegate {
+ public:
+  explicit OverviewDelegate(QObject* parent = nullptr)
+      : QStyledItemDelegate(parent) {}
+
+  void paint(QPainter* painter, const QStyleOptionViewItem& option,
+             const QModelIndex& index) const override {
+    if (index.column() != 1) {
+      QStyledItemDelegate::paint(painter, option, index);
+      return;
+    }
+    QStyleOptionViewItem blank(option);
+    blank.text.clear();
+    blank.icon = QIcon();
+    blank.state &= ~(QStyle::State_HasFocus | QStyle::State_MouseOver);
+    const QWidget* widget = blank.widget;
+    QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
+    style->drawPrimitive(QStyle::PE_PanelItemViewItem, &blank, painter, widget);
+
+    const QString text = index.data(Qt::DisplayRole).toString();
+    const double share = index.data(Qt::UserRole + 20).toDouble();
+    if (share > 0.0) {
+      QColor color("#0891B2");
+      color.setAlpha(120);
+      const int width = static_cast<int>(option.rect.width() * qMin(1.0, share));
+      painter->fillRect(option.rect.left(), option.rect.top(), width,
+                        option.rect.height(), color);
+    }
+    painter->save();
+    QColor color = (option.state & QStyle::State_Selected)
+                       ? option.palette.color(QPalette::HighlightedText)
+                       : option.palette.color(QPalette::Text);
+    painter->setPen(color);
+    painter->drawText(option.rect.adjusted(4, 0, -4, 0),
+                      Qt::AlignLeft | Qt::AlignVCenter, text);
+    painter->restore();
+  }
+};
+
+class HybridKeyFilter : public QObject {
+ public:
+  explicit HybridKeyFilter(QObject* parent = nullptr) : QObject(parent) {}
+
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() != QEvent::KeyPress) return false;
+    auto* key = static_cast<QKeyEvent*>(event);
+    Session& s = session();
+    int pane = -1;
+    for (int i = 0; i < 3; ++i) {
+      if (s.views[i] == watched) pane = i;
+    }
+    if (pane < 0) return false;
+    const int row = s.views[pane]->currentIndex().row();
+    const DataStore& store = s.store;
+    if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
+    const int id = store.visible[row];
+    const int keyval = key->key();
+
+    if (keyval == Qt::Key_Home || keyval == Qt::Key_End) {
+      const bool last = keyval == Qt::Key_End;
+      for (int r = last ? static_cast<int>(store.visible.size()) - 1 : 0;
+           last ? r >= 0 : r < static_cast<int>(store.visible.size());
+           last ? --r : ++r) {
+        const int candidate = store.visible[r];
+        if (!(candidate < static_cast<int>(store.is_dir.size()) &&
+              store.is_dir[candidate])) {
+          select_path_id_impl(s, candidate);
+          return true;
+        }
+      }
+      return true;
+    }
+    if (keyval == Qt::Key_Space) {
+      QModelIndex index = s.models[1]->index(row, 4);
+      const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
+      s.models[1]->setData(index, checked ? Qt::Checked : Qt::Unchecked,
+                           Qt::CheckStateRole);
+      return true;
+    }
+    if (key->modifiers() & Qt::ControlModifier) {
+      if (keyval == Qt::Key_Up) {
+        int parent = id < static_cast<int>(store.parents.size())
+                         ? store.parents[id] : -1;
+        while (parent >= 0 && parent < static_cast<int>(store.row_of_id.size()) &&
+               store.row_of_id[parent] < 0) {
+          parent = parent < static_cast<int>(store.parents.size())
+                       ? store.parents[parent] : -1;
+        }
+        if (parent >= 0) select_path_id_impl(s, parent);
+        return true;
+      }
+      if (keyval == Qt::Key_Down) {
+        for (int r = row + 1; r < static_cast<int>(store.visible.size()); ++r) {
+          const int candidate = store.visible[r];
+          int parent = candidate < static_cast<int>(store.parents.size())
+                           ? store.parents[candidate] : -1;
+          while (parent >= 0 && parent != id) {
+            parent = parent < static_cast<int>(store.parents.size())
+                         ? store.parents[parent] : -1;
+          }
+          if (parent == id) {
+            select_path_id_impl(s, candidate);
+            return true;
+          }
+        }
+        return true;
+      }
+      return false;
+    }
+    if (keyval == Qt::Key_Left || keyval == Qt::Key_Right) {
+      const bool is_dir = id < static_cast<int>(store.is_dir.size()) &&
+                          store.is_dir[id];
+      const bool root = store.paths[id] == DataStore::root_path();
+      if (is_dir && !root) {
+        const bool collapsed = id < static_cast<int>(store.collapsed.size()) &&
+                               store.collapsed[id];
+        if (keyval == Qt::Key_Left) {
+          if (!collapsed) {
+            toggle_collapse(s, id);
+          } else {
+            const int parent = store.parents[id];
+            if (parent >= 0) select_path_id_impl(s, parent);
+          }
+          return true;
+        }
+        if (collapsed) {
+          toggle_collapse(s, id);
+          return true;
+        }
+        if (row + 1 < static_cast<int>(store.visible.size())) {
+          const int child = store.visible[row + 1];
+          const int parent = child < static_cast<int>(store.parents.size())
+                                 ? store.parents[child] : -1;
+          if (parent == id) {
+            select_path_id_impl(s, child);
+          }
+        }
+        return true;
+      }
+      if (keyval == Qt::Key_Left) {
+        const int parent = id < static_cast<int>(store.parents.size())
+                               ? store.parents[id] : -1;
+        if (parent >= 0) select_path_id_impl(s, parent);
+      }
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  static void toggle_collapse(Session& s, int id) {
+    s.store.collapsed[id] = s.store.collapsed[id] ? 0 : 1;
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  }
+};
+
 class HybridDelegate : public QStyledItemDelegate {
  public:
   HybridDelegate(Session* session, int pane, QObject* parent = nullptr)
       : QStyledItemDelegate(parent), session_(session), pane_(pane) {}
+
+  bool editorEvent(QEvent* event, QAbstractItemModel*,
+                   const QStyleOptionViewItem& option,
+                   const QModelIndex& index) override {
+    if (event->type() != QEvent::MouseButtonPress) return false;
+    auto* mouse = static_cast<QMouseEvent*>(event);
+    if (mouse->button() != Qt::LeftButton) return false;
+    Session& s = *session_;
+    const DataStore& store = s.store;
+    const int row = index.row();
+    if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
+    const int id = store.visible[row];
+    if (!(id < static_cast<int>(store.is_dir.size()) && store.is_dir[id])) {
+      return false;
+    }
+    const int depth = id < static_cast<int>(store.depth.size()) ? store.depth[id] : 0;
+    QRect hit(option.rect.left() + 4 + depth * 14 - 1,
+              option.rect.center().y() - 5, 10, 10);
+    if (!hit.contains(mouse->pos())) return false;
+    s.store.collapsed[id] = s.store.collapsed[id] ? 0 : 1;
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+    return true;
+  }
 
   void paint(QPainter* painter, const QStyleOptionViewItem& option,
              const QModelIndex& index) const override {
@@ -214,7 +409,7 @@ class HybridDelegate : public QStyledItemDelegate {
     blank.text.clear();
     blank.icon = QIcon();
     blank.state &= ~(QStyle::State_HasFocus | QStyle::State_MouseOver);
-    if (striped) painter->fillRect(blank.rect, QColor("#F1F3F5"));
+    if (striped) blank.features |= QStyleOptionViewItem::Alternate;
     const QWidget* widget = blank.widget;
     QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
     style->drawPrimitive(QStyle::PE_PanelItemViewItem, &blank, painter, widget);
@@ -348,15 +543,27 @@ QWidget* ensure_tables_widget(Session& s) {
     views[2]->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Fixed);
     views[2]->horizontalHeader()->resizeSection(7, 96);
     views[1]->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
-    views[1]->horizontalHeader()->resizeSection(4, 72);
+    views[1]->horizontalHeader()->resizeSection(4, 70);
     for (QTableView* view : views) {
       view->horizontalHeader()->setFixedHeight(
           qMax(16, view->fontMetrics().height() + 2));
       view->setAlternatingRowColors(false);
     }
     for (int i = 0; i < 3; ++i) {
+      views[i]->installEventFilter(new HybridKeyFilter(views[i]));
       views[i]->setItemDelegate(new HybridDelegate(&s, i, s.tables_widget));
       views[i]->setContextMenuPolicy(Qt::CustomContextMenu);
+      if (i != 1) {
+        QHeaderView* header = views[i]->horizontalHeader();
+        header->setContextMenuPolicy(Qt::CustomContextMenu);
+        QObject::connect(
+            header, &QHeaderView::customContextMenuRequested,
+            [i](const QPoint& pos) {
+              Session& current = session();
+              QPoint global = current.views[i]->horizontalHeader()->mapToGlobal(pos);
+              header_context_hook(i, global.x(), global.y());
+            });
+      }
       QObject::connect(
           views[i], &QTableView::customContextMenuRequested,
           [i](const QPoint& pos) {
@@ -393,13 +600,36 @@ QWidget* ensure_tables_widget(Session& s) {
             }
           });
     }
+    // Keep the focus row and selection aligned across the three panes.
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+        if (i == j) continue;
+        QObject::connect(
+            views[i]->selectionModel(), &QItemSelectionModel::currentChanged,
+            [j](const QModelIndex& current, const QModelIndex&) {
+              if (g_in_select || g_in_sync || !current.isValid()) return;
+              Session& s = session();
+              QTableView* target = s.views[j];
+              if (target == nullptr || target->model() == nullptr) return;
+              QModelIndex index = target->model()->index(current.row(), 0);
+              if (!index.isValid()) return;
+              g_in_sync = true;
+              target->setCurrentIndex(index);
+              target->selectionModel()->select(
+                  index, QItemSelectionModel::ClearAndSelect |
+                             QItemSelectionModel::Rows);
+              g_in_sync = false;
+            });
+      }
+    }
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 0);
     splitter->setStretchFactor(2, 1);
+    splitter->setSizes({900, 80, 900});
     QSizePolicy policy = views[1]->sizePolicy();
     policy.setHorizontalPolicy(QSizePolicy::Fixed);
     views[1]->setSizePolicy(policy);
-    views[1]->setFixedWidth(72);
+    views[1]->setFixedWidth(88);
     s.tables_widget->setMinimumWidth(700);
   }
   return s.tables_widget;
@@ -416,6 +646,9 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->setUniformRowHeights(true);
     s.overview_view->setAlternatingRowColors(true);
     s.overview_view->setRootIsDecorated(true);
+    s.overview = new OverviewModel(s.overview_widget);
+    s.overview_view->setModel(s.overview);
+    s.overview_view->setItemDelegate(new OverviewDelegate(s.overview_widget));
     s.overview_view->header()->setStretchLastSection(false);
     s.overview_view->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     s.overview_view->header()->setSectionResizeMode(1, QHeaderView::Fixed);
@@ -424,13 +657,11 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->header()->resizeSection(2, 64);
     s.overview_view->header()->setSectionResizeMode(3, QHeaderView::Fixed);
     s.overview_view->header()->resizeSection(3, 84);
-    s.overview = new OverviewModel(s.overview_widget);
-    s.overview_view->setModel(s.overview);
     s.overview_view->expandToDepth(2);
     layout->addWidget(s.overview_view);
     layout->addWidget(s.stats_label);
     QObject::connect(
-        s.overview_view, &QTreeView::doubleClicked,
+        s.overview_view, &QTreeView::activated,
         [](const QModelIndex& index) {
           Session& current = session();
           QString path = current.overview->data(index, Qt::UserRole).toString();
@@ -509,6 +740,7 @@ NB_MODULE(native_hybrid, m) {
     g_selection_callback = nb::object();
     g_decision_callback = nb::object();
     g_context_callback = nb::object();
+    g_header_context_callback = nb::object();
   });
 
   m.def("debug_row_of_id", [](int path_id) {
@@ -525,6 +757,30 @@ NB_MODULE(native_hybrid, m) {
   });
 
   m.def("select_path_id", [](int path_id) { select_path_id_impl(session(), path_id); });
+
+  m.def("select_path", [](const std::string& path) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it == s.store.path_to_id.end()) return;
+    const int id = it->second;
+    bool changed = false;
+    int parent = id < static_cast<int>(s.store.parents.size())
+                     ? s.store.parents[id] : -1;
+    while (parent >= 0) {
+      if (parent < static_cast<int>(s.store.collapsed.size()) &&
+          s.store.collapsed[parent]) {
+        s.store.collapsed[parent] = 0;
+        changed = true;
+      }
+      parent = parent < static_cast<int>(s.store.parents.size())
+                   ? s.store.parents[parent] : -1;
+    }
+    if (changed) {
+      s.store.rebuild_visible();
+      for (TableModel* model : s.models) model->reset();
+    }
+    select_path_id_impl(s, id);
+  });
 
   m.def("overview_folder_count", []() {
     Session& s = session();
@@ -566,6 +822,98 @@ NB_MODULE(native_hybrid, m) {
 
   m.def("set_context_callback", [](nb::object callback) {
     g_context_callback = callback;
+  });
+
+  m.def("set_header_context_callback", [](nb::object callback) {
+    g_header_context_callback = callback;
+  });
+
+  m.def("set_column_hidden", [](int pane, int column, bool hidden) {
+    Session& s = session();
+    if (pane >= 0 && pane < 3 && s.views[pane] != nullptr) {
+      s.views[pane]->setColumnHidden(column, hidden);
+    }
+  });
+
+  m.def("is_column_hidden", [](int pane, int column) {
+    Session& s = session();
+    return pane >= 0 && pane < 3 && s.views[pane] != nullptr
+               ? s.views[pane]->isColumnHidden(column) : true;
+  });
+
+  m.def("collapse_all", [](bool value) {
+    Session& s = session();
+    for (std::size_t i = 0; i < s.store.collapsed.size(); ++i) {
+      s.store.collapsed[i] = value ? 1 : 0;
+    }
+    auto root_it = s.store.path_to_id.find(DataStore::root_path());
+    if (root_it != s.store.path_to_id.end() &&
+        root_it->second < static_cast<int>(s.store.collapsed.size())) {
+      s.store.collapsed[root_it->second] = 0;
+    }
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  });
+
+  m.def("decision_for_path", [](const std::string& path) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it == s.store.path_to_id.end()) return 0;
+    const int id = it->second;
+    return id < static_cast<int>(s.store.decisions.size())
+               ? s.store.decisions[id] : 0;
+  });
+
+  m.def("is_collapsed_by_path", [](const std::string& path) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it == s.store.path_to_id.end()) return false;
+    const int id = it->second;
+    return id < static_cast<int>(s.store.collapsed.size()) &&
+           s.store.collapsed[id] != 0;
+  });
+
+  m.def("is_directory_by_path", [](const std::string& path) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it == s.store.path_to_id.end()) return false;
+    const int id = it->second;
+    return id < static_cast<int>(s.store.is_dir.size()) && s.store.is_dir[id] != 0;
+  });
+
+  m.def("path_id_for_path", [](const std::string& path) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    return it != s.store.path_to_id.end() ? it->second : -1;
+  });
+
+  m.def("reset_decisions", [](const std::string& prefix, bool subtree) {
+    Session& s = session();
+    for (int i = 0; i < static_cast<int>(s.store.decisions.size()); ++i) {
+      const std::string& path = i < static_cast<int>(s.store.paths.size())
+                                    ? s.store.paths[i] : std::string();
+      bool hit = prefix.empty() ? true
+                 : subtree ? (path.compare(0, prefix.size(), prefix) == 0 &&
+                              path.size() > prefix.size() && path[prefix.size()] == '/')
+                           : path == prefix;
+      if (!hit) continue;
+      s.store.decisions[i] = Inherit;
+      s.store.decision_log.emplace_back(i, Inherit);
+    }
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  });
+
+  m.def("set_decision_by_path", [](const std::string& path, int decision) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it == s.store.path_to_id.end()) return;
+    const int id = it->second;
+    s.store.decisions[id] = decision;
+    s.store.decision_log.emplace_back(id, decision);
+    if (g_native_decision_hook != nullptr) g_native_decision_hook(id, decision);
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
   });
 
   m.def("set_action_colours", [](const std::vector<std::string>& colours) {

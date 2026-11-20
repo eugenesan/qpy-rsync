@@ -3308,7 +3308,10 @@ class MainWindow(QMainWindow):
 
     def _overview_folder_activated(self, path: str) -> None:
         """Select a folder of the overview in the tree panes."""
-        self.comparison.select_path(path)
+        if self._hybrid_view is not None:
+            self._hybrid_view.select_path(path)
+        else:
+            self.comparison.select_path(path)
 
     def _log_diff_command(self, spec: object) -> None:
         """Show the staging command before its rsync run blocks the UI."""
@@ -3632,6 +3635,41 @@ class MainWindow(QMainWindow):
             tree.scrollTo(index)
         tree.setFocus()
 
+    def _native_pane_widgets(self) -> tuple | None:
+        """The native Source, Action and Destination views, left to right."""
+        if self._hybrid_view is None:
+            return None
+        from PySide6.QtWidgets import QTableView
+
+        tables = sorted(
+            self._hybrid_view.widget.findChildren(QTableView),
+            key=lambda table: table.x(),
+        )
+        if len(tables) < 3:
+            return None
+        return tables[0], tables[1], tables[2]
+
+    def _focus_named_pane(self, name: str) -> None:
+        """Focus a comparison pane in whichever view is active."""
+        if name == "overview":
+            if self._hybrid_view is not None:
+                widget = self.overview
+            else:
+                widget = self.overview.tree
+            widget.setFocus()
+            return
+        native = self._native_pane_widgets()
+        if native is not None:
+            widget = {"source": native[0], "action": native[1],
+                      "destination": native[2]}[name]
+        else:
+            widget = {
+                "source": self.comparison.source,
+                "action": self.comparison.action,
+                "destination": self.comparison.destination,
+            }[name]
+        self._focus_compare_pane(widget)
+
     def _install_navigation_shortcuts(self) -> None:
         panes = {
             self.comparison.source,
@@ -3642,10 +3680,6 @@ class MainWindow(QMainWindow):
         for key, widget in (
             ("Alt+S", self.source_edit),
             ("Alt+D", self.destination_edit),
-            ("Ctrl+W", self.overview.tree),
-            ("Ctrl+S", self.comparison.source),
-            ("Ctrl+D", self.comparison.destination),
-            ("Ctrl+N", self.comparison.action),
         ):
             self._add_shortcut(
                 key,
@@ -3654,11 +3688,16 @@ class MainWindow(QMainWindow):
                 ),
             )
             if hasattr(widget, "setToolTip"):
-                extra = " (Esc ends editing)" if widget in (
-                    self.source_edit,
-                    self.destination_edit,
-                ) else ""
-                widget.setToolTip(f"{widget.toolTip()} (Shortcut: {key}){extra}")
+                widget.setToolTip(
+                    f"{widget.toolTip()} (Shortcut: {key}) (Esc ends editing)"
+                )
+        for key, name in (
+            ("Ctrl+W", "overview"),
+            ("Ctrl+S", "source"),
+            ("Ctrl+D", "destination"),
+            ("Ctrl+N", "action"),
+        ):
+            self._add_shortcut(key, lambda n=name: self._focus_named_pane(n))
         for number in range(1, 9):
             self._add_shortcut(
                 f"Alt+{number}",
@@ -3683,6 +3722,20 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QApplication
 
         widget = QApplication.focusWidget()
+        native = self._native_pane_widgets()
+        if native is not None:
+            for pane, tree in enumerate(native):
+                if widget is tree or tree.isAncestorOf(widget):
+                    row = tree.currentIndex().row()
+                    path = self._hybrid_view.path_of_row(row)
+                    rect = tree.visualRect(tree.currentIndex())
+                    point = rect.center()
+                    global_point = tree.viewport().mapToGlobal(point)
+                    self._native_context_menu(
+                        pane, path, global_point.x(), global_point.y()
+                    )
+                    return
+            return
         for tree in (
             self.comparison.source,
             self.comparison.action,
@@ -3830,15 +3883,12 @@ class MainWindow(QMainWindow):
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
-        """Show or hide the unchanged items of the current comparison."""
-        if self.show_unchanged.isChecked() and not (
-            self.inventory_after_compare_button.isChecked()
-        ):
-            # The unchanged items are only known after both trees are listed,
-            # so the button that does that is switched on as well. The button
-            # then starts the listing.
-            self.inventory_after_compare_button.setChecked(True)
-            return
+        """Show or hide the unchanged items of the current comparison.
+
+        Showing the unchanged items runs the inventory for this comparison;
+        it must not silently switch the persistent "inventory after compare"
+        button on — that setting belongs to the user.
+        """
         changed = list(self._last_changed_changes)
         if self._active_profile is None:
             return
@@ -3980,6 +4030,7 @@ class MainWindow(QMainWindow):
         view.on_decision_changed(self._on_native_decision)
         view.on_selection_changed(self._on_native_selection)
         view.on_context_menu(self._native_context_menu)
+        view.on_header_context_menu(self._native_header_menu)
         self._route_controls_to_native(view)
         index = self.main_splitter.indexOf(self.comparison)
         if index >= 0:
@@ -4063,9 +4114,15 @@ class MainWindow(QMainWindow):
         self._hybrid_view.apply_python_decisions(values)
 
     def _native_context_menu(self, pane: int, path: str, x: int, y: int) -> None:
-        from PySide6.QtCore import QPoint
-        from PySide6.QtWidgets import QMenu
+        """Full row menu for the native comparison lists."""
+        from pathlib import Path
 
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QApplication, QMenu
+
+        from qpy_rsync.backend.rsync_patterns import phrases_for
+
+        view = self._hybrid_view
         menu = QMenu(self)
         change = next(
             (
@@ -4075,21 +4132,131 @@ class MainWindow(QMainWindow):
             ),
             None,
         )
-        if change is not None:
-            action = menu.addAction("Diff")
-            action.triggered.connect(lambda _checked=False: self._open_diff_tool(change))
-        for tool in self._external_tools:
-            action = menu.addAction(tool.name)
-            action.triggered.connect(
-                lambda _checked=False, name=tool.name: self._run_external_tool(
-                    name,
-                    path,
-                    "source" if pane == 0 else "destination",
-                    False,
-                )
+        is_dir = view.is_directory(path)
+        heading = menu.addAction(path or "/")
+        heading.setEnabled(False)
+        menu.addSeparator()
+        copy_path = menu.addAction("Copy Path")
+        copy_name = menu.addAction("Copy Filename")
+        copy_relative = menu.addAction("Copy Relative Path")
+        open_file = None
+        open_dir = None
+        if path:
+            menu.addSeparator()
+            open_dir = menu.addAction(
+                "Open Directory" if is_dir else "Open in Directory"
             )
-        if not menu.isEmpty():
-            menu.exec(QPoint(x, y))
+            if not is_dir:
+                open_file = menu.addAction("Open File")
+        diff = None
+        if change is not None:
+            menu.addSeparator()
+            diff = menu.addAction("Open in Diff Tool\t1")
+        menu.addSeparator()
+        excluded = view.decision_for_path(path) == 2
+        include_item = menu.addAction(
+            "Include Item" if excluded else "Exclude Item\tSpace"
+        )
+        reset_one = menu.addAction("Reset This Decision") if path else None
+        reset_subtree = menu.addAction("Reset Subtree Decisions") if path else None
+        reset_all = menu.addAction("Reset All Decisions")
+
+        filter_actions = []
+        if path:
+            phrases = phrases_for(path, is_directory=is_dir)
+            if phrases:
+                filter_menu = menu.addMenu("Exclude via Filter")
+                for phrase in phrases:
+                    entry = filter_menu.addAction(phrase.label)
+                    entry.setData(phrase.pattern)
+                    filter_actions.append(entry)
+
+        tool_actions = []
+        enabled = [tool for tool in self._external_tools if tool.enabled]
+        if path and enabled:
+            tool_menu = menu.addMenu("Open with")
+            side = "destination" if pane == 2 else "source"
+            for number, tool in enumerate(enabled[:8], 2):
+                entry = tool_menu.addAction(tool.name)
+                entry.setToolTip(f"Shortcut: {number}")
+                entry.setData((tool.name, path, side, is_dir))
+                tool_actions.append(entry)
+
+        fold_menu = menu.addMenu("Collapse / Expand")
+        fold = None
+        if path and is_dir:
+            fold = fold_menu.addAction(
+                "Expand Folder" if view.is_collapsed(path) else "Collapse Folder"
+            )
+            fold_menu.addSeparator()
+        collapse_all = fold_menu.addAction("Collapse All Folders")
+        expand_all = fold_menu.addAction("Expand All Folders")
+
+        chosen = menu.exec(QPoint(x, y))
+        if chosen is None:
+            return
+        if chosen is copy_path:
+            QApplication.clipboard().setText(path)
+        elif chosen is copy_name:
+            QApplication.clipboard().setText(Path(path).name if path else "")
+        elif chosen is copy_relative:
+            QApplication.clipboard().setText(path.strip("/"))
+        elif chosen is open_file or chosen is open_dir:
+            root = self.source_edit.text() if pane == 0 else self.destination_edit.text()
+            self._open_path(Path(root) / path, "file" if chosen is open_file else "directory")
+        elif chosen is diff:
+            self._open_diff_tool(change)
+        elif chosen is include_item:
+            view.set_decision_by_path(path, 0 if excluded else 2)
+        elif chosen is reset_one:
+            view.reset_decisions(path)
+        elif chosen is reset_subtree:
+            view.reset_decisions(path, subtree=True)
+        elif chosen is reset_all:
+            view.reset_decisions()
+        elif chosen is fold:
+            view.set_collapsed(path, not view.is_collapsed(path))
+        elif chosen is collapse_all:
+            view.collapse_all(True)
+        elif chosen is expand_all:
+            view.collapse_all(False)
+        elif chosen in filter_actions:
+            self._add_filter_phrase(chosen.data(), path)
+        elif chosen in tool_actions:
+            name, entry_path, side, directory = chosen.data()
+            self._run_external_tool(name, entry_path, side, directory)
+
+    def _native_header_menu(self, pane: int, x: int, y: int) -> None:
+        """Checkable column editor for the native comparison headers."""
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QMenu
+
+        from qpy_rsync.gui.flat_comparison_view import FlatComparisonView
+
+        view = self._hybrid_view
+        side = "source" if pane == 0 else "destination"
+        menu = QMenu(self)
+        entries = {}
+        for label, column in FlatComparisonView.OPTIONAL_COLUMNS[side]:
+            entry = menu.addAction(label)
+            entry.setCheckable(True)
+            entry.setChecked(not view.is_column_hidden(pane, column))
+            entries[entry] = (label, column)
+        chosen = menu.exec(QPoint(x, y))
+        if chosen is None:
+            return
+        _label, column = entries.get(chosen, ("", -1))
+        if column < 0:
+            return
+        hidden = not chosen.isChecked()
+        view.set_column_hidden(pane, column, hidden)
+        # Size and Size (bytes) are alternatives: showing one hides the other.
+        size_column = 2 if pane == 0 else 7
+        bytes_column = 9 if pane == 0 else 10
+        if not hidden and column == bytes_column:
+            view.set_column_hidden(pane, size_column, True)
+        elif not hidden and column == size_column:
+            view.set_column_hidden(pane, bytes_column, True)
 
     def _on_native_selection(self, path_id: int) -> None:
         changes = self._last_changed_changes

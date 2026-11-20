@@ -613,6 +613,23 @@ class TableModel : public QAbstractTableModel {
       }
       return {};
     }
+    if (role == Qt::ToolTipRole) {
+      const std::string& path = id < static_cast<int>(store_->paths.size())
+                                    ? store_->paths[id] : std::string();
+      if (path == DataStore::root_path()) return QString("Compared folder");
+      const QString shown = QString::fromStdString(path);
+      if (index.column() == 4) {
+        int action = id < static_cast<int>(store_->actions.size())
+                         ? store_->actions[id] : NoChange;
+        QString tip = "Source: " + shown + "\nDestination: " + shown +
+                      "\n" + QString::fromStdString(action_label(action));
+        const std::string time = id < static_cast<int>(store_->times.size())
+                                     ? store_->times[id] : std::string();
+        if (!time.empty()) tip += "\nModified: " + QString::fromStdString(time);
+        return tip;
+      }
+      return shown;
+    }
     if (role == Qt::ForegroundRole) {
       if (pane_ == 1) return {};
       const int action = id < static_cast<int>(store_->actions.size())
@@ -831,6 +848,18 @@ class OverviewModel : public QAbstractItemModel {
     if (!index.isValid()) return {};
     OverviewNode* item = node(index);
     if (role == Qt::UserRole) return QString::fromStdString(item->path);
+    if (role == Qt::UserRole + 20) {
+      // Share of this node among its siblings, by size (like the Python view).
+      long long siblings = 0;
+      if (item->parent != nullptr) {
+        for (OverviewNode* child : item->parent->children) {
+          siblings += child->total_size;
+        }
+      }
+      return siblings > 0
+                 ? static_cast<double>(item->total_size) / static_cast<double>(siblings)
+                 : 0.0;
+    }
     if (role == Qt::TextAlignmentRole && index.column() > 0) {
       return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
     }

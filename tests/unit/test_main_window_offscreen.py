@@ -1309,7 +1309,7 @@ def test_reset_exclusions_puts_every_excluded_item_back() -> None:
     application.processEvents()
 
 
-def test_asking_for_the_unchanged_items_switches_the_inventory_on() -> None:
+def test_showing_unchanged_leaves_the_inventory_button_alone() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
@@ -1318,9 +1318,9 @@ def test_asking_for_the_unchanged_items_switches_the_inventory_on() -> None:
     window.show_unchanged.setChecked(True)
     application.processEvents()
 
-    # The unchanged items are only known after both trees are listed, so the
-    # inventory button follows the toggle.
-    assert window.inventory_after_compare_button.isChecked() is True
+    # The inventory is run for this comparison, but the persistent setting
+    # is never switched on behind the user's back.
+    assert window.inventory_after_compare_button.isChecked() is False
     window.close()
     application.processEvents()
 

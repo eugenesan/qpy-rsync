@@ -86,6 +86,42 @@ class NativeHybridView:
     def set_root_names(self, source: str, destination: str) -> None:
         self._native.set_root_names(source, destination)
 
+    def select_path(self, path: str) -> None:
+        self._native.select_path(path.rstrip("/"))
+
+    def on_header_context_menu(self, callback) -> None:
+        self._native.set_header_context_callback(callback)
+
+    def set_column_hidden(self, pane: int, column: int, hidden: bool) -> None:
+        self._native.set_column_hidden(pane, column, hidden)
+
+    def is_column_hidden(self, pane: int, column: int) -> bool:
+        return bool(self._native.is_column_hidden(pane, column))
+
+    def set_collapsed(self, path: str, value: bool) -> None:
+        self._native.set_collapsed_by_path(path.rstrip("/"), value)
+
+    def collapse_all(self, value: bool) -> None:
+        self._native.collapse_all(value)
+
+    def set_decision_by_path(self, path: str, decision: int) -> None:
+        self._native.set_decision_by_path(path.rstrip("/"), decision)
+
+    def reset_decisions(self, path: str = "", subtree: bool = False) -> None:
+        self._native.reset_decisions(path.rstrip("/"), subtree)
+
+    def path_id_for_path(self, path: str) -> int:
+        return int(self._native.path_id_for_path(path.rstrip("/")))
+
+    def is_directory(self, path: str) -> bool:
+        return bool(self._native.is_directory_by_path(path.rstrip("/")))
+
+    def is_collapsed(self, path: str) -> bool:
+        return bool(self._native.is_collapsed_by_path(path.rstrip("/")))
+
+    def decision_for_path(self, path: str) -> int:
+        return int(self._native.decision_for_path(path.rstrip("/")))
+
     def set_action_colours(self) -> None:
         from qpy_rsync.core.changes import ChangeAction
         from qpy_rsync.gui.action_colours import current_colours
