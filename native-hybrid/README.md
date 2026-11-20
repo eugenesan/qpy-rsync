@@ -9,6 +9,8 @@ recommended in `native-qt-model/CONCLUSION.md`.
 parity with `FlatComparisonView`; see "Not yet wired" below.
 
 - Python keeps rsync, parsing, decisions semantics, plan, validation and sync.
+  In hybrid mode its model keeps the change list, directories and decisions for
+  the plan, but skips the expensive row/filter rebuild.
 - Native Qt owns the four view models (three tables plus the overview tree),
   the volatile decision table and the decision diff.
 - The dataset crosses Python → native exactly once per comparison.
@@ -73,9 +75,12 @@ integration cost.
 This is a vertical slice, not a completed migration. Still using the Python
 view or missing from the native side:
 
-- selection is shared natively but not yet connected to external tools;
+- selection is shared natively and reported to Python, but not yet wired to
+  external tools or the sync confirmation's path display;
 - search is jump-only (no persistent filter mode);
 - scroll position is not preserved across a full model reset;
+- the Python model's `rowCount()` is 0 in hybrid mode; code that still reads it
+  must be routed to the native view.
 - sync confirmation and validation still read the Python plan;
 - packaging (Debian build-dependency on `qt6-base-dev`);
 - command-line and Advanced-setting toggle both work; enable requires a new

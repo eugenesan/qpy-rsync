@@ -3805,7 +3805,7 @@ class MainWindow(QMainWindow):
         # off the model already displays exactly this set; rebuilding it would
         # freeze the GUI for seconds before the listing even starts.
         if self.show_unchanged.isChecked() or not self.comparison.model.changes:
-            self.comparison.set_changes(changed)
+            self._set_comparison_changes(changed)
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
@@ -3832,7 +3832,7 @@ class MainWindow(QMainWindow):
             # when the tree is not showing unchanged items; rebuilding the
             # identical view would freeze the GUI for seconds.
             if self._showing_unchanged or not self.comparison.model.changes:
-                self.comparison.set_changes(changed)
+                self._set_comparison_changes(changed)
                 self._showing_unchanged = False
             return
         key = self._inventory_key(self._active_profile, changed)
@@ -3847,7 +3847,7 @@ class MainWindow(QMainWindow):
         # Show the compared items right away. The unchanged items are
         # merged in when the inventory completes, so the tree never stays
         # empty and no second comparison is needed.
-        self.comparison.set_changes(changed)
+        self._set_comparison_changes(changed)
         self._start_inventory(key, changed)
 
     def _hide_unchanged(self, changed: list[object]) -> None:
@@ -3857,7 +3857,7 @@ class MainWindow(QMainWindow):
         self.progress_label.setText("Unchanged items hidden")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.comparison.set_changes(changed)
+        self._set_comparison_changes(changed)
         self._showing_unchanged = False
 
     def _populate_unchanged(self, changes: list[object], unchanged: int) -> None:
@@ -3878,7 +3878,7 @@ class MainWindow(QMainWindow):
                 | {ChangeAction.NO_CHANGE},
                 apply=False,
             )
-            self.comparison.set_changes(changes)
+            self._set_comparison_changes(changes)
         finally:
             QApplication.restoreOverrideCursor()
         self._showing_unchanged = True
@@ -3894,6 +3894,12 @@ class MainWindow(QMainWindow):
             self._inventory_service, "has_cached_destination", None
         )
         return bool(getter()) if getter is not None else False
+
+    def _set_comparison_changes(self, changes) -> None:
+        """Feed the Python model, skipping row/filter work in native mode."""
+        self.comparison.set_changes(
+            changes, skip_view=self._hybrid_view is not None
+        )
 
     def _enable_hybrid_view(self) -> None:
         """Replace the comparison panes with native Qt models (opt-in)."""
@@ -4191,7 +4197,7 @@ class MainWindow(QMainWindow):
                 "Could not gather unchanged items; showing changed items only.",
                 "warning",
             )
-            self.comparison.set_changes(list(self._last_changed_changes))
+            self._set_comparison_changes(list(self._last_changed_changes))
 
     def _comparison_error(self, message: str) -> None:
         if self._closing:

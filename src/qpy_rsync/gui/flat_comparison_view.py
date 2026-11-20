@@ -1189,13 +1189,14 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # Data
     # ------------------------------------------------------------------
-    def set_changes(self, changes: list[object]) -> None:
+    def set_changes(self, changes: list[object], *, skip_view: bool = False) -> None:
         """Show a new comparison."""
         with timed("view.set_changes"):
-            for tree in (self.source, self.action, self.destination):
-                tree.setCurrentIndex(QModelIndex())
-                tree.selectionModel().clear()
-            self.model.set_changes(changes)  # type: ignore[arg-type]
+            if not skip_view:
+                for tree in (self.source, self.action, self.destination):
+                    tree.setCurrentIndex(QModelIndex())
+                    tree.selectionModel().clear()
+            self.model.set_changes(changes, skip_view=skip_view)  # type: ignore[arg-type]
             self.changes_updated.emit("new")
 
     def set_external_tools(self, tools: list[ExternalTool]) -> None:
