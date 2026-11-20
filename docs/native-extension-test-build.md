@@ -156,8 +156,15 @@ destination sizes and subtree counts all read the flat arrays rather than
 materialising 520k `Change` objects. Pure Python keeps its existing path.
 
 End-to-end reproduction of the GUI's post-compare path at 520,000 records:
-**22.37 s -> 13.91 s** (1.61x, 8.5 s saved). All 419 tests pass with the flag
-both off and on, as do the three differential harnesses.
+**22.37 s -> 13.91 s** with the lazy sequence, then **10.06 s** after the
+correction below. All 419 tests pass with the flag both off and on, as do the
+three differential harnesses.
+
+**Real-tree correction:** the lazy sequence was making every Python loop over
+`changes` about 25x slower (`patch_changes` 40 ms -> 1.2 s). The model now
+materialises the `Change` list once and uses the flat arrays only for the
+array-only passes. That brought the measured `filter_refresh` and
+`decision_refresh` back from ~1.4 s to their previous ~0.2 s range.
 
 ## Metadata merge and listing (checkpoint 1)
 

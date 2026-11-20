@@ -15,11 +15,16 @@ before the next one starts.
   effective actions, destination sizes, subtree counts and the native mirror
   instead of iterating `Change` objects. Pure Python keeps its original path.
 - Full GUI-path evaluation at 520,000 changes: **22.37 s -> 13.91 s (8.5 s
-  saved)** with the store. 419 tests pass in both modes; all three
-  differential harnesses pass.
-- A single `set_changes` is slightly slower with the store (building the
-  array views costs ~10%); the win comes from the many later passes over the
-  same comparison, which is how the real GUI uses it.
+  saved)** with the lazy store, then **10.06 s** after the correction below.
+  419 tests pass in both modes; all three differential harnesses pass.
+- **Correction after real-tree measurement:** keeping `self.changes` as a lazy
+  sequence was a net loss. Python's `__getitem__` plus a dict cache costs
+  about 1 us per call, so the half-million-element loops in `_patch_visible_rows`,
+  `build_execution_plan` and the plan rebuild went from tens of milliseconds
+  to over a second each. The model now materialises the `Change` list **once**
+  in `set_changes` and keeps the flat store only for array-only work. This is
+  still much faster than the pre-4b path because the array-based reconcile,
+  destination sizes, subtree counts and native mirror remain.
 
 ## Checkpoint 1 — metadata path (A + B), done
 

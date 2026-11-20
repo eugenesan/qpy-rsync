@@ -4,8 +4,8 @@
 
 - The native backend now carries parsed arrays straight into the comparison
   model, removing the repeated materialisation of half a million `Change`
-  objects. End-to-end post-compare work drops from 22.4 s to 13.9 s at 520k
-  items. Pure Python is unchanged.
+  objects. End-to-end post-compare work drops to about 10 s at 520k items.
+  Pure Python is unchanged.
 - Destination metadata is merged in place and only affected changes are
   recomputed; the listing is now a single rsync run. Set
   `QPY_DEST_METADATA_TWO_PASS=1` to restore the previous two-run behaviour for

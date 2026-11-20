@@ -370,11 +370,11 @@ class FlatChangeModel(QAbstractTableModel):
         self.beginResetModel()
         self.hovered_row = None
         self._change_store = store
-        # A lazy sequence is kept as-is; materialising it here was the single
-        # largest avoidable cost of the native path.
-        self.changes = (
-            changes if isinstance(changes, Sequence) else list(changes)
-        )
+        # Materialise once. Lazy __getitem__ costs ~1 us per call, which is
+        # disastrous in the half-million-element loops below and in the plan
+        # and incremental paths. The flat store keeps the array-only work
+        # fast; this list is the single cached view of the Change objects.
+        self.changes = list(changes)
         if self._change_store is not None:
             self.discarded_decisions = self.decisions.reconcile_arrays(
                 store.paths,
