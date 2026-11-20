@@ -3751,16 +3751,8 @@ class MainWindow(QMainWindow):
         if self._inventory_pending_key == key and self._inventory_token:
             return
         # The compared items are shown right away, the unchanged items
-        # stay hidden until the user asks for them. Turning this toggle on
-        # for an existing comparison must not rebuild the identical view.
-        store = self._current_change_store
-        already_shown = (
-            store is not None
-            and getattr(self.comparison.model, "_change_store", None) is store
-            and bool(self.comparison.model.changes)
-        )
-        if not already_shown:
-            self.comparison.set_changes(changed, store=store)
+        # stay hidden until the user asks for them.
+        self.comparison.set_changes(changed, store=self._current_change_store)
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
@@ -3954,7 +3946,7 @@ class MainWindow(QMainWindow):
         if token != self._inventory_token:
             return
         self._inventory_token = 0
-        changed = list(self._last_changed_changes)
+        changed = self._last_changed_changes
         if self._active_profile is None:
             return
         key = self._inventory_key(self._active_profile, changed)
@@ -3969,7 +3961,7 @@ class MainWindow(QMainWindow):
         self._refresh_plan_summary()
         if self.show_unchanged.isChecked():
             self._populate_unchanged(
-                changed + list(result.unchanged), len(result.unchanged)
+                list(changed) + list(result.unchanged), len(result.unchanged)
             )
         else:
             self.progress_bar.setRange(0, 100)

@@ -338,6 +338,10 @@ struct NativeComparison {
     change_action.assign(actions.begin(), actions.end());
   }
 
+  void set_action_at(u32 index, int code) {
+    if (index < change_action.size()) change_action[index] = code;
+  }
+
   void set_action_filter(u32 mask) {
     actions_mask_ = mask;
     actions_mask_active_ = mask != 0;
@@ -972,6 +976,8 @@ NB_MODULE(_qpy_native, m) {
            nb::arg("change_action"), nb::arg("dir_parent"),
            nb::arg("dir_own_change"))
       .def("set_actions", &NativeComparison::set_actions, nb::arg("actions"))
+      .def("set_action_at", &NativeComparison::set_action_at, nb::arg("index"),
+           nb::arg("code"))
       .def("set_action_filter", &NativeComparison::set_action_filter,
            nb::arg("mask"))
       .def("set_filter_directories",

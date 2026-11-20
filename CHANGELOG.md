@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- Enabling inventory-after-compare no longer rebuilds the identical view, and
-  lazy change sequences are materialised on the inventory worker thread rather
-  than on the GUI thread. Both remove multi-second freezes around the
-  unchanged-items toggle.
+- Lazy change sequences are materialised on the inventory worker thread rather
+  than on the GUI thread. Decision changes now push only the updated action
+  codes to the native backend instead of all half a million, bringing native
+  exclusion cost back in line with pure Python (~160 ms per exclusion).
 - Added end-to-end timing probes around view set_changes, search and the
   space-bar exclusion toggle, so the Qt-side cost hidden between model timing
   lines is visible in `QPY_RSYNC_TIMING` output.

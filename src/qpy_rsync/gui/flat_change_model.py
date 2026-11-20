@@ -2317,17 +2317,25 @@ class FlatChangeModel(QAbstractTableModel):
         single decision does not pay for a pass over the whole comparison.
         """
         actions = self._change_effective_actions
+        native = self._native_comparison
         if paths is None or "" in paths:
             for index, change in enumerate(self.changes):
                 actions[index] = self.effective_action_of_change(change)
+            if native is not None:
+                native.set_actions(self._native_action_codes())
             return
         for row_index in self._affected_rows(paths):
             row = self._rows[row_index]
             change_index = row.change_index
             if change_index >= 0:
-                actions[change_index] = self.effective_action_of_change(
+                code = self.effective_action_of_change(
                     self.changes[change_index]
                 )
+                actions[change_index] = code
+                if native is not None:
+                    native.set_action_at(
+                        change_index, _NATIVE_ACTION_CODE.get(code.value, 6)
+                    )
             directory = self._directories.get(row.path)
             if (
                 directory is not None
@@ -2335,9 +2343,12 @@ class FlatChangeModel(QAbstractTableModel):
                 and directory.own_change_index >= 0
             ):
                 index = directory.own_change_index
-                actions[index] = self.effective_action_of_change(self.changes[index])
-        if self._native_comparison is not None:
-            self._native_comparison.set_actions(self._native_action_codes())
+                code = self.effective_action_of_change(self.changes[index])
+                actions[index] = code
+                if native is not None:
+                    native.set_action_at(
+                        index, _NATIVE_ACTION_CODE.get(code.value, 6)
+                    )
 
     def _refresh_conflicts(self) -> None:
         """Cache the conflict reasons and the folders that contain them."""
