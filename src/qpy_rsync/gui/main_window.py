@@ -3904,9 +3904,57 @@ class MainWindow(QMainWindow):
         except (RuntimeError, ImportError, OSError):
             return
         self._hybrid_view = view
+        self._hybrid_selected_path = ""
         view.on_decision_changed(self._on_native_decision)
+        view.on_selection_changed(self._on_native_selection)
+        self._route_controls_to_native(view)
         self.main_splitter.insertWidget(0, view.widget)
         self.comparison.hide()
+
+    def _route_controls_to_native(self, view) -> None:
+        """Reuse the existing toolbar/search controls for the native view."""
+        from PySide6.QtCore import Qt
+
+        comparison = self.comparison
+
+        def set_path_filter(text, *_args, **_kwargs):
+            value = str(text).strip()
+            directories_only = value.endswith("/")
+            pattern = value.rstrip("/") if directories_only else value
+            glob = any(char in pattern for char in "*?[")
+            view.set_pattern(
+                pattern,
+                glob=glob,
+                directories_only=directories_only,
+                include_contents=directories_only,
+            )
+
+        def set_visible_actions(actions, *_args, **_kwargs):
+            view.set_action_filter(actions or ())
+
+        def search_matches(text, *_args, **_kwargs):
+            return view.search(str(text).strip().casefold())
+
+        def sort(column, order=Qt.SortOrder.AscendingOrder, *_args, **_kwargs):
+            view.set_sort(column, order == Qt.SortOrder.DescendingOrder)
+
+        def select_path(path, *_args, **_kwargs):
+            view.select_path(path)
+
+        def row_path(row, *_args, **_kwargs):
+            return view.path_of_row(row)
+
+        comparison.set_path_filter = set_path_filter  # type: ignore[method-assign]
+        comparison.set_visible_actions = set_visible_actions  # type: ignore[method-assign]
+        comparison.search_matches = search_matches  # type: ignore[method-assign]
+        comparison.sort = sort  # type: ignore[method-assign]
+        comparison.select_path = select_path  # type: ignore[method-assign]
+        comparison.row_path = row_path  # type: ignore[method-assign]
+
+    def _on_native_selection(self, path_id: int) -> None:
+        changes = self._last_changed_changes
+        if 0 <= path_id < len(changes):
+            self._hybrid_selected_path = str(changes[path_id].path).rstrip("/")
 
     def _on_native_decision(self, path_id: int, decision: int) -> None:
         """Mirror a native decision edit into Python's decision store."""

@@ -9,12 +9,14 @@
 #include <QAbstractItemModel>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <numeric>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -30,9 +32,24 @@ struct DataStore {
   std::vector<int> kinds;
   std::vector<int> sizes;
   std::vector<int> decisions;
+  // Volatile view state owned by native.
+  std::vector<int> parents;
+  std::vector<int> is_dir;
+  std::vector<std::string> folded_names;
+  std::vector<std::string> folded_paths;
+  std::vector<char> collapsed;
+  std::unordered_map<std::string, int> path_to_id;
+  int action_mask = 0;  // 0 means "all actions"
+  std::string pattern;
+  bool pattern_glob = false;
+  bool dirs_only = false;
+  bool include_contents = false;
+  int sort_column = 0;
+  bool sort_desc = false;
   // Stable decision key: row positions are volatile after sort/filter.
   std::vector<std::pair<int, int>> decision_log;
   std::vector<int> visible;
+  std::vector<int> row_of_id;
   bool show_excluded = false;
 
   void generate(int count) {
@@ -117,9 +134,131 @@ struct DataStore {
     kinds = kinds_;
     sizes.assign(sizes_.begin(), sizes_.end());
     decisions = decisions_;
+    const int count = static_cast<int>(paths.size());
+    parents.resize(count);
+    is_dir.resize(count);
+    folded_names.resize(count);
+    folded_paths.resize(count);
+    path_to_id.clear();
+    for (int i = 0; i < count; ++i) path_to_id[paths[i]] = i;
+    for (int i = 0; i < count; ++i) {
+      const std::string& path = paths[i];
+      std::size_t slash = path.rfind('/');
+      parents[i] = -1;
+      if (slash != std::string::npos) {
+        auto parent_it = path_to_id.find(path.substr(0, slash));
+        if (parent_it != path_to_id.end()) parents[i] = parent_it->second;
+      }
+      is_dir[i] = !path.empty() && path.back() == '/' ? 1 : 0;
+      std::string name = slash == std::string::npos
+                             ? path
+                             : path.substr(slash + 1);
+      folded_names[i].resize(name.size());
+      for (std::size_t j = 0; j < name.size(); ++j) {
+        folded_names[i][j] = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(name[j])));
+      }
+      folded_paths[i].resize(path.size());
+      for (std::size_t j = 0; j < path.size(); ++j) {
+        folded_paths[i][j] = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(path[j])));
+      }
+    }
     decision_log.clear();
+    collapsed.assign(paths.size(), 0);
+    action_mask = 0;
+    pattern.clear();
+    sort_column = 0;
+    sort_desc = false;
     visible.resize(paths.size());
     std::iota(visible.begin(), visible.end(), 0);
+  }
+
+  void set_collapsed(int path_id, bool value) {
+    if (path_id >= 0 && path_id < static_cast<int>(collapsed.size())) {
+      collapsed[path_id] = value ? 1 : 0;
+    }
+  }
+
+  bool matches(int id) const {
+    if (action_mask != 0 && id < static_cast<int>(actions.size())) {
+      int bit = actions[id];
+      if (bit < 0 || bit >= 32 || (action_mask & (1 << bit)) == 0) return false;
+    }
+    if (!pattern.empty() && id < static_cast<int>(folded_paths.size())) {
+      const std::string& candidate =
+          pattern.find('/') != std::string::npos ? folded_paths[id]
+                                                  : folded_names[id];
+      if (pattern_glob) {
+        // Minimal glob: '*' and '?' over the folded candidate.
+        const std::string& p = pattern;
+        std::size_t ti = 0, pi = 0, star = std::string::npos, mark = 0;
+        while (ti < candidate.size()) {
+          if (pi < p.size() && (p[pi] == '?' || p[pi] == candidate[ti])) {
+            ++pi; ++ti; continue;
+          }
+          if (pi < p.size() && p[pi] == '*') { star = pi++; mark = ti; continue; }
+          if (star != std::string::npos) { pi = star + 1; ti = ++mark; continue; }
+          return false;
+        }
+        while (pi < p.size() && p[pi] == '*') ++pi;
+        if (pi != p.size()) return false;
+      } else if (candidate.find(pattern) == std::string::npos) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool folded_out(int id) const {
+    int parent = id < static_cast<int>(parents.size()) ? parents[id] : -1;
+    while (parent >= 0) {
+      if (parent < static_cast<int>(collapsed.size()) && collapsed[parent]) {
+        return true;
+      }
+      parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
+    }
+    return false;
+  }
+
+  void rebuild_visible() {
+    visible.clear();
+    row_of_id.assign(paths.size(), -1);
+    for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
+      if (!show_excluded && decisions[i] == Exclude) continue;
+      if (!matches(i)) continue;
+      if (folded_out(i)) continue;
+      visible.push_back(i);
+    }
+    if (sort_column == 0) {
+      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
+        return paths[a] < paths[b];
+      });
+    } else if (sort_column == 1) {
+      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
+        return actions[a] < actions[b];
+      });
+    } else {
+      std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
+        return sizes[a] < sizes[b];
+      });
+    }
+    if (sort_desc) std::reverse(visible.begin(), visible.end());
+    for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
+      row_of_id[visible[row]] = row;
+    }
+  }
+
+  std::vector<int> search(const std::string& text) const {
+    std::vector<int> result;
+    for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
+      int id = visible[row];
+      if (id < static_cast<int>(folded_names.size()) &&
+          folded_names[id].find(text) != std::string::npos) {
+        result.push_back(row);
+      }
+    }
+    return result;
   }
 
   void sort_by(int column) {

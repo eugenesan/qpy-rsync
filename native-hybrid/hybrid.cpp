@@ -8,6 +8,7 @@
 
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QTableView>
 #include <QTreeView>
 #include <QWidget>
@@ -26,11 +27,32 @@ struct Session {
   QWidget* widget = nullptr;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
+  QTableView* views[3] = {nullptr, nullptr, nullptr};
 };
 
 Session& session() {
   static Session value;
   return value;
+}
+
+using SelectionHook = void (*)(int path_id);
+inline SelectionHook g_selection_hook = nullptr;
+
+inline bool g_in_select = false;
+
+void emit_selection(int path_id) {
+  if (!g_in_select && g_selection_hook != nullptr) g_selection_hook(path_id);
+}
+
+nb::object g_selection_callback;
+
+void selection_hook(int path_id) {
+  if (!g_selection_callback.is_valid()) return;
+  nb::gil_scoped_acquire gil;
+  try {
+    g_selection_callback(path_id);
+  } catch (...) {
+  }
 }
 
 nb::object g_decision_callback;
@@ -57,6 +79,40 @@ NB_MODULE(native_hybrid, m) {
     session().store.load_direct(paths, actions, kinds, sizes, decisions);
   });
 
+  m.def("set_selection_callback", [](nb::object callback) {
+    g_selection_callback = callback;
+    g_selection_hook = &selection_hook;
+  });
+
+  m.def("debug_row_of_id", [](int path_id) {
+    Session& s = session();
+    return path_id >= 0 && path_id < static_cast<int>(s.store.row_of_id.size())
+               ? s.store.row_of_id[path_id] : -2;
+  });
+  m.def("debug_selected_row", []() {
+    Session& s = session();
+    if (s.views[0] == nullptr || s.views[0]->selectionModel() == nullptr) return -2;
+    QModelIndexList rows = s.views[0]->selectionModel()->selectedRows();
+    return rows.isEmpty() ? -1 : rows.first().row();
+  });
+
+  m.def("select_path_id", [](int path_id) {
+    Session& s = session();
+    if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
+    int row = s.store.row_of_id[path_id];
+    g_in_select = true;
+    for (QTableView* view : s.views) {
+      if (view == nullptr || view->model() == nullptr) continue;
+      QModelIndex index = view->model()->index(row, 0);
+      if (!index.isValid()) continue;
+      view->selectionModel()->select(
+          index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+      view->scrollTo(index);
+    }
+    g_in_select = false;
+    emit_selection(path_id);
+  });
+
   m.def("set_decision_callback", [](nb::object callback) {
     g_decision_callback = callback;
     g_decision_hook = &decision_hook;
@@ -64,7 +120,9 @@ NB_MODULE(native_hybrid, m) {
 
   m.def("shutdown", []() {
     g_decision_hook = nullptr;
+    g_selection_hook = nullptr;
     g_decision_callback = nb::object();
+    g_selection_callback = nb::object();
   });
 
   m.def("row_count", []() {
@@ -89,6 +147,7 @@ NB_MODULE(native_hybrid, m) {
       overview_view->header()->setStretchLastSection(true);
       layout->addWidget(overview_view);
 
+      for (int i = 0; i < 3; ++i) s.views[i] = views[i];
       s.models[0] = new TableModel(&s.store, 0, s.widget);
       s.models[1] = new TableModel(&s.store, 1, s.widget);
       s.models[2] = new TableModel(&s.store, 2, s.widget);
@@ -98,13 +157,76 @@ NB_MODULE(native_hybrid, m) {
       views[2]->setModel(s.models[2]);
       overview_view->setModel(s.overview);
       overview_view->expandToDepth(0);
+      for (QTableView* view : views) {
+        QObject::connect(
+            view->selectionModel(), &QItemSelectionModel::selectionChanged,
+            [](const QItemSelection& selected, const QItemSelection&) {
+              if (selected.isEmpty()) return;
+              QModelIndex index = selected.first().indexes().first();
+              Session& current = session();
+              int row = index.row();
+              if (row >= 0 && row < static_cast<int>(current.store.visible.size())) {
+                emit_selection(current.store.visible[row]);
+              }
+            });
+      }
       s.widget->resize(1600, 800);
     }
     return reinterpret_cast<std::uintptr_t>(s.widget);
   });
 
+  m.def("set_action_filter", [](int mask) {
+    session().store.action_mask = mask;
+  });
+  m.def("set_pattern", [](const std::string& pattern, bool glob,
+                          bool dirs_only, bool include_contents) {
+    Session& s = session();
+    s.store.pattern = pattern;
+    s.store.pattern_glob = glob;
+    s.store.dirs_only = dirs_only;
+    s.store.include_contents = include_contents;
+  });
+  m.def("set_collapsed", [](int path_id, bool value) {
+    session().store.set_collapsed(path_id, value);
+  });
+  m.def("set_collapsed_by_path", [](const std::string& path, bool value) {
+    Session& s = session();
+    auto it = s.store.path_to_id.find(path);
+    if (it != s.store.path_to_id.end()) s.store.set_collapsed(it->second, value);
+  });
+
+  m.def("set_sort", [](int column, bool descending) {
+    Session& s = session();
+    s.store.sort_column = column;
+    s.store.sort_desc = descending;
+  });
+  m.def("refresh_visible", []() {
+    Session& s = session();
+    s.store.rebuild_visible();
+    for (TableModel* model : s.models) model->reset();
+  });
+  m.def("search_text", [](const std::string& text) {
+    return session().store.search(text);
+  });
+  m.def("selected_path", []() {
+    Session& s = session();
+    if (s.views[0] == nullptr || s.views[0]->selectionModel() == nullptr) return std::string();
+    QModelIndexList rows = s.views[0]->selectionModel()->selectedRows();
+    if (rows.isEmpty()) return std::string();
+    int row = rows.first().row();
+    if (row < 0 || row >= static_cast<int>(s.store.visible.size())) return std::string();
+    return s.store.paths[s.store.visible[row]];
+  });
+
+  m.def("path_of_row", [](int row) {
+    Session& s = session();
+    if (row < 0 || row >= static_cast<int>(s.store.visible.size())) return std::string();
+    return s.store.paths[s.store.visible[row]];
+  });
+
   m.def("refresh", []() {
     Session& s = session();
+    s.store.rebuild_visible();
     if (s.widget == nullptr) return;
     s.overview->build(s.store);
     for (TableModel* model : s.models) model->reset();

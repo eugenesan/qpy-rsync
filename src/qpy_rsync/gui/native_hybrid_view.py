@@ -61,6 +61,7 @@ class NativeHybridView:
         if self._widget is None:
             raise RuntimeError("could not wrap the native QWidget")
         self._native = native
+        self._paths: list[str] = []
         global _ACTIVE
         _ACTIVE = self
 
@@ -78,8 +79,10 @@ class NativeHybridView:
 
     def set_changes(self, changes: Sequence[Any]) -> None:
         """Hand the dataset to native exactly once."""
+        paths = [str(change.path).rstrip("/") for change in changes]
+        self._paths = paths
         self._native.load(
-            [str(change.path).rstrip("/") for change in changes],
+            paths,
             [
                 _NATIVE_ACTION_CODE.get(change.action.value, 6)
                 for change in changes
@@ -90,8 +93,50 @@ class NativeHybridView:
         )
         self._native.refresh()
 
+    def set_action_filter(self, actions) -> None:
+        mask = 0
+        for action in actions:
+            code = _NATIVE_ACTION_CODE.get(getattr(action, "value", action), 6)
+            if code < 32:
+                mask |= 1 << code
+        self._native.set_action_filter(mask)
+        self._native.refresh_visible()
+
+    def set_pattern(self, pattern: str, *, glob: bool = False,
+                    directories_only: bool = False,
+                    include_contents: bool = False) -> None:
+        self._native.set_pattern(pattern, glob, directories_only, include_contents)
+        self._native.refresh_visible()
+
+    def set_sort(self, column: int, descending: bool = False) -> None:
+        self._native.set_sort(column, descending)
+        self._native.refresh_visible()
+
+    def set_collapsed_by_path(self, path: str, collapsed: bool) -> None:
+        self._native.set_collapsed_by_path(path, collapsed)
+        self._native.refresh_visible()
+
+    def search(self, text: str) -> list[int]:
+        return list(self._native.search_text(text))
+
+    def selected_path(self) -> str:
+        return str(self._native.selected_path())
+
+    def path_of_row(self, row: int) -> str:
+        return str(self._native.path_of_row(row))
+
     def row_count(self) -> int:
         return int(self._native.row_count())
+
+    def on_selection_changed(self, callback) -> None:
+        self._native.set_selection_callback(callback)
+
+    def select_path(self, path: str) -> None:
+        try:
+            path_id = self._paths.index(path.rstrip("/"))
+        except ValueError:
+            return
+        self._native.select_path_id(path_id)
 
     def on_decision_changed(self, callback) -> None:
         """Call ``callback(path_id, decision)`` when the user edits a decision."""

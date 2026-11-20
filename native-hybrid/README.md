@@ -15,6 +15,9 @@ parity with `FlatComparisonView`; see "Not yet wired" below.
 - A checkbox in the native Action pane edits a decision; the change is
   mirrored into `ChangeDecisions` and the plan is marked stale through the
   existing Python path.
+- Selection is shared across the three native panes and reported to Python.
+- The existing action-filter checkbox, path filter/search box, sort and
+  directory folds are routed to the native models when hybrid mode is active.
 - Python pulls the compact `(path_id, decision)` diff whenever it needs it.
 
 ## Build
@@ -70,9 +73,9 @@ integration cost.
 This is a vertical slice, not a completed migration. Still using the Python
 view or missing from the native side:
 
-- selection, scroll preservation and folds;
-- search and jump-to-match;
-- native filter and sort controls driven from the toolbar;
+- selection is shared natively but not yet connected to external tools;
+- search is jump-only (no persistent filter mode);
+- scroll position is not preserved across a full model reset;
 - sync confirmation and validation still read the Python plan;
 - packaging (Debian build-dependency on `qt6-base-dev`);
 - command-line and Advanced-setting toggle both work; enable requires a new
