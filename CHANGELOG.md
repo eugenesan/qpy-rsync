@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Enabling inventory-after-compare no longer rebuilds the identical view, and
+  lazy change sequences are materialised on the inventory worker thread rather
+  than on the GUI thread. Both remove multi-second freezes around the
+  unchanged-items toggle.
 - Added end-to-end timing probes around view set_changes, search and the
   space-bar exclusion toggle, so the Qt-side cost hidden between model timing
   lines is visible in `QPY_RSYNC_TIMING` output.

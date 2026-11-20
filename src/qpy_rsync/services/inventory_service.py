@@ -44,11 +44,14 @@ class _InventoryTask(QRunnable):
         def progress(phase: str, count: int) -> None:
             self._signals.progress.emit(self._token, phase, count)
 
+        # Materialise lazy change sequences on the worker thread, never on
+        # the GUI thread while a comparison is being started.
+        changes = list(self._changed)
         try:
             if _accepts_progress(self._gather):
-                result = self._gather(self._profile, self._changed, progress)
+                result = self._gather(self._profile, changes, progress)
             else:
-                result = self._gather(self._profile, self._changed)
+                result = self._gather(self._profile, changes)
         except Exception as exc:  # noqa: BLE001 - worker boundary
             self._signals.failed.emit(self._token, str(exc))
             return
@@ -113,7 +116,7 @@ class InventoryService(QObject):
         task = _InventoryTask(
             token,
             profile,
-            list(changed),
+            changed,
             self._signals,
             self._results,
             self._results_lock,

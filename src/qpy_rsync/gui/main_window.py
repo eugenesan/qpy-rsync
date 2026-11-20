@@ -3742,7 +3742,7 @@ class MainWindow(QMainWindow):
         if not self.inventory_after_compare_button.isChecked():
             self._apply_inventory_mode()
             return
-        changed = list(self._last_changed_changes)
+        changed = self._last_changed_changes
         if self._active_profile is None:
             return
         key = self._inventory_key(self._active_profile, changed)
@@ -3751,8 +3751,16 @@ class MainWindow(QMainWindow):
         if self._inventory_pending_key == key and self._inventory_token:
             return
         # The compared items are shown right away, the unchanged items
-        # stay hidden until the user asks for them.
-        self.comparison.set_changes(changed)
+        # stay hidden until the user asks for them. Turning this toggle on
+        # for an existing comparison must not rebuild the identical view.
+        store = self._current_change_store
+        already_shown = (
+            store is not None
+            and getattr(self.comparison.model, "_change_store", None) is store
+            and bool(self.comparison.model.changes)
+        )
+        if not already_shown:
+            self.comparison.set_changes(changed, store=store)
         self._start_inventory(key, changed)
 
     def _apply_inventory_mode(self) -> None:
