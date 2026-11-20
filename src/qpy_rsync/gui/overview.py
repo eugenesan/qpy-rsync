@@ -135,7 +135,7 @@ class OverviewModel(QAbstractItemModel):
         self._structure_signature = (root_name, "*")
         self._full_structure = True
         self._applied_counts = {}
-        self._finish_totals()
+        self._finish_totals(recompute_totals=False)
         self.layoutChanged.emit()
 
     def _node_for(self, path: str) -> OverviewNode:
@@ -216,13 +216,15 @@ class OverviewModel(QAbstractItemModel):
             and self._structure_signature == (root_name, "*")
         ):
             signature = (root_name, frozenset(aggregates))
-            if signature != getattr(self, "_structure_signature", None):
+            rebuilt = signature != getattr(self, "_structure_signature", None)
+            if rebuilt:
                 self._build_structure(aggregates, root_name)
                 self._structure_signature = signature
                 self._applied_counts = {}
             self._update_counts(aggregates)
             self._applied_counts = dict(aggregates)
-            self._finish_totals()
+            # _build_structure already computed totals from these counts.
+            self._finish_totals(recompute_totals=not rebuilt)
             self.layoutChanged.emit()
         elif self._apply_counts_incrementally(aggregates):
             self.layoutChanged.emit()
@@ -241,6 +243,8 @@ class OverviewModel(QAbstractItemModel):
         self, aggregates: dict[str, tuple[int, int]], root_name: str
     ) -> None:
         self.beginResetModel()
+        self._visible_children = {}
+        self._level_totals = {}
         self.root = OverviewNode("", "")
         base = OverviewNode(root_name or "/", "", self.root)
         self.root.children.append(base)
@@ -270,17 +274,23 @@ class OverviewModel(QAbstractItemModel):
         self.root.children = [total] if total.children else []
         self.endResetModel()
 
-    def _finish_totals(self) -> None:
-        """Recompute the subtree totals and the shares after a count change."""
+    def _finish_totals(self, *, recompute_totals: bool = True) -> None:
+        """Prepare only the rows the view can currently show.
+
+        The subtree totals were already computed while the structure was
+        built. Sorting and preparing all thirty thousand folders up front
+        dominated a new comparison, so children are prepared lazily when Qt
+        asks for their rows via :meth:`_children`.
+        """
         total = self.root.children[0] if self.root.children else None
-        if total is not None:
+        # Counts can change without a structure rebuild, so the subtree
+        # totals still need one bottom-up pass.
+        if total is not None and recompute_totals:
             total.compute_totals()
-        self._sort_all()
-        nodes = [self.root, *self._folder_nodes.values()]
+        self._prepare_node(self.root)
         if total is not None:
-            nodes.append(total)
-        self._refresh_visible_children(nodes)
-        self._refresh_level_totals(nodes, total)
+            self._prepare_node(total)
+            self._level_totals[id(self.root)] = total.total_size
 
     def update_paths(self, paths: set[str], changes: list[Change]) -> bool:
         """Update only the folders affected by the given decision changes.
@@ -346,8 +356,20 @@ class OverviewModel(QAbstractItemModel):
         folders[path] = node
         return node
 
+    def _prepare_node(self, node: OverviewNode) -> None:
+        """Sort and cache one node's visible rows on first access."""
+        key = id(node)
+        if key in self._visible_children:
+            return
+        self._sort_node(node)
+        self._visible_children[key] = [
+            child for child in node.children if child.total_count
+        ]
+        self._level_totals[key] = sum(child.total_size for child in node.children)
+
     def _children(self, node: OverviewNode) -> list[OverviewNode]:
-        return self._visible_children.get(id(node), [])
+        self._prepare_node(node)
+        return self._visible_children[id(node)]
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
         parent_node = parent.internalPointer() if parent.isValid() else self.root
