@@ -62,6 +62,7 @@ class NativeHybridView:
             raise RuntimeError("could not wrap the native QWidget")
         self._native = native
         self._paths: list[str] = []
+        self._handed_paths: list[str] | None = None
         global _ACTIVE
         _ACTIVE = self
 
@@ -81,6 +82,9 @@ class NativeHybridView:
         """Hand the dataset to native exactly once."""
         paths = [str(change.path).rstrip("/") for change in changes]
         self._paths = paths
+        if self._handed_paths == paths:
+            return
+        self._handed_paths = list(paths)
         self._native.load(
             paths,
             [

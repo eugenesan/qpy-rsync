@@ -152,7 +152,11 @@ def gather_inventory(
         progress("Matching", 0)
     unchanged: list[Change] = []
     with timed("inventory.matching", paths=len(destination_paths)):
-        for path in sorted(source_paths.keys() & destination_paths.keys()):
+      shared = source_paths.keys() & destination_paths.keys()
+      total = len(shared)
+      for count, path in enumerate(sorted(shared)):
+          if progress is not None and count % 50000 == 0:
+              progress("Matching", count)
           if path in changed_paths or path in ancestor_paths:
               continue
           source = source_paths[path]

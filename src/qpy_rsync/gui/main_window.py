@@ -4228,7 +4228,10 @@ class MainWindow(QMainWindow):
             result.destination_metadata,
             skip_view=self._hybrid_view is not None,
         )
-        self._refresh_plan_summary()
+        if not self.show_unchanged.isChecked():
+            # When unchanged items will be added, their set_changes rebuilds
+            # the plan anyway; doing it twice costs seconds on a large tree.
+            self._refresh_plan_summary()
         if self.show_unchanged.isChecked():
             self._populate_unchanged(
                 changed + list(result.unchanged), len(result.unchanged)

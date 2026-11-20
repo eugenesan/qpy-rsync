@@ -259,7 +259,21 @@ NB_MODULE(native_hybrid, m) {
     refresh_native_models(s);
   });
   m.def("search_text", [](const std::string& text) {
-    return session().store.search(text);
+    Session& s = session();
+    if (text.size() > 1 && text.back() == '/') {
+      std::string name = text.substr(0, text.size() - 1);
+      const bool by_path = name.find('/') != std::string::npos;
+      std::vector<int> result;
+      for (int row = 0; row < static_cast<int>(s.store.visible.size()); ++row) {
+        int id = s.store.visible[row];
+        if (id >= static_cast<int>(s.store.is_dir.size()) || !s.store.is_dir[id]) continue;
+        const std::string& candidate = by_path ? s.store.folded_paths[id]
+                                               : s.store.folded_names[id];
+        if (candidate == name) result.push_back(row);
+      }
+      return result;
+    }
+    return s.store.search(text);
   });
   m.def("selected_path", []() {
     Session& s = session();

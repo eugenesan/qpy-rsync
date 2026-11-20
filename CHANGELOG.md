@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hybrid search now handles the `dir/` variant; unchanged flows skip redundant
+  handoffs and plan rebuilds, and report matching progress.
 - Hybrid view fixes: 64-bit overview sizes and real folder names, resizable and
   vertically synchronised panes, scroll preservation, decision edits in ~19 ms,
   undo in ~0.1 s, search (including `dir/`), undo/redo, show-excluded, metadata
