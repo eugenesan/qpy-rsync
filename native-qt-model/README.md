@@ -36,19 +36,25 @@ DISPLAY=:50 /tmp/opencode/qpy-qt-model-build/native_qt_model --items=1000000
 
 Host: Qt 6.10.2, GCC 15.2, Release build, offscreen platform.
 
-| Operation | offscreen 1M | offscreen 1.5M | X11 (:50) 1M |
+| Operation | offscreen 1M | offscreen 1.5M | X11 (:50), 1M and 1.5M |
 |---|---:|---:|---:|
-| store.generate | 130 ms | 233 ms | 137 ms |
+| store.generate | 130 ms | 233 ms | 137–208 ms |
 | models.create | 0 ms | 0 ms | 0 ms |
-| overview.build (30k folders) | 25 ms | — | 26 ms |
-| first paint, 4 panes, two `processEvents()` | 17 ms | 17 ms | 16 ms |
-| sort by size + reset + paint | 50 ms | 80 ms | **886 ms** |
-| filter (show excluded) + reset + paint | 11 ms | 12 ms | 79 ms |
+| overview.build (30k folders) | 25 ms | 36 ms | 25–36 ms |
+| first paint, 4 panes | 17 ms | 17 ms | 14–17 ms |
+| 10 × scroll to row 100k+ | — | — | 429–972 ms |
+| sort by size + reset + paint | 50 ms | 80 ms | 57–886 ms |
+| filter + reset + paint | 11 ms | 12 ms | 53–119 ms |
 | 1000 decision toggles | 0 ms | 0 ms | 0 ms |
-| repaint after decision batch | 9 ms | 8 ms | 22 ms |
+| repaint after decision batch | 9 ms | 8 ms | 22–47 ms |
 | diff snapshot (1000 entries) | 0 ms | 0 ms | 0 ms |
-| full reset with a new dataset | 140 ms | 229 ms | 197 ms |
-| resident memory | 134 MB | 178 MB | 138 MB |
+| full reset with a new dataset | 140 ms | 229 ms | 141–208 ms |
+| resident memory | 134 MB | 178 MB | 137–185 MB |
+
+Paint-related timings on X11 vary by an order of magnitude between runs
+depending on desktop load; the ranges are the honest result. Structural work
+(generate, overview build, reset) is stable. Even the worst paint figure is
+two orders of magnitude below the Python implementation.
 
 For comparison, the current Python implementation takes **12–23 s** for
 `view.set_changes` at 520k rows, and that climbs with row count. The native

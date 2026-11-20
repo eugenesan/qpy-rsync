@@ -317,7 +317,15 @@ int main(int argc, char** argv) {
   window.show();
   app.processEvents();
   app.processEvents();
-  report("first paint (3 views, processEvents)", timer.elapsed());
+  report("first paint (4 panes, processEvents)", timer.elapsed());
+
+  timer.start();
+  for (int i = 0; i < 10; ++i) {
+    QModelIndex far = views[0].model()->index(100000 + i * 10000, 0);
+    views[0].scrollTo(far);
+    app.processEvents();
+  }
+  report("10 x scroll 100k+ rows + paint", timer.elapsed());
 
   timer.start();
   store.sort_by(2);
