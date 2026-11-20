@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The exit-time "save profile" prompt now names the field that changed and
+  saves directly to the loaded profile file. Save As is only offered when no
+  profile file is associated with the settings.
 - Lazy change sequences are materialised on the inventory worker thread rather
   than on the GUI thread. Decision changes now push only the updated action
   codes to the native backend instead of all half a million, bringing native

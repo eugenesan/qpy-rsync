@@ -4477,34 +4477,7 @@ class MainWindow(QMainWindow):
                 right.pop("name", None)
                 return left == right
 
-            if _baseline is not None and not _same_profile(_current, _baseline):
-                pass
-            if (
-                os.environ.get("QT_QPA_PLATFORM") != "offscreen"
-                and _baseline is not None
-                and not _same_profile(_current, _baseline)
-            ):
-                answer = QMessageBox.question(
-                    self,
-                    "Save profile",
-                    "Settings changed since the last profile load or save. Save current settings as a profile?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if answer == QMessageBox.StandardButton.Yes:
-                    path, _selected = QFileDialog.getSaveFileName(
-                        self,
-                        "Save Profile",
-                        str(profiles_directory() / "qpy-rsync-profile.json"),
-                        "JSON (*.json)",
-                    )
-                    if path:
-                        save_profile(Path(path), self._profile())
-                        try:
-                            self._baseline_profile = self._profile()
-                        except ValueError:
-                            self._baseline_profile = None
-                        self._append_log(f"Profile saved: {path}")
+            self._save_profile_on_exit_if_modified(_current, _baseline)
         except Exception:  # noqa: BLE001
             pass
         self._flush_log()
@@ -4513,3 +4486,60 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QApplication
 
         QApplication.instance().quit()  # type: ignore[union-attr]
+
+    def _save_profile_on_exit_if_modified(self, current, baseline) -> None:
+        try:
+            if (
+                os.environ.get("QT_QPA_PLATFORM") != "offscreen"
+                and baseline is not None
+                and not self._same_profile(current, baseline)
+            ):
+                # Tell the user *what* changed instead of a generic prompt.
+                current_dict = current.to_dict()
+                baseline_dict = baseline.to_dict()
+                changed_fields = [
+                    key
+                    for key in current_dict
+                    if key not in {"profile_id", "name"}
+                    and current_dict[key] != baseline_dict.get(key)
+                ]
+                reason = (
+                    "Changed: " + ", ".join(sorted(changed_fields))
+                    if changed_fields
+                    else "Profile settings changed."
+                )
+                target = self._profile_path
+                if target is None:
+                    question = (
+                        f"{reason}\n\nNo profile file is associated with these "
+                        "settings yet. Save them as a new profile?"
+                    )
+                else:
+                    question = (
+                        f"{reason}\n\nSave the changes to {target.name}?"
+                    )
+                answer = QMessageBox.question(
+                    self,
+                    "Save profile",
+                    question,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    if target is None:
+                        path, _selected = QFileDialog.getSaveFileName(
+                            self,
+                            "Save Profile",
+                            str(profiles_directory() / "qpy-rsync-profile.json"),
+                            "JSON (*.json)",
+                        )
+                        if path:
+                            target = Path(path)
+                    if target is not None:
+                        save_profile(target, self._profile())
+                        self._remember_profile_path(target)
+                        self._baseline_profile = self._profile()
+                        self._save_recent_profile()
+                        self._append_log(f"Profile saved: {target}")
+        except Exception:  # noqa: BLE001
+            pass

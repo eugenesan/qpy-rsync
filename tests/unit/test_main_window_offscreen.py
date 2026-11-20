@@ -2178,3 +2178,48 @@ def test_version_and_commit_are_logged_once_in_the_session_header(tmp_path, monk
     assert "one line" in content
     window.close()
     application.processEvents()
+
+
+def test_exit_prompt_saves_to_the_known_profile_path(tmp_path, monkeypatch) -> None:
+    from copy import deepcopy
+
+    from PySide6.QtWidgets import QMessageBox
+
+    application = app()
+    app_settings().clear()
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    current = window._profile()
+    baseline = deepcopy(current)
+    baseline.backup.directory = "/different"
+    target = tmp_path / "my-profile.json"
+    window._profile_path = target
+
+    questions: list[str] = []
+    answers: list[object] = []
+
+    def question(_window, _title, text, *_args, **_kwargs):
+        questions.append(text)
+        return answers.pop(0)
+
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(question))
+    saved: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.save_profile",
+        lambda path, profile: saved.append(path),
+    )
+
+    answers.append(QMessageBox.StandardButton.Yes)
+    window._save_profile_on_exit_if_modified(current, baseline)
+    assert saved == [target]
+    assert "backup" in questions[0]
+    assert target.name in questions[0]
+
+    answers.append(QMessageBox.StandardButton.No)
+    window._save_profile_on_exit_if_modified(current, baseline)
+    assert saved == [target]
+    window.close()
+    application.processEvents()
