@@ -4,8 +4,9 @@
 
 - The destination listing taken after a compare is now retained, so asking for
   unchanged items only lists the source tree instead of both. New timing lines
+  separate the rsync subprocess (`rsync.inventory_list`) from our parsing
   (`inventory.destination_listing`, `inventory.source_listing`,
-  `inventory.matching`) measure each part with `QPY_RSYNC_TIMING=1`.
+  `inventory.matching`) under `QPY_RSYNC_TIMING=1`.
 - Enabling inventory-after-compare no longer rebuilds the already-displayed
   comparison before the listing starts, removing a multi-second freeze ahead
   of the progress messages.

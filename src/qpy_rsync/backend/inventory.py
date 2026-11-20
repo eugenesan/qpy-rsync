@@ -52,39 +52,40 @@ def inventory_paths(
         command = spec.argv()
         environment = os.environ.copy()
         environment.update(spec.environment)
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        env=environment,
-    )
-    paths: dict[str, InventoryEntry] = {}
-    assert process.stdout is not None
-    for line in process.stdout:
-        line = line.rstrip("\r\n")
-        if not line.strip():
-            continue
-        if line.startswith("sending incremental file list"):
-            continue
-        if line.startswith("sent ") or line.startswith("total "):
-            continue
-        parts = line.split(None, 4)
-        if len(parts) < 5:
-            continue
-        mode, size_text, date, time, path = parts
-        path = path.rstrip("/")
-        if not path or path == ".":
-            continue
-        kind = ObjectKind.DIRECTORY if mode.startswith("d") else ObjectKind.FILE
-        paths[path] = InventoryEntry(
-            kind=kind,
-            size=_parse_size(size_text),
-            modified_time=_parse_time(date, time),
+    with timed("rsync.inventory_list", endpoint=endpoint.kind.value):
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=environment,
         )
-        if progress is not None and len(paths) % 500 == 0:
-            progress(len(paths))
-    process.wait()
+        paths: dict[str, InventoryEntry] = {}
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.rstrip("\r\n")
+            if not line.strip():
+                continue
+            if line.startswith("sending incremental file list"):
+                continue
+            if line.startswith("sent ") or line.startswith("total "):
+                continue
+            parts = line.split(None, 4)
+            if len(parts) < 5:
+                continue
+            mode, size_text, date, time, path = parts
+            path = path.rstrip("/")
+            if not path or path == ".":
+                continue
+            kind = ObjectKind.DIRECTORY if mode.startswith("d") else ObjectKind.FILE
+            paths[path] = InventoryEntry(
+                kind=kind,
+                size=_parse_size(size_text),
+                modified_time=_parse_time(date, time),
+            )
+            if progress is not None and len(paths) % 500 == 0:
+                progress(len(paths))
+        process.wait()
     if progress is not None:
         progress(len(paths))
     return paths
