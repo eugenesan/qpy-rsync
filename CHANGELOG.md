@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Performance: removing 500k unchanged rows no longer re-runs decision
+  reconciliation or rebuilds the plan; native truncation keeps the row prefix
+  and only re-derives the directory structure. Measured 1.95s → 0.52s at
+  300k change rows.
+- Inventory: rsync list parsing is about 2x faster per 500k lines, and the
+  source and destination listings now run concurrently.
+- The Decisions checkbox now uses the same blue rounded style as the toolbar
+  checkboxes, with slightly larger action icons.
+
 - Moved Swap Source/Destination next to the Source controls, away from Compare,
   and moved the toolbar separator to the left of the sync-mode selector.
 - Hiding the current row no longer drops the cursor on the virtual root; it

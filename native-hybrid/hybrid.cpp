@@ -384,8 +384,8 @@ class HybridDelegate : public QStyledItemDelegate {
     if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
     const int id = store.visible[row];
     if (pane_ == 1 && index.column() == 4) {
-      QRect indicator(option.rect.left() + 4, option.rect.center().y() - 7,
-                      14, 14);
+      QRect indicator(option.rect.left() + 4, option.rect.center().y() - 8,
+                      16, 16);
       if (indicator.contains(mouse->pos())) {
         const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
         s.store.toggle_decision(id, true);
@@ -467,13 +467,13 @@ class HybridDelegate : public QStyledItemDelegate {
                          {chev.left(), chev.bottom()}};
         painter->drawPolygon(pts, 3);
       }
-      draw_folder_icon(painter, QRect(x + 12, mid - 7, 14, 12));
+      draw_folder_icon(painter, QRect(x + 12, mid - 8, 16, 14));
       x += 30;
     } else {
       painter->setPen(QPen(QColor("#D0D7DE"), 1));
       const int rule = x + 4;
       painter->drawLine(rule, opt.rect.top(), rule, opt.rect.bottom());
-      draw_file_icon(painter, QRect(x + 12, mid - 8, 12, 14), color);
+      draw_file_icon(painter, QRect(x + 12, mid - 9, 14, 16), color);
       x += 30;
     }
     painter->setPen(color);
@@ -541,17 +541,25 @@ class HybridDelegate : public QStyledItemDelegate {
     QStyleOptionViewItem opt(option);
     initStyleOption(&opt, index);
     paint_background(painter, option, false);
-    const QWidget* widget = option.widget;
-    QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
-    QStyleOptionButton indicator;
-    indicator.state = option.state;
-    indicator.state &= ~QStyle::State_MouseOver;
-    indicator.rect = QRect(opt.rect.left() + 4, opt.rect.center().y() - 7, 14, 14);
     const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
-    if (checked) indicator.state |= QStyle::State_On;
-    else indicator.state |= QStyle::State_Off;
-    style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator,
-                         painter, widget);
+    // Paint the same rounded, accent-coloured checkbox the toolbar QCheckBox
+    // uses under Breeze; the item-view indicator primitive draws a dash here.
+    QRect box(opt.rect.left() + 4, opt.rect.center().y() - 8, 16, 16);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(opt.palette.color(QPalette::Highlight));
+    painter->drawRoundedRect(box, 4, 4);
+    if (checked) {
+      painter->setRenderHint(QPainter::Antialiasing, true);
+      painter->setPen(QPen(opt.palette.color(QPalette::HighlightedText), 2,
+                           Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+      painter->drawLine(box.left() + 4, box.center().y(), box.left() + 7,
+                        box.bottom() - 4);
+      painter->drawLine(box.left() + 7, box.bottom() - 4, box.right() - 4,
+                        box.top() + 4);
+    }
+    painter->restore();
     if (id >= static_cast<int>(store.actions.size())) return;
     const int action = store.actions[id];
     QColor color("#9CA3AF");
@@ -559,21 +567,21 @@ class HybridDelegate : public QStyledItemDelegate {
       const QString hex = s.action_colours[action];
       if (!hex.isEmpty()) color = QColor(hex);
     }
-    const int x = opt.rect.left() + 34;
+    const int x = opt.rect.left() + 36;
     const int y = opt.rect.center().y();
     painter->save();
     if (action == Delete) {
       painter->setPen(QPen(color, 2));
-      painter->drawLine(x - 4, y - 4, x + 4, y + 4);
-      painter->drawLine(x + 4, y - 4, x - 4, y + 4);
+      painter->drawLine(x - 5, y - 5, x + 5, y + 5);
+      painter->drawLine(x + 5, y - 5, x - 5, y + 5);
     } else if (action == NoChange) {
       painter->setPen(QPen(color, 2));
-      painter->drawLine(x - 4, y, x - 1, y + 3);
-      painter->drawLine(x - 1, y + 3, x + 5, y - 4);
+      painter->drawLine(x - 5, y, x - 1, y + 4);
+      painter->drawLine(x - 1, y + 4, x + 6, y - 5);
     } else {
       painter->setPen(Qt::NoPen);
       painter->setBrush(color);
-      QPoint pts[3] = {{x, y - 5}, {x + 5, y + 3}, {x - 5, y + 3}};
+      QPoint pts[3] = {{x, y - 6}, {x + 6, y + 4}, {x - 6, y + 4}};
       painter->drawPolygon(pts, 3);
     }
     painter->restore();

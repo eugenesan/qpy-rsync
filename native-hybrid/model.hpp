@@ -158,7 +158,7 @@ struct DataStore {
     return true;
   }
 
-  void derive_range(int start, int end) {
+  void derive_structure(int start, int end) {
     for (int i = start; i < end; ++i) {
       const std::string& path = paths[i];
       std::size_t slash = path.rfind('/');
@@ -169,6 +169,13 @@ struct DataStore {
       }
       is_dir[i] = (i < static_cast<int>(kinds.size()) && kinds[i] == 1) ? 1 : 0;
       depth[i] = parents[i] >= 0 ? depth[parents[i]] + 1 : 0;
+    }
+  }
+
+  void derive_text(int start, int end) {
+    for (int i = start; i < end; ++i) {
+      const std::string& path = paths[i];
+      std::size_t slash = path.rfind('/');
       std::string name = slash == std::string::npos
                              ? path
                              : path.substr(slash + 1);
@@ -184,6 +191,11 @@ struct DataStore {
             std::tolower(static_cast<unsigned char>(path[j])));
       }
     }
+  }
+
+  void derive_range(int start, int end) {
+    derive_structure(start, end);
+    derive_text(start, end);
   }
 
   void load_direct(const std::vector<std::string>& paths_,
@@ -264,8 +276,11 @@ struct DataStore {
     folded_names.resize(count);
     folded_paths.resize(count);
     collapsed.resize(count);
-    path_to_id.clear();
-    for (int i = 0; i < count; ++i) path_to_id[paths[i]] = i;
+    // Erase only the removed tail; the prefix keeps its id mapping.
+    for (auto it = path_to_id.begin(); it != path_to_id.end();) {
+      if (it->second >= count) it = path_to_id.erase(it);
+      else ++it;
+    }
     decision_log.clear();
     visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
@@ -319,9 +334,10 @@ struct DataStore {
     folded_names.resize(count);
     folded_paths.resize(count);
     collapsed.resize(count, 0);
-    // Re-derive every row now that the synthesized folders are in the map,
-    // so files hang off their real parent folders instead of the root.
-    derive_range(0, count);
+    // Re-derive the structure now that the synthesized folders are in the
+    // map; the display text of the existing rows is already cached.
+    derive_structure(0, count);
+    derive_text(start, count);
     // Top-level rows hang off the virtual root.
     for (int i = 0; i < count; ++i) {
       if (i == root) continue;

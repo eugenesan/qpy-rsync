@@ -25,15 +25,15 @@ class InventoryEntry:
 
 def _parse_size(text: str) -> int | None:
     """Parse the size column, which rsync groups with commas."""
-    value = text.replace(",", "").strip()
-    if not value.isdigit():
+    try:
+        return int(text.replace(",", ""))
+    except ValueError:
         return None
-    return int(value)
 
 
 def _parse_time(date: str, time: str) -> str:
     """Format the timestamp like the itemized output of a comparison."""
-    return f"{date.strip()}-{time.strip()}"
+    return f"{date}-{time}"
 
 
 def inventory_paths(
@@ -63,25 +63,22 @@ def inventory_paths(
         paths: dict[str, InventoryEntry] = {}
         assert process.stdout is not None
         for line in process.stdout:
-            line = line.rstrip("\r\n")
-            if not line.strip():
-                continue
-            if line.startswith("sending incremental file list"):
-                continue
-            if line.startswith("sent ") or line.startswith("total "):
-                continue
-            parts = line.split(None, 4)
+            # split(None, 4) keeps the trailing newline inside the last field,
+            # so drop it first; everything else stays a single split call.
+            parts = line.rstrip("\r\n").split(None, 4)
             if len(parts) < 5:
                 continue
-            mode, size_text, date, time, path = parts
-            path = path.rstrip("/")
+            mode = parts[0]
+            if mode[0] not in "-dlcps":
+                # "sending ..." / "sent ..." summary lines.
+                continue
+            path = parts[4].rstrip("/")
             if not path or path == ".":
                 continue
-            kind = ObjectKind.DIRECTORY if mode.startswith("d") else ObjectKind.FILE
             paths[path] = InventoryEntry(
-                kind=kind,
-                size=_parse_size(size_text),
-                modified_time=_parse_time(date, time),
+                kind=ObjectKind.DIRECTORY if mode[0] == "d" else ObjectKind.FILE,
+                size=_parse_size(parts[1]),
+                modified_time=f"{parts[2]}-{parts[3]}",
             )
             if progress is not None and len(paths) % 500 == 0:
                 progress(len(paths))
@@ -134,20 +131,35 @@ def gather_inventory(
         if progress is not None
         else None
     )
-    if destination_paths is None:
+    # The two listings are independent rsync processes. subprocess waits
+    # release the GIL, so running them together roughly halves the wall time
+    # on big trees without adding threads that touch the same data.
+    from concurrent.futures import ThreadPoolExecutor
+
+    def list_destination():
         with timed("inventory.destination_listing"):
-            destination_paths = inventory_paths(
+            return inventory_paths(
                 profile.destination, profile, destination_progress
             )
-    else:
-        destination_paths = dict(destination_paths)
-    if source_paths is None:
+
+    def list_source():
         with timed("inventory.source_listing"):
-            source_paths = inventory_paths(
-                profile.source, profile, source_progress
-            )
-    else:
-        source_paths = dict(source_paths)
+            return inventory_paths(profile.source, profile, source_progress)
+
+    need_destination = destination_paths is None
+    need_source = source_paths is None
+    if need_destination or need_source:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            destination_future = pool.submit(list_destination) if need_destination else None
+            source_future = pool.submit(list_source) if need_source else None
+            if destination_future is not None:
+                destination_paths = destination_future.result()
+            if source_future is not None:
+                source_paths = source_future.result()
+    if destination_paths is None or source_paths is None:
+        return InventoryResult(unchanged=[], destination_metadata={})
+    destination_paths = dict(destination_paths)
+    source_paths = dict(source_paths)
     if progress is not None:
         progress("Matching", 0)
     unchanged: list[Change] = []

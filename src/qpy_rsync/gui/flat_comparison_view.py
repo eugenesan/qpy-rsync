@@ -1190,7 +1190,8 @@ class FlatComparisonView(QWidget):
     # Data
     # ------------------------------------------------------------------
     def set_changes(self, changes: list[object], *, skip_view: bool = False,
-                    skip_directories: bool = False) -> None:
+                    skip_directories: bool = False,
+                    skip_reconcile: bool = False) -> None:
         """Show a new comparison."""
         with timed("view.set_changes"):
             if not skip_view:
@@ -1198,7 +1199,8 @@ class FlatComparisonView(QWidget):
                     tree.setCurrentIndex(QModelIndex())
                     tree.selectionModel().clear()
             self.model.set_changes(  # type: ignore[arg-type]
-                changes, skip_view=skip_view, skip_directories=skip_directories
+                changes, skip_view=skip_view, skip_directories=skip_directories,
+                skip_reconcile=skip_reconcile,
             )
             self.changes_updated.emit("new")
 

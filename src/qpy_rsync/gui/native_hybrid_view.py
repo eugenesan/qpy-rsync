@@ -144,6 +144,28 @@ class NativeHybridView:
         """Drop Python callbacks before the interpreter shuts down."""
         self._native.shutdown()
 
+    def set_changes_for_unchanged(self, count: int) -> None:
+        """Fast path: unchanged items were removed, executable rows unchanged."""
+        handed = self._handed_paths or []
+        if len(handed) == count:
+            return
+        if len(handed) < count:
+            return  # additions still take the regular handoff path
+        self._native.truncate(count)
+        self._handed_paths = handed[:count]
+        self._paths = self._paths[:count]
+        self._native.refresh()
+
+    def set_changes_for_unchanged(self, count: int) -> None:
+        """Fast path: unchanged items were removed, executable rows unchanged."""
+        handed = self._handed_paths or []
+        if len(handed) <= count:
+            return
+        self._native.truncate(count)
+        self._handed_paths = handed[:count]
+        self._paths = self._paths[:count]
+        self._native.refresh()
+
     def set_changes(self, changes: Sequence[Any]) -> None:
         """Hand the dataset to native once; append only when it grows."""
         paths = [str(change.path).rstrip("/") for change in changes]

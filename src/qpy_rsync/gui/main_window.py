@@ -394,7 +394,7 @@ class MainWindow(QMainWindow):
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
         self._build_ui()
-        self._plan_non_nochange_count = -1
+        self._plan_exec_hint: object | None = None
         self._skip_next_plan_rebuild = False
         self._hybrid_view: object | None = None
         if self._hybrid_enabled:
@@ -2775,10 +2775,8 @@ class MainWindow(QMainWindow):
             self.comparison.model.decisions.explicit_items()
         )
         self._plan_comparison_unchanged = True
-        self._plan_non_nochange_count = sum(
-            1
-            for change in self.comparison.model.changes
-            if change.action not in (ChangeAction.NO_CHANGE, ChangeAction.MESSAGE)
+        self._plan_exec_hint = self._executable_hint(
+            self.comparison.model.changes
         )
         self._plan_stale = False
         self._stale_summary_timer.stop()
@@ -3971,6 +3969,21 @@ class MainWindow(QMainWindow):
         )
         return bool(getter()) if getter is not None else False
 
+    @staticmethod
+    def _executable_hint(changes) -> tuple:
+        """Cheap identity check for an unchanged-only transition."""
+        executable = [
+            change for change in changes
+            if change.action not in (ChangeAction.NO_CHANGE, ChangeAction.MESSAGE)
+        ]
+        if not executable:
+            return (0, "", "")
+        return (
+            len(executable),
+            str(executable[0].path).rstrip("/"),
+            str(executable[-1].path).rstrip("/"),
+        )
+
     def _set_comparison_changes(self, changes) -> None:
         """Feed the Python model, skipping row/filter work in native mode."""
         signature = (
@@ -3982,24 +3995,23 @@ class MainWindow(QMainWindow):
             return
         self._fed_change_signature = signature
         self._plan_comparison_unchanged = False
+        unchanged_only = False
         if self._current_plan is not None:
-            executable = sum(
-                1
-                for change in changes
-                if change.action not in (
-                    ChangeAction.NO_CHANGE, ChangeAction.MESSAGE
-                )
-            )
-            if executable == self._plan_non_nochange_count:
-                # Adding/removing unchanged items cannot change the plan:
-                # NO_CHANGE items are never plan items.
+            if self._executable_hint(changes) == self._plan_exec_hint:
+                # Adding/removing unchanged items changes neither the plan
+                # nor any decision, so skip both rebuilds.
+                unchanged_only = True
                 self._skip_next_plan_rebuild = True
         self.comparison.set_changes(
             changes,
             skip_view=self._hybrid_view is not None,
             skip_directories=self._hybrid_view is not None,
+            skip_reconcile=unchanged_only,
         )
         if self._hybrid_view is not None:
+            if unchanged_only and len(changes) < len(self._hybrid_view._handed_paths or ()):
+                self._hybrid_view.set_changes_for_unchanged(len(changes))
+                return
             import os
 
             source = self.source_edit.text().rstrip("/")

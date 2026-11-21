@@ -330,19 +330,26 @@ class FlatChangeModel(QAbstractTableModel):
     # Building the flat structure
     # ------------------------------------------------------------------
     def set_changes(self, changes: list[Change], *, skip_view: bool = False,
-                    skip_directories: bool = False) -> None:
+                    skip_directories: bool = False,
+                    skip_reconcile: bool = False) -> None:
         self.beginResetModel()
         self.hovered_row = None
         self.changes = list(changes)
         # The directory pass normally fills this; keep it indexable when it
         # is skipped because a native view owns the display.
         self._change_destination_sizes = [0] * len(self.changes)
-        self.discarded_decisions = self.decisions.reconcile(
-            self.changes,
-            preserve=self.preserve_decisions,
-            detect_inherited=self.detect_inherited_conflicts,
-        )
-        self._refresh_conflicts()
+        if skip_reconcile:
+            # Only NO_CHANGE rows were added or removed. The executable items
+            # and every decision are unchanged, so re-deriving defaults for
+            # hundreds of thousands of rows is pure waste.
+            self.discarded_decisions = 0
+        else:
+            self.discarded_decisions = self.decisions.reconcile(
+                self.changes,
+                preserve=self.preserve_decisions,
+                detect_inherited=self.detect_inherited_conflicts,
+            )
+            self._refresh_conflicts()
         self.decision_history.clear()
         self.history_changed.emit()
         if not skip_directories:
