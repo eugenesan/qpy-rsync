@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Every comparison cell now uses the action colour explicitly, so the whole
+  row is coloured rather than just the Item column.
+- Profile loading no longer fires redundant settings writes and plan
+  invalidation from each widget change, and a new comparison is never skipped
+  because of a cheap first/last-path signature.
+- The destination metadata listing has a 60 s watchdog: if rsync hangs, the
+  status returns to "Comparison complete" instead of staying on "Comparing...".
+
 - Performance: removing 500k unchanged rows no longer re-runs decision
   reconciliation or rebuilds the plan; native truncation keeps the row prefix
   and only re-derives the directory structure. Measured 1.95s → 0.52s at

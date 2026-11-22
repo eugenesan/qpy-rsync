@@ -2307,3 +2307,24 @@ def test_swap_button_lives_with_the_source_controls() -> None:
     assert window.swap_button.parent() is window.source_open_button.parent()
     window.close()
     application.processEvents()
+
+
+
+def test_metadata_watchdog_clears_the_comparing_status() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._metadata_token = 7
+    window._metadata_pending = True
+    window.progress_bar.setRange(0, 0)
+    window.progress_label.setText("Gathering destination metadata...")
+    window._set_state("Comparing...")
+
+    window._metadata_timeout()
+
+    assert window._metadata_pending is False
+    assert window._metadata_token == 0
+    assert window.progress_bar.maximum() == 100
+    assert "Comparing" not in window.status_edit.text()
+    window.close()
+    application.processEvents()

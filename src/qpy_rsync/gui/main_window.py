@@ -356,6 +356,12 @@ class MainWindow(QMainWindow):
         self._stale_summary_timer.setSingleShot(True)
         self._stale_summary_timer.setInterval(100)
         self._stale_summary_timer.timeout.connect(self._refresh_estimated_summary)
+        # A destination listing can hang on a remote/NFS tree. Without a
+        # watchdog the status stays "Comparing..." forever after the beep.
+        self._metadata_watchdog = QTimer(self)
+        self._metadata_watchdog.setSingleShot(True)
+        self._metadata_watchdog.setInterval(60000)
+        self._metadata_watchdog.timeout.connect(self._metadata_timeout)
         settings = app_settings()
         self._verification_enabled = settings.value(
             "verification/enabled", False, type=bool
@@ -2236,6 +2242,13 @@ class MainWindow(QMainWindow):
         self._append_log(f"Profile loaded: {path}")
 
     def _apply_profile(self, profile: SyncProfile) -> None:
+        # Loading a profile changes several widgets at once. Letting each
+        # `textChanged`/`toggled` signal run does redundant settings.sync()
+        # writes and plan invalidation; apply once at the end instead.
+        self.source_edit.blockSignals(True)
+        self.destination_edit.blockSignals(True)
+        self.protect_backup.blockSignals(True)
+        self.backup_edit.blockSignals(True)
         self.source_edit.setText(
             profile.source.rsync_operand()
             if profile.source.kind is EndpointKind.SSH
@@ -2274,6 +2287,12 @@ class MainWindow(QMainWindow):
             self._baseline_profile = self._profile()
         except ValueError:
             self._baseline_profile = None
+
+        self.source_edit.blockSignals(False)
+        self.destination_edit.blockSignals(False)
+        self.protect_backup.blockSignals(False)
+        self.backup_edit.blockSignals(False)
+        self._endpoint_text_changed()
 
     def _update_filter_summary(self, *, stale: bool = False) -> None:
         enabled = sum(1 for item in self._filters if item.enabled)
@@ -3605,6 +3624,7 @@ class MainWindow(QMainWindow):
         self._last_compare_count = len(result.parsed.changes)
         if metadata_started:
             self._metadata_pending = True
+            self._metadata_watchdog.start()
             self.progress_bar.setRange(0, 0)
             self.progress_label.setText("Gathering destination metadata...")
         else:
@@ -3986,14 +4006,9 @@ class MainWindow(QMainWindow):
 
     def _set_comparison_changes(self, changes) -> None:
         """Feed the Python model, skipping row/filter work in native mode."""
-        signature = (
-            len(changes),
-            str(changes[0].path) if changes else "",
-            str(changes[-1].path) if changes else "",
-        )
-        if signature == getattr(self, "_fed_change_signature", None):
-            return
-        self._fed_change_signature = signature
+        # Never skip a new handoff just because a cheap signature matches:
+        # two profiles can produce the same first/last paths while differing
+        # in the middle, which used to leave the new comparison stale.
         self._plan_comparison_unchanged = False
         unchanged_only = False
         if self._current_plan is not None:
@@ -4384,9 +4399,27 @@ class MainWindow(QMainWindow):
             is not ChangeAction.NO_CHANGE
         ]
 
+    def _metadata_timeout(self) -> None:
+        if self._closing or not self._metadata_pending:
+            return
+        self._metadata_service.cancel()
+        self._metadata_token = 0
+        self._metadata_pending = False
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Destination metadata timed out")
+        self._set_status(
+            "Comparison complete; destination metadata timed out.", "warning"
+        )
+        self._append_log(
+            "Destination metadata listing timed out after 60 s.", severity="warning"
+        )
+        self._finish_comparison_status()
+
     def _metadata_failed(self, token: int, message: str) -> None:
         if self._closing or token != self._metadata_token:
             return
+        self._metadata_watchdog.stop()
         self._metadata_token = 0
         was_pending = self._metadata_pending
         self._metadata_pending = False
@@ -4419,6 +4452,7 @@ class MainWindow(QMainWindow):
     def _metadata_finished(self, token: int, extra: object) -> None:
         if self._closing or token != self._metadata_token:
             return
+        self._metadata_watchdog.stop()
         self._metadata_token = 0
         was_pending = self._metadata_pending
         self._metadata_pending = False

@@ -432,13 +432,24 @@ class HybridDelegate : public QStyledItemDelegate {
     const bool selected = opt.state & QStyle::State_Selected;
     const bool striped = !selected && row < static_cast<int>(store.stripe.size()) &&
                          store.stripe[row] != 0;
+    // QStyledItemDelegate::paint re-reads the text (and its brush) from the
+    // model, which loses the action colour on some styles. Paint the row
+    // background and every cell's text ourselves.
+    paint_background(painter, option, striped);
     if (!name_col) {
-      QStyledItemDelegate::paint(painter, opt, index);
+      QColor color = text_color(s, store, id, selected);
+      if (!color.isValid()) color = opt.palette.color(QPalette::Text);
+      const int alignment = (col == 1 || col == 2 || col == 6 || col == 7 ||
+                             col == 9 || col == 10)
+                                ? (Qt::AlignRight | Qt::AlignVCenter)
+                                : (Qt::AlignLeft | Qt::AlignVCenter);
+      painter->save();
+      painter->setPen(color);
+      painter->drawText(opt.rect.adjusted(2, 0, -4, 0), alignment,
+                        index.data(Qt::DisplayRole).toString());
+      painter->restore();
       return;
     }
-    // QStyledItemDelegate::paint re-reads the text from the model, so draw the
-    // background ourselves and lay out the name cell explicitly.
-    paint_background(painter, option, striped);
 
     // Directory hierarchy: indentation, fold marker, icon and name.
     const bool is_dir = id < static_cast<int>(store.is_dir.size()) && store.is_dir[id];
