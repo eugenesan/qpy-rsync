@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Alternating row stripes now include folder rows, matching the Python view.
+
 - Every comparison cell now uses the action colour explicitly, so the whole
   row is coloured rather than just the Item column.
 - Profile loading no longer fires redundant settings writes and plan

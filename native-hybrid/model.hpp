@@ -433,17 +433,11 @@ struct DataStore {
   }
 
   void compute_stripes() {
+    // The Python model stripes every visible row by its position, folders
+    // included; do the same here instead of resetting the count per folder.
     stripe.assign(visible.size(), 0);
-    int counter = 0;
     for (int row = 0; row < static_cast<int>(visible.size()); ++row) {
-      int id = visible[row];
-      if (id < static_cast<int>(is_dir.size()) && is_dir[id]) {
-        counter = 0;
-        stripe[row] = 0;
-      } else {
-        stripe[row] = static_cast<char>(counter % 2);
-        ++counter;
-      }
+      stripe[row] = static_cast<char>(row % 2);
     }
   }
 
