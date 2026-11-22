@@ -2363,3 +2363,22 @@ def test_stale_compare_result_is_ignored_after_a_new_compare() -> None:
     assert window._last_compare_count == 1
     window.close()
     application.processEvents()
+
+
+
+def test_missing_native_extension_falls_back_to_python_view(monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    import qpy_rsync.gui.native_hybrid_view as nhv
+
+    monkeypatch.setattr(nhv, "module", lambda: None)
+    settings = app_settings()
+    settings.setValue("advanced/hybrid_view", True)
+    settings.sync()
+    window = MainWindow()
+    assert window._hybrid_view is None
+    assert type(window.overview).__name__ == "OverviewPane"
+    settings.setValue("advanced/hybrid_view", False)
+    settings.sync()
+    window.close()
+    application.processEvents()

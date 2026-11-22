@@ -9,14 +9,20 @@ Build-Depends:
  python3-all,
  python3-hatchling,
  python3-pyside6.qtwidgets,
+ python3-dev,
+ python3-nanobind,
+ qt6-base-dev,
+ cmake,
+ ninja-build,
 Rules-Requires-Root: no
 Standards-Version: 4.6.2
 Homepage: https://github.com/eugenesan/qpy-rsync
 
 Package: qpy-rsync
-Architecture: all
+Architecture: any
 Depends:
  ${misc:Depends},
+ ${shlibs:Depends},
  ${python3:Depends},
  python3-pyside6.qtwidgets,
  rsync,

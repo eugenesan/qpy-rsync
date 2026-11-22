@@ -2,8 +2,18 @@
 
 export PYBUILD_NAME = qpy-rsync
 
+NB_BUILD = $(CURDIR)/debian/native-hybrid-build
+
 %:
 	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_build:
+	dh_auto_build
+	# Build the optional native Qt view extension against the system Qt6.
+	cmake -S native-hybrid -B $(NB_BUILD) -G Ninja \
+	  -DPYTHON_EXECUTABLE=$$(command -v python3) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(NB_BUILD)
+	cp $(NB_BUILD)/native_hybrid*.so src/qpy_rsync/
 
 # The test suite starts Qt applications; it runs in the repository, not
 # during a package build.

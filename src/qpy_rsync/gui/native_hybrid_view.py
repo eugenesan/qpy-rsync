@@ -43,8 +43,14 @@ def module() -> object | None:
         try:
             from qpy_rsync import native_hybrid
 
+            # An ABI-mismatched .so can import but fail when a binding is
+            # used; verify the minimal surface before enabling the view.
+            required = ("create_tables_widget", "create_overview_widget",
+                        "load", "refresh", "shutdown")
+            if not all(hasattr(native_hybrid, name) for name in required):
+                return None
             _MODULE = native_hybrid
-        except (ImportError, OSError):
+        except (ImportError, OSError, AttributeError):
             return None
     return _MODULE
 
