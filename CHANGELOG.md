@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Restoring an excluded row now rebuilds in tree order, so undo keeps the
+  current row focused and the scroll position unchanged.
+- The Decisions column and overview statistics now paint the same QIcons the
+  Python view generates at runtime, so toolbar, lists and stats agree and
+  follow user colour changes.
+
 - Decision stale-summary scans are ~3x faster with many explicit decisions:
   excluded ancestors and per-folder inherited decisions are computed once.
 - A native decision edit no longer marks the plan stale twice.

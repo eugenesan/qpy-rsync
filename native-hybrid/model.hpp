@@ -628,15 +628,16 @@ struct DataStore {
       if (row < 0) return false;
       visible.erase(visible.begin() + row);
     } else {
-      auto at = std::lower_bound(
-          visible.begin(), visible.end(), path_id,
-          [this](int a, int b) { return paths[a] < paths[b]; });
-      visible.insert(at, path_id);
-      row = static_cast<int>(at - visible.begin());
+      // `visible` is in tree order, not lexicographic order; inserting by
+      // path made restored rows appear at a random place. Rebuild instead.
+      rebuild_visible();
+      compute_destination_counts();
+      return true;
     }
     for (int r = row; r < static_cast<int>(visible.size()); ++r) {
       row_of_id[visible[r]] = r;
     }
+    compute_stripes();
     return true;
   }
 

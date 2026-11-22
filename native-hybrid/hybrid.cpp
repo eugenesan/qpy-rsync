@@ -20,6 +20,7 @@
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QPaintEvent>
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QSizePolicy>
@@ -40,14 +41,16 @@
 namespace nb = nanobind;
 
 namespace {
+class StatsWidget;
 struct Session {
   DataStore store;
   QWidget* widget = nullptr;  // legacy combined widget
   QWidget* tables_widget = nullptr;
   QWidget* overview_widget = nullptr;
   QTreeView* overview_view = nullptr;
-  QLabel* stats_label = nullptr;
+  StatsWidget* stats_widget = nullptr;
   std::vector<QString> action_colours;
+  std::vector<QIcon> action_icons;
   int current_path_id = -1;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
@@ -113,7 +116,7 @@ void header_context_hook(int pane, int x, int y) {
 }
 
 int first_visible_column(const Session& s, int pane);
-void select_path_id_impl(Session& s, int path_id);
+void select_path_id_impl(Session& s, int path_id, bool center = false);
 
 void refresh_native_models(Session& s) {
   QWidget* focus = QApplication::focusWidget();
@@ -185,7 +188,7 @@ int first_visible_column(const Session& s, int pane) {
   return 0;
 }
 
-void select_path_id_impl(Session& s, int path_id) {
+void select_path_id_impl(Session& s, int path_id, bool center) {
   if (path_id < 0 || path_id >= static_cast<int>(s.store.row_of_id.size())) return;
   int row = s.store.row_of_id[path_id];
   s.current_path_id = path_id;
@@ -198,11 +201,53 @@ void select_path_id_impl(Session& s, int path_id) {
     view->selectionModel()->select(
         index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     view->setCurrentIndex(index);
-    view->scrollTo(index, QAbstractItemView::PositionAtCenter);
+    view->scrollTo(index, center ? QAbstractItemView::PositionAtCenter
+                                 : QAbstractItemView::EnsureVisible);
   }
   g_in_select = false;
   emit_selection(path_id);
 }
+
+class StatsWidget : public QWidget {
+ public:
+  explicit StatsWidget(QWidget* parent = nullptr) : QWidget(parent) {}
+
+  void setEntries(const std::vector<std::pair<QIcon, QString>>& entries) {
+    entries_ = entries;
+    updateGeometry();
+    update();
+  }
+
+  QSize sizeHint() const override {
+    int width = 4;
+    for (const auto& entry : entries_) {
+      width += 20 + fontMetrics().horizontalAdvance(entry.second) + 14;
+    }
+    return QSize(width, 24);
+  }
+
+ protected:
+  void paintEvent(QPaintEvent*) override {
+    QPainter painter(this);
+    int x = 4;
+    const int y = (height() - 16) / 2;
+    for (const auto& entry : entries_) {
+      if (!entry.first.isNull()) {
+        entry.first.paint(&painter, QRect(x, y, 16, 16));
+      }
+      x += 20;
+      painter.save();
+      painter.setPen(palette().color(QPalette::Text));
+      painter.drawText(x, height() / 2 + fontMetrics().ascent() / 2 - 1,
+                       entry.second);
+      x += fontMetrics().horizontalAdvance(entry.second) + 14;
+      painter.restore();
+    }
+  }
+
+ private:
+  std::vector<std::pair<QIcon, QString>> entries_;
+};
 
 class OverviewDelegate : public QStyledItemDelegate {
  public:
@@ -571,31 +616,15 @@ class HybridDelegate : public QStyledItemDelegate {
                         box.top() + 4);
     }
     painter->restore();
-    if (id >= static_cast<int>(store.actions.size())) return;
     const int action = store.actions[id];
-    QColor color("#9CA3AF");
-    if (action >= 0 && action < static_cast<int>(s.action_colours.size())) {
-      const QString hex = s.action_colours[action];
-      if (!hex.isEmpty()) color = QColor(hex);
+    if (action >= 0 && action < static_cast<int>(s.action_icons.size()) &&
+        !s.action_icons[action].isNull()) {
+      // Reuse the exact QIcon the Python view generates, so the toolbar,
+      // Decisions column and overview statistics always agree.
+      const int y = opt.rect.center().y() - 8;
+      s.action_icons[action].paint(painter,
+                                   QRect(opt.rect.left() + 30, y, 16, 16));
     }
-    const int x = opt.rect.left() + 36;
-    const int y = opt.rect.center().y();
-    painter->save();
-    if (action == Delete) {
-      painter->setPen(QPen(color, 2));
-      painter->drawLine(x - 5, y - 5, x + 5, y + 5);
-      painter->drawLine(x + 5, y - 5, x - 5, y + 5);
-    } else if (action == NoChange) {
-      painter->setPen(QPen(color, 2));
-      painter->drawLine(x - 5, y, x - 1, y + 4);
-      painter->drawLine(x - 1, y + 4, x + 6, y - 5);
-    } else {
-      painter->setPen(Qt::NoPen);
-      painter->setBrush(color);
-      QPoint pts[3] = {{x, y - 6}, {x + 6, y + 4}, {x - 6, y + 4}};
-      painter->drawPolygon(pts, 3);
-    }
-    painter->restore();
   }
 
   Session* session_;
@@ -765,8 +794,7 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_widget = new QWidget();
     auto* layout = new QVBoxLayout(s.overview_widget);
     layout->setContentsMargins(0, 0, 0, 0);
-    s.stats_label = new QLabel(s.overview_widget);
-    s.stats_label->setWordWrap(true);
+    s.stats_widget = new StatsWidget(s.overview_widget);
     s.overview_view = new QTreeView(s.overview_widget);
     s.overview_view->setUniformRowHeights(true);
     s.overview_view->setAlternatingRowColors(true);
@@ -785,7 +813,7 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->header()->resizeSection(3, 84);
     s.overview_view->expandToDepth(2);
     layout->addWidget(s.overview_view);
-    layout->addWidget(s.stats_label);
+    layout->addWidget(s.stats_widget);
     QObject::connect(
         s.overview_view, &QTreeView::activated,
         [](const QModelIndex& index) {
@@ -793,7 +821,7 @@ QWidget* ensure_overview_widget(Session& s) {
           QString path = current.overview->data(index, Qt::UserRole).toString();
           auto it = current.store.path_to_id.find(path.toStdString());
           if (it != current.store.path_to_id.end()) {
-            select_path_id_impl(current, it->second);
+            select_path_id_impl(current, it->second, true);
             // Put keyboard focus back on the lists so arrows and shortcuts
             // act on the jumped-to row immediately.
             if (current.views[0] != nullptr) current.views[0]->setFocus();
@@ -804,7 +832,7 @@ QWidget* ensure_overview_widget(Session& s) {
 }
 
 void update_stats(Session& s) {
-  if (s.stats_label == nullptr) return;
+  if (s.stats_widget == nullptr) return;
   long long count = 0, size = 0, creates = 0, updates = 0, metadata = 0,
               deletes = 0, kept = 0, deleted_size = 0;
   for (int id : s.store.visible) {
@@ -827,11 +855,21 @@ void update_stats(Session& s) {
                           ? s.store.dest_sizes[id] : 0;
     } else if (action == DestOnly) ++kept;
   }
-  s.stats_label->setText(
-      QString("%1 item(s), %2   + %3   ↑ %4   ↑ %5   ✗ %6 (%7)  • %8")
-          .arg(count).arg(qpy_format_size(size))
-          .arg(creates).arg(updates).arg(metadata).arg(deletes)
-          .arg(qpy_format_size(deleted_size)).arg(kept));
+  auto icon_for = [&](int action) -> QIcon {
+    return action >= 0 && action < static_cast<int>(s.action_icons.size())
+               ? s.action_icons[action] : QIcon();
+  };
+  std::vector<std::pair<QIcon, QString>> entries;
+  entries.emplace_back(QIcon(), QString("%1 item(s), %2")
+                                    .arg(count).arg(qpy_format_size(size)));
+  entries.emplace_back(icon_for(Create), QString::number(creates));
+  entries.emplace_back(icon_for(Update), QString::number(updates));
+  entries.emplace_back(icon_for(Metadata), QString::number(metadata));
+  entries.emplace_back(icon_for(Delete),
+                       QString("%1 (%2)").arg(deletes).arg(
+                           qpy_format_size(deleted_size)));
+  entries.emplace_back(icon_for(DestOnly), QString::number(kept));
+  s.stats_widget->setEntries(entries);
 }
 
 }  // namespace
@@ -888,7 +926,7 @@ NB_MODULE(native_hybrid, m) {
     }
     session_ref.overview_view = nullptr;
     session_ref.overview = nullptr;
-    session_ref.stats_label = nullptr;
+    session_ref.stats_widget = nullptr;
     session_ref.tables_widget = nullptr;
     session_ref.overview_widget = nullptr;
   });
@@ -1078,6 +1116,20 @@ NB_MODULE(native_hybrid, m) {
     refresh_native_models(s);
   });
 
+  m.def("set_action_icons", [](const std::vector<std::uintptr_t>& pointers) {
+    Session& s = session();
+    s.action_icons.clear();
+    for (std::uintptr_t pointer : pointers) {
+      if (pointer == 0) {
+        s.action_icons.emplace_back();
+        continue;
+      }
+      s.action_icons.push_back(*reinterpret_cast<QIcon*>(pointer));
+    }
+    for (TableModel* model : s.models) model->layout_refresh();
+    update_stats(s);
+  });
+
   m.def("set_action_colours", [](const std::vector<std::string>& colours) {
     Session& s = session();
     s.action_colours.clear();
@@ -1166,7 +1218,7 @@ NB_MODULE(native_hybrid, m) {
     s.store.decision_log.clear();
     if (changed_count == 1 &&
         s.store.update_single_visibility(changed_id, target[changed_id])) {
-      for (TableModel* model : s.models) model->layout_refresh();
+      refresh_native_models(s);
       update_stats(s);
     } else if (changed_count > 0) {
       s.store.rebuild_visible();

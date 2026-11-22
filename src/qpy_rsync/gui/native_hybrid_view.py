@@ -66,6 +66,7 @@ class NativeHybridView:
         if self._widget is None or self.overview_widget is None:
             raise RuntimeError("could not wrap the native QWidget")
         self._native = native
+        self._action_icons: list[object] = []
         self.set_action_colours()
         self._paths: list[str] = []
         self._handed_paths: list[str] | None = None
@@ -139,6 +140,18 @@ class NativeHybridView:
             ChangeAction.MESSAGE,
         )
         self._native.set_action_colours([str(colours.get(a) or "") for a in order])
+        # The Python generator is the single source of truth for action
+        # icons. Hand the native layer the same QIcons used by the toolbar
+        # and statistics bar, regenerated whenever colours change.
+        import shiboken6
+
+        from qpy_rsync.gui.icons import action_icon
+
+        icons = [action_icon(action) for action in order]
+        self._action_icons = icons  # keep the C++ objects alive
+        self._native.set_action_icons(
+            [int(shiboken6.getCppPointer(icon)[0]) for icon in icons]
+        )
 
     def shutdown(self) -> None:
         """Drop Python callbacks before the interpreter shuts down."""
