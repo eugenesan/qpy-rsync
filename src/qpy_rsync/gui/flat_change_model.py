@@ -1622,7 +1622,14 @@ class FlatChangeModel(QAbstractTableModel):
     # Qt model interface
     # ------------------------------------------------------------------
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802, B008
-        return 0 if parent.isValid() else len(self._visible_rows)
+        if parent.isValid():
+            return 0
+        # In hybrid mode the native models own the rows; legacy callers that
+        # still ask this model can be answered from the native row map.
+        counter = getattr(self, "_hybrid_row_count", None)
+        if counter is not None:
+            return int(counter())
+        return len(self._visible_rows)
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: ARG002, B008, N802
         return self.COLUMN_COUNT

@@ -4115,6 +4115,7 @@ class MainWindow(QMainWindow):
 
         def select_path(path, *_args, **_kwargs):
             view.select_path(path)
+            comparison._hybrid_selected_path = path
 
         def row_path(row, *_args, **_kwargs):
             return view.path_of_row(row)
@@ -4125,6 +4126,14 @@ class MainWindow(QMainWindow):
         comparison.search_matches = search_matches  # type: ignore[method-assign]
         comparison.model.search_matches = search_matches  # type: ignore[method-assign]
         comparison.model.path_of_row_index = row_path  # type: ignore[method-assign]
+        comparison.model._hybrid_row_count = view.row_count
+        # Legacy callers (and view-level tests) may send Space to the hidden
+        # Python view. Its event filter asks _selected_paths(); answer from
+        # the native selection so the existing decision path runs.
+        comparison._selected_paths = (  # type: ignore[method-assign]
+            lambda: [getattr(comparison, "_hybrid_selected_path", "")]
+            if getattr(comparison, "_hybrid_selected_path", "") else []
+        )
         comparison.sort = sort  # type: ignore[method-assign]
         comparison.select_path = select_path  # type: ignore[method-assign]
         comparison.row_path = row_path  # type: ignore[method-assign]

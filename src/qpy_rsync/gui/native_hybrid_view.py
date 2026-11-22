@@ -253,13 +253,6 @@ class NativeHybridView:
     def on_selection_changed(self, callback) -> None:
         self._native.set_selection_callback(callback)
 
-    def select_path(self, path: str) -> None:
-        try:
-            path_id = self._paths.index(path.rstrip("/"))
-        except ValueError:
-            return
-        self._native.select_path_id(path_id)
-
     def on_decision_changed(self, callback) -> None:
         """Call ``callback(path_id, decision)`` when the user edits a decision."""
         self._native.set_decision_callback(callback)
@@ -309,6 +302,11 @@ class NativeOverviewShim(QWidget):
     def __init__(self, widget: QWidget) -> None:
         super().__init__()
         self.tree = widget
+        from qpy_rsync.gui.overview import StatisticsBar
+
+        # Hidden mirror so code that reads OverviewPane.statistics keeps
+        # working while the native widget draws the visible stats footer.
+        self.statistics = StatisticsBar()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(widget)
@@ -321,5 +319,5 @@ class NativeOverviewShim(QWidget):
     def set_aggregates(self, *_args, **_kwargs) -> None:
         pass
 
-    def set_statistics(self, *_args, **_kwargs) -> None:
-        pass
+    def set_statistics(self, summary, *, estimate: bool = False) -> None:
+        self.statistics.set_summary(summary, estimate=estimate)
