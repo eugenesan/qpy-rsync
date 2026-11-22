@@ -404,6 +404,7 @@ class MainWindow(QMainWindow):
         self._plan_exec_hint: object | None = None
         self._skip_next_plan_rebuild = False
         self._hybrid_view: object | None = None
+        self._hybrid_originals: dict = {}
         if self._hybrid_enabled:
             self._enable_hybrid_view()
         self._restore_window_state()
@@ -1914,6 +1915,24 @@ class MainWindow(QMainWindow):
             settings.sync()
             self._update_verification_visibility()
             self._update_conflict_ui()
+            hybrid = dialog.hybrid_view()
+            if hybrid != self._hybrid_enabled:
+                settings.setValue("advanced/hybrid_view", hybrid)
+                settings.sync()
+                self._hybrid_enabled = hybrid
+                if hybrid:
+                    self._enable_hybrid_view()
+                    if self._hybrid_view is None:
+                        QMessageBox.warning(
+                            self, "Native views unavailable",
+                            "The native comparison extension is not built or "
+                            "could not be loaded. The Python view stays active.",
+                        )
+                        self._hybrid_enabled = False
+                        settings.setValue("advanced/hybrid_view", False)
+                        settings.sync()
+                else:
+                    self._disable_hybrid_view()
             self._external_tools = dialog.external_tools()
             self._diff_command = dialog.diff_command()
             save_tools(self._external_tools)
@@ -4086,6 +4105,44 @@ class MainWindow(QMainWindow):
             self.main_splitter.replaceWidget(index, view.widget)
         self.comparison.hide()
 
+    def _disable_hybrid_view(self) -> None:
+        """Restore the Python comparison and overview after disabling hybrid."""
+        view = self._hybrid_view
+        if view is None:
+            return
+        for obj, name, original in self._hybrid_originals.values():
+            if original is None:
+                try:
+                    delattr(obj, name)
+                except AttributeError:
+                    pass
+            else:
+                setattr(obj, name, original)
+        self._hybrid_originals.clear()
+        self.undo_decision_action.triggered.disconnect()
+        self.undo_decision_action.triggered.connect(self._hybrid_undo_original)
+        self.redo_decision_action.triggered.disconnect()
+        self.redo_decision_action.triggered.connect(self._hybrid_redo_original)
+        index = self.log_splitter.indexOf(self.overview)
+        if index >= 0:
+            self.log_splitter.replaceWidget(index, self._python_overview)
+        self.overview = self._python_overview
+        index = self.main_splitter.indexOf(view.widget)
+        if index >= 0:
+            self.main_splitter.replaceWidget(index, self.comparison)
+        self.comparison.show()
+        view.shutdown()
+        self._hybrid_view = None
+        if self._last_changed_changes:
+            self.comparison.set_changes(list(self._last_changed_changes))
+
+    def _patch_for_hybrid(self, obj: object, name: str, value: object) -> None:
+        """Remember a monkey-patched method so disabling hybrid restores it."""
+        key = (id(obj), name)
+        if key not in self._hybrid_originals:
+            self._hybrid_originals[key] = (obj, name, getattr(obj, name, None))
+        setattr(obj, name, value)
+
     def _route_controls_to_native(self, view) -> None:
         """Reuse the existing toolbar/search controls for the native view."""
         from PySide6.QtCore import Qt
@@ -4120,23 +4177,24 @@ class MainWindow(QMainWindow):
         def row_path(row, *_args, **_kwargs):
             return view.path_of_row(row)
 
-        comparison.set_path_filter = set_path_filter  # type: ignore[method-assign]
-        comparison.set_visible_actions = set_visible_actions  # type: ignore[method-assign]
-        comparison.set_action_filter = set_visible_actions  # type: ignore[method-assign]
-        comparison.search_matches = search_matches  # type: ignore[method-assign]
-        comparison.model.search_matches = search_matches  # type: ignore[method-assign]
-        comparison.model.path_of_row_index = row_path  # type: ignore[method-assign]
-        comparison.model._hybrid_row_count = view.row_count
+        self._patch_for_hybrid(comparison, 'set_path_filter', set_path_filter)
+        self._patch_for_hybrid(comparison, 'set_visible_actions', set_visible_actions)
+        self._patch_for_hybrid(comparison, 'set_action_filter', set_visible_actions)
+        self._patch_for_hybrid(comparison, 'search_matches', search_matches)
+        self._patch_for_hybrid(comparison.model, 'search_matches', search_matches)
+        self._patch_for_hybrid(comparison.model, 'path_of_row_index', row_path)
+        self._patch_for_hybrid(comparison.model, "_hybrid_row_count", view.row_count)
         # Legacy callers (and view-level tests) may send Space to the hidden
         # Python view. Its event filter asks _selected_paths(); answer from
         # the native selection so the existing decision path runs.
-        comparison._selected_paths = (  # type: ignore[method-assign]
+        self._patch_for_hybrid(
+            comparison, "_selected_paths",
             lambda: [getattr(comparison, "_hybrid_selected_path", "")]
-            if getattr(comparison, "_hybrid_selected_path", "") else []
+            if getattr(comparison, "_hybrid_selected_path", "") else [],
         )
-        comparison.sort = sort  # type: ignore[method-assign]
-        comparison.select_path = select_path  # type: ignore[method-assign]
-        comparison.row_path = row_path  # type: ignore[method-assign]
+        self._patch_for_hybrid(comparison, 'sort', sort)
+        self._patch_for_hybrid(comparison, 'select_path', select_path)
+        self._patch_for_hybrid(comparison, 'row_path', row_path)
 
         original_set_metadata = comparison.set_destination_metadata
         original_merge_metadata = comparison.merge_destination_metadata
@@ -4156,8 +4214,8 @@ class MainWindow(QMainWindow):
             if hidden:
                 self._hybrid_view.set_destination_metadata(metadata, merge=True)
 
-        comparison.set_destination_metadata = set_destination_metadata  # type: ignore[method-assign]
-        comparison.merge_destination_metadata = merge_destination_metadata  # type: ignore[method-assign]
+        self._patch_for_hybrid(comparison, 'set_destination_metadata', set_destination_metadata)
+        self._patch_for_hybrid(comparison, 'merge_destination_metadata', merge_destination_metadata)
 
         def undo_decision(*_args, **_kwargs):
             result = original_undo()
@@ -4173,8 +4231,10 @@ class MainWindow(QMainWindow):
 
         original_undo = comparison.undo_decision
         original_redo = comparison.redo_decision
-        comparison.undo_decision = undo_decision  # type: ignore[method-assign]
-        comparison.redo_decision = redo_decision  # type: ignore[method-assign]
+        self._hybrid_undo_original = original_undo
+        self._hybrid_redo_original = original_redo
+        self._patch_for_hybrid(comparison, 'undo_decision', undo_decision)
+        self._patch_for_hybrid(comparison, 'redo_decision', redo_decision)
         self.undo_decision_action.triggered.disconnect()
         self.undo_decision_action.triggered.connect(undo_decision)
         self.redo_decision_action.triggered.disconnect()
