@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Plan build: fold the item fingerprint into the main loop and add a cheap
+  comparison signature so opening Sync confirmation skips two 500k-element
+  set builds when the comparison is unchanged.
+
 - Added opt-in `QPY_RSYNC_PROFILE=1` timing probes for the plan-build path
   (see `docs/plan-profiling.md`), written to stderr and the session log.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+import zlib
 from typing import Iterable
 
 from qpy_rsync.backend.diagnostics import timed
@@ -66,6 +67,9 @@ class ExecutionPlan:
     # A cheap content fingerprint used to reuse generated rsync filter rules
     # when a rebuilt plan has exactly the same items and decisions.
     items_fingerprint: str = ""
+    # Order-independent fingerprint of the selectable comparison items, used
+    # to skip rebuilding two 500k-element sets in check_plan_freshness().
+    comparison_signature: str = ""
 
     @property
     def included_items(self) -> tuple[PlanItem, ...]:
@@ -94,6 +98,22 @@ def decision_signature(decisions) -> str:
     ).hexdigest()
 
 
+def comparison_signature(changes: Iterable[Change]) -> str:
+    """Cheap order-independent fingerprint of the selectable changes."""
+    acc = 0
+    count = 0
+    for change in changes:
+        if not ChangeDecisions.selectable(change):
+            continue
+        key = (
+            f"{str(change.path).rstrip('/')}\0"
+            f"{change.action.value}\0{change.kind.value}\0"
+        )
+        acc ^= zlib.crc32(key.encode("utf-8"))
+        count += 1
+    return f"{count}:{acc:08x}"
+
+
 def build_execution_plan(
     profile: SyncProfile,
     changes: Iterable[Change],
@@ -115,6 +135,7 @@ def build_execution_plan(
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
 
+    digest = sha256()
     with timed("plan.loop", changes=len(changes_list)):
         for change in changes_list:
             action = change.action
@@ -132,17 +153,20 @@ def build_execution_plan(
                 else action
             )
             is_destructive = selected and effective_action is ChangeAction.DELETE
-            items.append(
-                PlanItem(
-                    path=clean,
-                    action=effective_action,
-                    comparison_action=action,
-                    kind=change.kind,
-                    included=selected,
-                    destructive=is_destructive,
-                    size=change.size,
-                )
+            item = PlanItem(
+                path=clean,
+                action=effective_action,
+                comparison_action=action,
+                kind=change.kind,
+                included=selected,
+                destructive=is_destructive,
+                size=change.size,
             )
+            items.append(item)
+            digest.update(item.path.encode("utf-8"))
+            digest.update(item.action.value.encode("utf-8"))
+            digest.update(item.kind.value.encode("utf-8"))
+            digest.update(b"1" if item.included else b"0")
             if selected:
                 included += 1
                 destructive += int(is_destructive)
@@ -202,14 +226,10 @@ def build_execution_plan(
         total_size=total_size,
         included_size=included_size,
     )
-    with timed("plan.digest", items=len(items)):
+    with timed("plan.digest"):
         signature = decision_signature(decisions)
-        digest = sha256()
-        for item in items:
-            digest.update(item.path.encode("utf-8"))
-            digest.update(item.action.value.encode("utf-8"))
-            digest.update(item.kind.value.encode("utf-8"))
-            digest.update(b"1" if item.included else b"0")
+    with timed("plan.comparison_signature", changes=len(changes_list)):
+        comparable = comparison_signature(changes_list)
     return ExecutionPlan(
         items_fingerprint=digest.hexdigest(),
         decision_signature=signature,
@@ -218,6 +238,7 @@ def build_execution_plan(
         destination_operand=profile.destination.rsync_operand(),
         items=tuple(items),
         summary=summary,
+        comparison_signature=comparable,
     )
 
 @dataclass(slots=True, frozen=True)
@@ -233,6 +254,7 @@ def check_plan_freshness(
     decision_signature: str | None = None,
 ) -> PlanFreshness:
     reasons: list[str] = []
+    changes_list = list(changes)
     if plan.profile_fingerprint != profile_fingerprint(profile):
         reasons.append("profile options changed")
     if plan.source_operand != profile.source.rsync_operand():
@@ -241,12 +263,18 @@ def check_plan_freshness(
         reasons.append("destination endpoint changed")
     if decision_signature is not None and plan.decision_signature != decision_signature:
         reasons.append("decisions changed")
-    current = {
-        (change.path.rstrip("/"), change.action, change.kind)
-        for change in changes
-        if ChangeDecisions.selectable(change)
-    }
-    planned = {item.identity for item in plan.items}
-    if current != planned:
-        reasons.append("comparison actions changed")
+    if plan.comparison_signature and (
+        plan.comparison_signature == comparison_signature(changes_list)
+    ):
+        # The comparison is identical; skip the two 500k-element set builds.
+        pass
+    else:
+        current = {
+            (change.path.rstrip("/"), change.action, change.kind)
+            for change in changes_list
+            if ChangeDecisions.selectable(change)
+        }
+        planned = {item.identity for item in plan.items}
+        if current != planned:
+            reasons.append("comparison actions changed")
     return PlanFreshness(not reasons, tuple(reasons))

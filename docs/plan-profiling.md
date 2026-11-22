@@ -54,7 +54,8 @@ Plan rebuild:
 | `plan.modified_count` | decision override count |
 | `plan.loop` | per-change walk that creates `PlanItem`s |
 | `plan.deleted_sizes` | deleted-directory size aggregation |
-| `plan.digest` | fingerprint SHA-256 over all plan items |
+| `plan.digest` | decision signature hashing (item digest is now folded into `plan.loop`) |
+| `plan.comparison_signature` | cheap order-independent fingerprint of selectable changes |
 | `plan.post_index` | sort + `_plan_paths` / `_plan_items` / `_plan_changes` maps |
 | `plan.state_snapshot` | excluded paths, explicit decisions, executable hint |
 | `plan.freshness_check` | `check_plan_freshness` before sync confirmation |
