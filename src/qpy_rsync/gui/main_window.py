@@ -4338,24 +4338,38 @@ class MainWindow(QMainWindow):
         from qpy_rsync.core.changes import ChangeDecision
 
         changes = self._last_changed_changes
-        if not 0 <= path_id < len(changes):
+        if 0 <= path_id < len(changes):
+            targets = [str(changes[path_id].path).rstrip("/")]
+        elif self._hybrid_view is not None:
+            # Folder rows are synthesized after the change list: mirror the
+            # subtree decision onto every change below that folder.
+            folder = self._hybrid_view.path_of_id(path_id).rstrip("/")
+            if not folder or folder.startswith("\x01"):
+                return
+            prefix = folder + "/"
+            targets = [
+                str(change.path).rstrip("/")
+                for change in changes
+                if str(change.path).rstrip("/").startswith(prefix)
+            ]
+        else:
             return
-        path = str(changes[path_id].path).rstrip("/")
         model = self.comparison.model
         decisions = model.decisions
         before = model._snapshot()
-        if decision == 2:  # Exclude
-            decisions.set(path, ChangeDecision.EXCLUDE)
-        else:
-            decisions.reset(path)
+        for path in targets:
+            if decision == 2:  # Exclude
+                decisions.set(path, ChangeDecision.EXCLUDE)
+            else:
+                decisions.reset(path)
         after = model._snapshot()
         if before != after:
             model.decision_history.record(before, after)
             model.history_changed.emit()
-        self.comparison.model._refresh_effective_actions({path})
+        model._refresh_effective_actions(set(targets))
         if self._hybrid_view is not None:
             self._hybrid_view.refresh_after_decision(path_id, decision)
-        self._on_decision_changed({path})
+        self._on_decision_changed(set(targets))
         # _on_decision_changed already marks the plan stale through
         # _overview_updated; avoid a second full stale pass here.
         self._invalidate_validated_plan(mark=False)

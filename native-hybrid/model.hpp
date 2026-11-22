@@ -883,6 +883,7 @@ class TableModel : public QAbstractTableModel {
     if (row < 0 || row >= static_cast<int>(store_->visible.size())) return false;
     int path_id = store_->visible[row];
     store_->toggle_decision(path_id, true);
+    store_->rebuild_visible();
     if (g_decision_hook != nullptr) {
       g_decision_hook(path_id, store_->decisions[path_id]);
     }

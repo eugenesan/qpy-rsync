@@ -116,6 +116,9 @@ class NativeHybridView:
     def path_id_for_path(self, path: str) -> int:
         return int(self._native.path_id_for_path(path.rstrip("/")))
 
+    def path_of_id(self, path_id: int) -> str:
+        return str(self._native.path_of_id(path_id))
+
     def is_directory(self, path: str) -> bool:
         return bool(self._native.is_directory_by_path(path.rstrip("/")))
 

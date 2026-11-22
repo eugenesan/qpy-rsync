@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Folder decisions made from the Decisions column or with Space now mirror
+  the whole subtree into the Python decision store (previously folder ids
+  were skipped, so undo could not restore them), and rebuild the native
+  visible rows immediately.
+- Mouse and keyboard decision toggles now follow the same path; both hide a
+  folder and its files. Focus is kept on the lists, and a row hidden by a
+  decision is re-selected if undo brings it back.
+
 - Restoring an excluded row now rebuilds in tree order, so undo keeps the
   current row focused and the scroll position unchanged.
 - The Decisions column and overview statistics now paint the same QIcons the

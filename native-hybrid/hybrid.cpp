@@ -52,6 +52,7 @@ struct Session {
   std::vector<QString> action_colours;
   std::vector<QIcon> action_icons;
   int current_path_id = -1;
+  int last_hidden_path_id = -1;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
   QTableView* views[3] = {nullptr, nullptr, nullptr};
@@ -145,6 +146,8 @@ void refresh_native_models(Session& s) {
   }
   if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size())) {
     if (s.store.row_of_id[current_id] < 0) {
+      // Remember it: when undo brings it back, focus returns to this item.
+      s.last_hidden_path_id = current_id;
       // The row was just hidden (for example by excluding it). Move to the
       // next visible item, or the previous one when it was the last.
       int nearest = -1;
@@ -170,12 +173,21 @@ void refresh_native_models(Session& s) {
       current_id = nearest;
       s.current_path_id = current_id;
     }
+    if (s.last_hidden_path_id >= 0 &&
+        s.last_hidden_path_id < static_cast<int>(s.store.row_of_id.size()) &&
+        s.store.row_of_id[s.last_hidden_path_id] >= 0) {
+      current_id = s.last_hidden_path_id;
+      s.last_hidden_path_id = -1;
+      s.current_path_id = current_id;
+    }
     if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size()) &&
         s.store.row_of_id[current_id] >= 0) {
       select_path_id_impl(s, current_id);
     }
   }
-  if (focus != nullptr) focus->setFocus();
+  QWidget* list_focus = focus;
+  if (list_focus == nullptr && s.views[0] != nullptr) list_focus = s.views[0];
+  if (list_focus != nullptr) list_focus->setFocus();
   if (s.overview != nullptr && s.overview_view != nullptr) {
     s.overview->build(s.store, true);
     s.overview_view->expandToDepth(2);
@@ -434,6 +446,9 @@ class HybridDelegate : public QStyledItemDelegate {
       if (indicator.contains(mouse->pos())) {
         const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
         s.store.toggle_decision(id, true);
+        // Folder ids live beyond the change list, so the Python mirror may
+        // not call back. Always rebuild our own visible rows here.
+        s.store.rebuild_visible();
         if (g_native_decision_hook != nullptr) {
           g_native_decision_hook(id, s.store.decisions[id]);
         }
@@ -1080,6 +1095,12 @@ NB_MODULE(native_hybrid, m) {
     if (it == s.store.path_to_id.end()) return false;
     const int id = it->second;
     return id < static_cast<int>(s.store.is_dir.size()) && s.store.is_dir[id] != 0;
+  });
+
+  m.def("path_of_id", [](int path_id) {
+    Session& s = session();
+    return path_id >= 0 && path_id < static_cast<int>(s.store.paths.size())
+               ? s.store.paths[path_id] : std::string();
   });
 
   m.def("path_id_for_path", [](const std::string& path) {
