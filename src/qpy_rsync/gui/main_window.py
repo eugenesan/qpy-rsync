@@ -5123,23 +5123,34 @@ class MainWindow(QMainWindow):
         )
         settings.sync()
 
-    def _update_view_indicator(self) -> None:
+    def _update_view_indicator(self, label: str | None = None) -> None:
         """Badge the layout/overview button with the active view engine."""
+        hybrid = self._hybrid_view is not None
         self.layout_button.setIcon(
-            layout_mode_icon(hybrid=self._hybrid_view is not None,
-                             python=self._hybrid_view is None)
+            layout_mode_icon(hybrid=hybrid, python=not hybrid)
+        )
+        if label is None:
+            label = next(
+                (text for mode, text in LAYOUT_MODES if mode == self._layout_mode),
+                "Normal",
+            )
+        mode = (
+            "Native Qt comparison views — orange badge on this button"
+            if hybrid
+            else "Python comparison views — blue badge on this button"
+        )
+        self.layout_button.setToolTip(
+            f"View: {mode}\n"
+            f"Compare layout: {label} — click to change\n"
+            "Ctrl+Tab / Ctrl+Shift+Tab cycles the modes"
         )
 
     def _refresh_layout_button(self) -> None:
-        self._update_view_indicator()
         label = next(
             (text for mode, text in LAYOUT_MODES if mode == self._layout_mode),
             "Normal",
         )
-        self.layout_button.setToolTip(
-            f"Compare layout: {label} — click to change\n"
-            "Ctrl+Tab / Ctrl+Shift+Tab cycles the modes"
-        )
+        self._update_view_indicator(label)
         for mode, action in self.layout_actions.items():
             action.setChecked(mode == self._layout_mode)  # type: ignore[union-attr]
         for mode, action in getattr(self, "view_layout_actions", {}).items():
