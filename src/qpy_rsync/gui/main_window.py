@@ -397,6 +397,8 @@ class MainWindow(QMainWindow):
         self._preserve_before_force: bool | None = None
         self._metadata_pending = False
         self._comparison_announced = False
+        self._compare_generation = 0
+        self._active_compare_generation = 0
         self._last_compare_count = 0
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
@@ -3309,6 +3311,11 @@ class MainWindow(QMainWindow):
         self.log.clear()
         self._last_backup_message = None
         self._last_plan_summary = None
+        from qpy_rsync.backend.process_runner import ProcessState
+
+        self._compare_generation += 1
+        if self._service.state in (ProcessState.STARTING, ProcessState.RUNNING):
+            self._service.cancel()
         self._active_profile = profile
         self._comparison_profile = profile
         self._prepare_decision_preservation(profile)
@@ -3520,6 +3527,7 @@ class MainWindow(QMainWindow):
 
     def _comparison_started(self) -> None:
         self._comparison_announced = False
+        self._active_compare_generation = self._compare_generation
         self._start_rsync_clock("dry run")
         self._begin_bulk_logging()
         self._set_hovered_action("compare")
@@ -3578,6 +3586,9 @@ class MainWindow(QMainWindow):
 
     def _comparison_finished(self, result: CompareResult) -> None:
         if self._closing:
+            return
+        if self._active_compare_generation != self._compare_generation:
+            # A newer Compare was started while this one was finishing.
             return
         self._set_cached_destination(None)
         self._inventory_service.set_cached_source(None)
@@ -4721,6 +4732,8 @@ class MainWindow(QMainWindow):
 
     def _comparison_error(self, message: str) -> None:
         if self._closing:
+            return
+        if self._active_compare_generation != self._compare_generation:
             return
         self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)

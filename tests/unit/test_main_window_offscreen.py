@@ -2345,3 +2345,21 @@ def test_completion_is_announced_once() -> None:
     assert sounds == ["success"]
     window.close()
     application.processEvents()
+
+
+def test_stale_compare_result_is_ignored_after_a_new_compare() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._last_compare_count = 1
+    window._active_compare_generation = window._compare_generation = 7
+    # A stale callback from generation 6 arrives after a new Compare started.
+    window._active_compare_generation = 6
+    stale = CompareResult(ParseResult([], []), "", 0)
+    window._comparison_finished(stale)
+    assert window._last_compare_count == 1
+    window.close()
+    application.processEvents()
