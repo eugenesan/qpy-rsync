@@ -1,112 +1,80 @@
-# Hybrid view: remaining work toward parity
+# Hybrid view: plan and status
 
 ## Current state
 
 - Three native table panes and one native overview tree, embedded in
   `MainWindow` through `shiboken6.wrapInstance`.
-- Python owns rsync, parsing, plan, validation, decisions semantics and tests;
-  the Python model keeps changes/directories/decisions but skips row/filter
+- Python owns rsync, parsing, plan, validation, decision semantics, sync and
+  the tests. Its model keeps changes/directories/decisions but skips row/filter
   and directory rebuilds while native is active.
-- Working: decision checkbox, toolbar action filters, show-excluded, search
-  (including the `dir/` variant), sort, folds, shared selection, undo/redo,
-  metadata merge, unchanged-item transitions, scroll preservation.
-- Measured at 520k: compare 0.9 s, undo 0.11 s, decision ~0.1 s, metadata
-  merge 0.1 s.
+- Native owns the view models, the volatile decision table, folds, sort,
+  selection and the compact decision diff.
+- The dataset crosses Python → native once per comparison; unchanged-item
+  transitions append/truncate incrementally.
+- Both test configurations are green (425 passed with the flag off and on), the
+  setting toggles live, and a missing native module falls back to Python.
 
 ## 1. Overview pane — DONE
 
-The native side now exposes separate `create_tables_widget()` and
-`create_overview_widget()` factories. `MainWindow` places the native overview
-in the existing `log_splitter` slot through `NativeOverviewShim`, which
-provides the signals and small API the rest of the window expects. Verified
-offscreen: 30,000 overview folders, 100,000 table rows, compare 0.91 s.
-
-Original plan for reference:
-
-```
-create_tables_widget() -> QWidget*
-create_overview_widget() -> QWidget*
-```
-
-Each returns a separate native `QWidget`. Python can wrap both and put them in
-different places in its own layout: tables in the comparison splitter slot,
-overview in the current `OverviewPane` slot. The C++ side keeps both views
-over the same `DataStore`, so there is no second data copy.
-
-Work needed:
-
-1. Split `create_widget()` in `bridge.cpp` into the two factories.
-2. Add a native overview widget with a small statistics strip (selected
-   count/size, matching `StatisticsBar`) above the tree.
-3. Add a Python wrapper `NativeOverviewView` exposing the methods MainWindow
-   calls on `OverviewPane`: `set_paths`, `set_aggregates`, `set_statistics`,
-   `folder_activated` signal.
-4. In `_enable_hybrid_view`, replace the Python `OverviewPane` in its layout
-   slot and route those calls; keep the Python pane hidden but alive so the
-   rest of the app keeps working.
-5. Preserve the Python overview's depth indicators, share bars and context
-   menu — those are currently missing and are the "bare" appearance reported.
-
-This is a contained change to the bridge and the two wrappers; no changes to
-data ownership.
+`create_tables_widget()` and `create_overview_widget()` are separate factories.
+`MainWindow` places the native overview in the existing `log_splitter` slot
+through `NativeOverviewShim`. The overview has Item / Share / Items / Size
+columns, painted share bars, a Total row, correct aggregates and a stats footer
+with the same icon set as the toolbar. Double-clicking a folder selects it in
+the three lists.
 
 ## 2. Table panes matching the Python view — DONE
 
-The native tables now mirror the Python layout: a wide Item column, Items and
-human-readable Size columns, a virtual root plus synthesized folder rows with
-aggregates, painted folder/file icons, fold chevrons, directory rules, group
-stripes and action colours. The Action pane shows a decision checkbox plus a
-coloured action glyph with no text or wasted width. The overview has Item /
-Share / Items / Size columns, a Total row, correct aggregates and a stats
-footer; double-clicking a folder selects that row in the three lists. Native
-context menus reach the existing external-tool and diff actions.
+Wide Item column, narrow Items and human-readable Size, a virtual root plus
+synthesized folder rows with aggregates, runtime-generated action icons (shared
+with the Python toolbar and stats), folder/file icons, chevrons, directory
+rules, all-row stripes, action colours, dimmed exclusions, a fixed-width
+Decisions pane and stretchable Source/Destination panes.
 
-Original scope for reference:
+## 3. Parity follow-up — DONE
 
-- action colour per row (the palette is defined in Python:
-  `gui/action_colours.py`);
-- icons for actions, file types and folders;
-- alternating stripes and excluded dimming;
-- path elision with chevrons for the directory hierarchy;
-- the fixed-width Action pane and stretchable Source/Destination panes.
+Palette-based striping for dark themes, no trailing blank space in any view,
+chevron folding, synchronized cursors, full row and header context menus, item
+tooltips, all Python list keyboard shortcuts, overview jump, and stable cursor
+and viewport across exclude/undo. Show-unchanged no longer flips the persistent
+inventory button on.
 
-Approach: a native `QStyledItemDelegate` per pane. Pass the colour palette and
-icon file paths once through the bridge at setup time (a handful of values,
-not per row). Derive excluded/dimmed state from the native decision table
-already owned by C++. Keep the delegate work in C++ so painting stays native.
+## 4. Search and filters — DONE
 
-Selection parity: expose `selected_path()` (already done) and connect it to
-the existing external-tool and confirmation-dialog code paths in MainWindow;
-currently the value is reported to Python but unused.
+Jump search including the `dir/` variant. No persistent filter mode: the Python
+app never had one in the shipped build.
 
-## 3. Parity follow-up — DONE (first pass)
+## 5. Interaction correctness — DONE
 
-- Palette-based striping for dark themes; no trailing blank space in any view.
-- Chevron folding, synchronized cursors, full row and header context menus,
-  item tooltips and the Python list keyboard shortcuts are all wired.
-- Overview share bars, stretching Item column and working jump-to-folder.
-- Show-unchanged no longer flips the persistent inventory button on.
+- stable path ids for decisions, keyed independently of row position;
+- whole-subtree decisions for folders, mirrored into the Python decision store;
+- generation guard so a stale compare result cannot overwrite a newer dataset;
+- 60 s watchdog for a hanging destination-metadata listing;
+- completion is announced only after destination metadata resolves.
 
-## 3. Search and filters
+## 6. Packaging and rollout — DONE
 
-- Jump search including the `dir/` variant is working (fixed by deriving
-  `is_dir` from the change kind and implementing directory-only exact match
-  plus ancestor closure).
-- A persistent "Filter list" mode is not planned; the Python app never had
-  one in the shipped build.
+Debian builds the extension from source (`Architecture: any`, build deps for
+CMake/Ninja/Qt6/nanobind). The Python view stays the default; the native view is
+an opt-in Advanced setting or `QPY_HYBRID_VIEW=1`, toggleable at runtime.
 
-## 4. Remaining risks
+## 7. Remaining work before default-on
 
-- Qt delegate code is the part most likely to differ visually from PySide6;
-  compare screenshots after each step.
-- The native overview must emit folder-activation back to Python so clicking
-  a folder still selects it in the tables.
-- Packaging still needs `qt6-base-dev` as a build dependency.
-- Keep the flag off by default until the two views are visually comparable.
+- Real-tree differential timing against the "<1 s per compare-view action on
+  520k items" acceptance criterion; decide whether the Python plan rebuild is
+  in scope.
+- A systematic differential harness for decisions, folds, selection, overview
+  totals and scroll restoration, complementing the unit tests and manual
+  screenshot comparisons.
+- Final visual/behavioural pass on the user's tree.
 
-## Suggested order
+## Risks and mitigations
 
-1. Overview split + statistics strip (biggest visible gap).
-2. Delegate/colour/icon work for the three tables.
-3. Selection → external tools and confirmation dialog.
-4. Packaging and a final differential screenshot pass against pure Python.
+- Qt delegate code is the most likely visual divergence: compare screenshots
+  after any delegate change. The icons and colours are now shared with Python,
+  which removed the largest source of drift.
+- The Python model's `rowCount()` is answered from the native row map in hybrid
+  mode; legacy code that reads other view-level state must be routed the same
+  way. Both test configurations enforce this.
+- Native model manipulation must stay on the GUI thread; metadata and inventory
+  results are delivered through Qt signals on that thread.

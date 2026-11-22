@@ -108,7 +108,7 @@ class NativeHybridView:
         return bool(self._native.is_column_hidden(pane, column))
 
     def set_collapsed(self, path: str, value: bool) -> None:
-        self._native.set_collapsed_by_path(path.rstrip("/"), value)
+        self.set_collapsed_by_path(path, value)
 
     def collapse_all(self, value: bool) -> None:
         self._native.collapse_all(value)

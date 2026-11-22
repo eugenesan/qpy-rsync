@@ -1,31 +1,37 @@
-# Hybrid app: native Qt view layer (working slice)
+# Hybrid app: native Qt view layer
 
-Branch: `hybrid-app`. This is the first integrated slice of the architecture
-recommended in `native-qt-model/CONCLUSION.md`.
+Branch: `hybrid-app`. This is the integrated native-view architecture recommended
+in `native-qt-model/CONCLUSION.md`. Python remains the default; the native path
+is opt-in and fully reversible.
 
 ## Status
 
-**Working, opt-in, display-and-decision slice.** It is not yet full feature
-parity with `FlatComparisonView`; see "Not yet wired" below.
+**Feature-complete for the comparison view.** Python keeps rsync, parsing,
+decision semantics, plan, validation, sync and the tests. Native Qt owns the
+four view models (three tables plus the overview), the volatile decision table
+and the decision diff.
 
-- Python keeps rsync, parsing, decisions semantics, plan, validation and sync.
-  In hybrid mode its model keeps the change list, directories and decisions for
-  the plan, but skips the expensive row/filter rebuild.
-- Native Qt owns the four view models (three tables plus the overview tree),
-  the volatile decision table and the decision diff.
-- The dataset crosses Python → native exactly once per comparison. The native
-  panes use real columns: Source (name/size/modified), Action (action/decision
-  checkbox/reason), Destination (path/size/modified), plus the overview tree.
-- A checkbox in the native Action pane edits a decision; the change is
-  mirrored into `ChangeDecisions` and the plan is marked stale through the
-  existing Python path.
-- Selection is shared across the three native panes and reported to Python.
-- The existing action-filter checkbox, path filter/search box, sort and
-  directory folds are routed to the native models when hybrid mode is active.
-  Decision toggles take ~19 ms: only the checkbox row is repainted unless the
-  decision actually hides rows. Show-excluded, undo/redo and unchanged-item
-  transitions are routed to the native store as well.
-- Python pulls the compact `(path_id, decision)` diff whenever it needs it.
+Working and verified:
+
+- one Python → native handoff per comparison, with incremental append/truncate
+  for unchanged-item transitions;
+- decision checkbox (mouse and Space), action filters, show-excluded, search
+  including the `dir/` variant, column sorting, folder folding, shared cursors,
+  undo/redo, destination metadata, stable cursor/scroll across exclude and undo;
+- full column/row/header context menus, item tooltips, keyboard shortcuts and
+  the overview share bars / stats footer / jump-to-folder;
+- Python pulls the compact `(path_id, decision)` diff when it needs it;
+- the setting toggles live in both directions, and a missing or incompatible
+  `.so` falls back to the Python view without user-visible failure.
+
+### Test status
+
+Both configurations are green:
+
+```sh
+./qpy-rsync-test.sh -q                 # 425 passed, Python view
+QPY_HYBRID_VIEW=1 ./qpy-rsync-test.sh -q   # 425 passed, native view
+```
 
 ## Build
 
@@ -34,72 +40,63 @@ parity with `FlatComparisonView`; see "Not yet wired" below.
 ```
 
 Requires `qt6-base-dev`, Ninja and nanobind. The module is copied to
-`src/qpy_rsync/native_hybrid.so` (gitignored).
+`src/qpy_rsync/native_hybrid.so` (gitignored). Debian builds it from source:
+`Architecture: any`, with `cmake`, `ninja-build`, `qt6-base-dev`, `python3-dev`
+and `python3-nanobind` as build dependencies.
 
 ## Run
 
-Enable **Settings → Advanced → Use native Qt comparison views (experimental)**,
-or use `QPY_HYBRID_VIEW=1` for a one-off run:
+Enable **Settings → Advanced → Use native Qt comparison views (experimental)** —
+it applies immediately, including turning the native views off again — or use
+`QPY_HYBRID_VIEW=1` for a one-off run:
 
 ```sh
 QPY_HYBRID_VIEW=1 ./qpy-rsync.sh
 ```
 
-With the setting/flag off nothing changes: the Python view is the default and
-all 417 tests pass. A minimal smoke test is available:
+With the setting/flag off nothing changes: the Python view is the shipped
+default.
 
-```sh
-PYTHONPATH=src /usr/bin/python3 native-hybrid/test_hybrid.py
-```
+## Decision contract
+
+The native store owns the volatile decision table keyed by **stable path id**.
+Python owns decision *semantics* (inheritance, conflicts, reconciliation).
+
+- **Python → native (push)**: once per comparison through `set_changes()`;
+  after undo/redo through `apply_python_decisions()`; after a new comparison or
+  an inventory/metadata result through `set_changes()`/`set_destination_metadata()`.
+- **Native → Python (pull/notify)**: every user edit calls the decision callback
+  with `(path_id, decision)`. `_on_native_decision` mirrors it into
+  `ChangeDecisions`, including whole-subtree decisions for synthesized folder
+  ids, then marks the plan stale through the existing Python path.
+- Folders synthesized by native have ids beyond the change list. They are
+  resolved by `path_of_id()` and mirrored onto every change below that prefix.
+- The compact `decision_log` remains available through `decision_diff()` for
+  validation/sync, but the shipped code keeps using the Python plan as the gate.
 
 ## Measured on this slice
 
 | | Result |
-|---|---:|
+|---:|---:|
 | Python → native handoff of 1M changes | 0.70 s |
-| native `row_count` | 1,000,000 |
-| native decision diff, 1000 entries pulled into Python | 0.1 ms |
-| startup with hybrid view on X11 `:50` | ok |
+| removing 200k unchanged at 300k changes | 0.52 s (was 1.95 s) |
+| destination metadata apply, 300k items / 30k folders | 0.40 s |
+| decision toggle / estimated summary, 300k + 100 decisions | ~0.17 s / 0.62 s |
+| decision diff, 1000 entries into Python | 0.1 ms |
+| native comparison view work at 520k | ~0.9 s |
 
-The handoff is the in-process vector API (no binary file), so it is the real
-integration cost.
+The handoff uses an in-process vector API, so it is the real integration cost.
 
-## API
+## Remaining work before default-on
 
-`qpy_rsync.gui.native_hybrid_view.NativeHybridView`:
+- real-tree differential timing against the "<1 s per compare-view action on
+  520k items" acceptance criterion, including the Python plan rebuild;
+- a systematic differential harness for decisions, folds, selection, overview
+  totals and scroll restoration (currently covered by unit tests plus manual
+  screenshot comparisons);
+- final visual pass on the user's tree.
 
-- `set_changes(changes)` — one-time handoff, then `refresh()`
-- `widget` — the native `QWidget`, wrapped with `shiboken6.wrapInstance`
-- `on_decision_changed(callback)` — native → Python decision edits
-- `set_checkstate(row, checked)` — test hook that exercises the checkbox path
-- `decision_diff()` — compact change log for validation/sync
-- `shutdown()` — drop the Python callback before interpreter shutdown
+## Not applicable
 
-## Not yet wired
-
-This is a vertical slice, not a completed migration. Still using the Python
-view or missing from the native side:
-
-- selection is shared natively and reported to Python, but not yet wired to
-  external tools or the sync confirmation's path display;
-- search is jump-only (no persistent filter mode);
-- scroll position is not preserved across a full model reset;
-- the Python model's `rowCount()` is 0 in hybrid mode; code that still reads it
-  must be routed to the native view.
-- sync confirmation and validation still read the Python plan;
-- packaging (Debian build-dependency on `qt6-base-dev`);
-- command-line and Advanced-setting toggle both work; enable requires a new
-  comparison or restart to take effect.
-
-Do not switch this on for production use. The purpose is to validate that the
-boundary, embedding and decision round-trip work in the real application
-before investing in full feature parity.
-
-## Next steps
-
-1. Wire native selection/fold/search so the hybrid view is usable interactively.
-2. Skips the Python view's `set_changes` work when hybrid is active, so the
-   measured gains can be realised rather than paid twice.
-3. Add the Advanced-setting toggle and packaging.
-4. Re-measure against `docs/performance-analysis.md` and decide whether to
-   complete the migration.
+- persistent filter mode — never existed in the shipped Python view;
+- full C++ port — explicitly rejected in `docs/cpp-qt-conversion-analysis.md`.
