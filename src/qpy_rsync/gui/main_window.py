@@ -396,6 +396,7 @@ class MainWindow(QMainWindow):
         self._preserve_reason = ""
         self._preserve_before_force: bool | None = None
         self._metadata_pending = False
+        self._comparison_announced = False
         self._last_compare_count = 0
         self._next_compare_locations: tuple[str, str] | None = None
         self._next_compare_filters: str = ""
@@ -3484,6 +3485,7 @@ class MainWindow(QMainWindow):
         self._set_state(f"Started {tool.name}.", "success")
 
     def _comparison_started(self) -> None:
+        self._comparison_announced = False
         self._start_rsync_clock("dry run")
         self._begin_bulk_logging()
         self._set_hovered_action("compare")
@@ -3629,11 +3631,10 @@ class MainWindow(QMainWindow):
             self.progress_label.setText("Gathering destination metadata...")
         else:
             self._finish_comparison_status()
-        self._play_completion_sound("success")
-        self._append_log(
-            f"STATE comparison-complete changes={self._last_compare_count}"
-        )
-        self._end_bulk_logging()
+        # The beep and the "complete" state are announced by
+        # _finish_comparison_status(), which runs only after the destination
+        # metadata listing has finished (or failed/timed out).
+
 
     def _add_shortcut(self, key: str, slot) -> None:
         shortcut = QShortcut(QKeySequence(key), self)
@@ -4434,7 +4435,18 @@ class MainWindow(QMainWindow):
             )
             self._finish_comparison_status()
 
+    def _announce_comparison_complete(self) -> None:
+        if self._comparison_announced:
+            return
+        self._comparison_announced = True
+        self._play_completion_sound("success")
+        self._append_log(
+            f"STATE comparison-complete changes={self._last_compare_count}"
+        )
+        self._end_bulk_logging()
+
     def _finish_comparison_status(self) -> None:
+        self._announce_comparison_complete()
         count = self._last_compare_count
         if self._last_phase_started is not None:
             self._append_log(

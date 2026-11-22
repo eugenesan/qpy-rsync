@@ -2328,3 +2328,20 @@ def test_metadata_watchdog_clears_the_comparing_status() -> None:
     assert "Comparing" not in window.status_edit.text()
     window.close()
     application.processEvents()
+
+
+def test_completion_is_announced_once() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    sounds: list[str] = []
+    window._play_completion_sound = lambda kind: sounds.append(kind)  # type: ignore[method-assign]
+    window._last_compare_count = 3
+    window._comparison_announced = False
+
+    window._finish_comparison_status()
+    window._finish_comparison_status()
+
+    assert sounds == ["success"]
+    window.close()
+    application.processEvents()
