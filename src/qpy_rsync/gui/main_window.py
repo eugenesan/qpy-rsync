@@ -52,7 +52,7 @@ from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_subtree_size,
 )
-from qpy_rsync.backend.diagnostics import debug_timing, timed
+from qpy_rsync.backend.diagnostics import debug_timing, set_timing_sink, timed
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
@@ -348,6 +348,8 @@ class MainWindow(QMainWindow):
         self._bulk_logging = False
         self._bulk_rsync = False
         self._bulk_record_count = 0
+        # QPY_RSYNC_PROFILE=1 sends timing lines to stderr and the session log.
+        set_timing_sink(self._append_log)
         self._log_flush_timer = QTimer(self)
         self._log_flush_timer.setSingleShot(True)
         self._log_flush_timer.setInterval(100)
@@ -2718,13 +2720,19 @@ class MainWindow(QMainWindow):
         self.overview.set_statistics(summary, estimate=True)
         self.validate_plan_button.setEnabled(summary.included > 0)
 
+    @staticmethod
+    def _timed_modified(decisions, changes) -> int:
+        with timed("plan.estimated_modified", changes=len(changes)):
+            return decisions.modified_count(changes)
+
     def _estimated_plan_summary(self):
         """ cheap summary from the visible decisions, not an execution plan."""
         from qpy_rsync.core.execution_plan import PlanSummary
 
         changes = self.comparison.model.changes
         decisions = self.comparison.model.decisions
-        excluded = set(self.comparison.excluded_paths())
+        with timed("plan.estimated_excluded"):
+            excluded = set(self.comparison.excluded_paths())
         # Expand once: checking `path or any ancestor in excluded` for every
         # item used to rebuild the ancestor string chain per change.
         excluded_ancestors = set(excluded)
@@ -2783,7 +2791,7 @@ class MainWindow(QMainWindow):
         return PlanSummary(
             included=included,
             excluded=excluded_count,
-            modified=decisions.modified_count(changes),
+            modified=_timed_modified(decisions, changes),
             retained_destination_only=counts["kept"],
             destructive=destructive,
             creates=counts["creates"],
@@ -2832,32 +2840,36 @@ class MainWindow(QMainWindow):
             self.validate_plan_button.setEnabled(False)
             return
         self._update_excluded_count()
-        self._current_plan = build_execution_plan(
-            self._active_profile,
-            self.comparison.model.changes,
-            self.comparison.model.decisions,
-            self.comparison.model.destination_metadata(),
-        )
-        entries = sorted(
-            (item.path, index) for index, item in enumerate(self._current_plan.items)
-        )
-        self._plan_paths = [path for path, _index in entries]
-        self._plan_item_indices = [index for _path, index in entries]
-        self._plan_items = {
-            item.path: item for item in self._current_plan.items
-        }
-        self._plan_changes = {
-            str(change.path).rstrip("/"): change
-            for change in self.comparison.model.changes
-        }
-        self._last_excluded_paths = set(self.comparison.excluded_paths())
-        self._last_explicit_decisions = (
-            self.comparison.model.decisions.explicit_items()
-        )
-        self._plan_comparison_unchanged = True
-        self._plan_exec_hint = self._executable_hint(
-            self.comparison.model.changes
-        )
+        with timed("plan.build", changes=len(self.comparison.model.changes)):
+            self._current_plan = build_execution_plan(
+                self._active_profile,
+                self.comparison.model.changes,
+                self.comparison.model.decisions,
+                self.comparison.model.destination_metadata(),
+            )
+        with timed("plan.post_index", items=len(self._current_plan.items)):
+            entries = sorted(
+                (item.path, index)
+                for index, item in enumerate(self._current_plan.items)
+            )
+            self._plan_paths = [path for path, _index in entries]
+            self._plan_item_indices = [index for _path, index in entries]
+            self._plan_items = {
+                item.path: item for item in self._current_plan.items
+            }
+            self._plan_changes = {
+                str(change.path).rstrip("/"): change
+                for change in self.comparison.model.changes
+            }
+        with timed("plan.state_snapshot"):
+            self._last_excluded_paths = set(self.comparison.excluded_paths())
+            self._last_explicit_decisions = (
+                self.comparison.model.decisions.explicit_items()
+            )
+            self._plan_comparison_unchanged = True
+            self._plan_exec_hint = self._executable_hint(
+                self.comparison.model.changes
+            )
         self._plan_stale = False
         self._stale_summary_timer.stop()
         self._refresh_verify_button()
@@ -3084,11 +3096,12 @@ class MainWindow(QMainWindow):
                 "Compare the locations and select at least one action first.",
             )
             return
-        freshness = check_plan_freshness(
-            plan,
-            self._profile(),
-            self.comparison.model.changes,
-        )
+        with timed("plan.freshness_check", changes=len(self.comparison.model.changes)):
+            freshness = check_plan_freshness(
+                plan,
+                self._profile(),
+                self.comparison.model.changes,
+            )
         self.progress_label.setText("Preparing the synchronization...")
         QApplication.processEvents()
         if not freshness.fresh:
@@ -4087,12 +4100,18 @@ class MainWindow(QMainWindow):
                 # nor any decision, so skip both rebuilds.
                 unchanged_only = True
                 self._skip_next_plan_rebuild = True
-        self.comparison.set_changes(
-            changes,
+        with timed(
+            "ui.model_set_changes",
+            changes=len(changes),
             skip_view=self._hybrid_view is not None,
-            skip_directories=self._hybrid_view is not None,
             skip_reconcile=unchanged_only,
-        )
+        ):
+            self.comparison.set_changes(
+                changes,
+                skip_view=self._hybrid_view is not None,
+                skip_directories=self._hybrid_view is not None,
+                skip_reconcile=unchanged_only,
+            )
         if self._hybrid_view is not None:
             if unchanged_only and len(changes) < len(self._hybrid_view._handed_paths or ()):
                 self._hybrid_view.set_changes_for_unchanged(len(changes))
@@ -4105,7 +4124,8 @@ class MainWindow(QMainWindow):
                 os.path.basename(source) or "Source",
                 os.path.basename(destination) or "Destination",
             )
-            self._hybrid_view.set_changes(changes)
+            with timed("ui.native_handoff", changes=len(changes)):
+                self._hybrid_view.set_changes(changes)
 
     def _enable_hybrid_view(self) -> None:
         """Replace the comparison panes with native Qt models (opt-in)."""

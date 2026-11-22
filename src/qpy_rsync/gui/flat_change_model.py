@@ -344,12 +344,14 @@ class FlatChangeModel(QAbstractTableModel):
             # hundreds of thousands of rows is pure waste.
             self.discarded_decisions = 0
         else:
-            self.discarded_decisions = self.decisions.reconcile(
-                self.changes,
-                preserve=self.preserve_decisions,
-                detect_inherited=self.detect_inherited_conflicts,
-            )
-            self._refresh_conflicts()
+            with timed("model.reconcile", changes=len(self.changes)):
+                self.discarded_decisions = self.decisions.reconcile(
+                    self.changes,
+                    preserve=self.preserve_decisions,
+                    detect_inherited=self.detect_inherited_conflicts,
+                )
+            with timed("model.conflicts"):
+                self._refresh_conflicts()
         self.decision_history.clear()
         self.history_changed.emit()
         if not skip_directories:
@@ -358,8 +360,10 @@ class FlatChangeModel(QAbstractTableModel):
             # of the directories that are still there.
             self.collapsed &= set(self._directories)
         if not skip_view:
-            self._build_rows()
-            self._apply_filters()
+            with timed("model.build_rows", changes=len(self.changes)):
+                self._build_rows()
+            with timed("model.apply_filters", changes=len(self.changes)):
+                self._apply_filters()
         self.endResetModel()
         self._refresh_action_header()
 

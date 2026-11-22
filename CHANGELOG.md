@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added opt-in `QPY_RSYNC_PROFILE=1` timing probes for the plan-build path
+  (see `docs/plan-profiling.md`), written to stderr and the session log.
+
 - Folder decisions made from the Decisions column or with Space now mirror
   the whole subtree into the Python decision store (previously folder ids
   were skipped, so undo could not restore them), and rebuild the native

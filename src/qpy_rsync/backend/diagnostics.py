@@ -12,12 +12,19 @@ def enabled() -> bool:
 
 
 def timing_enabled() -> bool:
-    return enabled() or os.environ.get("QPY_RSYNC_TIMING", "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return enabled() or any(
+        os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
+        for name in ("QPY_RSYNC_TIMING", "QPY_RSYNC_PROFILE")
+    )
+
+
+_TIMING_SINK = None
+
+
+def set_timing_sink(sink) -> None:
+    """Also deliver timing lines to a callback (e.g. the session log)."""
+    global _TIMING_SINK
+    _TIMING_SINK = sink
 
 
 def debug(event: str, **values: object) -> None:
@@ -34,16 +41,20 @@ def debug_timing(event: str, **values: object) -> None:
         return
     timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
     details = " ".join(f"{key}={value!r}" for key, value in values.items())
-    print(
-        f"[qpy-rsync timing] {timestamp} {event} {details}".rstrip(),
-        file=sys.stderr,
-        flush=True,
-    )
+    line = f"[qpy-rsync timing] {timestamp} {event} {details}".rstrip()
+    print(line, file=sys.stderr, flush=True)
+    if _TIMING_SINK is not None:
+        try:
+            _TIMING_SINK(line)
+        except Exception:
+            pass
 
 
 @contextmanager
 def timed(event: str, **values: object):
     """Time a block and report it through :func:`debug_timing`."""
     start = perf_counter()
-    yield
-    debug_timing(event, ms=round((perf_counter() - start) * 1000, 1), **values)
+    try:
+        yield
+    finally:
+        debug_timing(event, ms=round((perf_counter() - start) * 1000, 1), **values)

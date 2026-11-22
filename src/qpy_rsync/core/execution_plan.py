@@ -107,8 +107,10 @@ def build_execution_plan(
     total_size = 0
     included_size = 0
     deleted_size = 0
-    metadata = build_destination_size_index(destination_metadata or {})
-    modified = decisions.modified_count(changes_list)
+    with timed("plan.destination_index", entries=len(destination_metadata or {})):
+        metadata = build_destination_size_index(destination_metadata or {})
+    with timed("plan.modified_count", changes=len(changes_list)):
+        modified = decisions.modified_count(changes_list)
     has_explicit = decisions.has_explicit()
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
@@ -200,13 +202,14 @@ def build_execution_plan(
         total_size=total_size,
         included_size=included_size,
     )
-    signature = decision_signature(decisions)
-    digest = sha256()
-    for item in items:
-        digest.update(item.path.encode("utf-8"))
-        digest.update(item.action.value.encode("utf-8"))
-        digest.update(item.kind.value.encode("utf-8"))
-        digest.update(b"1" if item.included else b"0")
+    with timed("plan.digest", items=len(items)):
+        signature = decision_signature(decisions)
+        digest = sha256()
+        for item in items:
+            digest.update(item.path.encode("utf-8"))
+            digest.update(item.action.value.encode("utf-8"))
+            digest.update(item.kind.value.encode("utf-8"))
+            digest.update(b"1" if item.included else b"0")
     return ExecutionPlan(
         items_fingerprint=digest.hexdigest(),
         decision_signature=signature,
