@@ -1919,6 +1919,30 @@ class MainWindow(QMainWindow):
             self._update_conflict_ui()
             hybrid = dialog.hybrid_view()
             if hybrid != self._hybrid_enabled:
+                if hybrid:
+                    detail = (
+                        "The native comparison views are experimental. They "
+                        "keep rsync, decisions, plan and validation in Python, "
+                        "but draw the lists and overview natively. No data is "
+                        "lost by switching. The change applies immediately; "
+                        "run Compare again if anything looks out of date."
+                    )
+                else:
+                    detail = (
+                        "Returning to the Python view requires rebuilding its "
+                        "model from scratch. On a large comparison this can "
+                        "take minutes and the UI will be busy while it runs. "
+                        "No data is lost; decisions and the plan are kept."
+                    )
+                answer = QMessageBox.question(
+                    self,
+                    "Switch comparison view?",
+                    detail + "\n\nSwitch now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    hybrid = self._hybrid_enabled
                 settings.setValue("advanced/hybrid_view", hybrid)
                 settings.sync()
                 self._hybrid_enabled = hybrid
@@ -4115,6 +4139,27 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.main_splitter.replaceWidget(index, view.widget)
         self.comparison.hide()
+        # A live enable after a finished Compare must hand the current dataset
+        # to native; otherwise the native panes are empty until the next run.
+        if self._last_changed_changes:
+            import os
+
+            source = self.source_edit.text().rstrip("/")
+            destination = self.destination_edit.text().rstrip("/")
+            view.set_root_names(
+                os.path.basename(source) or "Source",
+                os.path.basename(destination) or "Destination",
+            )
+            view.set_changes(list(self._last_changed_changes))
+            self._sync_native_decisions()
+            metadata = self.comparison.model.destination_metadata()
+            if metadata:
+                view.set_destination_metadata(dict(metadata))
+            view.set_action_filter(self.action_filters.visible_actions())
+            for folder in self.comparison.model.collapsed:
+                view.set_collapsed(folder, True)
+            if self._hybrid_selected_path:
+                view.select_path(self._hybrid_selected_path)
 
     def _disable_hybrid_view(self) -> None:
         """Restore the Python comparison and overview after disabling hybrid."""
@@ -4145,7 +4190,22 @@ class MainWindow(QMainWindow):
         view.shutdown()
         self._hybrid_view = None
         if self._last_changed_changes:
-            self.comparison.set_changes(list(self._last_changed_changes))
+            # Rebuilding the Python model/view is the expensive operation the
+            # native view exists to avoid (12-23 s at 520k items). Let the
+            # settings dialog close and paint a status first, then do it.
+            self._set_state("Rebuilding the Python comparison view...")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            QTimer.singleShot(0, self._finish_disable_hybrid_view)
+
+    def _finish_disable_hybrid_view(self) -> None:
+        try:
+            if self._closing or self._hybrid_view is not None:
+                return
+            if self._last_changed_changes:
+                self.comparison.set_changes(list(self._last_changed_changes))
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._update_startup_status()
 
     def _patch_for_hybrid(self, obj: object, name: str, value: object) -> None:
         """Remember a monkey-patched method so disabling hybrid restores it."""
