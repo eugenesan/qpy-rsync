@@ -238,6 +238,20 @@ class NativeHybridView:
 
     def set_sort(self, column: int, descending: bool = False) -> None:
         self._native.set_sort(column, descending)
+        # Keep the header indicators in sync when sorting is routed from the
+        # Python comparison view rather than from a native header click.
+        from PySide6.QtCore import QSignalBlocker
+        from PySide6.QtWidgets import QHeaderView, QTableView
+
+        order = (
+            __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.SortOrder.DescendingOrder
+            if descending
+            else __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.SortOrder.AscendingOrder
+        )
+        for table in self.widget.findChildren(QTableView):
+            header = table.horizontalHeader()
+            blocker = QSignalBlocker(header)
+            header.setSortIndicator(column, order)
         self._native.refresh_visible()
 
     def set_collapsed_by_path(self, path: str, collapsed: bool) -> None:

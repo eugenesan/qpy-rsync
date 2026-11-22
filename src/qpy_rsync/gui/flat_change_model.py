@@ -675,6 +675,10 @@ class FlatChangeModel(QAbstractTableModel):
             return (int(change.size or 0), name)
         if column in (self.SOURCE_TIME, self.DESTINATION_TIME):
             return (str(change.modified_time or ""), name)
+        if column in (self.SOURCE_ITEMS, self.DESTINATION_ITEMS):
+            # Files have no subtree item count; use a numeric placeholder so
+            # the key stays comparable with the directory key (int, name).
+            return (0, name)
         if column == self.ACTION:
             action = self.effective_action_of_change(change)
             return (ACTION_LABELS.get(action, action.value).casefold(), name)

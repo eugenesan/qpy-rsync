@@ -80,3 +80,61 @@ def test_python_and_native_views_agree(monkeypatch) -> None:
         python.close()
         native.close()
         app.processEvents()
+
+
+def test_row_order_and_header_sorting_match(monkeypatch) -> None:
+    from PySide6.QtCore import Qt
+
+    app = QApplication.instance() or QApplication([])
+
+    def build(hybrid: bool):
+        monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
+        settings = app_settings()
+        settings.setValue("advanced/hybrid_view", False)
+        settings.sync()
+        window = MainWindow()
+        window.source_edit.setText("/src/")
+        window.destination_edit.setText("/dst/")
+        window._active_profile = window._profile()
+        window._baseline_profile = window._profile()
+        paths = [
+            "b/z.txt", "a/f2.txt", "a/sub/f1.txt", "a/f1.txt",
+            "b/a.txt", "c/sub/deep/x.txt", "root.txt", "a/sub/f0.txt",
+        ]
+        changes = [
+            Change(p, ChangeAction.CREATE, ObjectKind.FILE, ">f", i * 100)
+            for i, p in enumerate(paths)
+        ]
+        window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+        app.processEvents()
+        return window
+
+    python = build(False)
+    native = build(True)
+    try:
+        def rows(window):
+            if window._hybrid_view is not None:
+                return [
+                    window._hybrid_view.path_of_row(r)
+                    for r in range(window._hybrid_view.row_count())
+                ]
+            return [
+                window.comparison.model.row_path(r)
+                for r in range(window.comparison.model.rowCount())
+            ]
+
+        assert rows(python) == rows(native)
+        for column in (0, 2):
+            for descending in (False, True):
+                order = (
+                    Qt.SortOrder.DescendingOrder
+                    if descending else Qt.SortOrder.AscendingOrder
+                )
+                python.comparison.model.sort(column, order)
+                native._hybrid_view.set_sort(column, descending)
+                app.processEvents()
+                assert rows(python) == rows(native)
+    finally:
+        python.close()
+        native.close()
+        app.processEvents()

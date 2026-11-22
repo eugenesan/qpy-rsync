@@ -678,6 +678,7 @@ QWidget* ensure_tables_widget(Session& s) {
       views[i]->setSelectionBehavior(QAbstractItemView::SelectRows);
       views[i]->horizontalHeader()->setHighlightSections(false);
       views[i]->setSortingEnabled(true);
+      views[i]->horizontalHeader()->setSortIndicator(0, Qt::AscendingOrder);
       QObject::connect(
           views[i]->horizontalHeader(), &QHeaderView::sortIndicatorChanged,
           [](int, Qt::SortOrder) {
@@ -1285,13 +1286,17 @@ NB_MODULE(native_hybrid, m) {
     if (rows.isEmpty()) return std::string();
     int row = rows.first().row();
     if (row < 0 || row >= static_cast<int>(s.store.visible.size())) return std::string();
-    return s.store.paths[s.store.visible[row]];
+    const int id = s.store.visible[row];
+    return s.store.paths[id] == DataStore::root_path() ? std::string()
+                                                       : s.store.paths[id];
   });
 
   m.def("path_of_row", [](int row) {
     Session& s = session();
     if (row < 0 || row >= static_cast<int>(s.store.visible.size())) return std::string();
-    return s.store.paths[s.store.visible[row]];
+    const int id = s.store.visible[row];
+    return s.store.paths[id] == DataStore::root_path() ? std::string()
+                                                       : s.store.paths[id];
   });
 
   m.def("search_text", [](const std::string& text) {

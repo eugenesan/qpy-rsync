@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed native row ordering to match the Python flat list (folder, its files,
+  then subfolders) and aligned header sorting by name, items, size, time and
+  action, including descending order and header indicators.
+- Fixed a Python-only crash when sorting the Items column by giving file rows
+  a comparable numeric key.
+
 - Plan build: fold the item fingerprint into the main loop and add a cheap
   comparison signature so opening Sync confirmation skips two 500k-element
   set builds when the comparison is unchanged.

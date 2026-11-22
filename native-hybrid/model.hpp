@@ -510,18 +510,39 @@ struct DataStore {
     int root = -1;
     auto it = path_to_id.find(root_path());
     if (it != path_to_id.end()) root = it->second;
+    auto name_less = [&](int a, int b) {
+      const std::string& left = a < static_cast<int>(folded_names.size())
+                                    ? folded_names[a] : paths[a];
+      const std::string& right = b < static_cast<int>(folded_names.size())
+                                     ? folded_names[b] : paths[b];
+      return sort_desc ? right < left : left < right;
+    };
     std::vector<int> order;
     std::function<void(int)> walk = [&](int id) {
-      for (int child : children[id]) {
-        if (child < static_cast<int>(is_dir.size()) && is_dir[child]) {
-          order.push_back(child);
-          walk(child);
-        }
-      }
-      for (int child : children[id]) {
-        if (!(child < static_cast<int>(is_dir.size()) && is_dir[child])) {
-          order.push_back(child);
-        }
+      // The Python flat list shows a folder, then that folder's files, then
+      // its child folders. Keep the same layout, sorting siblings by name.
+      std::vector<int> files = children[id];
+      files.erase(
+          std::remove_if(files.begin(), files.end(),
+                         [&](int child) {
+                           return child < static_cast<int>(is_dir.size()) &&
+                                  is_dir[child];
+                         }),
+          files.end());
+      std::vector<int> dirs = children[id];
+      dirs.erase(
+          std::remove_if(dirs.begin(), dirs.end(),
+                         [&](int child) {
+                           return !(child < static_cast<int>(is_dir.size()) &&
+                                    is_dir[child]);
+                         }),
+          dirs.end());
+      std::stable_sort(files.begin(), files.end(), name_less);
+      std::stable_sort(dirs.begin(), dirs.end(), name_less);
+      order.insert(order.end(), files.begin(), files.end());
+      for (int dir : dirs) {
+        order.push_back(dir);
+        walk(dir);
       }
     };
     if (root >= 0) {
@@ -690,31 +711,50 @@ struct DataStore {
 
   void sort_visible(int column, bool descending) {
     const bool by_name = column == 0 || column == 5;
+    auto name_of = [&](int id) -> const std::string& {
+      return id < static_cast<int>(folded_names.size()) ? folded_names[id]
+                                                       : paths[id];
+    };
+    auto dir_flag = [&](int id) {
+      return id < static_cast<int>(is_dir.size()) && is_dir[id] != 0;
+    };
     auto ascending = [&](int a, int b) {
-      bool less = false;
-      if (by_name) {
-        less = a < static_cast<int>(folded_names.size()) &&
-                       b < static_cast<int>(folded_names.size())
-                   ? folded_names[a] < folded_names[b]
-                   : paths[a] < paths[b];
-      } else if (column == 1 || column == 6) {
-        long long av = a < static_cast<int>(dir_items.size()) ? dir_items[a] : 0;
-        long long bv = b < static_cast<int>(dir_items.size()) ? dir_items[b] : 0;
-        less = av < bv;
+      if (by_name) return name_of(a) < name_of(b);
+      if (column == 1 || column == 6) {
+        const long long av = dir_flag(a) && a < static_cast<int>(dir_items.size())
+                                 ? dir_items[a] : 0;
+        const long long bv = dir_flag(b) && b < static_cast<int>(dir_items.size())
+                                 ? dir_items[b] : 0;
+        if (av != bv) return av < bv;
       } else if (column == 3 || column == 8) {
         const std::string at = a < static_cast<int>(times.size()) ? times[a] : "";
         const std::string bt = b < static_cast<int>(times.size()) ? times[b] : "";
-        less = at < bt;
+        if (at != bt) return at < bt;
       } else if (column == 4) {
-        int ai = a < static_cast<int>(actions.size()) ? actions[a] : 0;
-        int bi = b < static_cast<int>(actions.size()) ? actions[b] : 0;
-        less = ai < bi;
+        // Python sorts by the alphabetical action label; folders have an
+        // empty label and therefore come first ascending, last descending.
+        static const int rank[] = {0, 5, 3, 1, 2, 4, 6};  // create, update,
+        // metadata, delete, destination-only, unchanged, message
+        auto action_rank = [&](int id) {
+          if (dir_flag(id)) return -1;
+          const int code = id < static_cast<int>(actions.size()) ? actions[id] : 5;
+          return code >= 0 && code < 7 ? rank[code] : 6;
+        };
+        const int ai = action_rank(a);
+        const int bi = action_rank(b);
+        if (ai != bi) return ai < bi;
       } else {
-        long long av = a < static_cast<int>(sizes.size()) ? sizes[a] : 0;
-        long long bv = b < static_cast<int>(sizes.size()) ? sizes[b] : 0;
-        less = av < bv;
+        const long long av = dir_flag(a) && a < static_cast<int>(dir_size.size())
+                                 ? dir_size[a]
+                                 : (a < static_cast<int>(sizes.size()) ? sizes[a] : 0);
+        const long long bv = dir_flag(b) && b < static_cast<int>(dir_size.size())
+                                 ? dir_size[b]
+                                 : (b < static_cast<int>(sizes.size()) ? sizes[b] : 0);
+        if (av != bv) return av < bv;
       }
-      return less;
+      if (name_of(a) != name_of(b)) return name_of(a) < name_of(b);
+      // Python's sort keys end with the full path, which breaks name ties.
+      return paths[a] < paths[b];
     };
     std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
       return descending ? ascending(b, a) : ascending(a, b);
