@@ -139,11 +139,6 @@ void refresh_native_models(Session& s) {
     }
   }
   for (TableModel* model : s.models) model->reset();
-  for (int i = 0; i < 3; ++i) {
-    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
-      s.views[i]->verticalScrollBar()->setValue(positions[i]);
-    }
-  }
   if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size())) {
     if (s.store.row_of_id[current_id] < 0) {
       // Remember it: when undo brings it back, focus returns to this item.
@@ -151,23 +146,31 @@ void refresh_native_models(Session& s) {
       // The row was just hidden (for example by excluding it). Move to the
       // next visible item, or the previous one when it was the last.
       int nearest = -1;
+      auto usable = [&](int candidate) {
+        return candidate >= 0 &&
+               candidate < static_cast<int>(s.store.paths.size()) &&
+               s.store.paths[candidate] != DataStore::root_path();
+      };
+      auto is_dir = [&](int candidate) {
+        return candidate < static_cast<int>(s.store.is_dir.size()) &&
+               s.store.is_dir[candidate] != 0;
+      };
       for (int candidate : s.store.visible) {
-        if (candidate < 0 || candidate >= static_cast<int>(s.store.paths.size()) ||
-            s.store.paths[candidate] == DataStore::root_path()) {
-          continue;
-        }
+        if (!usable(candidate) || is_dir(candidate)) continue;
         if (candidate > current_id) { nearest = candidate; break; }
       }
       if (nearest < 0) {
         for (int index = static_cast<int>(s.store.visible.size()) - 1;
              index >= 0; --index) {
           const int candidate = s.store.visible[index];
-          if (candidate < 0 || candidate >= static_cast<int>(s.store.paths.size()) ||
-              s.store.paths[candidate] == DataStore::root_path()) {
-            continue;
-          }
+          if (!usable(candidate) || is_dir(candidate)) continue;
           nearest = candidate;
           break;
+        }
+      }
+      if (nearest < 0) {
+        for (int candidate : s.store.visible) {
+          if (usable(candidate)) { nearest = candidate; break; }
         }
       }
       current_id = nearest;
@@ -183,6 +186,13 @@ void refresh_native_models(Session& s) {
     if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size()) &&
         s.store.row_of_id[current_id] >= 0) {
       select_path_id_impl(s, current_id);
+    }
+  }
+  // Restore the viewport last: a reset or scrollTo can move the bars, and
+  // the user expects the list to stay at the same offset across undo.
+  for (int i = 0; i < 3; ++i) {
+    if (s.views[i] != nullptr && s.views[i]->verticalScrollBar() != nullptr) {
+      s.views[i]->verticalScrollBar()->setValue(positions[i]);
     }
   }
   QWidget* list_focus = focus;

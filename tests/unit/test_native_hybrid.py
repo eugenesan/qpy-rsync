@@ -35,3 +35,34 @@ def test_native_view_handoff_and_decision_diff() -> None:
     assert 0 <= path_id < 30
     assert decision == 2  # Exclude
     view.shutdown()
+
+
+def test_undo_restores_the_excluded_row_and_cursor() -> None:
+    application = QApplication.instance() or QApplication([])
+    changes = [
+        Change(f"d{i % 4}/f{i:04d}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", i)
+        for i in range(80)
+    ]
+    view = NativeHybridView()
+    view.set_changes(changes)
+    native = view._native
+    from PySide6.QtWidgets import QTableView
+
+    tables = sorted(view.widget.findChildren(QTableView), key=lambda t: t.x())
+    source = tables[0]
+    source.setFocus()
+    original_row = 30
+    original_path = view.path_of_row(original_row)
+    source.setCurrentIndex(source.model().index(original_row, 0))
+    application.processEvents()
+
+    view.set_decision_by_path(original_path, 2)
+    application.processEvents()
+    assert view.decision_for_path(original_path) == 2
+    assert view.path_of_row(source.currentIndex().row()) != original_path
+
+    view.apply_python_decisions({})
+    application.processEvents()
+    assert view.decision_for_path(original_path) == 0
+    assert view.path_of_row(source.currentIndex().row()) == original_path
+    view.shutdown()
