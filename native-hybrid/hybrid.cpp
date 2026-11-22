@@ -452,8 +452,9 @@ class HybridDelegate : public QStyledItemDelegate {
     if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
     const int id = store.visible[row];
     if (pane_ == 1 && index.column() == 4) {
-      QRect indicator(option.rect.left() + 4, option.rect.center().y() - 8,
-                      16, 16);
+      const int group_width = 16 + 8 + 16;
+      const int start = option.rect.left() + qMax(0, (option.rect.width() - group_width) / 2);
+      QRect indicator(start, option.rect.center().y() - 8, 16, 16);
       if (indicator.contains(mouse->pos())) {
         const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
         s.store.toggle_decision(id, true);
@@ -542,7 +543,15 @@ class HybridDelegate : public QStyledItemDelegate {
     const bool has_children = is_dir &&
         id < static_cast<int>(store.dir_has_children.size()) &&
         store.dir_has_children[id];
-    if (is_dir) {
+    const bool root_row = store.paths[id] == DataStore::root_path();
+    // Reserve the fold-marker gutter on every row so empty folders stay
+    // aligned with folders that have children, and files line up with them.
+    if (root_row) {
+      const QIcon& icon = store.root_icon;
+      if (!icon.isNull()) icon.paint(painter, QRect(x, mid - 8, 16, 16));
+      else draw_folder_icon(painter, QRect(x, mid - 8, 16, 14));
+      x += 20;
+    } else if (is_dir) {
       const bool expanded = !(id < static_cast<int>(store.collapsed.size()) &&
                               store.collapsed[id]);
       if (has_children) {
@@ -560,17 +569,18 @@ class HybridDelegate : public QStyledItemDelegate {
                            {chev.left(), chev.bottom()}};
           painter->drawPolygon(pts, 3);
         }
-        x += 12;
       }
-      const QIcon& icon = store.paths[id] == DataStore::root_path()
-                              ? store.root_icon : store.folder_icon;
-      if (!icon.isNull()) icon.paint(painter, QRect(x, mid - 8, 16, 16));
-      else draw_folder_icon(painter, QRect(x, mid - 8, 16, 14));
-      x += 20;
+      const int icon_x = x + 14;
+      if (!store.folder_icon.isNull()) {
+        store.folder_icon.paint(painter, QRect(icon_x, mid - 8, 16, 16));
+      } else {
+        draw_folder_icon(painter, QRect(icon_x, mid - 8, 16, 14));
+      }
+      x = icon_x + 20;
     } else {
+      const int icon_x = x + 14;
       painter->setPen(QPen(QColor("#D0D7DE"), 1));
-      const int rule = x + 4;
-      painter->drawLine(rule, opt.rect.top(), rule, opt.rect.bottom());
+      painter->drawLine(x + 10, opt.rect.top(), x + 10, opt.rect.bottom());
       std::string suffix;
       const std::string& path = store.paths[id];
       const std::size_t dot = path.rfind('.');
@@ -581,10 +591,10 @@ class HybridDelegate : public QStyledItemDelegate {
       auto found = store.file_icons.find(suffix);
       if (found == store.file_icons.end()) found = store.file_icons.find("");
       if (found != store.file_icons.end() && !found->second.isNull()) {
-        found->second.paint(painter, QRect(x, mid - 8, 16, 16));
+        found->second.paint(painter, QRect(icon_x, mid - 8, 16, 16));
       }
-      else draw_file_icon(painter, QRect(x + 12, mid - 9, 14, 16), color);
-      x += 20;
+      else draw_file_icon(painter, QRect(icon_x + 1, mid - 9, 14, 16), color);
+      x = icon_x + 20;
     }
     painter->setPen(color);
     const int available = opt.rect.right() - x - 4;
@@ -658,7 +668,10 @@ class HybridDelegate : public QStyledItemDelegate {
     const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
     // Paint the same rounded, accent-coloured checkbox the toolbar QCheckBox
     // uses under Breeze; the item-view indicator primitive draws a dash here.
-    QRect box(opt.rect.left() + 4, opt.rect.center().y() - 8, 16, 16);
+    // Center the checkbox + action icon group in the Decisions pane.
+    const int group_width = 16 + 8 + 16;
+    const int start = opt.rect.left() + qMax(0, (opt.rect.width() - group_width) / 2);
+    QRect box(start, opt.rect.center().y() - 8, 16, 16);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
     painter->setPen(Qt::NoPen);
@@ -680,8 +693,7 @@ class HybridDelegate : public QStyledItemDelegate {
       // Reuse the exact QIcon the Python view generates, so the toolbar,
       // Decisions column and overview statistics always agree.
       const int y = opt.rect.center().y() - 8;
-      s.action_icons[action].paint(painter,
-                                   QRect(opt.rect.left() + 30, y, 16, 16));
+      s.action_icons[action].paint(painter, QRect(start + 24, y, 16, 16));
     }
   }
 

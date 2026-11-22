@@ -195,21 +195,26 @@ class SettingsDialog(QDialog):
         )
         advanced_layout.addWidget(self.inventory_preload_checkbox)
         self.hybrid_view_checkbox = QCheckBox(
-            "Use native Qt comparison views (experimental)", advanced
+            "Use native Qt comparison views", advanced
         )
         self.hybrid_view_checkbox.setChecked(bool(hybrid_view))
         self.hybrid_view_checkbox.setToolTip(
-            "Off by default. Requires the native_hybrid extension. Hands the "
-            "comparison once to native Qt models for the three tables and the "
-            "overview; decision edits flow back into Python. Selection, search "
-            "and folds are not yet wired natively, so this is a prototype."
+            "Off by default: the Python comparison view is used. Requires the "
+            "native_hybrid extension. The comparison is handed to native Qt "
+            "models once; decisions, actions and tools stay in Python, and "
+            "search, sorting, folds and external tools work in both views. "
+            "The setting applies immediately and can be switched back at any "
+            "time; clearing this box rebuilds the Python view."
         )
         advanced_layout.addWidget(self.hybrid_view_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
-            "Both checks are diagnostics, not gates. The synchronization "
-            "confirmation dialog remains the final review before writing. "
-            "The rsync check needs the Verify Decisions check above."
+            "Verification checks are diagnostics, not gates: the "
+            "synchronization confirmation dialog remains the final review "
+            "before writing, and the optional rsync check needs Verify "
+            "Decisions. Native comparison views are an alternative renderer "
+            "for the same comparison; decisions, plan and validation stay in "
+            "Python in both modes."
         )
         advanced_hint.setWordWrap(True)
         advanced_layout.addWidget(advanced_hint)

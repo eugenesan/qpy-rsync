@@ -126,6 +126,14 @@ class ActionColumnDelegate(UniformRowDelegate):
             styled.state &= ~QStyle.StateFlag.State_MouseOver
             if index.model().stale:
                 styled.state &= ~QStyle.StateFlag.State_Enabled
+            widget = styled.widget
+            style = widget.style() if widget is not None else QApplication.style()
+            indicator = style.pixelMetric(
+                QStyle.PixelMetric.PM_IndicatorWidth, None, widget
+            )
+            group = indicator + 4 + 16
+            shift = max(0, (styled.rect.width() - group) // 2)
+            styled.rect = styled.rect.adjusted(shift, 0, shift, 0)
             super().paint(painter, styled, index)  # type: ignore[arg-type]
             return
         styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]

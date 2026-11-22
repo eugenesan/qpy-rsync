@@ -87,6 +87,14 @@ Python owns decision *semantics* (inheritance, conflicts, reconciliation).
 
 The handoff uses an in-process vector API, so it is the real integration cost.
 
+## Multi-instance notes
+
+Settings are split between `$XDG_CONFIG_HOME/qpy-rsync/settingsrc` (preferences)
+and `$XDG_STATE_HOME/qpy-rsyncstaterc` (transient state). Profile files and the
+settings files use PID-based locks; a profile already open in another instance
+is loaded as a temporary copy and offered for saving on exit. Logs are named
+after the loaded profile, so temporary copies get their own log files.
+
 ## Acceptance status
 
 `native-hybrid/bench.py` measures the shipped actions at 520k items (offscreen,

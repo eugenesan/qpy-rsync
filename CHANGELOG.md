@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Native overview now builds a folder hierarchy with expandable rows, Total
+  first; list indentation reserves the fold-marker gutter on every row so the
+  hierarchy stays aligned and connector lines no longer cross icons.
+- Decisions checkboxes and icons are centred in both views. Removed the
+  duplicate toolbar separator and refreshed the Advanced-settings wording.
+- Added PID-based profile/settings locks for parallel instances. Preferences
+  now live in `$XDG_CONFIG_HOME/qpy-rsync/settingsrc`, transient UI state in
+  `$XDG_STATE_HOME/qpy-rsyncstaterc`; only the current profile path is cached
+  and a locked profile falls back to a temporary copy with a save prompt.
+- Sorting is linked across panes and no longer rebuilds the model twice.
+
 - Native name-column icons now come from the Python icon generator, blank
   sides show no icon, and empty folders no longer show a fold marker.
 - Column text is left-aligned in both views; overview headers are centred and

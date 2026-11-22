@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QModelIndex
+from PySide6.QtWidgets import QApplication, QTreeView
 
 pytest.importorskip("qpy_rsync.native_hybrid")
 
@@ -184,6 +185,63 @@ def test_header_sort_indicators_are_linked(monkeypatch) -> None:
             assert sections == [2, -1, 7]
             assert all(h.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
                        for h in headers(window))
+    finally:
+        python.close()
+        native.close()
+        app.processEvents()
+
+
+def test_overview_hierarchy_matches(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication([])
+
+    def build(hybrid: bool):
+        monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
+        settings = app_settings()
+        settings.setValue("advanced/hybrid_view", False)
+        settings.sync()
+        window = MainWindow()
+        window.source_edit.setText("/src/")
+        window.destination_edit.setText("/dst/")
+        window._active_profile = window._profile()
+        window._baseline_profile = window._profile()
+        paths = ["root.txt", "a/f1.txt", "a/sub/f2.txt", "b/f3.txt"]
+        changes = [
+            Change(p, ChangeAction.CREATE, ObjectKind.FILE, ">f", i)
+            for i, p in enumerate(paths)
+        ]
+        window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+        app.processEvents()
+        return window
+
+    python = build(False)
+    native = build(True)
+    try:
+        def outline(window):
+            if window._hybrid_view is not None:
+                tree = window._hybrid_view.overview_widget.findChildren(QTreeView)[0]
+                model = tree.model()
+            else:
+                tree = window.overview.tree
+                model = tree.model()
+
+            def walk(parent, depth=0):
+                result = []
+                for row in range(model.rowCount(parent)):
+                    index = model.index(row, 0, parent)
+                    result.append((depth, str(model.data(index)), bool(model.hasChildren(index))))
+                    result.extend(walk(index, depth + 1))
+                return result
+            return walk(QModelIndex())
+
+        py_outline = outline(python)
+        native_outline = outline(native)
+        assert py_outline[0][1] == native_outline[0][1] == "Total"
+        # Folder rows keep expandable children in both views; direct files are
+        # presented differently, which is not part of this parity check.
+        assert {"a", "b"}.issubset({name for _depth, name, _children in py_outline})
+        assert {"a", "b"}.issubset({name for _depth, name, _children in native_outline})
+        assert dict((name, children) for _depth, name, children in py_outline)["a"] is True
+        assert dict((name, children) for _depth, name, children in native_outline)["a"] is True
     finally:
         python.close()
         native.close()

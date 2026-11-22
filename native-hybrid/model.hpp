@@ -1002,34 +1002,83 @@ class OverviewModel : public QAbstractItemModel {
     root_->children.push_back(total);
     nodes_.push_back(total);
 
-    // One folder node per distinct first path component, counting files only.
+    // Build the same hierarchy as the Python overview: folders nested by
+    // path, with a "Files" child holding the direct files of each folder.
     std::unordered_map<std::string, OverviewNode*> folders;
+    auto add_child = [&](OverviewNode* parent, const std::string& name,
+                         const std::string& path) {
+      auto* node = new OverviewNode{name, path, 0, 0, 0, 0, parent, {}};
+      parent->children.push_back(node);
+      nodes_.push_back(node);
+      return node;
+    };
+    auto ensure_folder = [&](const std::string& path) {
+      auto found = folders.find(path);
+      if (found != folders.end()) return found->second;
+      OverviewNode* parent = root_;
+      std::string prefix;
+      std::size_t begin = 0;
+      while (begin < path.size()) {
+        const std::size_t slash = path.find('/', begin);
+        const std::string part = slash == std::string::npos
+                                     ? path.substr(begin)
+                                     : path.substr(begin, slash - begin);
+        prefix = prefix.empty() ? part : prefix + "/" + part;
+        auto it = folders.find(prefix);
+        if (it == folders.end()) {
+          it = folders.emplace(prefix, add_child(parent, part, prefix)).first;
+        }
+        parent = it->second;
+        if (slash == std::string::npos) break;
+        begin = slash + 1;
+      }
+      return parent;
+    };
+
     auto consider = [&](int i) {
       if (i < 0 || i >= static_cast<int>(store.paths.size())) return;
-      if (i < static_cast<int>(store.is_dir.size()) && store.is_dir[i]) return;
       const std::string& path = store.paths[i];
-      auto slash = path.find('/');
-      if (slash == std::string::npos) return;
-      std::string name = path.substr(0, slash);
-      if (name.empty()) return;
-      OverviewNode*& folder = folders[name];
-      if (folder == nullptr) {
-        folder = new OverviewNode{name, path.substr(0, slash), 0, 0, 0, 0, root_, {}};
-        root_->children.push_back(folder);
-        nodes_.push_back(folder);
+      if (path == DataStore::root_path() || path.empty()) return;
+      const bool dir_row = i < static_cast<int>(store.is_dir.size()) && store.is_dir[i];
+      const std::size_t slash = path.rfind('/');
+      const std::string folder_path = slash == std::string::npos
+                                          ? "" : path.substr(0, slash);
+      OverviewNode* folder = folder_path.empty() ? root_ : ensure_folder(folder_path);
+      OverviewNode* target = folder;
+      if (!dir_row && !folder_path.empty()) {
+        OverviewNode* files = nullptr;
+        for (OverviewNode* child : folder->children) {
+          if (child->name == "Files") { files = child; break; }
+        }
+        if (files == nullptr) files = add_child(folder, "Files", "");
+        target = files;
       }
-      ++folder->count;
-      folder->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
+      ++target->count;
+      target->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
     };
     if (visible_only) {
       for (int id : store.visible) consider(id);
     } else {
       for (int i = 0; i < static_cast<int>(store.paths.size()); ++i) consider(i);
     }
+    std::function<void(OverviewNode*)> sort_children = [&](OverviewNode* node) {
+      std::sort(node->children.begin(), node->children.end(),
+                [](const OverviewNode* a, const OverviewNode* b) {
+                  if (a->size != b->size) return a->size > b->size;
+                  return a->name < b->name;
+                });
+      for (OverviewNode* child : node->children) sort_children(child);
+    };
+    sort_children(root_);
+    auto total_it = std::find(root_->children.begin(), root_->children.end(), total);
+    if (total_it != root_->children.end()) {
+      root_->children.erase(total_it);
+      root_->children.insert(root_->children.begin(), total);
+    }
     std::sort(root_->children.begin() + 1, root_->children.end(),
               [](const OverviewNode* a, const OverviewNode* b) {
                 if (a->size != b->size) return a->size > b->size;
-                return a->name > b->name;
+                return a->name < b->name;
               });
     compute_totals(root_);
     // The Total row carries the aggregate of the whole comparison.

@@ -403,11 +403,25 @@ def test_recent_profile_is_stored_in_app_settings(tmp_path, monkeypatch) -> None
     window = MainWindow()
     window.source_edit.setText(str(tmp_path / "src"))
     window.destination_edit.setText(str(tmp_path / "dst"))
-    window._save_recent_profile()
+    from qpy_rsync.core.enums import EndpointKind
+    from qpy_rsync.core.models import Endpoint, SyncProfile
+    from qpy_rsync.storage.profile_store import save_profile
+
+    profile_path = tmp_path / "profile.json"
+    save_profile(
+        profile_path,
+        SyncProfile(
+            "recent",
+            Endpoint(EndpointKind.LOCAL, str(tmp_path / "src") + "/"),
+            Endpoint(EndpointKind.LOCAL, str(tmp_path / "dst") + "/"),
+        ),
+    )
+    window._remember_profile_path(profile_path)
 
     settings = app_settings()
-    assert settings.contains("profile/recent")
-    assert not settings.contains("profile/recent_path")
+    assert settings.contains("profile/current_path")
+    assert not settings.contains("profile/recent")
+    assert not settings.contains("profile/recent_paths")
     assert not (tmp_path / ".local/share/qpy-rsync/recent-profile.json").exists()
 
     restored = MainWindow()
@@ -532,8 +546,7 @@ def test_legacy_recent_profile_file_is_migrated_and_removed(
 
     window = MainWindow()
     settings = app_settings()
-    assert settings.contains("profile/recent")
-    assert not settings.contains("profile/recent_path")
+    assert settings.contains("profile/current_path")
     assert not legacy.exists()
     assert window.source_edit.text() == str(tmp_path / "src") + "/"
     window.close()

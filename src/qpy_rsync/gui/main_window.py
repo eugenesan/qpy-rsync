@@ -74,6 +74,7 @@ from qpy_rsync.storage.profile_store import (
     profile_to_json,
     save_profile,
 )
+from qpy_rsync.storage.instance_lock import FileLock, LockBusy
 from qpy_rsync.storage.settings import (
     app_settings,
     decode_binary,
@@ -250,6 +251,8 @@ class MainWindow(QMainWindow):
         self._service.on_items = self._comparison_items
         self._active_profile: SyncProfile | None = None
         self._profile_path: Path | None = None
+        self._profile_lock: FileLock | None = None
+        self._temp_profile = False
         self._profile_transfer = TransferOptions()
         self._profile_preservation = PreservationOptions()
         self._profile_conflict = ConflictPolicy.OVERRIDE
@@ -716,7 +719,6 @@ class MainWindow(QMainWindow):
         )
         locations.addWidget(source_panel, 40)
         locations.addWidget(filter_column, 0, Qt.AlignmentFlag.AlignBottom)
-        locations.addWidget(vertical_separator())
         locations.addWidget(destination_panel, 40)
         layout.addLayout(locations)
         self._locations_layout = locations
@@ -2061,47 +2063,64 @@ class MainWindow(QMainWindow):
         )
 
     def _recent_profile_paths(self) -> list[Path]:
-        """Recently used profiles, then the ones found in the profile folder."""
-        settings = app_settings()
-        payload = decode_text(settings.value("profile/recent_paths", "")) or ""
-        remembered: list[Path] = []
-        if payload:
-            try:
-                import json
-
-                raw = json.loads(payload)
-                if isinstance(raw, list):
-                    remembered = [Path(str(item)).expanduser() for item in raw]
-            except (ValueError, TypeError):
-                remembered = []
+        """Profiles found in the profile folder, newest first."""
         directory = profiles_directory()
-        on_disk = sorted(
+        return sorted(
             (path for path in directory.glob("*.json") if path.is_file()),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
-        )
-        paths: list[Path] = []
-        for path in [*remembered, *on_disk]:
-            if path.is_file() and path not in paths:
-                paths.append(path)
-        return paths[:10]
+        )[:10]
 
     def _remember_profile_path(self, path: Path) -> None:
         self._profile_path = path
         self._update_log_paths()
-        import json
-
-        paths = [path] + [
-            existing for existing in self._recent_profile_paths() if existing != path
-        ]
         settings = app_settings()
-        settings.setValue(
-            "profile/recent_paths",
-            encode_text(json.dumps([str(item) for item in paths[:10]])),
-        )
-        settings.setValue("profile/current_path", encode_text(str(path)))
-        settings.sync()
+        if not self._temp_profile:
+            settings.setValue("profile/current_path", encode_text(str(path)))
+            settings.sync()
         self._refresh_profile_marker()
+
+    def _release_profile_lock(self) -> None:
+        if self._profile_lock is not None:
+            self._profile_lock.release()
+            self._profile_lock = None
+
+    def _prepare_profile_path(self, profile: object, path: Path) -> Path:
+        """Lock a profile, falling back to a private temporary copy."""
+        import secrets
+
+        self._release_profile_lock()
+        lock = FileLock(path, timeout=0)
+        try:
+            lock.acquire()
+            self._profile_lock = lock
+            self._temp_profile = False
+            return path
+        except LockBusy:
+            temp = profiles_directory() / (
+                f"{(path.stem or 'profile')}~tmp{secrets.token_hex(3)}.json"
+            )
+            save_profile(temp, profile)  # type: ignore[arg-type]
+            lock = FileLock(temp, timeout=0)
+            lock.acquire()
+            self._profile_lock = lock
+            self._temp_profile = True
+            if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+                QMessageBox.information(
+                    self,
+                    "Profile already open",
+                    f"{path.name} is open in another instance. A temporary "
+                    "copy was loaded; save it under a new name to keep changes.",
+                )
+            self._append_log(
+                f"Profile {path.name} is locked; using temporary copy {temp.name}."
+            )
+            return temp
+
+    def _use_profile_path(self, profile: object, path: Path) -> bool:
+        target = self._prepare_profile_path(profile, path)
+        self._remember_profile_path(target)
+        return True
 
     def _update_profile_menu(self) -> None:
         menu = self.profile_menu
@@ -2173,11 +2192,11 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             QMessageBox.warning(self, "Load profile", str(exc))
             return
-        self._apply_profile(profile)
-        self._remember_profile_path(path)
-        self._baseline_profile = self._profile()
-        self._refresh_profile_marker()
-        self._append_log(f"Profile loaded: {path}")
+        if self._use_profile_path(profile, Path(path)):
+            self._apply_profile(profile)
+            self._baseline_profile = self._profile()
+            self._refresh_profile_marker()
+            self._append_log(f"Profile loaded: {path}")
 
     def _save_current_profile(self) -> None:
         if self._profile_path is None:
@@ -2222,8 +2241,9 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return False
-        save_profile(Path(path), self._profile())
-        self._remember_profile_path(Path(path))
+        target = self._prepare_profile_path(self._profile(), Path(path))
+        save_profile(target, self._profile())
+        self._remember_profile_path(target)
         self._save_recent_profile()
         try:
             self._baseline_profile = self._profile()
@@ -2246,10 +2266,9 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         settings = app_settings()
-        settings.remove("profile/recent")
-        settings.remove("profile/recent_path")
         settings.remove("profile/current_path")
         settings.sync()
+        self._release_profile_lock()
         self._profile_path = None
         self.source_edit.clear()
         self.destination_edit.clear()
@@ -4996,14 +5015,8 @@ class MainWindow(QMainWindow):
         return Path.home() / ".local" / "share" / "qpy-rsync" / "recent-profile.json"
 
     def _save_recent_profile(self) -> None:
-        try:
-            payload = profile_to_json(self._profile())
-        except (TypeError, ValueError):
-            return
-        settings = app_settings()
-        settings.setValue("profile/recent", encode_text(payload))
-        settings.remove("profile/recent_path")
-        settings.sync()
+        """Only the current profile path is cached; nothing to write here."""
+        return
 
     def _restore_recent_profile(self) -> bool:
         settings = app_settings()
@@ -5012,53 +5025,29 @@ class MainWindow(QMainWindow):
             path = Path(current).expanduser()
             if path.is_file():
                 try:
-                    self._apply_profile(load_profile(path))
+                    profile = load_profile(path)
                 except (OSError, ValueError, KeyError, TypeError):
                     pass
                 else:
-                    self._profile_path = path
-                    return True
-        payload = decode_text(settings.value("profile/recent", "")) or ""
-        if payload:
+                    if self._use_profile_path(profile, path):
+                        self._apply_profile(profile)
+                        return True
+        legacy = self._legacy_recent_profile_path()
+        if legacy.is_file():
             try:
-                self._apply_profile(profile_from_json(payload))
-            except (ValueError, KeyError, TypeError):
-                settings.remove("profile/recent")
-                settings.sync()
+                profile = load_profile(legacy)
+            except (OSError, ValueError, KeyError, TypeError):
                 return False
-            return True
-
-        # Migrate the old dedicated recent-profile.json without recreating it.
-        stored = str(settings.value("profile/recent_path", "")).strip()
-        path = (
-            Path(stored).expanduser()
-            if stored
-            else self._legacy_recent_profile_path()
-        )
-        if not path.is_file():
-            if stored:
-                settings.remove("profile/recent_path")
-                settings.sync()
-            return False
-        try:
-            profile = load_profile(path)
-        except (OSError, ValueError, KeyError, TypeError):
-            return False
-        settings.setValue(
-            "profile/recent", encode_text(profile_to_json(profile))
-        )
-        settings.remove("profile/recent_path")
-        settings.sync()
-        if path == self._legacy_recent_profile_path():
+            target = profiles_directory() / "recent.json"
             try:
-                path.unlink()
+                save_profile(target, profile)
+                legacy.unlink()
             except OSError:
-                pass
-        try:
-            self._apply_profile(profile)
-        except (ValueError, KeyError, TypeError):
-            return False
-        return True
+                return False
+            if self._use_profile_path(profile, target):
+                self._apply_profile(profile)
+                return True
+        return False
 
     def _save_backup(self) -> None:
         settings = app_settings()
@@ -5335,8 +5324,18 @@ class MainWindow(QMainWindow):
                 return left == right
 
             self._save_profile_on_exit_if_modified(_current, _baseline)
+            if self._temp_profile:
+                answer = QMessageBox.question(
+                    self,
+                    "Save temporary profile?",
+                    "This instance used a temporary profile because the "
+                    "original was open elsewhere. Save it under a new name?",
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    self._save_profile()
         except Exception:  # noqa: BLE001
             pass
+        self._release_profile_lock()
         self._flush_log()
         self._close_session_log()
         super().closeEvent(event)  # type: ignore[arg-type]

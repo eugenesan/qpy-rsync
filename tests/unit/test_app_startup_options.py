@@ -110,6 +110,7 @@ def test_legacy_settings_file_is_removed_after_migration(tmp_path, monkeypatch) 
     from PySide6.QtCore import QCoreApplication, QSettings
 
     from qpy_rsync.storage.settings import (
+        app_settings,
         migrate_legacy_settings,
         settings_path,
     )
@@ -130,7 +131,7 @@ def test_legacy_settings_file_is_removed_after_migration(tmp_path, monkeypatch) 
         migrate_legacy_settings()
 
         assert not legacy_path.exists()
-        stored = QSettings(str(settings_path()), QSettings.Format.IniFormat)
+        stored = app_settings()
         assert stored.value("comparison/source") == "/legacy/"
     finally:
         QCoreApplication.setOrganizationName(organization)
