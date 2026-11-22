@@ -397,22 +397,20 @@ struct DataStore {
         dest_times[i] = it->second.second;
       }
     }
+    // Roll the per-file values up through the parent chain. The old
+    // per-directory scan of every path was O(dirs * paths) and froze the UI
+    // on trees with tens of thousands of folders.
     for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
-      if (i >= static_cast<int>(is_dir.size()) || !is_dir[i]) continue;
-      const std::string prefix = paths[i] + "/";
-      long long total = 0;
-      long long items = 0;
-      for (int j = 0; j < static_cast<int>(paths.size()); ++j) {
-        if (j < static_cast<int>(is_dir.size()) && is_dir[j]) continue;
-        const int action = j < static_cast<int>(actions.size()) ? actions[j] : NoChange;
-        if (action == Create) continue;
-        if (j < static_cast<int>(decisions.size()) && decisions[j] == Exclude) continue;
-        if (paths[j].compare(0, prefix.size(), prefix) != 0) continue;
-        total += dest_sizes[j];
-        ++items;
+      if (i < static_cast<int>(is_dir.size()) && is_dir[i]) continue;
+      const int action = i < static_cast<int>(actions.size()) ? actions[i] : NoChange;
+      if (action == Create) continue;
+      if (i < static_cast<int>(decisions.size()) && decisions[i] == Exclude) continue;
+      int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+      while (parent >= 0) {
+        dest_sizes[parent] += dest_sizes[i];
+        dest_items[parent] += 1;
+        parent = parent < static_cast<int>(parents.size()) ? parents[parent] : -1;
       }
-      dest_sizes[i] = total;
-      dest_items[i] = items;
     }
     compute_destination_counts();
   }
