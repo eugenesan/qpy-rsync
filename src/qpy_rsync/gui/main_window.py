@@ -2439,12 +2439,12 @@ class MainWindow(QMainWindow):
         affected = set(paths) if isinstance(paths, (set, list, tuple)) else None
         self._overview_updated("decision", paths=affected)
 
-    def _invalidate_validated_plan(self) -> None:
+    def _invalidate_validated_plan(self, *, mark: bool = True) -> None:
         self._validated_plan = None
         self._verified_plan = None
         self.synchronize_button.setEnabled(False)
         self._set_verify_state("idle")
-        if self._active_profile is not None and self.comparison.model.changes:
+        if mark and self._active_profile is not None and self.comparison.model.changes:
             self._mark_plan_stale()
 
     @staticmethod
@@ -2680,6 +2680,18 @@ class MainWindow(QMainWindow):
         changes = self.comparison.model.changes
         decisions = self.comparison.model.decisions
         excluded = set(self.comparison.excluded_paths())
+        # Expand once: checking `path or any ancestor in excluded` for every
+        # item used to rebuild the ancestor string chain per change.
+        excluded_ancestors = set(excluded)
+        for path in excluded:
+            parent = path.rpartition("/")[0]
+            while parent:
+                excluded_ancestors.add(parent)
+                parent = parent.rpartition("/")[0]
+        # Siblings share the inherited decision; cache it per directory
+        # instead of walking the ancestor chain again for every item.
+        inherited_cache: dict[str, object] = {}
+        missing = object()
         counts = dict.fromkeys(
             ("creates", "updates", "metadata", "deletions", "kept"),
             0,
@@ -2691,12 +2703,15 @@ class MainWindow(QMainWindow):
             if action in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}:
                 continue
             path = str(change.path).rstrip("/")
-            if any(
-                parent in excluded for parent in (path, *self._parent_paths(path))
-            ):
+            if path in excluded_ancestors:
                 excluded_count += 1
                 continue
-            selected = decisions.effective(change) is not ChangeDecision.EXCLUDE
+            parent = path.rpartition("/")[0]
+            inherited = inherited_cache.get(parent, missing)
+            if inherited is missing:
+                inherited = decisions.inherited(parent)
+                inherited_cache[parent] = inherited
+            selected = inherited is not ChangeDecision.EXCLUDE
             if not selected:
                 if action is ChangeAction.DESTINATION_ONLY:
                     counts["kept"] += 1
@@ -4341,7 +4356,9 @@ class MainWindow(QMainWindow):
         if self._hybrid_view is not None:
             self._hybrid_view.refresh_after_decision(path_id, decision)
         self._on_decision_changed({path})
-        self._invalidate_validated_plan()
+        # _on_decision_changed already marks the plan stale through
+        # _overview_updated; avoid a second full stale pass here.
+        self._invalidate_validated_plan(mark=False)
 
     def _set_cached_destination(self, paths: object | None) -> None:
         setter = getattr(self._inventory_service, "set_cached_destination", None)

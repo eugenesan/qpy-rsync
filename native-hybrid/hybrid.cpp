@@ -805,22 +805,33 @@ QWidget* ensure_overview_widget(Session& s) {
 
 void update_stats(Session& s) {
   if (s.stats_label == nullptr) return;
-  long long count = 0, size = 0, creates = 0, updates = 0, deletes = 0;
+  long long count = 0, size = 0, creates = 0, updates = 0, metadata = 0,
+              deletes = 0, kept = 0, deleted_size = 0;
   for (int id : s.store.visible) {
     if (id < 0 || id >= static_cast<int>(s.store.is_dir.size())) continue;
     if (s.store.is_dir[id]) continue;
+    const int action = id < static_cast<int>(s.store.actions.size())
+                           ? s.store.actions[id] : NoChange;
+    if (id < static_cast<int>(s.store.decisions.size()) &&
+        s.store.decisions[id] == Exclude) {
+      continue;
+    }
     ++count;
     size += id < static_cast<int>(s.store.sizes.size()) ? s.store.sizes[id] : 0;
-    int action = id < static_cast<int>(s.store.actions.size())
-                     ? s.store.actions[id] : NoChange;
     if (action == Create) ++creates;
-    else if (action == Update || action == Metadata) ++updates;
-    else if (action == Delete) ++deletes;
+    else if (action == Update) ++updates;
+    else if (action == Metadata) ++metadata;
+    else if (action == Delete) {
+      ++deletes;
+      deleted_size += id < static_cast<int>(s.store.dest_sizes.size())
+                          ? s.store.dest_sizes[id] : 0;
+    } else if (action == DestOnly) ++kept;
   }
   s.stats_label->setText(
-      QString("%1 item(s), %2   + %3   ↑ %4   ✗ %5")
+      QString("%1 item(s), %2   + %3   ↑ %4   ↑ %5   ✗ %6 (%7)  • %8")
           .arg(count).arg(qpy_format_size(size))
-          .arg(creates).arg(updates).arg(deletes));
+          .arg(creates).arg(updates).arg(metadata).arg(deletes)
+          .arg(qpy_format_size(deleted_size)).arg(kept));
 }
 
 }  // namespace

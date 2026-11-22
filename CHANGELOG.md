@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Decision stale-summary scans are ~3x faster with many explicit decisions:
+  excluded ancestors and per-folder inherited decisions are computed once.
+- A native decision edit no longer marks the plan stale twice.
+- Overview statistics now include metadata-only changes, deleted size and
+  kept-in-destination counts like the Python view.
+
 - Alternating row stripes now include folder rows, matching the Python view.
 
 - Every comparison cell now uses the action colour explicitly, so the whole
