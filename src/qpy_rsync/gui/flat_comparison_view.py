@@ -412,6 +412,7 @@ class FlatComparisonView(QWidget):
         self.source_is_local = True
         self.destination_is_local = True
         self._syncing = False
+        self._sorting_link = False
         self._update_freeze = 0
         # The tools the context menu offers on an item.
         self._external_tools: list[ExternalTool] = []
@@ -557,6 +558,10 @@ class FlatComparisonView(QWidget):
         self._restore_view_state()
         self._synchronize()
         for tree in (self.source, self.action, self.destination):
+            tree.horizontalHeader().sortIndicatorChanged.connect(
+                lambda section, order, t=tree: self._linked_sort(t, section, order)
+            )
+        for tree in (self.source, self.action, self.destination):
             tree.sortByColumn(self.model.SOURCE_NAME, Qt.SortOrder.AscendingOrder)
         self._show_sort_indicator(self.model.SOURCE_NAME, Qt.SortOrder.AscendingOrder)
 
@@ -586,7 +591,11 @@ class FlatComparisonView(QWidget):
         pane.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         pane.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         pane.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        pane.setSortingEnabled(True)
+        # _linked_sort is the single sorting path; QTableView's built-in
+        # handler would rebuild the model a second time on each click.
+        pane.setSortingEnabled(False)
+        pane.horizontalHeader().setSectionsClickable(True)
+        pane.horizontalHeader().setSortIndicatorShown(True)
         stretch_section = (
             self.model.SOURCE_NAME
             if label in ("Source", "Action")
@@ -1390,18 +1399,52 @@ class FlatComparisonView(QWidget):
         self._show_sort_indicator(self.model.sort_column(), self.model.sort_order())
         self.sort_changed.emit(self.model.sort_column(), self.model.sort_order())
 
+    @staticmethod
+    def _logical_sort_column(section: int) -> int:
+        return {
+            0: 0, 5: 0,
+            1: 1, 6: 1,
+            2: 2, 7: 2,
+            3: 3, 8: 3,
+            4: 4,
+            9: 9, 10: 9,
+        }.get(section, 0)
+
+    def _sort_section(self, logical: int, tree: object) -> int:
+        if tree is self.action:
+            return 4 if logical == 4 else -1
+        if logical == 4:
+            return -1
+        if tree is self.source:
+            return logical
+        return {0: 5, 1: 6, 2: 7, 3: 8, 9: 10}.get(logical, 5)
+
+    def _linked_sort(self, tree: object, section: int, order: Qt.SortOrder) -> None:
+        if self._sorting_link:
+            return
+        logical = self._logical_sort_column(section)
+        self._sorting_link = True
+        try:
+            with timed("ui.sort", column=logical, descending=(
+                    order == Qt.SortOrder.DescendingOrder)):
+                self.model.sort(logical, order)
+                for pane in (self.source, self.action, self.destination):
+                    header = pane.horizontalHeader()
+                    blocked = header.blockSignals(True)
+                    header.setSortIndicator(self._sort_section(logical, pane), order)
+                    header.blockSignals(blocked)
+            self.sort_changed.emit(logical, order)
+        finally:
+            self._sorting_link = False
+
     def _show_sort_indicator(self, column: int, order: Qt.SortOrder) -> None:
         for tree in (self.source, self.action, self.destination):
             header = tree.horizontalHeader()
-            visible = [
-                section
-                for section in range(header.count())
-                if not header.isSectionHidden(section)
-            ]
-            if column in visible:
-                header.setSortIndicator(column, order)
-            elif header.sortIndicatorSection() >= 0:
+            section = self._sort_section(column, tree)
+            if header.isSectionHidden(section):
                 header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+            else:
+                header.setSortIndicator(section, order)
 
     # ------------------------------------------------------------------
     # Decisions

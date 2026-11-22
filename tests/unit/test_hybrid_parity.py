@@ -138,3 +138,53 @@ def test_row_order_and_header_sorting_match(monkeypatch) -> None:
         python.close()
         native.close()
         app.processEvents()
+
+
+def test_header_sort_indicators_are_linked(monkeypatch) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTableView
+
+    app = QApplication.instance() or QApplication([])
+
+    def build(hybrid: bool):
+        monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
+        settings = app_settings()
+        settings.setValue("advanced/hybrid_view", False)
+        settings.sync()
+        window = MainWindow()
+        window.source_edit.setText("/src/")
+        window.destination_edit.setText("/dst/")
+        window._active_profile = window._profile()
+        window._baseline_profile = window._profile()
+        changes = [
+            Change(f"d{i % 2}/f{i:03d}.txt", ChangeAction.CREATE,
+                   ObjectKind.FILE, ">f", i)
+            for i in range(12)
+        ]
+        window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+        app.processEvents()
+        return window
+
+    python = build(False)
+    native = build(True)
+    try:
+        def headers(window):
+            if window._hybrid_view is not None:
+                tables = sorted(window._hybrid_view.widget.findChildren(QTableView),
+                                key=lambda t: t.x())
+            else:
+                tables = [window.comparison.source, window.comparison.action,
+                          window.comparison.destination]
+            return [t.horizontalHeader() for t in tables]
+
+        for window in (python, native):
+            headers(window)[2].setSortIndicator(7, Qt.SortOrder.DescendingOrder)
+            app.processEvents()
+            sections = [h.sortIndicatorSection() for h in headers(window)]
+            assert sections == [2, -1, 7]
+            assert all(h.sortIndicatorOrder() == Qt.SortOrder.DescendingOrder
+                       for h in headers(window))
+    finally:
+        python.close()
+        native.close()
+        app.processEvents()

@@ -53,6 +53,7 @@ struct Session {
   std::vector<QIcon> action_icons;
   int current_path_id = -1;
   int last_hidden_path_id = -1;
+  bool sorting_link = false;
   TableModel* models[3] = {nullptr, nullptr, nullptr};
   OverviewModel* overview = nullptr;
   QTableView* views[3] = {nullptr, nullptr, nullptr};
@@ -495,6 +496,16 @@ class HybridDelegate : public QStyledItemDelegate {
       paint_check(painter, option, index, s, store, id);
       return;
     }
+    const int action = id < static_cast<int>(store.actions.size())
+                           ? store.actions[id] : NoChange;
+    const bool source_present = action != DestOnly && action != Delete;
+    const bool dest_present = action != Create;
+    if ((pane_ == 0 && !source_present) || (pane_ == 2 && !dest_present)) {
+      QStyleOptionViewItem blank(option);
+      initStyleOption(&blank, index);
+      paint_background(painter, option, false);
+      return;
+    }
 
     const bool name_col = (col == 0 || col == 5);
     QStyleOptionViewItem opt(option);
@@ -509,10 +520,7 @@ class HybridDelegate : public QStyledItemDelegate {
     if (!name_col) {
       QColor color = text_color(s, store, id, selected);
       if (!color.isValid()) color = opt.palette.color(QPalette::Text);
-      const int alignment = (col == 1 || col == 2 || col == 6 || col == 7 ||
-                             col == 9 || col == 10)
-                                ? (Qt::AlignRight | Qt::AlignVCenter)
-                                : (Qt::AlignLeft | Qt::AlignVCenter);
+      const int alignment = Qt::AlignLeft | Qt::AlignVCenter;
       painter->save();
       painter->setPen(color);
       painter->drawText(opt.rect.adjusted(2, 0, -4, 0), alignment,
@@ -531,31 +539,52 @@ class HybridDelegate : public QStyledItemDelegate {
     const int baseline = opt.rect.top() + opt.rect.height() / 2 +
                          opt.fontMetrics.ascent() / 2 - 1;
     painter->save();
+    const bool has_children = is_dir &&
+        id < static_cast<int>(store.dir_has_children.size()) &&
+        store.dir_has_children[id];
     if (is_dir) {
       const bool expanded = !(id < static_cast<int>(store.collapsed.size()) &&
                               store.collapsed[id]);
-      painter->setPen(Qt::NoPen);
-      painter->setBrush(color);
-      QRect chev(x, mid - 4, 8, 8);
-      if (expanded) {
-        QPoint pts[3] = {{chev.left(), chev.top()},
-                         {chev.right(), chev.top()},
-                         {chev.center().x(), chev.bottom()}};
-        painter->drawPolygon(pts, 3);
-      } else {
-        QPoint pts[3] = {{chev.left(), chev.top()},
-                         {chev.right(), chev.center().y()},
-                         {chev.left(), chev.bottom()}};
-        painter->drawPolygon(pts, 3);
+      if (has_children) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(color);
+        QRect chev(x, mid - 4, 8, 8);
+        if (expanded) {
+          QPoint pts[3] = {{chev.left(), chev.top()},
+                           {chev.right(), chev.top()},
+                           {chev.center().x(), chev.bottom()}};
+          painter->drawPolygon(pts, 3);
+        } else {
+          QPoint pts[3] = {{chev.left(), chev.top()},
+                           {chev.right(), chev.center().y()},
+                           {chev.left(), chev.bottom()}};
+          painter->drawPolygon(pts, 3);
+        }
+        x += 12;
       }
-      draw_folder_icon(painter, QRect(x + 12, mid - 8, 16, 14));
-      x += 30;
+      const QIcon& icon = store.paths[id] == DataStore::root_path()
+                              ? store.root_icon : store.folder_icon;
+      if (!icon.isNull()) icon.paint(painter, QRect(x, mid - 8, 16, 16));
+      else draw_folder_icon(painter, QRect(x, mid - 8, 16, 14));
+      x += 20;
     } else {
       painter->setPen(QPen(QColor("#D0D7DE"), 1));
       const int rule = x + 4;
       painter->drawLine(rule, opt.rect.top(), rule, opt.rect.bottom());
-      draw_file_icon(painter, QRect(x + 12, mid - 9, 14, 16), color);
-      x += 30;
+      std::string suffix;
+      const std::string& path = store.paths[id];
+      const std::size_t dot = path.rfind('.');
+      const std::size_t slash = path.rfind('/');
+      if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) {
+        suffix = path.substr(dot + 1);
+      }
+      auto found = store.file_icons.find(suffix);
+      if (found == store.file_icons.end()) found = store.file_icons.find("");
+      if (found != store.file_icons.end() && !found->second.isNull()) {
+        found->second.paint(painter, QRect(x, mid - 8, 16, 16));
+      }
+      else draw_file_icon(painter, QRect(x + 12, mid - 9, 14, 16), color);
+      x += 20;
     }
     painter->setPen(color);
     const int available = opt.rect.right() - x - 4;
@@ -572,7 +601,11 @@ class HybridDelegate : public QStyledItemDelegate {
     blank.text.clear();
     blank.icon = QIcon();
     blank.state &= ~(QStyle::State_HasFocus | QStyle::State_MouseOver);
-    if (striped) blank.features |= QStyleOptionViewItem::Alternate;
+    if (striped) {
+      // Python paints a faint black overlay (alpha 22). The palette's
+      // alternate base was visibly lighter, so use the midpoint.
+      painter->fillRect(blank.rect, QColor(0, 0, 0, 14));
+    }
     const QWidget* widget = blank.widget;
     QStyle* style = widget != nullptr ? widget->style() : QApplication::style();
     style->drawPrimitive(QStyle::PE_PanelItemViewItem, &blank, painter, widget);
@@ -658,6 +691,34 @@ class HybridDelegate : public QStyledItemDelegate {
 
 void update_stats(Session& s);
 
+static int logical_sort_column(int section) {
+  switch (section) {
+    case 0: case 5: return 0;   // name
+    case 1: case 6: return 1;   // items
+    case 2: case 7: return 2;   // size
+    case 3: case 8: return 3;   // modified
+    case 4: return 4;           // decision
+    case 9: case 10: return 9;  // size in bytes
+    default: return 0;
+  }
+}
+
+static int sort_section(int logical, int pane) {
+  if (pane == 1) return logical == 4 ? 4 : -1;
+  if (logical == 4) return -1;
+  if (pane == 0) {
+    return logical == 9 ? 9 : logical;
+  }
+  switch (logical) {
+    case 0: return 5;
+    case 1: return 6;
+    case 2: return 7;
+    case 3: return 8;
+    case 9: return 10;
+    default: return 5;
+  }
+}
+
 QWidget* ensure_tables_widget(Session& s) {
   if (s.tables_widget == nullptr) {
     s.tables_widget = new QWidget();
@@ -677,17 +738,30 @@ QWidget* ensure_tables_widget(Session& s) {
           i == 2 ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAlwaysOff);
       views[i]->setSelectionBehavior(QAbstractItemView::SelectRows);
       views[i]->horizontalHeader()->setHighlightSections(false);
-      views[i]->setSortingEnabled(true);
+      // Handle sorting ourselves in the linked slot below; QTableView's
+      // built-in handler would sort the model a second time.
+      views[i]->horizontalHeader()->setSectionsClickable(true);
+      views[i]->horizontalHeader()->setSortIndicatorShown(true);
       views[i]->horizontalHeader()->setSortIndicator(0, Qt::AscendingOrder);
       QObject::connect(
           views[i]->horizontalHeader(), &QHeaderView::sortIndicatorChanged,
-          [](int, Qt::SortOrder) {
+          [](int section, Qt::SortOrder order) {
             Session& current = session();
-            if (current.overview != nullptr && current.overview_view != nullptr) {
-              current.overview->build(current.store, true);
-              current.overview_view->expandToDepth(2);
+            if (current.sorting_link) return;
+            const int logical = logical_sort_column(section);
+            current.sorting_link = true;
+            current.store.sort_column = logical;
+            current.store.sort_desc = order == Qt::DescendingOrder;
+            current.store.rebuild_visible();
+            for (int pane = 0; pane < 3; ++pane) {
+              QHeaderView* header = current.views[pane]->horizontalHeader();
+              const bool blocked = header->blockSignals(true);
+              header->setSortIndicator(sort_section(logical, pane), order);
+              header->blockSignals(blocked);
             }
+            refresh_native_models(current);
             update_stats(current);
+            current.sorting_link = false;
           });
       splitter->addWidget(views[i]);
     }
@@ -698,6 +772,12 @@ QWidget* ensure_tables_widget(Session& s) {
     views[0]->setModel(s.models[0]);
     views[1]->setModel(s.models[1]);
     views[2]->setModel(s.models[2]);
+    for (int pane = 0; pane < 3; ++pane) {
+      QHeaderView* header = views[pane]->horizontalHeader();
+      const bool blocked = header->blockSignals(true);
+      header->setSortIndicator(sort_section(0, pane), Qt::AscendingOrder);
+      header->blockSignals(blocked);
+    }
     for (int hidden : {3, 4, 5, 6, 7, 8, 9, 10}) views[0]->setColumnHidden(hidden, true);
     for (int column = 0; column < 11; ++column) {
       views[1]->setColumnHidden(column, column != 4);
@@ -716,7 +796,7 @@ QWidget* ensure_tables_widget(Session& s) {
     views[2]->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Fixed);
     views[2]->horizontalHeader()->resizeSection(7, 96);
     views[1]->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
-    views[1]->horizontalHeader()->resizeSection(4, 70);
+    views[1]->horizontalHeader()->resizeSection(4, 88);
     for (QTableView* view : views) {
       view->horizontalHeader()->setFixedHeight(
           qMax(16, view->fontMetrics().height() + 2));
@@ -809,7 +889,7 @@ QWidget* ensure_tables_widget(Session& s) {
     QSizePolicy policy = views[1]->sizePolicy();
     policy.setHorizontalPolicy(QSizePolicy::Fixed);
     views[1]->setSizePolicy(policy);
-    views[1]->setFixedWidth(88);
+    views[1]->setFixedWidth(92);
     s.tables_widget->setMinimumWidth(700);
   }
   return s.tables_widget;
@@ -826,6 +906,7 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->setAlternatingRowColors(true);
     s.overview_view->setRootIsDecorated(true);
     s.overview_view->header()->setHighlightSections(false);
+    s.overview_view->header()->setDefaultAlignment(Qt::AlignHCenter);
     s.overview = new OverviewModel(s.overview_widget);
     s.overview_view->setModel(s.overview);
     s.overview_view->setItemDelegate(new OverviewDelegate(s.overview_widget));
@@ -1160,6 +1241,21 @@ NB_MODULE(native_hybrid, m) {
     }
     for (TableModel* model : s.models) model->layout_refresh();
     update_stats(s);
+  });
+
+  m.def("set_name_icons", [](std::uintptr_t folder, std::uintptr_t root,
+                             const std::vector<std::pair<std::string, std::uintptr_t>>& files) {
+    Session& s = session();
+    auto icon_of = [](std::uintptr_t pointer) {
+      return pointer == 0 ? QIcon() : *reinterpret_cast<QIcon*>(pointer);
+    };
+    s.store.folder_icon = icon_of(folder);
+    s.store.root_icon = icon_of(root);
+    s.store.file_icons.clear();
+    for (const auto& entry : files) {
+      s.store.file_icons[entry.first] = icon_of(entry.second);
+    }
+    for (TableModel* model : s.models) model->layout_refresh();
   });
 
   m.def("set_action_colours", [](const std::vector<std::string>& colours) {

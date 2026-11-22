@@ -75,6 +75,7 @@ class NativeHybridView:
         self._action_icons: list[object] = []
         self.set_action_colours()
         self._paths: list[str] = []
+        self.set_name_icons()
         self._handed_paths: list[str] | None = None
         global _ACTIVE
         _ACTIVE = self
@@ -133,6 +134,32 @@ class NativeHybridView:
 
     def decision_for_path(self, path: str) -> int:
         return int(self._native.decision_for_path(path.rstrip("/")))
+
+    def set_name_icons(self) -> None:
+        """Hand Python-generated file/folder icons to the native delegate."""
+        import shiboken6
+
+        from qpy_rsync.gui.icons import file_type_icon, folder_icon, root_folder_icon
+
+        suffixes = set()
+        for path in getattr(self, "_paths", []) or []:
+            name = path.rsplit("/", 1)[-1]
+            if "." in name:
+                suffixes.add(name.rsplit(".", 1)[-1].casefold())
+        icons = {"": file_type_icon("file")}
+        for suffix in suffixes:
+            icons[suffix] = file_type_icon("file." + suffix)
+        folder = folder_icon()
+        root = root_folder_icon()
+        self._name_icons = [folder, root, *icons.values()]
+        self._native.set_name_icons(
+            int(shiboken6.getCppPointer(folder)[0]),
+            int(shiboken6.getCppPointer(root)[0]),
+            [
+                (suffix, int(shiboken6.getCppPointer(icon)[0]))
+                for suffix, icon in icons.items()
+            ],
+        )
 
     def set_action_colours(self) -> None:
         from qpy_rsync.core.changes import ChangeAction
@@ -219,6 +246,7 @@ class NativeHybridView:
         else:
             self._native.load(new_paths, *arrays)
         self._handed_paths = list(paths)
+        self.set_name_icons()
         self._native.refresh()
 
     def set_action_filter(self, actions) -> None:

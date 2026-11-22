@@ -81,6 +81,10 @@ struct DataStore {
   std::vector<long long> dest_sizes;
   std::vector<std::string> dest_times;
   std::vector<long long> dest_items;
+  std::vector<char> dir_has_children;
+  std::unordered_map<std::string, QIcon> file_icons;
+  QIcon folder_icon;
+  QIcon root_icon;
   static const char* root_path() {
     static const char* value = "\x01__qpy_root__";
     return value;
@@ -358,6 +362,13 @@ struct DataStore {
     names[root] = root_source;
     folded_names[root] = root_source;
     folded_paths[root] = root_source;
+    dir_has_children.assign(count, 0);
+    for (int i = 0; i < count; ++i) {
+      const int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
+      if (parent >= 0 && parent < count && parent != root) {
+        dir_has_children[parent] = 1;
+      }
+    }
     compute_aggregates();
     visible = tree_order();
     row_of_id.assign(count, -1);
@@ -1077,8 +1088,8 @@ class OverviewModel : public QAbstractItemModel {
                  ? static_cast<double>(item->total_size) / static_cast<double>(siblings)
                  : 0.0;
     }
-    if (role == Qt::TextAlignmentRole && index.column() > 0) {
-      return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
+    if (role == Qt::TextAlignmentRole) {
+      return static_cast<int>(Qt::AlignLeft | Qt::AlignVCenter);
     }
     if (role != Qt::DisplayRole) return {};
     switch (index.column()) {

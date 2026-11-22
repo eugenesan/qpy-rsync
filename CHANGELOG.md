@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Native name-column icons now come from the Python icon generator, blank
+  sides show no icon, and empty folders no longer show a fold marker.
+- Column text is left-aligned in both views; overview headers are centred and
+  its values are left-aligned. Stripe opacity is now between the two previous
+  looks. The Decisions pane fits its label in both views.
+- Source/Destination header sorting is linked and no longer sorts the model
+  twice; header indicators stay in sync across panes and views.
+- The layout/overview button carries a blue badge for Python and an orange
+  badge for hybrid.
+- Sorting is timed by `ui.sort` for the next profiling pass.
+
 - Fixed native row ordering to match the Python flat list (folder, its files,
   then subfolders) and aligned header sorting by name, items, size, time and
   action, including descending order and header indicators.

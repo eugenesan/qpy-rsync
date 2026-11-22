@@ -4155,6 +4155,7 @@ class MainWindow(QMainWindow):
         view.on_context_menu(self._native_context_menu)
         view.on_header_context_menu(self._native_header_menu)
         self._route_controls_to_native(view)
+        self._update_view_indicator()
         index = self.main_splitter.indexOf(self.comparison)
         if index >= 0:
             self.main_splitter.replaceWidget(index, view.widget)
@@ -4209,6 +4210,7 @@ class MainWindow(QMainWindow):
         self.comparison.show()
         view.shutdown()
         self._hybrid_view = None
+        self._update_view_indicator()
         if self._last_changed_changes:
             # Rebuilding the Python model/view is the expensive operation the
             # native view exists to avoid (12-23 s at 520k items). Let the
@@ -5121,7 +5123,15 @@ class MainWindow(QMainWindow):
         )
         settings.sync()
 
+    def _update_view_indicator(self) -> None:
+        """Badge the layout/overview button with the active view engine."""
+        self.layout_button.setIcon(
+            layout_mode_icon(hybrid=self._hybrid_view is not None,
+                             python=self._hybrid_view is None)
+        )
+
     def _refresh_layout_button(self) -> None:
+        self._update_view_indicator()
         label = next(
             (text for mode, text in LAYOUT_MODES if mode == self._layout_mode),
             "Normal",

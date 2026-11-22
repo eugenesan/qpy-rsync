@@ -302,14 +302,19 @@ def save_icon() -> QIcon:
     )
 
 
-def layout_mode_icon() -> QIcon:
-    """The system icon for switching the compare-pane layout."""
-    return _theme_icon(
+def layout_mode_icon(*, python: bool = False, hybrid: bool = False) -> QIcon:
+    """The layout button, badged to show which view engine is active."""
+    base = _theme_icon(
         "view-fullscreen",
         "view-restore",
         "window-maximize",
         fallback=QStyle.StandardPixmap.SP_ComputerIcon,
     )
+    if hybrid:
+        return _badged_icon(base, "#f59e0b")
+    if python:
+        return _badged_icon(base, ACCENT)
+    return base
 
 
 def restore_defaults_icon() -> QIcon:
