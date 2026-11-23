@@ -139,6 +139,33 @@ def prepare_qt_environment() -> None:
         )
 
 
+def install_interrupt_handler(qt_app: object) -> None:
+    """Make Ctrl+C close a startup dialog instead of being swallowed by Qt.
+
+    A modal ``exec()`` runs a nested C++ event loop, where Python's SIGINT
+    flag is never checked. Defer the shutdown to a zero-timer so the Python
+    callback runs inside that loop and can close the dialog.
+    """
+    import signal
+
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QDialog
+
+    def shutdown() -> None:
+        for widget in qt_app.topLevelWidgets():  # type: ignore[attr-defined]
+            if isinstance(widget, QDialog) and widget.isVisible():
+                try:
+                    widget.reject()
+                except Exception:  # noqa: BLE001
+                    pass
+        qt_app.quit()  # type: ignore[attr-defined]
+
+    def handle(_signum: int, _frame: object) -> None:
+        QTimer.singleShot(0, shutdown)
+
+    signal.signal(signal.SIGINT, handle)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     options, qt_arguments = parse_startup_options(arguments)
@@ -158,6 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from qpy_rsync.gui.main_window import MainWindow
 
     app = QApplication([sys.argv[0], *qt_arguments])
+    install_interrupt_handler(app)
     app.setApplicationName("qpy-rsync")
     app.setOrganizationName("qpy-rsync")
     app.setQuitOnLastWindowClosed(True)

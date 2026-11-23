@@ -209,3 +209,63 @@ def test_saving_temp_profile_renames_its_logs(tmp_path: Path, monkeypatch) -> No
     ) == target
     window.close()
     application.processEvents()
+
+
+def test_locked_dialog_returns_all_three_choices(monkeypatch) -> None:
+    from PySide6.QtWidgets import QDialog, QDialogButtonBox
+
+    application = app()
+    window = MainWindow()
+
+    def make_exec(choice: str):
+        def fake_exec(dialog):
+            buttons = dialog.findChild(QDialogButtonBox)
+            target = next(
+                button for button in buttons.buttons() if button.text() == choice
+            )
+            buttons.clicked.emit(target)
+            return 1
+
+        return fake_exec
+
+    for choice, expected in (
+        ("Use temporary profile", ("temp", "chosen")),
+        ("Check again", ("retry", "")),
+        ("Quit without changes", ("quit", "")),
+    ):
+        monkeypatch.setattr(QDialog, "exec", make_exec(choice))
+        result = window._choose_locked_profile_option(
+            Path("locked.json"), "chosen"
+        )
+        assert result == expected
+
+    # Closing the dialog without pressing a button means quit.
+    monkeypatch.setattr(QDialog, "exec", lambda dialog: 0)
+    assert window._choose_locked_profile_option(Path("locked.json"), "x") == (
+        "quit", ""
+    )
+    window.close()
+    application.processEvents()
+
+
+def test_ctrl_c_closes_modal_startup_dialog(monkeypatch) -> None:
+    import signal
+
+    from PySide6.QtWidgets import QDialog
+
+    from qpy_rsync.app import install_interrupt_handler
+
+    application = app()
+    previous = signal.getsignal(signal.SIGINT)
+    dialog = QDialog()
+    dialog.setWindowTitle("Profile already open")
+    dialog.show()
+    try:
+        install_interrupt_handler(application)
+        os.kill(os.getpid(), signal.SIGINT)
+        for _ in range(10):
+            application.processEvents()
+        assert not dialog.isVisible()
+    finally:
+        signal.signal(signal.SIGINT, previous)
+        dialog.close()

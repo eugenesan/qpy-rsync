@@ -2186,7 +2186,7 @@ class MainWindow(QMainWindow):
         edit.selectAll()
         layout.addWidget(edit)
         buttons = QDialogButtonBox(dialog)
-        use_temp = buttons.addButton(
+        buttons.addButton(
             "Use temporary profile", QDialogButtonBox.ButtonRole.AcceptRole
         )
         retry = buttons.addButton(
@@ -2197,11 +2197,16 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(buttons)
         dialog.setLayout(layout)
+        # clickedButton() is not exposed by all supported PySide6 builds, and
+        # an ActionRole button does not close the dialog on its own.
+        clicked: list[object] = []
+        buttons.clicked.connect(lambda button: clicked.append(button))
+        retry.clicked.connect(dialog.reject)
         dialog.exec()
-        clicked = buttons.clickedButton()
-        if clicked is quit_button or clicked is None:
+        button = clicked[0] if clicked else None
+        if button is quit_button or button is None:
             return ("quit", "")
-        if clicked is retry:
+        if button is retry:
             return ("retry", "")
         return ("temp", edit.text().strip())
 

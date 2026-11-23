@@ -7,6 +7,9 @@
   up a released profile, and quitting without changing any settings or
   profiles. Unsaved temporary profiles and their logs are removed on exit;
   saving one renames its logs to the new profile and records it as recent.
+- Fixed the startup lock dialog not reading any button press on PySide6 builds
+  without ``QDialogButtonBox.clickedButton()``, and made Ctrl+C close a modal
+  startup dialog instead of being swallowed by the nested Qt event loop.
 - Fixed the Sync button staying disabled after a decision edit when the
   incremental plan update falls back to the estimated summary.
 - The journal is no longer cleared when a comparison starts. Operations
