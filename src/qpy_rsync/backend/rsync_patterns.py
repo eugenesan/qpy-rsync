@@ -82,6 +82,24 @@ def phrases_for(path: str, *, is_directory: bool) -> list[FilterPhrase]:
     return phrases
 
 
+def delete_phrases_for(path: str, *, is_directory: bool) -> list[FilterPhrase]:
+    """Sender-side exclude rules that remove the item from the destination.
+
+    A plain exclude protects the destination copy from ``--delete``. Adding
+    the ``s`` modifier limits the rule to the sending side: rsync omits the
+    source copy and the destination copy is then reported and removed as a
+    normal deletion.
+    """
+    return [
+        FilterPhrase(
+            label=f"Delete on destination: {phrase.label}",
+            pattern=f"-s {phrase.pattern}",
+            rule_type=FilterRuleType.ADVANCED,
+        )
+        for phrase in phrases_for(path, is_directory=is_directory)
+    ]
+
+
 def matches(pattern: str, path: str) -> bool:
     """Return whether an rsync pattern matches a comparison path.
 

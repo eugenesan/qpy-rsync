@@ -26,7 +26,7 @@ using DecisionHook = void (*)(int path_id, int decision);
 inline DecisionHook g_decision_hook = nullptr;
 
 enum Action { Create = 0, Update = 1, Metadata = 2, Delete = 3, DestOnly = 4, NoChange = 5 };
-enum Decision { Inherit = 0, Include = 1, Exclude = 2 };
+enum Decision { Inherit = 0, Include = 1, Exclude = 2, DeleteRequest = 3 };
 
 inline QString qpy_format_size(long long bytes) {
   static const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
@@ -716,7 +716,10 @@ struct DataStore {
 
   void toggle_decision(int path_id, bool subtree = false) {
     if (path_id < 0 || path_id >= static_cast<int>(decisions.size())) return;
-    const int next = decisions[path_id] == Exclude ? Inherit : Exclude;
+    const int next = decisions[path_id] == Exclude ||
+                             decisions[path_id] == DeleteRequest
+                         ? Inherit
+                         : Exclude;
     set_decision_id(path_id, next, subtree);
   }
 
@@ -822,6 +825,10 @@ class TableModel : public QAbstractTableModel {
       if (index.column() == 4) {
         int action = id < static_cast<int>(store_->actions.size())
                          ? store_->actions[id] : NoChange;
+        if (id < static_cast<int>(store_->decisions.size()) &&
+            store_->decisions[id] == DeleteRequest) {
+          action = Delete;
+        }
         QString tip = "Source: " + shown + "\nDestination: " + shown +
                       "\n" + QString::fromStdString(action_label(action));
         const std::string time = id < static_cast<int>(store_->times.size())
@@ -833,8 +840,12 @@ class TableModel : public QAbstractTableModel {
     }
     if (role == Qt::ForegroundRole) {
       if (pane_ == 1) return {};
-      const int action = id < static_cast<int>(store_->actions.size())
-                             ? store_->actions[id] : NoChange;
+      int action = id < static_cast<int>(store_->actions.size())
+                       ? store_->actions[id] : NoChange;
+      if (id < static_cast<int>(store_->decisions.size()) &&
+          store_->decisions[id] == DeleteRequest) {
+        action = Delete;
+      }
       if (action >= 0 && action < static_cast<int>(store_->action_colours.size())) {
         const QString hex = store_->action_colours[action];
         if (!hex.isEmpty()) return QColor(hex);
@@ -915,7 +926,12 @@ class TableModel : public QAbstractTableModel {
           id < static_cast<int>(store_->sizes.size()) ? store_->sizes[id] : 0));
     }
     if (column == 4) {
-      return QString::fromStdString(action_label(store_->actions[id]));
+      int shown_action = store_->actions[id];
+      if (id < static_cast<int>(store_->decisions.size()) &&
+          store_->decisions[id] == DeleteRequest) {
+        shown_action = Delete;
+      }
+      return QString::fromStdString(action_label(shown_action));
     }
     return {};
   }

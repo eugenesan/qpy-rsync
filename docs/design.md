@@ -360,6 +360,26 @@ Exclude  /.git/***
 Changing the rules keeps the previous comparison visible but marks it stale,
 and the decision checkboxes are locked until a new comparison succeeds.
 
+### 6.1 Deleting an item on the destination
+
+A plain exclude protects the destination copy from `--delete`. Both comparison
+views offer **Delete on Destination** in the item context menu with two ways
+to remove that protection:
+
+- **Permanent filter** entries add `-s PATTERN` to the profile's filter list.
+  Because the rule applies only to the sending side, the next Compare no longer
+  lists the source copy and rsync reports the destination copy as a deletion.
+- **Decision only (apply at sync)** adds a Delete decision to the current
+  comparison. The item stays visible with its original source values and a
+  Delete icon; only the sync (and Verify Decisions) hides it on the sending
+  side with a temporary `-s` rule, so the destination copy is removed. This is
+  a volatile decision and is cleared by a fresh Compare.
+
+Both paths produce a normal destructive DELETE plan item, so it appears in the
+statistics and is subject to the same confirmation as any other deletion.
+Source-only items cannot carry this decision: they have no destination copy to
+remove.
+
 ## 7. Backups and versioning
 
 A non-empty backup directory enables rsync backups for the destination objects

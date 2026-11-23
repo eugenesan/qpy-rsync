@@ -2001,11 +2001,21 @@ class FlatChangeModel(QAbstractTableModel):
         if row is None or not self._row_selectable(row):
             return False
         state = Qt.CheckState(value)
-        decision = (
-            ChangeDecision.INCLUDE
-            if state is Qt.CheckState.Checked
-            else ChangeDecision.EXCLUDE
-        )
+        current = self.decisions.explicit(row.path)
+        if current is ChangeDecision.DELETE:
+            # A delete decision is cleared by unchecking it; re-checking it
+            # keeps the delete rather than silently turning it into include.
+            decision = (
+                ChangeDecision.DELETE
+                if state is Qt.CheckState.Checked
+                else ChangeDecision.INHERIT
+            )
+        else:
+            decision = (
+                ChangeDecision.INCLUDE
+                if state is Qt.CheckState.Checked
+                else ChangeDecision.EXCLUDE
+            )
         # Clicking a box back to the state rsync already proposed is a
         # restoration, not a new decision. Keep it implicit so Ctrl+Z and the
         # next comparison see the original state, not a redundant override.
@@ -2021,7 +2031,41 @@ class FlatChangeModel(QAbstractTableModel):
     # ------------------------------------------------------------------
     # Decisions
     # ------------------------------------------------------------------
+    def mark_delete(self, path: str) -> bool:
+        """Add a decision-only delete for an item, if it can be deleted."""
+        clean = path.rstrip("/")
+        change = next(
+            (item for item in self.changes if str(item.path).rstrip("/") == clean),
+            None,
+        )
+        if (
+            change is None
+            or change.action is ChangeAction.MESSAGE
+            or change.action is ChangeAction.CREATE
+        ):
+            # Unchanged items are exactly the interesting case: a delete
+            # decision hides their source copy at sync time so the
+            # destination copy is removed. A source-only item has no
+            # destination copy to remove.
+            return False
+        before = self._snapshot()
+        self.decisions.set(clean, ChangeDecision.DELETE)
+        self._record_decision(before)
+        self._after_decision_change({clean})
+        return True
+
+    def unmark_delete(self, path: str) -> None:
+        clean = path.rstrip("/")
+        if self.decisions.explicit(clean) is not ChangeDecision.DELETE:
+            return
+        before = self._snapshot()
+        self.decisions.set(clean, ChangeDecision.INHERIT)
+        self._record_decision(before)
+        self._after_decision_change({clean})
+
     def effective_action_of_change(self, change: Change) -> ChangeAction:
+        if self.decisions.effective(change) is ChangeDecision.DELETE:
+            return ChangeAction.DELETE
         action = change.action
         if (
             action is ChangeAction.DESTINATION_ONLY
@@ -2042,7 +2086,7 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _row_selectable(self, row: FlatRow) -> bool:
         if row.change is not None:
-            return self.decisions.selectable(row.change)
+            return self.decisions.is_selectable(row.change)
         directory = self._directories.get(row.path)
         return bool(directory is not None and directory.has_children)
 

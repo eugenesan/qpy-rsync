@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added **Delete on Destination** to the item context menu in both views. It
+  offers a permanent sender-side filter (`-s ...`) or a decision-only delete
+  that keeps the source item visible during Compare and emits the `-s` rule
+  only for the sync / verification dry run. Both produce a normal Delete plan
+  item.
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.

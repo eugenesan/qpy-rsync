@@ -31,6 +31,9 @@ class PlanItem:
     included: bool
     destructive: bool
     size: int | None = None
+    # A decision-only delete: the item is still present on the source during
+    # Compare, so the sync must hide it there with a sender-side rule.
+    synthetic_delete: bool = False
 
     @property
     def identity(self) -> tuple[str, ChangeAction, ObjectKind]:
@@ -98,12 +101,14 @@ def decision_signature(decisions) -> str:
     ).hexdigest()
 
 
-def comparison_signature(changes: Iterable[Change]) -> str:
+def comparison_signature(
+    changes: Iterable[Change], extra_paths: frozenset[str] = frozenset()
+) -> str:
     """Cheap order-independent fingerprint of the selectable changes."""
     acc = 0
     count = 0
     for change in changes:
-        if not ChangeDecisions.selectable(change):
+        if not ChangeDecisions.selectable(change) and str(change.path).rstrip("/") not in extra_paths:
             continue
         key = (
             f"{str(change.path).rstrip('/')}\0"
@@ -139,19 +144,26 @@ def build_execution_plan(
     with timed("plan.loop", changes=len(changes_list)):
         for change in changes_list:
             action = change.action
+            decision = decisions.effective(change) if has_explicit else None
+            delete_decision = decision is ChangeDecision.DELETE
             if action in {ChangeAction.NO_CHANGE, ChangeAction.MESSAGE}:
-                continue
+                if not delete_decision:
+                    continue
             clean = str(change.path).rstrip("/")
-            selected = (
-                decisions.effective(change) is not ChangeDecision.EXCLUDE
-                if has_explicit
-                else action is not ChangeAction.DESTINATION_ONLY
-            )
-            effective_action = (
-                ChangeAction.DELETE
-                if action is ChangeAction.DESTINATION_ONLY and selected
-                else action
-            )
+            if delete_decision:
+                selected = True
+                effective_action = ChangeAction.DELETE
+            else:
+                selected = (
+                    decision is not ChangeDecision.EXCLUDE
+                    if has_explicit
+                    else action is not ChangeAction.DESTINATION_ONLY
+                )
+                effective_action = (
+                    ChangeAction.DELETE
+                    if action is ChangeAction.DESTINATION_ONLY and selected
+                    else action
+                )
             is_destructive = selected and effective_action is ChangeAction.DELETE
             item = PlanItem(
                 path=clean,
@@ -161,12 +173,15 @@ def build_execution_plan(
                 included=selected,
                 destructive=is_destructive,
                 size=change.size,
+                synthetic_delete=delete_decision and action is not ChangeAction.DELETE,
             )
             items.append(item)
             digest.update(item.path.encode("utf-8"))
             digest.update(item.action.value.encode("utf-8"))
             digest.update(item.kind.value.encode("utf-8"))
             digest.update(b"1" if item.included else b"0")
+            if item.synthetic_delete:
+                digest.update(b"D")
             if selected:
                 included += 1
                 destructive += int(is_destructive)
@@ -229,7 +244,10 @@ def build_execution_plan(
     with timed("plan.digest"):
         signature = decision_signature(decisions)
     with timed("plan.comparison_signature", changes=len(changes_list)):
-        comparable = comparison_signature(changes_list)
+        comparable = comparison_signature(
+            changes_list,
+            frozenset(item.path for item in items if item.synthetic_delete),
+        )
     return ExecutionPlan(
         items_fingerprint=digest.hexdigest(),
         decision_signature=signature,
@@ -263,18 +281,26 @@ def check_plan_freshness(
         reasons.append("destination endpoint changed")
     if decision_signature is not None and plan.decision_signature != decision_signature:
         reasons.append("decisions changed")
+    synthetic_paths = frozenset(
+        item.path for item in plan.items if item.synthetic_delete
+    )
     if plan.comparison_signature and (
-        plan.comparison_signature == comparison_signature(changes_list)
+        plan.comparison_signature == comparison_signature(changes_list, synthetic_paths)
     ):
         # The comparison is identical; skip the two 500k-element set builds.
         pass
     else:
+        existing_paths = {str(change.path).rstrip("/") for change in changes_list}
         current = {
             (change.path.rstrip("/"), change.action, change.kind)
             for change in changes_list
             if ChangeDecisions.selectable(change)
+            or str(change.path).rstrip("/") in synthetic_paths
         }
-        planned = {item.identity for item in plan.items}
+        planned = {
+            item.identity for item in plan.items
+            if not item.synthetic_delete or item.path in existing_paths
+        }
         if current != planned:
             reasons.append("comparison actions changed")
     return PlanFreshness(not reasons, tuple(reasons))

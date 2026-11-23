@@ -18,6 +18,16 @@ def _pattern(item: PlanItem) -> str:
 
 def decision_filter_lines(plan: ExecutionPlan) -> list[str]:
     lines: list[str] = []
+    # Decision-only deletes keep the source file in the comparison, so the
+    # sync must hide it on the sending side. A sender-side exclude is not a
+    # receiver-side exclude, which means --delete removes the destination
+    # copy instead of protecting it. First-match-wins, so these lead.
+    for item in plan.items:
+        if not item.synthetic_delete:
+            continue
+        path = item.path.strip("/")
+        suffix = "/" if item.kind is ObjectKind.DIRECTORY else ""
+        lines.append(f"-s /{path}{suffix}")
     excluded_directories = {
         item.path.strip("/")
         for item in plan.items

@@ -52,6 +52,10 @@ class ChangeDecision(StrEnum):
     INCLUDE = "include"
     EXCLUDE = "exclude"
     INHERIT = "inherit"
+    # Delete the item on the destination at sync time without changing the
+    # comparison: rsync hides the source copy with a sender-side ``-s`` rule
+    # in the temporary plan filter, so the destination copy is deleted.
+    DELETE = "delete"
 
 
 @dataclass(slots=True, frozen=True)
@@ -184,10 +188,18 @@ class ChangeDecisions:
     def modified_count(self, changes: list[Change]) -> int:
         return len(self.override_paths(changes))
 
+    def is_selectable(self, change: Change) -> bool:
+        """Selectable in the view, including items marked for deletion."""
+        return self.selectable(change) or (
+            self.inherited(change.path) is ChangeDecision.DELETE
+        )
+
     def effective(self, change: Change) -> ChangeDecision:
+        inherited = self.inherited(change.path)
+        if inherited is ChangeDecision.DELETE:
+            return ChangeDecision.DELETE
         if not self.selectable(change):
             return ChangeDecision.EXCLUDE
-        inherited = self.inherited(change.path)
         if inherited is not None:
             return inherited
         if change.action is ChangeAction.DESTINATION_ONLY:
@@ -261,8 +273,12 @@ class ChangeDecisions:
                 continue
             if not preserve:
                 # A fresh comparison discards every stale decision silently.
-                if identity_changed:
+                if identity_changed or decision is ChangeDecision.DELETE:
                     stale.append(path)
+                continue
+            if decision is ChangeDecision.DELETE:
+                # A delete request targets a path, not its previous action;
+                # it remains valid while the item is still listed.
                 continue
             if not identity_changed:
                 # The decision still says exactly what it did before.
@@ -348,9 +364,14 @@ class ChangeDecisions:
     def summary(self, changes: list[Change]) -> DecisionSummary:
         included = excluded = destructive = 0
         for change in changes:
+            decision = self.effective(change)
+            if decision is ChangeDecision.DELETE:
+                included += 1
+                destructive += 1
+                continue
             if not self.selectable(change):
                 continue
-            if self.effective(change) is ChangeDecision.EXCLUDE:
+            if decision is ChangeDecision.EXCLUDE:
                 excluded += 1
             else:
                 included += 1

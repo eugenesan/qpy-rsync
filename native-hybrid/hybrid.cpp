@@ -732,7 +732,11 @@ class HybridDelegate : public QStyledItemDelegate {
                         box.top() + 4);
     }
     painter->restore();
-    const int action = store.actions[id];
+    int action = store.actions[id];
+    if (id < static_cast<int>(store.decisions.size()) &&
+        store.decisions[id] == DeleteRequest) {
+      action = Delete;
+    }
     if (action >= 0 && action < static_cast<int>(s.action_icons.size()) &&
         !s.action_icons[action].isNull()) {
       // Reuse the exact QIcon the Python view generates, so the toolbar,
@@ -1004,14 +1008,18 @@ void update_stats(Session& s) {
   for (int id : s.store.visible) {
     if (id < 0 || id >= static_cast<int>(s.store.is_dir.size())) continue;
     if (s.store.is_dir[id]) continue;
-    const int action = id < static_cast<int>(s.store.actions.size())
-                           ? s.store.actions[id] : NoChange;
+    int action = id < static_cast<int>(s.store.actions.size())
+                     ? s.store.actions[id] : NoChange;
     if (id < static_cast<int>(s.store.decisions.size()) &&
         s.store.decisions[id] == Exclude) {
       continue;
     }
     ++count;
     size += id < static_cast<int>(s.store.sizes.size()) ? s.store.sizes[id] : 0;
+    if (id < static_cast<int>(s.store.decisions.size()) &&
+        s.store.decisions[id] == DeleteRequest) {
+      action = Delete;
+    }
     if (action == Create) ++creates;
     else if (action == Update) ++updates;
     else if (action == Metadata) ++metadata;

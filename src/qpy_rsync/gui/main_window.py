@@ -520,6 +520,8 @@ class MainWindow(QMainWindow):
 
         if hasattr(self.comparison, "filter_requested"):
             self.comparison.filter_requested.connect(self._add_filter_phrase)
+        self.comparison.delete_filter_requested.connect(self._add_filter_phrase)
+        self.comparison.delete_requested.connect(self._mark_delete_from_ui)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -2034,6 +2036,26 @@ class MainWindow(QMainWindow):
             "stale",
         )
         self._append_log(f"Added rsync filter: {pattern}", severity="info")
+
+    def _mark_delete_from_ui(self, path: object) -> None:
+        """Add a sync-only delete decision for an item of the comparison."""
+        if not isinstance(path, str):
+            return
+        model = self.comparison.model
+        if model.mark_delete(path):
+            self._append_log(
+                f"Delete decision added for {path}. The item stays in the "
+                "comparison; sync hides it on the source and removes the "
+                "destination copy.",
+                severity="info",
+            )
+            if self._hybrid_view is not None:
+                self._sync_native_decisions()
+        else:
+            self._append_log(
+                f"Cannot delete {path}: it has no copy on the destination.",
+                severity="warning",
+            )
 
     # ------------------------------------------------------------------ #
     # Profile management
@@ -4405,7 +4427,10 @@ class MainWindow(QMainWindow):
 
         explicit = self.comparison.model.decisions.explicit_items()
         values = {
-            path: 2 if decision is ChangeDecision.EXCLUDE else 1
+            path: (
+                3 if decision is ChangeDecision.DELETE
+                else 2 if decision is ChangeDecision.EXCLUDE else 1
+            )
             for path, decision in explicit
         }
         self._hybrid_view.apply_python_decisions(values)
@@ -4417,7 +4442,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QPoint
         from PySide6.QtWidgets import QApplication, QMenu
 
-        from qpy_rsync.backend.rsync_patterns import phrases_for
+        from qpy_rsync.backend.rsync_patterns import delete_phrases_for, phrases_for
 
         view = self._hybrid_view
         menu = QMenu(self)
@@ -4459,6 +4484,8 @@ class MainWindow(QMainWindow):
         reset_all = menu.addAction("Reset All Decisions")
 
         filter_actions = []
+        delete_filter_actions = []
+        delete_sync_action = None
         if path:
             phrases = phrases_for(path, is_directory=is_dir)
             if phrases:
@@ -4467,6 +4494,15 @@ class MainWindow(QMainWindow):
                     entry = filter_menu.addAction(phrase.label)
                     entry.setData(phrase.pattern)
                     filter_actions.append(entry)
+            delete_menu = menu.addMenu("Delete on Destination")
+            for phrase in delete_phrases_for(path, is_directory=is_dir):
+                entry = delete_menu.addAction(phrase.label)
+                entry.setData(phrase.pattern)
+                delete_filter_actions.append(entry)
+            delete_menu.addSeparator()
+            delete_sync_action = delete_menu.addAction(
+                "Decision only (apply at sync)"
+            )
 
         tool_actions = []
         enabled = [tool for tool in self._external_tools if tool.enabled]
@@ -4519,6 +4555,10 @@ class MainWindow(QMainWindow):
             view.collapse_all(False)
         elif chosen in filter_actions:
             self._add_filter_phrase(chosen.data(), path)
+        elif chosen in delete_filter_actions:
+            self._add_filter_phrase(chosen.data(), path)
+        elif chosen is delete_sync_action:
+            self._mark_delete_from_ui(path)
         elif chosen in tool_actions:
             name, entry_path, side, directory = chosen.data()
             self._run_external_tool(name, entry_path, side, directory)
@@ -4586,7 +4626,9 @@ class MainWindow(QMainWindow):
         before = model._snapshot()
         with timed("native.decision_mirror", paths=len(targets)):
             for path in targets:
-                if decision == 2:  # Exclude
+                if decision == 3:  # Delete at sync
+                    decisions.set(path, ChangeDecision.DELETE)
+                elif decision == 2:  # Exclude
                     decisions.set(path, ChangeDecision.EXCLUDE)
                 else:
                     decisions.reset(path)

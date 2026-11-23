@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.backend.rsync_patterns import phrases_for
+from qpy_rsync.backend.rsync_patterns import delete_phrases_for, phrases_for
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.services.external_tools import ExternalTool
@@ -446,6 +446,10 @@ class FlatComparisonView(QWidget):
     expansion_limited = Signal(int, int)
     # A filter rule for the selected item, as an rsync pattern.
     filter_requested = Signal(str, str)
+    # Add a sender-side (-s) rule to the profile's permanent filters.
+    delete_filter_requested = Signal(str, str)
+    # Mark the item for deletion at sync time without changing the filters.
+    delete_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1601,6 +1605,10 @@ class FlatComparisonView(QWidget):
             self.tool_requested.emit(name, tool_path, side, bool(is_directory))
         elif selected in actions["filters"]:
             self.filter_requested.emit(selected.text(), path)
+        elif selected in actions["delete_filters"]:
+            self.delete_filter_requested.emit(selected.data(), path)
+        elif selected is actions["delete_sync"]:
+            self.delete_requested.emit(path)
 
     def _side_is_local(self, tree: QTableView) -> bool:
         """Whether the pane's endpoint lives on this machine."""
@@ -1678,6 +1686,8 @@ class FlatComparisonView(QWidget):
             "collapse_all": None,
             "expand_all": None,
             "filters": [],
+            "delete_filters": [],
+            "delete_sync": None,
             "tools": [],
         }
         if absolute_path:
@@ -1719,9 +1729,9 @@ class FlatComparisonView(QWidget):
                     )
 
         # The filter entries of FreeFileSync, with rsync patterns.
+        is_directory = bool(getattr(row, "is_directory", False))
         if path:
             menu.addSeparator()
-            is_directory = bool(getattr(row, "is_directory", False))
             phrases = phrases_for(path, is_directory=is_directory)
             if phrases:
                 filter_menu = menu.addMenu("Exclude via Filter")
@@ -1729,6 +1739,23 @@ class FlatComparisonView(QWidget):
                     action = filter_menu.addAction(phrase.label)
                     action.setData(phrase.pattern)
                     actions["filters"].append(action)  # type: ignore[union-attr]
+
+            # Two ways to delete on the destination: a persistent sender-side
+            # filter, or a decision that is applied only by the sync step.
+            delete_menu = menu.addMenu("Delete on Destination")
+            for phrase in delete_phrases_for(path, is_directory=is_directory):
+                action = delete_menu.addAction(phrase.label)
+                action.setData(phrase.pattern)
+                actions["delete_filters"].append(action)  # type: ignore[union-attr]
+            delete_menu.addSeparator()
+            actions["delete_sync"] = delete_menu.addAction(
+                "Decision only (apply at sync)"
+            )
+            actions["delete_sync"].setToolTip(  # type: ignore[union-attr]
+                "Keep the item in the comparison and show a Delete decision. "
+                "The sync hides it on the source so the destination copy is "
+                "removed, without changing the permanent filters."
+            )
 
         # Excluding items from the run.
         menu.addSeparator()
