@@ -202,7 +202,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     window = MainWindow()
     if getattr(window, "_startup_abort", False):
         # The user chose to quit when the profile was locked; nothing was
-        # loaded, locked or written, so leave without entering the event loop.
+        # loaded, locked or written. Tear the window down before returning so
+        # its C++ object is not destroyed during interpreter shutdown.
+        from PySide6.QtCore import Qt
+
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        window.close()
+        app.processEvents()
+        app.quit()
+        app.processEvents()
         return 0
     window.setWindowTitle("qpy-rsync")
     if icon_path.is_file():

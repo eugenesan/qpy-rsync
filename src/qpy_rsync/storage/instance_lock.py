@@ -14,7 +14,15 @@ from typing import Iterator
 
 from contextlib import contextmanager
 
-__all__ = ["LockBusy", "FileLock", "pid_alive"]
+__all__ = ["LockBusy", "FileLock", "pid_alive", "lock_pid"]
+
+
+def lock_pid(path: Path) -> int | None:
+    """Return the PID recorded in a profile's lock file, if any."""
+    try:
+        return int(Path(str(path) + ".lock").read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return None
 
 
 class LockBusy(RuntimeError):

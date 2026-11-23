@@ -131,7 +131,7 @@ def test_locked_startup_quit_leaves_no_files(tmp_path: Path, monkeypatch) -> Non
     window = MainWindow()
     monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")  # exercise the dialog path
     monkeypatch.setattr(
-        window, "_choose_locked_profile_option", lambda *_a: ("quit", "")
+        window, "_choose_locked_profile_option", lambda *_a: ("quit", None, "")
     )
     result = window._prepare_profile_path(profile(), target, startup=True)
     assert result is None
@@ -156,7 +156,7 @@ def test_locked_startup_retry_continues_when_released(
     window = MainWindow()
     monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")  # exercise the dialog path
     monkeypatch.setattr(
-        window, "_choose_locked_profile_option", lambda *_a: ("retry", "")
+        window, "_choose_locked_profile_option", lambda *_a: ("acquired", None, "")
     )
     lock_path.unlink()
     result = window._prepare_profile_path(profile(), target, startup=True)
@@ -211,39 +211,72 @@ def test_saving_temp_profile_renames_its_logs(tmp_path: Path, monkeypatch) -> No
     application.processEvents()
 
 
-def test_locked_dialog_returns_all_three_choices(monkeypatch) -> None:
+def test_locked_dialog_buttons_close_and_return_choices() -> None:
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QDialog, QDialogButtonBox
 
     application = app()
     window = MainWindow()
+    locked = profiles_directory() / "locked.json"
+    FileLock(locked).lock_path.write_text("1", encoding="ascii")
 
-    def make_exec(choice: str):
-        def fake_exec(dialog):
-            buttons = dialog.findChild(QDialogButtonBox)
-            target = next(
-                button for button in buttons.buttons() if button.text() == choice
-            )
-            buttons.clicked.emit(target)
-            return 1
+    def click_when_visible(label: str, after_click: object = None) -> None:
+        def click() -> None:
+            for widget in application.topLevelWidgets():
+                if isinstance(widget, QDialog) and widget.isVisible():
+                    buttons = widget.findChild(QDialogButtonBox)
+                    target = next(
+                        (b for b in buttons.buttons() if b.text() == label),
+                        None,
+                    )
+                    if target is not None:
+                        target.click()
+                        if after_click is not None:
+                            after_click(widget)
+                        return
+            QTimer.singleShot(10, click)
 
-        return fake_exec
+        QTimer.singleShot(10, click)
 
-    for choice, expected in (
-        ("Use temporary profile", ("temp", "chosen")),
-        ("Check again", ("retry", "")),
-        ("Quit without changes", ("quit", "")),
-    ):
-        monkeypatch.setattr(QDialog, "exec", make_exec(choice))
-        result = window._choose_locked_profile_option(
-            Path("locked.json"), "chosen"
+    def check_button_widths(dialog: QDialog) -> None:
+        buttons = dialog.findChild(QDialogButtonBox)
+        from PySide6.QtWidgets import QPushButton
+
+        width = sum(
+            button.sizeHint().width()
+            for button in buttons.findChildren(QPushButton)
         )
-        assert result == expected
+        assert width <= dialog.width() - 20
 
-    # Closing the dialog without pressing a button means quit.
-    monkeypatch.setattr(QDialog, "exec", lambda dialog: 0)
-    assert window._choose_locked_profile_option(Path("locked.json"), "x") == (
-        "quit", ""
-    )
+    click_when_visible("Use temporary profile", check_button_widths)
+    assert window._choose_locked_profile_option(
+        locked, "chosen"
+    ) == ("temp", None, "chosen")
+
+    click_when_visible("Quit without changes")
+    assert window._choose_locked_profile_option(
+        locked, "chosen"
+    ) == ("quit", None, "")
+
+    # Retry while the lock is held keeps the same dialog open and turns its
+    # message orange; the dialog is still running until Quit is pressed.
+    def check_status(dialog: QDialog) -> None:
+        status = next(
+            label
+            for label in dialog.findChildren(QLabel)
+            if "Still in use" in label.text()
+        )
+        assert "Still in use" in status.text()
+        assert "#EA580C" in status.styleSheet()
+        QTimer.singleShot(10, lambda: click_when_visible("Quit without changes"))
+
+    from PySide6.QtWidgets import QLabel
+
+    click_when_visible("Check again", check_status)
+    assert window._choose_locked_profile_option(
+        locked, "chosen"
+    ) == ("quit", None, "")
+
     window.close()
     application.processEvents()
 

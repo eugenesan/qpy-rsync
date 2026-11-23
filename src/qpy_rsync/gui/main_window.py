@@ -2173,42 +2173,97 @@ class MainWindow(QMainWindow):
 
     def _choose_locked_profile_option(
         self, path: Path, suggested: str
-    ) -> tuple[str, str] | None:
-        """Ask what to do when the requested profile is already open."""
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout
+    ) -> tuple[str, object, str]:
+        """Ask what to do when the requested profile is already open.
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Profile already open")
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(f"{path.name} is open in another instance."))
-        layout.addWidget(QLabel("Temporary profile name:"))
-        edit = QLineEdit(suggested, dialog)
-        edit.selectAll()
-        layout.addWidget(edit)
-        buttons = QDialogButtonBox(dialog)
-        buttons.addButton(
-            "Use temporary profile", QDialogButtonBox.ButtonRole.AcceptRole
+        Returns ``("quit", None, "")``, ``("temp", None, name)`` or
+        ``("acquired", lock, "")``. Checking again happens inside this same
+        dialog: on failure it turns the message orange and stays open.
+        """
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QLabel,
+            QLineEdit,
+            QVBoxLayout,
         )
-        retry = buttons.addButton(
-            "Check again", QDialogButtonBox.ButtonRole.ActionRole
-        )
-        quit_button = buttons.addButton(
-            "Quit without changes", QDialogButtonBox.ButtonRole.RejectRole
-        )
-        layout.addWidget(buttons)
-        dialog.setLayout(layout)
-        # clickedButton() is not exposed by all supported PySide6 builds, and
-        # an ActionRole button does not close the dialog on its own.
-        clicked: list[object] = []
-        buttons.clicked.connect(lambda button: clicked.append(button))
-        retry.clicked.connect(dialog.reject)
-        dialog.exec()
-        button = clicked[0] if clicked else None
-        if button is quit_button or button is None:
-            return ("quit", "")
-        if button is retry:
-            return ("retry", "")
-        return ("temp", edit.text().strip())
+
+        from qpy_rsync.storage.instance_lock import lock_pid
+
+        outer = self
+
+        class LockedProfileDialog(QDialog):
+            def __init__(self) -> None:
+                super().__init__(outer)
+                self.setWindowTitle("Profile already open")
+                labels = (
+                    "Use temporary profile",
+                    "Check again",
+                    "Quit without changes",
+                )
+                # A fixed size avoids the offscreen platform plugin's
+                # "propagateSizeHints" warning during layout activation.
+                # Size it from the actual font so Breeze's longer labels fit.
+                metrics = self.fontMetrics()
+                buttons_width = (
+                    sum(metrics.horizontalAdvance(text) for text in labels)
+                    + 3 * 32
+                    + 48
+                )
+                self.setFixedSize(max(buttons_width, 460), 210)
+                self.acquired: object | None = None
+                layout = QVBoxLayout(self)
+                layout.addWidget(
+                    QLabel(f"{path.name} is open in another instance.")
+                )
+                self.status = QLabel("")
+                self.status.setStyleSheet("color: #EA580C;")
+                layout.addWidget(self.status)
+                layout.addWidget(QLabel("Temporary profile name:"))
+                self.edit = QLineEdit(suggested, self)
+                self.edit.selectAll()
+                layout.addWidget(self.edit)
+                buttons = QDialogButtonBox(self)
+                use_temp = buttons.addButton(
+                    "Use temporary profile", QDialogButtonBox.ButtonRole.ActionRole
+                )
+                retry = buttons.addButton(
+                    "Check again", QDialogButtonBox.ButtonRole.ActionRole
+                )
+                quit_button = buttons.addButton(
+                    "Quit without changes", QDialogButtonBox.ButtonRole.ActionRole
+                )
+                layout.addWidget(buttons)
+                # Every button closes explicitly: role-based auto-close is
+                # not consistent across supported PySide6 builds.
+                use_temp.clicked.connect(lambda: self.done(1))
+                retry.clicked.connect(self._check_again)
+                quit_button.clicked.connect(lambda: self.done(3))
+
+            def _check_again(self) -> None:
+                lock = FileLock(path, timeout=0)
+                try:
+                    lock.acquire()
+                except LockBusy:
+                    pid = lock_pid(path)
+                    self.status.setText(
+                        f"Still in use by PID {pid}." if pid else "Still locked."
+                    )
+                    return
+                self.acquired = lock
+                self.done(4)
+
+            def closeEvent(self, event: object) -> None:
+                self.done(3)
+                event.accept()  # type: ignore[attr-defined]
+
+        dialog = LockedProfileDialog()
+        code = dialog.exec()
+        if code == 4 and dialog.acquired is not None:
+            return ("acquired", dialog.acquired, "")
+        if code == 1:
+            return ("temp", None, dialog.edit.text().strip())
+        return ("quit", None, "")
 
     def _make_temp_profile(self, profile: object, path: Path, name: str) -> Path:
         """Create a private copy with a user-chosen name and lock it."""
@@ -2262,28 +2317,19 @@ class MainWindow(QMainWindow):
             suggested = f"{(path.stem or 'profile')}~tmp{secrets.token_hex(3)}"
             if not startup or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
                 return self._make_temp_profile(profile, path, suggested)
-            while True:
-                choice = self._choose_locked_profile_option(path, suggested)
-                if choice is None or choice[0] == "quit":
-                    self._startup_abort = True
-                    return None
-                if choice[0] == "temp":
-                    return self._make_temp_profile(profile, path, choice[1])
-                retry_lock = FileLock(path, timeout=2.0)
-                try:
-                    retry_lock.acquire()
-                except LockBusy:
-                    QMessageBox.information(
-                        self,
-                        "Profile still open",
-                        f"{path.name} is still open in another instance.",
-                    )
-                    continue
-                self._profile_lock = retry_lock
-                self._temp_profile = False
-                self._temp_profile_path = None
-                self._temp_log_paths = ()
-                return path
+            choice, acquired, name = self._choose_locked_profile_option(
+                path, suggested
+            )
+            if choice == "quit":
+                self._startup_abort = True
+                return None
+            if choice == "temp":
+                return self._make_temp_profile(profile, path, name)
+            self._profile_lock = acquired  # type: ignore[assignment]
+            self._temp_profile = False
+            self._temp_profile_path = None
+            self._temp_log_paths = ()
+            return path
         self._profile_lock = lock
         self._temp_profile = False
         self._temp_profile_path = None
