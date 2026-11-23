@@ -261,6 +261,9 @@ class MainWindow(QMainWindow):
         self._profile_path: Path | None = None
         self._profile_lock: FileLock | None = None
         self._temp_profile = False
+        self._temp_profile_path: Path | None = None
+        self._temp_log_paths: tuple[Path, Path] = ()
+        self._startup_abort = False
         self._profile_transfer = TransferOptions()
         self._profile_preservation = PreservationOptions()
         self._profile_conflict = ConflictPolicy.OVERRIDE
@@ -2160,40 +2163,184 @@ class MainWindow(QMainWindow):
             self._profile_lock.release()
             self._profile_lock = None
 
-    def _prepare_profile_path(self, profile: object, path: Path) -> Path:
-        """Lock a profile, falling back to a private temporary copy."""
+    @staticmethod
+    def _log_paths_for_profile_name(name: str) -> tuple[Path, Path]:
+        import re
+
+        slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._") or "default"
+        directory = MainWindow._log_directory()
+        return directory / f"app-{slug}.log", directory / f"rsync-{slug}.log"
+
+    def _choose_locked_profile_option(
+        self, path: Path, suggested: str
+    ) -> tuple[str, str] | None:
+        """Ask what to do when the requested profile is already open."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QVBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Profile already open")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"{path.name} is open in another instance."))
+        layout.addWidget(QLabel("Temporary profile name:"))
+        edit = QLineEdit(suggested, dialog)
+        edit.selectAll()
+        layout.addWidget(edit)
+        buttons = QDialogButtonBox(dialog)
+        use_temp = buttons.addButton(
+            "Use temporary profile", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        retry = buttons.addButton(
+            "Check again", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        quit_button = buttons.addButton(
+            "Quit without changes", QDialogButtonBox.ButtonRole.RejectRole
+        )
+        layout.addWidget(buttons)
+        dialog.setLayout(layout)
+        dialog.exec()
+        clicked = buttons.clickedButton()
+        if clicked is quit_button or clicked is None:
+            return ("quit", "")
+        if clicked is retry:
+            return ("retry", "")
+        return ("temp", edit.text().strip())
+
+    def _make_temp_profile(self, profile: object, path: Path, name: str) -> Path:
+        """Create a private copy with a user-chosen name and lock it."""
+        import re
+
+        clean = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("._")
+        if not clean:
+            clean = f"{(path.stem or 'profile')}~tmp"
+        if not clean.endswith(".json"):
+            clean += ".json"
+        stem = clean[:-5]
+        # Never overwrite the locked original or collide with another open
+        # temporary profile; derive a free name instead.
+        temp = profiles_directory() / f"{stem}.json"
+        if temp == path or FileLock(temp).lock_path.exists():
+            import secrets
+
+            stem = f"{stem}~tmp{secrets.token_hex(2)}"
+        temp = profiles_directory() / f"{stem}.json"
+        save_profile(temp, profile)  # type: ignore[arg-type]
+        lock = FileLock(temp, timeout=0)
+        try:
+            lock.acquire()
+        except LockBusy:
+            import secrets
+
+            temp = profiles_directory() / f"{stem}~tmp{secrets.token_hex(2)}.json"
+            save_profile(temp, profile)  # type: ignore[arg-type]
+            lock = FileLock(temp, timeout=0)
+            lock.acquire()
+        self._profile_lock = lock
+        self._temp_profile = True
+        self._temp_profile_path = temp
+        self._temp_log_paths = self._log_paths_for_profile_name(temp.stem)
+        self._append_log(
+            f"Profile {path.name} is locked; using temporary copy {temp.name}."
+        )
+        return temp
+
+    def _prepare_profile_path(
+        self, profile: object, path: Path, *, startup: bool = False
+    ) -> Path | None:
+        """Lock a profile; on contention ask what to do at startup."""
         import secrets
 
         self._release_profile_lock()
         lock = FileLock(path, timeout=0)
         try:
             lock.acquire()
-            self._profile_lock = lock
-            self._temp_profile = False
-            return path
         except LockBusy:
-            temp = profiles_directory() / (
-                f"{(path.stem or 'profile')}~tmp{secrets.token_hex(3)}.json"
-            )
-            save_profile(temp, profile)  # type: ignore[arg-type]
-            lock = FileLock(temp, timeout=0)
-            lock.acquire()
-            self._profile_lock = lock
-            self._temp_profile = True
-            if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
-                QMessageBox.information(
-                    self,
-                    "Profile already open",
-                    f"{path.name} is open in another instance. A temporary "
-                    "copy was loaded; save it under a new name to keep changes.",
-                )
-            self._append_log(
-                f"Profile {path.name} is locked; using temporary copy {temp.name}."
-            )
-            return temp
+            suggested = f"{(path.stem or 'profile')}~tmp{secrets.token_hex(3)}"
+            if not startup or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+                return self._make_temp_profile(profile, path, suggested)
+            while True:
+                choice = self._choose_locked_profile_option(path, suggested)
+                if choice is None or choice[0] == "quit":
+                    self._startup_abort = True
+                    return None
+                if choice[0] == "temp":
+                    return self._make_temp_profile(profile, path, choice[1])
+                retry_lock = FileLock(path, timeout=2.0)
+                try:
+                    retry_lock.acquire()
+                except LockBusy:
+                    QMessageBox.information(
+                        self,
+                        "Profile still open",
+                        f"{path.name} is still open in another instance.",
+                    )
+                    continue
+                self._profile_lock = retry_lock
+                self._temp_profile = False
+                self._temp_profile_path = None
+                self._temp_log_paths = ()
+                return path
+        self._profile_lock = lock
+        self._temp_profile = False
+        self._temp_profile_path = None
+        self._temp_log_paths = ()
+        return path
 
-    def _use_profile_path(self, profile: object, path: Path) -> bool:
-        target = self._prepare_profile_path(profile, path)
+    def _finalize_temp_profile(self, target: Path) -> None:
+        """Promote a temporary profile to a saved one, including its logs."""
+        temp = self._temp_profile_path
+        self._flush_log()
+        self._close_session_log()
+        self._close_rsync_log()
+        if temp is not None and temp != target:
+            new_paths = self._log_paths_for_profile_name(target.stem)
+            for old, new in zip(self._temp_log_paths, new_paths):
+                if old != new and old.exists():
+                    try:
+                        old.replace(new)
+                    except OSError:
+                        pass
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            try:
+                FileLock(temp).lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._temp_profile = False
+        self._temp_profile_path = None
+        self._temp_log_paths = ()
+
+    def _discard_temp_profile(self) -> None:
+        """Remove a temporary profile and its logs when it was not saved."""
+        if not self._temp_profile:
+            return
+        self._flush_log()
+        self._close_session_log()
+        self._close_rsync_log()
+        temp = self._temp_profile_path
+        for path in self._temp_log_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if temp is not None:
+            try:
+                temp.unlink(missing_ok=True)
+                FileLock(temp).lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._profile_lock = None
+        self._temp_profile = False
+        self._temp_profile_path = None
+        self._temp_log_paths = ()
+
+    def _use_profile_path(
+        self, profile: object, path: Path, *, startup: bool = False
+    ) -> bool:
+        target = self._prepare_profile_path(profile, path, startup=startup)
+        if target is None:
+            return False
         self._remember_profile_path(target)
         return True
 
@@ -2316,8 +2463,20 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return False
+        was_temp = self._temp_profile
+        old_temp_path = self._temp_profile_path
+        old_log_paths = self._temp_log_paths
         target = self._prepare_profile_path(self._profile(), Path(path))
+        if target is None:
+            return False
         save_profile(target, self._profile())
+        if was_temp:
+            # _prepare_profile_path cleared the temp bookkeeping while
+            # locking the new path; restore it for the rename/cleanup pass.
+            self._temp_profile = True
+            self._temp_profile_path = old_temp_path
+            self._temp_log_paths = old_log_paths
+            self._finalize_temp_profile(target)
         self._remember_profile_path(target)
         self._save_recent_profile()
         try:
@@ -2835,6 +2994,11 @@ class MainWindow(QMainWindow):
             summary = self._estimated_plan_summary()
         self.overview.set_statistics(summary, estimate=True)
         self.validate_plan_button.setEnabled(summary.included > 0)
+        # The incremental plan patch may not have been able to update the
+        # cached plan (for example when a folder row was excluded). The
+        # estimate still shows actionable items, so keep Sync usable.
+        self.synchronize_button.setEnabled(summary.included > 0)
+        self._execution_gate.selection_changed(included=summary.included)
 
     @staticmethod
     def _timed_modified(decisions, changes) -> int:
@@ -2907,7 +3071,7 @@ class MainWindow(QMainWindow):
         return PlanSummary(
             included=included,
             excluded=excluded_count,
-            modified=_timed_modified(decisions, changes),
+            modified=self._timed_modified(decisions, changes),
             retained_destination_only=counts["kept"],
             destructive=destructive,
             creates=counts["creates"],
@@ -5192,7 +5356,7 @@ class MainWindow(QMainWindow):
                 except (OSError, ValueError, KeyError, TypeError):
                     pass
                 else:
-                    if self._use_profile_path(profile, path):
+                    if self._use_profile_path(profile, path, startup=True):
                         self._apply_profile(profile)
                         return True
         legacy = self._legacy_recent_profile_path()
@@ -5207,7 +5371,7 @@ class MainWindow(QMainWindow):
                 legacy.unlink()
             except OSError:
                 return False
-            if self._use_profile_path(profile, target):
+            if self._use_profile_path(profile, target, startup=True):
                 self._apply_profile(profile)
                 return True
         return False
@@ -5496,6 +5660,9 @@ class MainWindow(QMainWindow):
                 )
                 if answer == QMessageBox.StandardButton.Yes:
                     self._save_profile()
+                else:
+                    # An unsaved temporary profile and its logs leave no trace.
+                    self._discard_temp_profile()
         except Exception:  # noqa: BLE001
             pass
         self._release_profile_lock()
@@ -5510,6 +5677,7 @@ class MainWindow(QMainWindow):
         try:
             if (
                 os.environ.get("QT_QPA_PLATFORM") != "offscreen"
+                and not self._temp_profile
                 and baseline is not None
                 and not self._same_profile(current, baseline)
             ):

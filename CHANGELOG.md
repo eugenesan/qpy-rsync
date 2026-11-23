@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A locked profile at startup no longer silently creates a temporary copy.
+  The app now offers an editable temporary profile name, a retry that picks
+  up a released profile, and quitting without changing any settings or
+  profiles. Unsaved temporary profiles and their logs are removed on exit;
+  saving one renames its logs to the new profile and records it as recent.
+- Fixed the Sync button staying disabled after a decision edit when the
+  incremental plan update falls back to the estimated summary.
 - The journal is no longer cleared when a comparison starts. Operations
   accumulate until you choose **Clear Log**, so a completed sync stays visible
   in the journal.

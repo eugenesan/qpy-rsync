@@ -172,6 +172,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     migrate_legacy_settings()
     window = MainWindow()
+    if getattr(window, "_startup_abort", False):
+        # The user chose to quit when the profile was locked; nothing was
+        # loaded, locked or written, so leave without entering the event loop.
+        return 0
     window.setWindowTitle("qpy-rsync")
     if icon_path.is_file():
         window.setWindowIcon(QIcon(str(icon_path)))

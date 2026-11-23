@@ -451,6 +451,16 @@ Two log files are kept per profile under `$XDG_CACHE_HOME/qpy-rsync`:
 `app-<profile>.log` for application messages and `rsync-<profile>.log` for
 raw rsync output. An unsaved profile uses the name `default`.
 
+Profiles are locked by PID-stamped lock files so parallel instances never
+write the same profile. If the profile remembered from the last session is
+already open, startup presents a dialog with an editable temporary profile
+name and three choices: use that temporary copy, check whether the lock was
+released and continue with the original, or quit without changing any
+configuration or profile. A temporary copy is not added to the recent
+profile list. If it is saved under a new name, its log files are renamed to
+match the new profile; if it is discarded, both the temporary profile and its
+logs are removed.
+
 ## 10. Progress, logs and cancellation
 
 A transfer reports its progress, its phase and the number of processed
