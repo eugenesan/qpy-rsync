@@ -296,6 +296,10 @@ class NativeHybridView:
     def selected_path(self) -> str:
         return str(self._native.selected_path())
 
+    def selected_paths(self) -> list[str]:
+        """All paths selected in the native comparison lists."""
+        return [str(path) for path in self._native.selected_paths()]
+
     def path_of_row(self, row: int) -> str:
         return str(self._native.path_of_row(row))
 

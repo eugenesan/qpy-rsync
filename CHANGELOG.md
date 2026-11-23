@@ -17,6 +17,8 @@
 - Fixed the Sync button staying disabled after a decision edit: both the
   estimated-summary fallback and the native-view decision path now keep Sync
   enabled whenever the current plan still has selected items.
+- Multi-row exclusion works again in the native view: Space and the decision
+  checkbox now apply to every selected row, not just the current one.
 - The journal is no longer cleared when a comparison starts. Operations
   accumulate until you choose **Clear Log**, so a completed sync stays visible
   in the journal.

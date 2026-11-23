@@ -4651,8 +4651,10 @@ class MainWindow(QMainWindow):
         # the native selection so the existing decision path runs.
         self._patch_for_hybrid(
             comparison, "_selected_paths",
-            lambda: [getattr(comparison, "_hybrid_selected_path", "")]
-            if getattr(comparison, "_hybrid_selected_path", "") else [],
+            lambda: view.selected_paths() or (
+                [getattr(comparison, "_hybrid_selected_path", "")]
+                if getattr(comparison, "_hybrid_selected_path", "") else []
+            ),
         )
         self._patch_for_hybrid(comparison, 'sort', sort)
         self._patch_for_hybrid(comparison, 'select_path', select_path)

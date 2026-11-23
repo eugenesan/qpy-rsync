@@ -361,6 +361,8 @@ class OverviewDelegate : public QStyledItemDelegate {
   }
 };
 
+void update_stats(Session& s);
+
 class HybridKeyFilter : public QObject {
  public:
   explicit HybridKeyFilter(QObject* parent = nullptr) : QObject(parent) {}
@@ -374,8 +376,54 @@ class HybridKeyFilter : public QObject {
       if (s.views[i] == watched) pane = i;
     }
     if (pane < 0) return false;
-    int row = s.views[pane]->currentIndex().row();
+    const int keyval = key->key();
     const DataStore& store = s.store;
+
+    // Space is handled before the current-row fallback below: calling
+    // setCurrentIndex() there clears a multi-row selection, which used to
+    // leave only one item excluded.
+    if (keyval == Qt::Key_Space) {
+      std::vector<int> ids;
+      QItemSelectionModel* selection = s.views[pane]->selectionModel();
+      if (selection != nullptr) {
+        for (const QModelIndex& selected : selection->selectedRows()) {
+          const int selected_id = store.visible[selected.row()];
+          if (selected_id < 0 ||
+              selected_id >= static_cast<int>(store.paths.size()) ||
+              store.paths[selected_id] == DataStore::root_path() ||
+              store.decisions[selected_id] == DeleteRequest) {
+            continue;
+          }
+          ids.push_back(selected_id);
+        }
+      }
+      if (ids.empty()) {
+        const int current = s.views[pane]->currentIndex().row();
+        if (current >= 0 && current < static_cast<int>(store.visible.size())) {
+          const int candidate = store.visible[current];
+          if (candidate >= 0 &&
+              candidate < static_cast<int>(store.paths.size()) &&
+              store.paths[candidate] != DataStore::root_path()) {
+            ids.push_back(candidate);
+          }
+        }
+      }
+      if (ids.empty()) return true;
+      const bool exclude = store.decisions[ids.front()] != Exclude;
+      const int decision = exclude ? Exclude : Inherit;
+      for (int selected_id : ids) {
+        s.store.set_decision_id(selected_id, decision, true);
+        if (g_native_decision_hook != nullptr) {
+          g_native_decision_hook(selected_id, decision);
+        }
+      }
+      s.store.rebuild_visible();
+      refresh_native_models(s);
+      update_stats(s);
+      return true;
+    }
+
+    int row = s.views[pane]->currentIndex().row();
     if (row < 0 || row >= static_cast<int>(store.visible.size())) {
       if (store.visible.empty()) return false;
       row = 0;
@@ -384,7 +432,6 @@ class HybridKeyFilter : public QObject {
       if (first.isValid()) s.views[pane]->setCurrentIndex(first);
     }
     const int id = store.visible[row];
-    const int keyval = key->key();
 
     if (keyval == Qt::Key_Home || keyval == Qt::Key_End) {
       const bool last = keyval == Qt::Key_End;
@@ -398,13 +445,6 @@ class HybridKeyFilter : public QObject {
           return true;
         }
       }
-      return true;
-    }
-    if (keyval == Qt::Key_Space) {
-      QModelIndex index = s.models[1]->index(row, 4);
-      const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
-      s.models[1]->setData(index, checked ? Qt::Checked : Qt::Unchecked,
-                           Qt::CheckStateRole);
       return true;
     }
     if (key->modifiers() & Qt::ControlModifier) {
@@ -506,16 +546,35 @@ class HybridDelegate : public QStyledItemDelegate {
       const int start = option.rect.left() + qMax(0, (option.rect.width() - group_width) / 2);
       QRect indicator(start, option.rect.center().y() - 8, 16, 16);
       if (indicator.contains(mouse->pos())) {
-        const bool checked = index.data(Qt::CheckStateRole).toInt() != Qt::Checked;
-        s.store.toggle_decision(id, true);
+        // Apply the click to every selected row, not just the clicked one.
+        std::vector<int> ids;
+        QItemSelectionModel* selection = s.views[1]->selectionModel();
+        if (selection != nullptr) {
+          for (const QModelIndex& selected : selection->selectedRows()) {
+            const int selected_id = store.visible[selected.row()];
+            if (selected_id < 0 ||
+                selected_id >= static_cast<int>(store.paths.size()) ||
+                store.paths[selected_id] == DataStore::root_path() ||
+                store.decisions[selected_id] == DeleteRequest) {
+              continue;
+            }
+            ids.push_back(selected_id);
+          }
+        }
+        if (ids.empty()) ids.push_back(id);
+        const int decision = store.decisions[ids.front()] == Exclude
+                                 ? Inherit
+                                 : Exclude;
+        for (int selected_id : ids) {
+          s.store.set_decision_id(selected_id, decision, true);
+          if (g_native_decision_hook != nullptr) {
+            g_native_decision_hook(selected_id, decision);
+          }
+        }
         // Folder ids live beyond the change list, so the Python mirror may
         // not call back. Always rebuild our own visible rows here.
         s.store.rebuild_visible();
-        if (g_native_decision_hook != nullptr) {
-          g_native_decision_hook(id, s.store.decisions[id]);
-        }
         refresh_native_models(s);
-        s.views[1]->setCurrentIndex(index);
         return true;
       }
     }
@@ -1485,6 +1544,27 @@ NB_MODULE(native_hybrid, m) {
     const int id = s.store.visible[row];
     return s.store.paths[id] == DataStore::root_path() ? std::string()
                                                        : s.store.paths[id];
+  });
+
+  m.def("selected_paths", []() {
+    Session& s = session();
+    std::vector<std::string> result;
+    for (QTableView* view : s.views) {
+      if (view == nullptr || view->selectionModel() == nullptr) continue;
+      const QModelIndexList rows = view->selectionModel()->selectedRows();
+      if (rows.isEmpty()) continue;
+      for (const QModelIndex& index : rows) {
+        const int row = index.row();
+        if (row < 0 || row >= static_cast<int>(s.store.visible.size())) continue;
+        const int id = s.store.visible[row];
+        if (id < 0 || id >= static_cast<int>(s.store.paths.size())) continue;
+        const std::string& path = s.store.paths[id];
+        if (path == DataStore::root_path()) continue;
+        result.push_back(path);
+      }
+      break;
+    }
+    return result;
   });
 
   m.def("path_of_row", [](int row) {

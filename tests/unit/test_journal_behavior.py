@@ -127,3 +127,45 @@ def test_native_exclude_keeps_sync_available() -> None:
     assert window._current_plan.summary.included == 4
     window.close()
     application.processEvents()
+
+
+def test_native_space_excludes_every_selected_item(monkeypatch) -> None:
+    from PySide6.QtCore import QEvent, QItemSelectionModel, Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QTableView
+
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    monkeypatch.setenv("QPY_HYBRID_VIEW", "1")
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change(f"f{i}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=10)
+        for i in range(6)
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+    table = sorted(
+        window._hybrid_view.widget.findChildren(QTableView),
+        key=lambda item: item.x(),
+    )[0]
+    selection = table.selectionModel()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    for row in (1, 2, 3):
+        selection.select(table.model().index(row, 0), flags)
+    assert window._hybrid_view.selected_paths() == ["f0.txt", "f1.txt", "f2.txt"]
+
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier)
+    application.sendEvent(table, event)
+    for i in (0, 1, 2):
+        assert window._hybrid_view.decision_for_path(f"f{i}.txt") == 2
+    assert window.comparison.model.decisions.explicit_items() == tuple(
+        (f"f{i}.txt", ChangeDecision.EXCLUDE) for i in (0, 1, 2)
+    )
+    window.close()
+    application.processEvents()
