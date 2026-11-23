@@ -100,3 +100,30 @@ def test_rsync_log_drops_qt_noise(monkeypatch) -> None:
     assert "QXcbIntegration" not in text
     window.close()
     application.processEvents()
+
+
+def test_native_exclude_keeps_sync_available() -> None:
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change(f"f{i}.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=10)
+        for i in range(5)
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+    assert window.synchronize_button.isEnabled()
+
+    # A single Exclude decision made in the native checkbox must not take
+    # the Sync action away: the remaining four items are still executable.
+    window._on_native_decision(2, 2)
+    assert window.synchronize_button.isEnabled()
+    assert window._current_plan.summary.included == 4
+    window.close()
+    application.processEvents()

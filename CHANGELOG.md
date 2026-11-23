@@ -14,8 +14,9 @@
   cleanly instead of crashing at shutdown. Ctrl+C also closes a modal
   startup dialog. The dialog is sized from the current font so its button
   labels fit.
-- Fixed the Sync button staying disabled after a decision edit when the
-  incremental plan update falls back to the estimated summary.
+- Fixed the Sync button staying disabled after a decision edit: both the
+  estimated-summary fallback and the native-view decision path now keep Sync
+  enabled whenever the current plan still has selected items.
 - The journal is no longer cleared when a comparison starts. Operations
   accumulate until you choose **Clear Log**, so a completed sync stays visible
   in the journal.

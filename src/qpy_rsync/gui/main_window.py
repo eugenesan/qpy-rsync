@@ -2793,7 +2793,14 @@ class MainWindow(QMainWindow):
     def _invalidate_validated_plan(self, *, mark: bool = True) -> None:
         self._validated_plan = None
         self._verified_plan = None
-        self.synchronize_button.setEnabled(False)
+        # A decision edit (mark=False) has just refreshed the plan summary;
+        # keep Sync available when that plan still has selected items.
+        if mark:
+            self.synchronize_button.setEnabled(False)
+        elif self._current_plan is not None:
+            self.synchronize_button.setEnabled(
+                self._current_plan.summary.included > 0
+            )
         self._set_verify_state("idle")
         if mark and self._active_profile is not None and self.comparison.model.changes:
             self._mark_plan_stale()
