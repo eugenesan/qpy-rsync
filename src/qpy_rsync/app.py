@@ -92,18 +92,6 @@ def parse_startup_options(argv: Sequence[str]) -> tuple[StartupOptions, list[str
     )
 
 
-# The Qt notices that are harmless on a remote X server: the KDE platform
-# theme loads Qt Quick, which asks for an OpenGL context that the server
-# cannot provide, and falls back to the software renderer.
-_BENIGN_QT_MESSAGES = (
-    "Cannot create platform OpenGL context",
-    "fallback to QtQuick software backend",
-    "Socket not connected",
-    "QLocalSocket::PeerClosedError",
-    "Connection::send() called with connection not inited",
-)
-
-
 def install_qt_message_filter() -> None:
     """Keep the harmless OpenGL notices out of the terminal.
 
@@ -117,7 +105,9 @@ def install_qt_message_filter() -> None:
 
     def handler(mode: object, _context: object, message: str) -> None:
         text = str(message)
-        if any(pattern in text for pattern in _BENIGN_QT_MESSAGES):
+        from qpy_rsync.backend.diagnostics import BENIGN_QT_MESSAGES
+
+        if any(pattern in text for pattern in BENIGN_QT_MESSAGES):
             return
         sys.stderr.write(text + "\n")
         if mode == QtMsgType.QtFatalMsg:

@@ -461,7 +461,15 @@ application messages with full UTC timestamps, and each rsync run reports its
 elapsed time.
 
 The status bar carries the operation state only. Every other message goes to
-the journal with a `HH:MM:SS.ss` timestamp and a severity colour.
+the journal with a `HH:MM:SS.ss` timestamp and a severity colour. The journal
+is never cleared by starting a comparison: each operation appends its own
+marker, so a sync and its result stay visible until the user chooses **Clear
+Log**. Known-benign Qt/OpenGL notices emitted by a remote shell are removed
+from captured rsync output so real SSH failures remain readable.
+
+After a synchronization the comparison is marked stale and stays that way
+until the user presses Compare. The app never starts a comparison on its own,
+so the result of the completed sync is not overwritten immediately.
 
 The execution gate is an explicit state machine: a transfer may only start
 after a successful verification and an explicit confirmation, and a cancelled

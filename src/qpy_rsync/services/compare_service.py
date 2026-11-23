@@ -5,7 +5,7 @@ import re
 from time import perf_counter
 from typing import Callable
 
-from qpy_rsync.backend.diagnostics import debug, debug_timing
+from qpy_rsync.backend.diagnostics import clean_qt_noise, debug, debug_timing
 from qpy_rsync.backend.process_runner import (
     ProcessResult,
     ProcessState,
@@ -170,7 +170,10 @@ class CompareService:
             self.on_error("rsync terminated unexpectedly before comparison completed.")
             return
         if process.exit_code != 0:
-            self.on_error(f"rsync exited with status {process.exit_code}: {process.stderr.strip()}")
+            self.on_error(
+                f"rsync exited with status {process.exit_code}: "
+                f"{clean_qt_noise(process.stderr).strip()}"
+            )
             return
         if self._parse_error is not None:
             self.on_error(f"Could not parse rsync output: {self._parse_error}")

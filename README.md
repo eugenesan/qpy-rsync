@@ -109,7 +109,9 @@ execution is blocked and the difference is reported.
 
 **Synchronize** (F9) then opens the confirmation dialog with the endpoints,
 the counts, the destructive operations and the backup configuration. Only
-after you confirm, a write-capable `rsync` runs with the verified plan.
+after you confirm, a write-capable `rsync` runs with the verified plan. The
+comparison is then marked stale; it is up to you to press Compare when you
+want a fresh view, so the journal still shows what the sync just did.
 
 ![The confirmation dialog of a synchronization](docs/sync-dialog.png)
 

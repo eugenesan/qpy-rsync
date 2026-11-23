@@ -8,6 +8,26 @@ from time import perf_counter
 
 _TRUE = {"1", "true", "yes", "on"}
 
+# Qt components started by a remote shell or an SSH command can emit these on
+# stderr even though the application under test has nothing to do with Qt.
+# They are harmless and obscure real rsync/SSH failures in the journal.
+BENIGN_QT_MESSAGES = (
+    "Cannot create platform OpenGL context",
+    "fallback to QtQuick software backend",
+    "Socket not connected",
+    "QLocalSocket::PeerClosedError",
+    "Connection::send() called with connection not inited",
+)
+
+
+def clean_qt_noise(text: str) -> str:
+    """Drop known-benign Qt lines from captured process output."""
+    return "\n".join(
+        line
+        for line in str(text).splitlines()
+        if not any(pattern in line for pattern in BENIGN_QT_MESSAGES)
+    )
+
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").lower() in _TRUE

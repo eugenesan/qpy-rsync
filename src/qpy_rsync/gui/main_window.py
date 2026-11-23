@@ -53,6 +53,7 @@ from qpy_rsync.backend.destination_sizes import (
     destination_subtree_size,
 )
 from qpy_rsync.backend.diagnostics import (
+    clean_qt_noise,
     debug_timing,
     set_debug_enabled,
     set_timing_enabled,
@@ -431,6 +432,7 @@ class MainWindow(QMainWindow):
         self._preserve_reason = ""
         self._preserve_before_force: bool | None = None
         self._cancel_requested = False
+        self._sync_generated_stale = False
         self._metadata_pending = False
         self._comparison_announced = False
         self._compare_generation = 0
@@ -1661,14 +1663,15 @@ class MainWindow(QMainWindow):
         # a different job, so it turns preservation off and lights the button
         # indicator. The button stays clickable: the user may check it again
         # to force preservation despite the changed locations or filters.
-        # Synchronization marks the comparison stale temporarily; that is not
-        # a profile/location change, so it must not turn Preserve Decisions
-        # off. Otherwise the automatic Compare after a sync warns about a
-        # fresh comparison before the setting can be restored.
+        # Synchronization marks the comparison stale until the user compares
+        # again; that is not a profile/location change, so it must not turn
+        # Preserve Decisions off.
         sync_in_progress = (
             getattr(self, "_execution_gate", None) is not None
             and self._execution_gate.state is ExecutionGateState.EXECUTING
-        ) or bool(getattr(self, "_cancel_requested", False))
+        ) or bool(getattr(self, "_cancel_requested", False)) or bool(
+            getattr(self, "_sync_generated_stale", False)
+        )
         if stale and self.preserve_button.isChecked() and not sync_in_progress:
             # Remember the user's setting so a fresh comparison can restore it.
             self._preserve_before_force = True
@@ -3392,15 +3395,22 @@ class MainWindow(QMainWindow):
         self._verified_plan = None
         self._current_plan = None
         self._last_plan_summary = None
-        self._set_state("Synchronization complete", "success")
+        # The comparison no longer describes the destination. Mark it stale
+        # and leave the refresh to the user; auto-comparing used to wipe the
+        # journal and hide the record of the sync that just finished.
+        self._sync_generated_stale = True
+        self.comparison.set_stale(True, block_views=True)
+        self._sync_generated_stale = False
+        self._invalidate_plan_context()
+        self._set_state(_STALE_STATE_TEXT, "stale")
         self._play_completion_sound(
             "success" if result.exit_code == 0 else "error"
         )
         self._set_status(
-            f"Synchronization completed with rsync status {result.exit_code}. Refreshing comparison...",
-            "success",
+            f"Synchronization completed with rsync status {result.exit_code}. "
+            "Click Compare to refresh the comparison.",
+            "success" if result.exit_code == 0 else "warning",
         )
-        QTimer.singleShot(0, self._compare)
 
     def _sync_error(self, message: str, cancelled: bool = False) -> None:
         self._cancel_requested = False
@@ -3477,7 +3487,9 @@ class MainWindow(QMainWindow):
             self._warn_missing_local_directories(missing, "Comparison")
             return
         self._flush_log()
-        self.log.clear()
+        # Keep the journal: it is the running record of the session and is
+        # cleared only when the user asks for that. A new Compare appends its
+        # own "STATE comparing" marker below the previous operations.
         self._last_backup_message = None
         self._last_plan_summary = None
         from qpy_rsync.backend.process_runner import ProcessState
@@ -5050,6 +5062,11 @@ class MainWindow(QMainWindow):
         # Raw rsync output is opt-in: on a large tree it can reach hundreds of
         # MB per run and costs measurable time in this single-threaded path.
         if not self._rsync_output_logging:
+            return
+        # A remote shell can inherit DISPLAY and print harmless Qt/OpenGL
+        # notices that obscure real SSH failures in the journal.
+        text = clean_qt_noise(text)
+        if not text:
             return
         if self._bulk_logging or self._bulk_rsync:
             # Never let an itemized record reach the journal widget during a

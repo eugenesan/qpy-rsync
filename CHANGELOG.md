@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The journal is no longer cleared when a comparison starts. Operations
+  accumulate until you choose **Clear Log**, so a completed sync stays visible
+  in the journal.
+- Synchronization no longer triggers an automatic Compare. It marks the
+  comparison stale and leaves the refresh to you; Preserve Decisions stays as
+  you set it.
+- Benign Qt/OpenGL notices emitted by remote shells are filtered from rsync
+  output, so SSH failures are no longer buried in noise.
 - Added **Delete on Destination** to the item context menu in both views. It
   offers a permanent sender-side filter (`-s ...`) or a decision-only delete
   that keeps the source item visible during Compare and emits the `-s` rule

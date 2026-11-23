@@ -7,7 +7,7 @@ import re
 from typing import Callable
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
-from qpy_rsync.backend.diagnostics import debug_timing, timed
+from qpy_rsync.backend.diagnostics import clean_qt_noise, debug_timing, timed
 from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
 from qpy_rsync.backend.rsync_command import build_compare_spec
 from qpy_rsync.backend.rsync_parser import parse_output
@@ -190,7 +190,8 @@ class PlanValidationService:
                 return
             if process.exit_code != 0:
                 self.on_error(
-                    f"Validation dry-run exited with status {process.exit_code}: {process.stderr.strip()}"
+                    f"Validation dry-run exited with status {process.exit_code}: "
+                    f"{clean_qt_noise(process.stderr).strip()}"
                 )
                 return
             assert self._plan is not None
