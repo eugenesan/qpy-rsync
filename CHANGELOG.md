@@ -18,6 +18,11 @@
   Python and native views at runtime, persists across restarts, and makes bug
   reports easier: attach the session log after reproducing the problem. The
   `QPY_RSYNC_PROFILE` and related environment variables still work.
+- Added a separate **Include rsync debug diagnostics in the session log**
+  option for `QPY_RSYNC_DEBUG`-level output (process arguments, exit codes,
+  compare summaries, rsync output samples). It is more verbose on large
+  transfers, implies the timing option, and both kinds of line now also go to
+  the session log.
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.

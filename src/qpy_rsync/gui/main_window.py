@@ -54,6 +54,7 @@ from qpy_rsync.backend.destination_sizes import (
 )
 from qpy_rsync.backend.diagnostics import (
     debug_timing,
+    set_debug_enabled,
     set_timing_enabled,
     set_timing_sink,
     timed,
@@ -392,6 +393,10 @@ class MainWindow(QMainWindow):
         self._timing_logging = settings.value(
             "logging/timing", False, type=bool
         )
+        self._debug_logging = settings.value(
+            "logging/debug", False, type=bool
+        )
+        set_debug_enabled(self._debug_logging)
         set_timing_enabled(self._timing_logging)
         self._metadata_two_pass = settings.value(
             "advanced/dest_metadata_two_pass", False, type=bool
@@ -1919,6 +1924,7 @@ class MainWindow(QMainWindow):
             inventory_preload=self._inventory_preload,
             python_view=self._legacy_python,
             timing_logging=self._timing_logging,
+            debug_logging=self._debug_logging,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1945,7 +1951,10 @@ class MainWindow(QMainWindow):
             self._rsync_output_logging = dialog.rsync_output_logging()
             settings.setValue("logging/rsync_output", self._rsync_output_logging)
             self._timing_logging = dialog.timing_logging()
+            self._debug_logging = dialog.debug_logging()
             settings.setValue("logging/timing", self._timing_logging)
+            settings.setValue("logging/debug", self._debug_logging)
+            set_debug_enabled(self._debug_logging)
             set_timing_enabled(self._timing_logging)
             if self._hybrid_view is not None:
                 self._hybrid_view.set_profiling(self._timing_logging)

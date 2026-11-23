@@ -62,6 +62,7 @@ class SettingsDialog(QDialog):
         inventory_preload: bool = False,
         python_view: bool = False,
         timing_logging: bool = False,
+        debug_logging: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -212,12 +213,30 @@ class SettingsDialog(QDialog):
         )
         self.timing_logging_checkbox.setChecked(bool(timing_logging))
         self.timing_logging_checkbox.setToolTip(
-            "Off by default. When enabled, plan/model/sort timings from both "
-            "the Python and native views are written to the session log and "
-            "standard error. Useful when sending a bug report; the setting "
-            "applies immediately and can be turned off at any time."
+            "Off by default. When enabled, plan, model, sort and native-view "
+            "timings are written to the session log and standard error. Use "
+            "this when reporting a performance problem: reproduce it, then "
+            "attach the session log from "
+            "$XDG_CACHE_HOME/qpy-rsync/app-<profile>.log.\n\n"
+            "Volume is low (a few lines per operation), so it is safe to "
+            "leave on. Applies immediately; no restart needed."
         )
         advanced_layout.addWidget(self.timing_logging_checkbox)
+        self.debug_logging_checkbox = QCheckBox(
+            "Include rsync debug diagnostics in the session log", advanced
+        )
+        self.debug_logging_checkbox.setChecked(bool(debug_logging))
+        self.debug_logging_checkbox.setToolTip(
+            "Off by default. When enabled, logs rsync/SSH command arguments, "
+            "process exit codes, compare summaries and samples of stdout and "
+            "stderr. Use for failures that timing data alone cannot explain, "
+            "and attach the session log when reporting a bug. Enabling this "
+            "also turns on timing diagnostics.\n\n"
+            "Warning: much more verbose than timing diagnostics. Large trees "
+            "or progress output can add many lines with file names, so turn "
+            "it off when you are done. Applies immediately."
+        )
+        advanced_layout.addWidget(self.debug_logging_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Verification checks are diagnostics, not gates: the "
@@ -301,6 +320,9 @@ class SettingsDialog(QDialog):
 
     def timing_logging(self) -> bool:
         return self.timing_logging_checkbox.isChecked()
+
+    def debug_logging(self) -> bool:
+        return self.debug_logging_checkbox.isChecked()
 
     def detect_inherited_conflicts(self) -> bool:
         return self.inherited_checkbox.isChecked()

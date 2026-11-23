@@ -6,9 +6,24 @@ from contextlib import contextmanager
 from datetime import datetime
 from time import perf_counter
 
+_TRUE = {"1", "true", "yes", "on"}
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").lower() in _TRUE
+
+
+_DEBUG_OVERRIDE = False
+
+
+def set_debug_enabled(value: bool) -> None:
+    """Enable debug diagnostics from the Advanced setting, at runtime."""
+    global _DEBUG_OVERRIDE
+    _DEBUG_OVERRIDE = bool(value)
+
 
 def enabled() -> bool:
-    return os.environ.get("QPY_RSYNC_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+    return _DEBUG_OVERRIDE or _env_flag("QPY_RSYNC_DEBUG")
 
 
 _TIMING_OVERRIDE = False
@@ -24,20 +39,26 @@ def timing_enabled() -> bool:
     return (
         _TIMING_OVERRIDE
         or enabled()
-        or any(
-            os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
-            for name in ("QPY_RSYNC_TIMING", "QPY_RSYNC_PROFILE")
-        )
+        or any(_env_flag(name) for name in ("QPY_RSYNC_TIMING", "QPY_RSYNC_PROFILE"))
     )
 
 
-_TIMING_SINK = None
+_SINK = None
 
 
 def set_timing_sink(sink) -> None:
-    """Also deliver timing lines to a callback (e.g. the session log)."""
-    global _TIMING_SINK
-    _TIMING_SINK = sink
+    """Also deliver diagnostics to a callback (e.g. the session log)."""
+    global _SINK
+    _SINK = sink
+
+
+def _emit(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
+    if _SINK is not None:
+        try:
+            _SINK(line)
+        except Exception:
+            pass
 
 
 def debug(event: str, **values: object) -> None:
@@ -45,7 +66,7 @@ def debug(event: str, **values: object) -> None:
         return
     timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
     details = " ".join(f"{key}={value!r}" for key, value in values.items())
-    print(f"[qpy-rsync debug] {timestamp} {event} {details}".rstrip(), file=sys.stderr, flush=True)
+    _emit(f"[qpy-rsync debug] {timestamp} {event} {details}".rstrip())
 
 
 def debug_timing(event: str, **values: object) -> None:
@@ -54,13 +75,7 @@ def debug_timing(event: str, **values: object) -> None:
         return
     timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
     details = " ".join(f"{key}={value!r}" for key, value in values.items())
-    line = f"[qpy-rsync timing] {timestamp} {event} {details}".rstrip()
-    print(line, file=sys.stderr, flush=True)
-    if _TIMING_SINK is not None:
-        try:
-            _TIMING_SINK(line)
-        except Exception:
-            pass
+    _emit(f"[qpy-rsync timing] {timestamp} {event} {details}".rstrip())
 
 
 @contextmanager
