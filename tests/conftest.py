@@ -8,3 +8,6 @@ import tempfile
 os.environ.setdefault(
     "XDG_STATE_HOME", tempfile.mkdtemp(prefix="qpy-rsync-test-state-")
 )
+# Most tests exercise the shipped Python view. Native-specific tests set
+# QPY_HYBRID_VIEW=1 explicitly; it takes precedence over this variable.
+os.environ.setdefault("QPY_PYTHON_VIEW", "1")

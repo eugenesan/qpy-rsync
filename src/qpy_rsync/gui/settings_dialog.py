@@ -60,7 +60,7 @@ class SettingsDialog(QDialog):
         rsync_output_logging: bool = False,
         metadata_two_pass: bool = False,
         inventory_preload: bool = False,
-        hybrid_view: bool = False,
+        python_view: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -194,27 +194,26 @@ class SettingsDialog(QDialog):
             "It also keeps roughly a million extra entries in memory."
         )
         advanced_layout.addWidget(self.inventory_preload_checkbox)
-        self.hybrid_view_checkbox = QCheckBox(
-            "Use native Qt comparison views", advanced
+        self.python_view_checkbox = QCheckBox(
+            "Use legacy Python comparison views", advanced
         )
-        self.hybrid_view_checkbox.setChecked(bool(hybrid_view))
-        self.hybrid_view_checkbox.setToolTip(
-            "Off by default: the Python comparison view is used. Requires the "
-            "native_hybrid extension. The comparison is handed to native Qt "
-            "models once; decisions, actions and tools stay in Python, and "
-            "search, sorting, folds and external tools work in both views. "
-            "The setting applies immediately and can be switched back at any "
-            "time; clearing this box rebuilds the Python view."
+        self.python_view_checkbox.setChecked(bool(python_view))
+        self.python_view_checkbox.setToolTip(
+            "Off by default: the native Qt comparison views are used. Enable "
+            "this to switch to the original Python view for compatibility or "
+            "when the native extension is unavailable. Both views share the "
+            "same decisions, plan and validation in Python. The setting "
+            "applies immediately; switching back rebuilds the Python view."
         )
-        advanced_layout.addWidget(self.hybrid_view_checkbox)
+        advanced_layout.addWidget(self.python_view_checkbox)
         advanced_layout.addSpacing(24)
         advanced_hint = QLabel(
             "Verification checks are diagnostics, not gates: the "
             "synchronization confirmation dialog remains the final review "
             "before writing, and the optional rsync check needs Verify "
-            "Decisions. Native comparison views are an alternative renderer "
-            "for the same comparison; decisions, plan and validation stay in "
-            "Python in both modes."
+            "Decisions. Native Qt comparison views are the default; the "
+            "legacy Python view remains available for compatibility, with "
+            "decisions, plan and validation in Python in both modes."
         )
         advanced_hint.setWordWrap(True)
         advanced_layout.addWidget(advanced_hint)
@@ -285,8 +284,8 @@ class SettingsDialog(QDialog):
     def inventory_preload(self) -> bool:
         return self.inventory_preload_checkbox.isChecked()
 
-    def hybrid_view(self) -> bool:
-        return self.hybrid_view_checkbox.isChecked()
+    def python_view(self) -> bool:
+        return self.python_view_checkbox.isChecked()
 
     def detect_inherited_conflicts(self) -> bool:
         return self.inherited_checkbox.isChecked()

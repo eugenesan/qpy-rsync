@@ -46,16 +46,18 @@ and `python3-nanobind` as build dependencies.
 
 ## Run
 
-Enable **Settings → Advanced → Use native Qt comparison views (experimental)** —
-it applies immediately, including turning the native views off again — or use
-`QPY_HYBRID_VIEW=1` for a one-off run:
+Native Qt comparison views are the default on `main`. The setting
+**Settings → Advanced → Use legacy Python comparison views** switches to the
+original Python renderer for compatibility; it applies immediately. One-off
+overrides:
 
 ```sh
-QPY_HYBRID_VIEW=1 ./qpy-rsync.sh
+QPY_PYTHON_VIEW=1 ./qpy-rsync.sh   # force the legacy Python view
+QPY_HYBRID_VIEW=1 ./qpy-rsync.sh   # force native (kept for compatibility)
 ```
 
-With the setting/flag off nothing changes: the Python view is the shipped
-default.
+If the native extension is missing, the app falls back to the Python view
+automatically. The old `advanced/hybrid_view` setting is migrated on startup.
 
 ## Decision contract
 

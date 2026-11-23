@@ -2386,12 +2386,12 @@ def test_missing_native_extension_falls_back_to_python_view(monkeypatch) -> None
 
     monkeypatch.setattr(nhv, "module", lambda: None)
     settings = app_settings()
-    settings.setValue("advanced/hybrid_view", True)
+    settings.setValue("advanced/python_view", False)
     settings.sync()
     window = MainWindow()
     assert window._hybrid_view is None
     assert type(window.overview).__name__ == "OverviewPane"
-    settings.setValue("advanced/hybrid_view", False)
+    settings.setValue("advanced/python_view", True)
     settings.sync()
     window.close()
     application.processEvents()

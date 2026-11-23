@@ -389,9 +389,24 @@ class MainWindow(QMainWindow):
         self._inventory_preload = settings.value(
             "advanced/inventory_preload", False, type=bool
         )
-        self._hybrid_enabled = settings.value(
-            "advanced/hybrid_view", False, type=bool
-        ) or os.environ.get("QPY_HYBRID_VIEW", "") == "1"
+        # Native Qt views are now the default. The setting selects the legacy
+        # Python view; the old hybrid_view key is migrated for compatibility.
+        legacy_python = settings.value(
+            "advanced/python_view", False, type=bool
+        )
+        if settings.contains("advanced/hybrid_view"):
+            legacy_python = not settings.value(
+                "advanced/hybrid_view", True, type=bool
+            )
+            settings.remove("advanced/hybrid_view")
+            settings.setValue("advanced/python_view", legacy_python)
+            settings.sync()
+        if os.environ.get("QPY_PYTHON_VIEW", "") == "1":
+            legacy_python = True
+        if os.environ.get("QPY_HYBRID_VIEW", "") == "1":
+            legacy_python = False
+        self._legacy_python = legacy_python
+        self._hybrid_enabled = not legacy_python
         self._metadata_service.set_gather_option(
             "two_pass", self._metadata_two_pass
         )
@@ -1881,7 +1896,7 @@ class MainWindow(QMainWindow):
             rsync_output_logging=self._rsync_output_logging,
             metadata_two_pass=self._metadata_two_pass,
             inventory_preload=self._inventory_preload,
-            hybrid_view=self._hybrid_enabled,
+            python_view=self._legacy_python,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1921,22 +1936,22 @@ class MainWindow(QMainWindow):
             settings.sync()
             self._update_verification_visibility()
             self._update_conflict_ui()
-            hybrid = dialog.hybrid_view()
-            if hybrid != self._hybrid_enabled:
-                if hybrid:
+            python = dialog.python_view()
+            if python != self._legacy_python:
+                if python:
                     detail = (
-                        "The native comparison views are experimental. They "
-                        "keep rsync, decisions, plan and validation in Python, "
-                        "but draw the lists and overview natively. No data is "
-                        "lost by switching. The change applies immediately; "
-                        "run Compare again if anything looks out of date."
+                        "The legacy Python view is kept for compatibility. "
+                        "Switching to it requires rebuilding its model from "
+                        "scratch; on a large comparison this can take minutes "
+                        "and the UI will be busy while it runs. No data is "
+                        "lost: decisions and the plan stay in Python."
                     )
                 else:
                     detail = (
-                        "Returning to the Python view requires rebuilding its "
-                        "model from scratch. On a large comparison this can "
-                        "take minutes and the UI will be busy while it runs. "
-                        "No data is lost; decisions and the plan are kept."
+                        "Switch back to the native Qt comparison views? They "
+                        "are the default and keep rsync, decisions, plan and "
+                        "validation in Python while drawing the lists and "
+                        "overview natively. The change applies immediately."
                     )
                 answer = QMessageBox.question(
                     self,
@@ -1946,11 +1961,14 @@ class MainWindow(QMainWindow):
                     QMessageBox.StandardButton.No,
                 )
                 if answer != QMessageBox.StandardButton.Yes:
-                    hybrid = self._hybrid_enabled
-                settings.setValue("advanced/hybrid_view", hybrid)
+                    python = self._legacy_python
+                settings.setValue("advanced/python_view", python)
                 settings.sync()
-                self._hybrid_enabled = hybrid
-                if hybrid:
+                self._legacy_python = python
+                self._hybrid_enabled = not python
+                if python:
+                    self._disable_hybrid_view()
+                else:
                     self._enable_hybrid_view()
                     if self._hybrid_view is None:
                         QMessageBox.warning(
@@ -1958,11 +1976,10 @@ class MainWindow(QMainWindow):
                             "The native comparison extension is not built or "
                             "could not be loaded. The Python view stays active.",
                         )
+                        self._legacy_python = True
                         self._hybrid_enabled = False
-                        settings.setValue("advanced/hybrid_view", False)
+                        settings.setValue("advanced/python_view", True)
                         settings.sync()
-                else:
-                    self._disable_hybrid_view()
             self._external_tools = dialog.external_tools()
             self._diff_command = dialog.diff_command()
             save_tools(self._external_tools)

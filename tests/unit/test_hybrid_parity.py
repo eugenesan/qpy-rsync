@@ -23,7 +23,7 @@ from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind  # noqa: E40
 def _window(monkeypatch, *, hybrid: bool):
     monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
     settings = app_settings()
-    settings.setValue("advanced/hybrid_view", False)
+    settings.setValue("advanced/python_view", not hybrid)
     settings.sync()
     window = MainWindow()
     window.source_edit.setText("/src/")
@@ -91,7 +91,7 @@ def test_row_order_and_header_sorting_match(monkeypatch) -> None:
     def build(hybrid: bool):
         monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
         settings = app_settings()
-        settings.setValue("advanced/hybrid_view", False)
+        settings.setValue("advanced/python_view", not hybrid)
         settings.sync()
         window = MainWindow()
         window.source_edit.setText("/src/")
@@ -150,7 +150,7 @@ def test_header_sort_indicators_are_linked(monkeypatch) -> None:
     def build(hybrid: bool):
         monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
         settings = app_settings()
-        settings.setValue("advanced/hybrid_view", False)
+        settings.setValue("advanced/python_view", not hybrid)
         settings.sync()
         window = MainWindow()
         window.source_edit.setText("/src/")
@@ -197,7 +197,7 @@ def test_overview_hierarchy_matches(monkeypatch) -> None:
     def build(hybrid: bool):
         monkeypatch.setenv("QPY_HYBRID_VIEW", "1" if hybrid else "0")
         settings = app_settings()
-        settings.setValue("advanced/hybrid_view", False)
+        settings.setValue("advanced/python_view", not hybrid)
         settings.sync()
         window = MainWindow()
         window.source_edit.setText("/src/")

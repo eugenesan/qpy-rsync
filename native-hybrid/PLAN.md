@@ -55,10 +55,11 @@ app never had one in the shipped build.
 ## 6. Packaging and rollout — DONE
 
 Debian builds the extension from source (`Architecture: any`, build deps for
-CMake/Ninja/Qt6/nanobind). The Python view stays the default; the native view is
-an opt-in Advanced setting or `QPY_HYBRID_VIEW=1`, toggleable at runtime.
+CMake/Ninja/Qt6/nanobind). The native Qt view is the default on `main`; the
+Advanced setting selects the legacy Python view when needed. A missing
+extension falls back to Python automatically.
 
-## 7. Remaining work before default-on
+## 7. Remaining work
 
 - Real-tree differential timing against the "<1 s per compare-view action on
   520k items" acceptance criterion; decide whether the Python plan rebuild is

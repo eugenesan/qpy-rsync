@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Promoted the hybrid branch to `main`; the archived pure-Python line is
+  `main-python`. Native Qt comparison views are now the default.
+- The Advanced setting now selects the **legacy Python view** instead of an
+  experimental native view. The old `advanced/hybrid_view` key is migrated,
+  and `QPY_PYTHON_VIEW=1` forces the Python view for one run.
+
 - Sorting is much faster in both views: Python uses native C-level key
   sorting instead of a Python comparator (~5 s -> ~0.8 s at 520k), and native
   sorts with precomputed keys. The synthetic root stays first in both views.
