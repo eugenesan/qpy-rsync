@@ -154,6 +154,7 @@ from qpy_rsync.core.execution_plan import (
     build_execution_plan,
     check_plan_freshness,
     decision_signature,
+    plan_items_fingerprint,
     profile_fingerprint,
 )
 from qpy_rsync.core.models import (
@@ -2686,7 +2687,16 @@ class MainWindow(QMainWindow):
             if hasattr(plan.summary, key) and value
         }
         summary = replace(plan.summary, **fields) if fields else plan.summary
-        self._current_plan = replace(plan, items=tuple(items), summary=summary)
+        # The decision-filter text is cached by these fingerprints. Without
+        # refreshing them, a later edit reuses the old rules and the sync
+        # preview omits the new exclusions even though the toolbar shows them.
+        self._current_plan = replace(
+            plan,
+            items=tuple(items),
+            summary=summary,
+            items_fingerprint=plan_items_fingerprint(items),
+            decision_signature=decision_signature(decisions),
+        )
         self._last_excluded_paths = current_excluded
         if decisions_changed:
             self._last_explicit_decisions = (

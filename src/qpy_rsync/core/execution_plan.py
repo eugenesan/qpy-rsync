@@ -79,6 +79,19 @@ class ExecutionPlan:
         return tuple(item for item in self.items if item.included)
 
 
+def plan_items_fingerprint(items: Iterable[PlanItem]) -> str:
+    """Fingerprint plan contents; the filter-text cache keys on this value."""
+    digest = sha256()
+    for item in items:
+        digest.update(item.path.encode("utf-8"))
+        digest.update(item.action.value.encode("utf-8"))
+        digest.update(item.kind.value.encode("utf-8"))
+        digest.update(b"1" if item.included else b"0")
+        if item.synthetic_delete:
+            digest.update(b"D")
+    return digest.hexdigest()
+
+
 def profile_fingerprint(profile: SyncProfile) -> str:
     # Fingerprint synchronization semantics, not profile identity or labels.
     # Ad-hoc profiles are reconstructed by the GUI and therefore receive a new
@@ -140,7 +153,6 @@ def build_execution_plan(
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
 
-    digest = sha256()
     with timed("plan.loop", changes=len(changes_list)):
         for change in changes_list:
             action = change.action
@@ -176,12 +188,6 @@ def build_execution_plan(
                 synthetic_delete=delete_decision and action is not ChangeAction.DELETE,
             )
             items.append(item)
-            digest.update(item.path.encode("utf-8"))
-            digest.update(item.action.value.encode("utf-8"))
-            digest.update(item.kind.value.encode("utf-8"))
-            digest.update(b"1" if item.included else b"0")
-            if item.synthetic_delete:
-                digest.update(b"D")
             if selected:
                 included += 1
                 destructive += int(is_destructive)
@@ -249,7 +255,7 @@ def build_execution_plan(
             frozenset(item.path for item in items if item.synthetic_delete),
         )
     return ExecutionPlan(
-        items_fingerprint=digest.hexdigest(),
+        items_fingerprint=plan_items_fingerprint(items),
         decision_signature=signature,
         profile_fingerprint=profile_fingerprint(profile),
         source_operand=profile.source.rsync_operand(),

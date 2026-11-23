@@ -10,6 +10,9 @@
 - Decision-only deletes are drawn as the red Delete marker without a
   checkbox, so clicking cannot turn them into an Exclude. Use "Remove Delete
   Decision" in the context menu or Undo to clear them.
+- Fixed the sync preview showing stale rules: incremental plan updates now
+  refresh the fingerprints that key the decision-filter cache, so exclusions
+  made after opening the preview appear in the generated rules.
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.
