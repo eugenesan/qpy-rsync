@@ -2422,3 +2422,22 @@ def test_cancel_gives_immediate_feedback() -> None:
     assert not window.cancel_button.isEnabled()
     window.close()
     application.processEvents()
+
+
+def test_cancelling_fresh_comparison_dialog_keeps_stale_state(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel),
+    )
+    window.preserve_button.setChecked(False)
+    window._compare()
+    assert "stale" in window.status_edit.text().casefold()
+    assert "Compare cancelled" in window.log.toPlainText()
+    assert window.compare_button.isEnabled()
+    window.close()
+    application.processEvents()

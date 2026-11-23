@@ -3385,6 +3385,17 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.Cancel,
             )
             if answer != QMessageBox.StandardButton.Ok:
+                # The user declined a fresh comparison. Keep the existing
+                # comparison browsable but make it explicit that it is stale
+                # and that Compare did not start.
+                self.comparison.set_stale(True, block_views=True)
+                self._set_state(_STALE_STATE_TEXT, "stale")
+                self._set_status(
+                    "Compare cancelled: enable Preserve Decisions to keep "
+                    "decisions, or click Compare to start fresh.",
+                    "warning",
+                )
+                self._append_log("STATE comparison-cancelled-by-user")
                 return
         try:
             profile = self._profile()

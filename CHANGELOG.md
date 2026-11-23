@@ -5,8 +5,10 @@
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.
-- Cancel now shows immediate "Cancelling..." feedback, marks the comparison
-  stale, and keeps Preserve Decisions unchanged.
+- The toolbar Cancel now shows immediate "Cancelling..." feedback and marks
+  the comparison stale.
+- Cancelling the "Fresh comparison" Preserve-Decisions dialog now leaves the
+  comparison stale with a clear status message instead of appearing inert.
 
 - Promoted the hybrid branch to `main`; the archived pure-Python line is
   `main-python`. Native Qt comparison views are now the default.
