@@ -1,6 +1,6 @@
 """Decision-only deletes: visible during Compare, deleted at sync time."""
 
-from qpy_rsync.backend.decision_filters import decision_filter_lines
+from qpy_rsync.backend.decision_filters import decision_filter_lines, filter_text
 from qpy_rsync.core.changes import (
     Change,
     ChangeAction,
@@ -139,4 +139,51 @@ def test_native_delete_decision_value_is_visible() -> None:
     view.apply_python_decisions({".parentlock": 3})
     assert view.decision_for_path(".parentlock") == 3
     view.widget.close()
+    application.processEvents()
+
+
+def test_delete_decision_has_no_checkbox() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+
+    application = QApplication.instance() or QApplication([])
+    model = FlatChangeModel()
+    model.set_changes([unchanged(".parentlock")])
+    model.mark_delete(".parentlock")
+    row = model.index_for_path(".parentlock").row()
+    index = model.index(row, model.ACTION)
+    assert model.data(index, Qt.ItemDataRole.CheckStateRole) is None
+    assert not model.flags(index) & Qt.ItemFlag.ItemIsUserCheckable
+    application.processEvents()
+
+
+def test_delete_decision_reaches_sync_preview_plan() -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.gui.main_window import MainWindow
+    from qpy_rsync.services.compare_service import CompareResult
+    from qpy_rsync.storage.settings import app_settings
+
+    application = QApplication.instance() or QApplication([])
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    window._comparison_finished(CompareResult(ParseResult([unchanged(".parentlock")], []), "", 0))
+    window._mark_delete_from_ui(".parentlock")
+    plan = window._current_plan
+    assert plan is not None
+    assert any(item.synthetic_delete for item in plan.items)
+    assert "-s /.parentlock" in filter_text(plan)
+    window.close()
     application.processEvents()

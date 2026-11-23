@@ -710,31 +710,35 @@ class HybridDelegate : public QStyledItemDelegate {
     QStyleOptionViewItem opt(option);
     initStyleOption(&opt, index);
     paint_background(painter, option, false);
+    const bool delete_request =
+        id < static_cast<int>(store.decisions.size()) &&
+        store.decisions[id] == DeleteRequest;
     const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
     // Paint the same rounded, accent-coloured checkbox the toolbar QCheckBox
     // uses under Breeze; the item-view indicator primitive draws a dash here.
     // Center the checkbox + action icon group in the Decisions pane.
-    const int group_width = 16 + 8 + 16;
+    const int group_width = delete_request ? 16 : 16 + 8 + 16;
     const int start = opt.rect.left() + qMax(0, (opt.rect.width() - group_width) / 2);
     QRect box(start, opt.rect.center().y() - 8, 16, 16);
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(opt.palette.color(QPalette::Highlight));
-    painter->drawRoundedRect(box, 4, 4);
-    if (checked) {
-      painter->setRenderHint(QPainter::Antialiasing, true);
-      painter->setPen(QPen(opt.palette.color(QPalette::HighlightedText), 2,
-                           Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-      painter->drawLine(box.left() + 4, box.center().y(), box.left() + 7,
-                        box.bottom() - 4);
-      painter->drawLine(box.left() + 7, box.bottom() - 4, box.right() - 4,
-                        box.top() + 4);
+    if (!delete_request) {
+      painter->save();
+      painter->setRenderHint(QPainter::Antialiasing);
+      painter->setPen(Qt::NoPen);
+      painter->setBrush(opt.palette.color(QPalette::Highlight));
+      painter->drawRoundedRect(box, 4, 4);
+      if (checked) {
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        painter->setPen(QPen(opt.palette.color(QPalette::HighlightedText), 2,
+                             Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->drawLine(box.left() + 4, box.center().y(), box.left() + 7,
+                          box.bottom() - 4);
+        painter->drawLine(box.left() + 7, box.bottom() - 4, box.right() - 4,
+                          box.top() + 4);
+      }
+      painter->restore();
     }
-    painter->restore();
     int action = store.actions[id];
-    if (id < static_cast<int>(store.decisions.size()) &&
-        store.decisions[id] == DeleteRequest) {
+    if (delete_request) {
       action = Delete;
     }
     if (action >= 0 && action < static_cast<int>(s.action_icons.size()) &&
@@ -742,7 +746,8 @@ class HybridDelegate : public QStyledItemDelegate {
       // Reuse the exact QIcon the Python view generates, so the toolbar,
       // Decisions column and overview statistics always agree.
       const int y = opt.rect.center().y() - 8;
-      s.action_icons[action].paint(painter, QRect(start + 24, y, 16, 16));
+      s.action_icons[action].paint(
+          painter, QRect(delete_request ? start : start + 24, y, 16, 16));
     }
   }
 

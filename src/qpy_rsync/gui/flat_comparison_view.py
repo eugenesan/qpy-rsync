@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
 )
 
 from qpy_rsync.backend.rsync_patterns import delete_phrases_for, phrases_for
-from qpy_rsync.core.changes import ChangeAction
+from qpy_rsync.core.changes import ChangeAction, ChangeDecision
 from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.services.external_tools import ExternalTool
 
@@ -1609,6 +1609,8 @@ class FlatComparisonView(QWidget):
             self.delete_filter_requested.emit(selected.data(), path)
         elif selected is actions["delete_sync"]:
             self.delete_requested.emit(path)
+        elif selected is actions["remove_delete"]:
+            self.model.unmark_delete(path)
 
     def _side_is_local(self, tree: QTableView) -> bool:
         """Whether the pane's endpoint lives on this machine."""
@@ -1688,6 +1690,7 @@ class FlatComparisonView(QWidget):
             "filters": [],
             "delete_filters": [],
             "delete_sync": None,
+            "remove_delete": None,
             "tools": [],
         }
         if absolute_path:
@@ -1767,6 +1770,13 @@ class FlatComparisonView(QWidget):
         if exclusions:
             actions["reset_exclusions"] = menu.addAction(
                 f"Reset All Exclusions ({exclusions.count()})"
+            )
+        if (
+            path
+            and self.model.decisions.explicit(path) is ChangeDecision.DELETE
+        ):
+            actions["remove_delete"] = menu.addAction(
+                "Remove Delete Decision"
             )
 
         # The tools the user configured for the items of the comparison.

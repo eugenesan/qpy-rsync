@@ -2744,7 +2744,20 @@ class MainWindow(QMainWindow):
             if before.get(path) != after.get(path)
         }
         changed = bool(excluded_change_paths or decision_paths)
-        if changed and self._apply_plan_changes(
+        # A delete decision can introduce a plan item for an unchanged row,
+        # which the incremental updater cannot do (it only edits items that
+        # are already in the plan). Rebuild so the sync preview shows the
+        # temporary -s rule.
+        delete_touched = any(
+            before.get(path) is ChangeDecision.DELETE
+            or after.get(path) is ChangeDecision.DELETE
+            for path in decision_paths
+        )
+        if changed and delete_touched:
+            # Bypass the deferred rebuild flag: the sync preview must show
+            # the new rule immediately.
+            self._rebuild_plan_summary()
+        elif changed and self._apply_plan_changes(
             excluded_change_paths | decision_paths,
             decisions_changed=bool(decision_paths),
         ):
@@ -4475,9 +4488,13 @@ class MainWindow(QMainWindow):
             menu.addSeparator()
             diff = menu.addAction("Open in Diff Tool\t1")
         menu.addSeparator()
-        excluded = view.decision_for_path(path) == 2
+        decision = view.decision_for_path(path)
+        excluded = decision == 2
         include_item = menu.addAction(
             "Include Item" if excluded else "Exclude Item\tSpace"
+        )
+        remove_delete = (
+            menu.addAction("Remove Delete Decision") if decision == 3 else None
         )
         reset_one = menu.addAction("Reset This Decision") if path else None
         reset_subtree = menu.addAction("Reset Subtree Decisions") if path else None
@@ -4559,6 +4576,8 @@ class MainWindow(QMainWindow):
             self._add_filter_phrase(chosen.data(), path)
         elif chosen is delete_sync_action:
             self._mark_delete_from_ui(path)
+        elif chosen is remove_delete:
+            view.set_decision_by_path(path, 0)
         elif chosen in tool_actions:
             name, entry_path, side, directory = chosen.data()
             self._run_external_tool(name, entry_path, side, directory)

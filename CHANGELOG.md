@@ -6,7 +6,10 @@
   offers a permanent sender-side filter (`-s ...`) or a decision-only delete
   that keeps the source item visible during Compare and emits the `-s` rule
   only for the sync / verification dry run. Both produce a normal Delete plan
-  item.
+  item, and the rule is shown in the sync confirmation's Decision rules.
+- Decision-only deletes are drawn as the red Delete marker without a
+  checkbox, so clicking cannot turn them into an Exclude. Use "Remove Delete
+  Decision" in the context menu or Undo to clear them.
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.

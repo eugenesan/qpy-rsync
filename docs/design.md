@@ -371,9 +371,12 @@ to remove that protection:
   lists the source copy and rsync reports the destination copy as a deletion.
 - **Decision only (apply at sync)** adds a Delete decision to the current
   comparison. The item stays visible with its original source values and a
-  Delete icon; only the sync (and Verify Decisions) hides it on the sending
-  side with a temporary `-s` rule, so the destination copy is removed. This is
-  a volatile decision and is cleared by a fresh Compare.
+  red Delete icon; only the sync (and Verify Decisions) hides it on the
+  sending side with a temporary `-s` rule, so the destination copy is removed.
+  This is a volatile decision and is cleared by a fresh Compare. The row has
+  no decision checkbox (so a click cannot silently turn it into an Exclude);
+  use **Remove Delete Decision** in the context menu or Undo to clear it. The
+  temporary `-s` rule appears in the sync confirmation's Decision rules.
 
 Both paths produce a normal destructive DELETE plan item, so it appears in the
 statistics and is subject to the same confirmation as any other deletion.

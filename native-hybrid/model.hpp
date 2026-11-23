@@ -813,6 +813,12 @@ class TableModel : public QAbstractTableModel {
     int id = store_->visible[row];
     if (role == Qt::CheckStateRole) {
       if (pane_ == 1 && index.column() == 4) {
+        // A delete decision is shown by the red marker alone; a checkbox
+        // here looked disabled and clicking it created an Exclude decision.
+        if (id < static_cast<int>(store_->decisions.size()) &&
+            store_->decisions[id] == DeleteRequest) {
+          return {};
+        }
         return store_->decisions[id] == Exclude ? Qt::Unchecked : Qt::Checked;
       }
       return {};
@@ -960,6 +966,11 @@ class TableModel : public QAbstractTableModel {
 
   Qt::ItemFlags flags(const QModelIndex& index) const override {
     if (pane_ == 1 && index.column() == 4 && index.isValid()) {
+      const int id = store_->visible[index.row()];
+      if (id >= 0 && id < static_cast<int>(store_->decisions.size()) &&
+          store_->decisions[id] == DeleteRequest) {
+        return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+      }
       return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable;
     }
     return QAbstractTableModel::flags(index);

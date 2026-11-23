@@ -1936,7 +1936,10 @@ class FlatChangeModel(QAbstractTableModel):
                     return None
                 return self._item_icon(row)
         if role == Qt.ItemDataRole.FontRole and change is not None:
-            if change.action is ChangeAction.NO_CHANGE:
+            if (
+                change.action is ChangeAction.NO_CHANGE
+                and self.decisions.effective(change) is not ChangeDecision.DELETE
+            ):
                 font = QFont()
                 font.setItalic(True)
                 return font
@@ -1954,8 +1957,9 @@ class FlatChangeModel(QAbstractTableModel):
             and change is not None
             and index.column() != self.ACTION
         ):
-            # The item carries the colour of its action.
-            colour = colour_for(change.action)
+            # A delete decision turns an unchanged item into a deletion, so
+            # it gets the Delete colour instead of the faded Unchanged one.
+            colour = colour_for(self.effective_action_of_change(change))
             if colour is not None:
                 return colour
         if (
@@ -1963,6 +1967,11 @@ class FlatChangeModel(QAbstractTableModel):
             and index.column() == self.ACTION
             and self._row_selectable(row)
         ):
+            # A delete decision is represented by the red Delete icon alone.
+            # Offering a checkbox here made it look disabled and turned a
+            # click into an unrelated Exclude decision.
+            if self._effective_row(row) is ChangeDecision.DELETE:
+                return None
             return (
                 Qt.CheckState.Checked
                 if self._effective_row(row) is ChangeDecision.INCLUDE
@@ -1986,7 +1995,12 @@ class FlatChangeModel(QAbstractTableModel):
         flags = super().flags(index)
         if index.isValid() and index.column() == self.ACTION:
             row = self._row_data(index.row())
-            if row is not None and self.decisions_enabled and self._row_selectable(row):
+            if (
+                row is not None
+                and self.decisions_enabled
+                and self._row_selectable(row)
+                and self._effective_row(row) is not ChangeDecision.DELETE
+            ):
                 flags |= Qt.ItemFlag.ItemIsUserCheckable
         return flags
 
@@ -2269,6 +2283,12 @@ class FlatChangeModel(QAbstractTableModel):
             else ChangeAction.NO_CHANGE
         )
         overridden = (not self.stale) and row.path in self._override_paths
+        if change is not None and (
+            self.decisions.effective(change) is ChangeDecision.DELETE
+        ):
+            # Keep the Delete colour on a synthesized delete, so the marker
+            # reads as a deletion rather than as a generic override.
+            overridden = False
         if row.is_directory:
             if action is ChangeAction.NO_CHANGE:
                 if directory is not None and directory.subtree_changed:
