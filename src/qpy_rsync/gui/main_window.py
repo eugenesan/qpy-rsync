@@ -415,6 +415,7 @@ class MainWindow(QMainWindow):
         self._preserve_for_compare = True
         self._preserve_reason = ""
         self._preserve_before_force: bool | None = None
+        self._cancel_requested = False
         self._metadata_pending = False
         self._comparison_announced = False
         self._compare_generation = 0
@@ -1643,7 +1644,15 @@ class MainWindow(QMainWindow):
         # a different job, so it turns preservation off and lights the button
         # indicator. The button stays clickable: the user may check it again
         # to force preservation despite the changed locations or filters.
-        if stale and self.preserve_button.isChecked():
+        # Synchronization marks the comparison stale temporarily; that is not
+        # a profile/location change, so it must not turn Preserve Decisions
+        # off. Otherwise the automatic Compare after a sync warns about a
+        # fresh comparison before the setting can be restored.
+        sync_in_progress = (
+            getattr(self, "_execution_gate", None) is not None
+            and self._execution_gate.state is ExecutionGateState.EXECUTING
+        ) or bool(getattr(self, "_cancel_requested", False))
+        if stale and self.preserve_button.isChecked() and not sync_in_progress:
             # Remember the user's setting so a fresh comparison can restore it.
             self._preserve_before_force = True
             self._set_preserve_checked(False)
@@ -3073,6 +3082,7 @@ class MainWindow(QMainWindow):
         self._set_state("Verification found a mismatch.", "warning")
 
     def _plan_validation_cancelled(self) -> None:
+        self._cancel_requested = False
         if self._closing:
             return
         self._log_rsync_elapsed("verification")
@@ -3194,12 +3204,18 @@ class MainWindow(QMainWindow):
             context.__exit__(None, None, None)  # type: ignore[attr-defined]
 
     def _cancel_active_operation(self) -> None:
-        if self._execution_gate.state is ExecutionGateState.EXECUTING:
-            self._sync_service.cancel()
-        elif self._execution_gate.state is ExecutionGateState.VERIFYING:
-            self._plan_validation.cancel()
-        else:
-            self._service.cancel()
+        service = self._running_service()
+        if service is None:
+            return
+        # Give immediate feedback; the cancelled callback only arrives once
+        # rsync has actually terminated, which can take a few seconds.
+        self._cancel_requested = True
+        self.cancel_button.setEnabled(False)
+        self.progress_label.setText("Cancelling...")
+        self._set_state("Cancelling...", "warning")
+        self._set_status("Cancelling the running operation...", "warning")
+        self._append_log("STATE cancel-requested")
+        service.cancel()  # type: ignore[attr-type]
 
     def _running_service(self) -> object | None:
         """Return the service of the operation that is currently running."""
@@ -3318,6 +3334,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._compare)
 
     def _sync_error(self, message: str, cancelled: bool = False) -> None:
+        self._cancel_requested = False
         self._cleanup_dialog_filter()
         if self._closing:
             return
@@ -3644,12 +3661,14 @@ class MainWindow(QMainWindow):
     def _comparison_cancelled(self) -> None:
         if self._closing:
             return
+        self._cancel_requested = False
         self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
         self.progress_bar.setValue(0)
+        self.comparison.set_stale(True, block_views=True)
         self.progress_label.setText("Comparison cancelled")
         self._set_state("Comparison cancelled", "warning")
         self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")

@@ -2395,3 +2395,30 @@ def test_missing_native_extension_falls_back_to_python_view(monkeypatch) -> None
     settings.sync()
     window.close()
     application.processEvents()
+
+
+def test_cancel_gives_immediate_feedback() -> None:
+    from qpy_rsync.backend.process_runner import ProcessState
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+
+    class FakeService:
+        state = ProcessState.RUNNING
+
+        def __init__(self) -> None:
+            self.cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    fake = FakeService()
+    window._service = fake  # type: ignore[assignment]
+    window._cancel_active_operation()
+    assert fake.cancelled
+    assert window.progress_label.text() == "Cancelling..."
+    assert window.status_edit.text() == "Cancelling..."
+    assert not window.cancel_button.isEnabled()
+    window.close()
+    application.processEvents()
