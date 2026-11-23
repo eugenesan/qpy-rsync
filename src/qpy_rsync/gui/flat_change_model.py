@@ -715,11 +715,18 @@ class FlatChangeModel(QAbstractTableModel):
                     return self._row_sort_key(self._rows[index])
 
             keys = {index: key_for(index) for index in set(self._visible_rows)}
-            self._visible_rows.sort(key=cmp_to_key(
-                lambda left, right: (
-                    (keys[left] > keys[right]) - (keys[left] < keys[right])
-                ) * (-1 if reverse else 1)
-            ))
+            root_rows = [
+                index for index in self._visible_rows
+                if self._rows[index].path == ""
+            ]
+            sortable = [
+                index for index in self._visible_rows
+                if self._rows[index].path != ""
+            ]
+            # list.sort with a key compares in C; cmp_to_key made every
+            # comparison a Python call and cost seconds at 520k rows.
+            sortable.sort(key=keys.__getitem__, reverse=reverse)
+            self._visible_rows = root_rows + sortable
         self._visible_position_of_row = self._position_array()
         for position, index in enumerate(self._visible_rows):
             self._rows[index].alternate = position % 2 == 0

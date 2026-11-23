@@ -722,55 +722,72 @@ struct DataStore {
 
   void sort_visible(int column, bool descending) {
     const bool by_name = column == 0 || column == 5;
+    if (by_name) return;  // name keeps the folder-tree order built in tree_order()
+    auto dir_flag = [&](int id) {
+      return id < static_cast<int>(is_dir.size()) && is_dir[id] != 0;
+    };
     auto name_of = [&](int id) -> const std::string& {
       return id < static_cast<int>(folded_names.size()) ? folded_names[id]
                                                        : paths[id];
     };
-    auto dir_flag = [&](int id) {
-      return id < static_cast<int>(is_dir.size()) && is_dir[id] != 0;
+    static const int action_rank[] = {0, 5, 3, 1, 2, 4, 6};
+    struct SortKey {
+      long long number;
+      std::string text;
     };
-    auto ascending = [&](int a, int b) {
-      if (by_name) return name_of(a) < name_of(b);
+    std::vector<SortKey> keys(visible.size());
+    for (std::size_t i = 0; i < visible.size(); ++i) {
+      const int id = visible[i];
+      SortKey& key = keys[i];
       if (column == 1 || column == 6) {
-        const long long av = dir_flag(a) && a < static_cast<int>(dir_items.size())
-                                 ? dir_items[a] : 0;
-        const long long bv = dir_flag(b) && b < static_cast<int>(dir_items.size())
-                                 ? dir_items[b] : 0;
-        if (av != bv) return av < bv;
+        key.number = dir_flag(id) && id < static_cast<int>(dir_items.size())
+                         ? dir_items[id] : 0;
+        key.text = name_of(id);
       } else if (column == 3 || column == 8) {
-        const std::string at = a < static_cast<int>(times.size()) ? times[a] : "";
-        const std::string bt = b < static_cast<int>(times.size()) ? times[b] : "";
-        if (at != bt) return at < bt;
+        key.number = 0;
+        key.text = id < static_cast<int>(times.size()) ? times[id] : std::string();
       } else if (column == 4) {
-        // Python sorts by the alphabetical action label; folders have an
-        // empty label and therefore come first ascending, last descending.
-        static const int rank[] = {0, 5, 3, 1, 2, 4, 6};  // create, update,
-        // metadata, delete, destination-only, unchanged, message
-        auto action_rank = [&](int id) {
-          if (dir_flag(id)) return -1;
+        if (dir_flag(id)) {
+          key.number = -1;
+        } else {
           const int code = id < static_cast<int>(actions.size()) ? actions[id] : 5;
-          return code >= 0 && code < 7 ? rank[code] : 6;
-        };
-        const int ai = action_rank(a);
-        const int bi = action_rank(b);
-        if (ai != bi) return ai < bi;
+          key.number = code >= 0 && code < 7 ? action_rank[code] : 6;
+        }
+        key.text = name_of(id);
       } else {
-        const long long av = dir_flag(a) && a < static_cast<int>(dir_size.size())
-                                 ? dir_size[a]
-                                 : (a < static_cast<int>(sizes.size()) ? sizes[a] : 0);
-        const long long bv = dir_flag(b) && b < static_cast<int>(dir_size.size())
-                                 ? dir_size[b]
-                                 : (b < static_cast<int>(sizes.size()) ? sizes[b] : 0);
-        if (av != bv) return av < bv;
+        key.number = dir_flag(id) && id < static_cast<int>(dir_size.size())
+                         ? dir_size[id]
+                         : (id < static_cast<int>(sizes.size()) ? sizes[id] : 0);
+        key.text = name_of(id);
       }
-      if (name_of(a) != name_of(b)) return name_of(a) < name_of(b);
-      // Python's sort keys end with the full path, which breaks name ties.
-      return paths[a] < paths[b];
-    };
-    std::stable_sort(visible.begin(), visible.end(), [&](int a, int b) {
-      return descending ? ascending(b, a) : ascending(a, b);
+    }
+    std::vector<int> order(visible.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+      const SortKey& left = keys[a];
+      const SortKey& right = keys[b];
+      if (left.number != right.number) {
+        return descending ? left.number > right.number
+                          : left.number < right.number;
+      }
+      if (left.text != right.text) {
+        return descending ? left.text > right.text : left.text < right.text;
+      }
+      return paths[visible[a]] < paths[visible[b]];
     });
+    std::vector<int> sorted;
+    sorted.reserve(visible.size());
+    int root_id = -1;
+    auto root_it = path_to_id.find(root_path());
+    if (root_it != path_to_id.end()) root_id = root_it->second;
+    for (int index : order) {
+      if (visible[index] != root_id) sorted.push_back(visible[index]);
+    }
+    visible.clear();
+    if (root_id >= 0) visible.push_back(root_id);
+    visible.insert(visible.end(), sorted.begin(), sorted.end());
   }
+
 };
 
 class TableModel : public QAbstractTableModel {

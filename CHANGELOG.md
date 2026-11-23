@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Sorting is much faster in both views: Python uses native C-level key
+  sorting instead of a Python comparator (~5 s -> ~0.8 s at 520k), and native
+  sorts with precomputed keys. The synthetic root stays first in both views.
+
 - Fixed a Python-view crash at Compare start: clearing destination metadata
   before the comparison has rows no longer runs the filter pass on an
   unbuilt model.
