@@ -52,7 +52,12 @@ from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
     destination_subtree_size,
 )
-from qpy_rsync.backend.diagnostics import debug_timing, set_timing_sink, timed
+from qpy_rsync.backend.diagnostics import (
+    debug_timing,
+    set_timing_enabled,
+    set_timing_sink,
+    timed,
+)
 from qpy_rsync.backend.inventory import (
     InventoryResult,
     gather_destination_metadata,
@@ -384,6 +389,10 @@ class MainWindow(QMainWindow):
         self._rsync_output_logging = settings.value(
             "logging/rsync_output", False, type=bool
         )
+        self._timing_logging = settings.value(
+            "logging/timing", False, type=bool
+        )
+        set_timing_enabled(self._timing_logging)
         self._metadata_two_pass = settings.value(
             "advanced/dest_metadata_two_pass", False, type=bool
         )
@@ -1909,6 +1918,7 @@ class MainWindow(QMainWindow):
             metadata_two_pass=self._metadata_two_pass,
             inventory_preload=self._inventory_preload,
             python_view=self._legacy_python,
+            timing_logging=self._timing_logging,
         )
         # Apply the log and backup fields the dialog may have changed.
         accepted = dialog.exec()
@@ -1934,6 +1944,11 @@ class MainWindow(QMainWindow):
             )
             self._rsync_output_logging = dialog.rsync_output_logging()
             settings.setValue("logging/rsync_output", self._rsync_output_logging)
+            self._timing_logging = dialog.timing_logging()
+            settings.setValue("logging/timing", self._timing_logging)
+            set_timing_enabled(self._timing_logging)
+            if self._hybrid_view is not None:
+                self._hybrid_view.set_profiling(self._timing_logging)
             self._metadata_two_pass = dialog.metadata_two_pass()
             self._inventory_preload = dialog.inventory_preload()
             settings.setValue(
@@ -4249,6 +4264,7 @@ class MainWindow(QMainWindow):
         except (RuntimeError, ImportError, OSError):
             return
         self._hybrid_view = view
+        view.set_profiling(self._timing_logging)
         self._hybrid_selected_path = ""
         self._python_overview = self.overview
         shim = NativeOverviewShim(view.overview_widget)

@@ -11,10 +11,23 @@ def enabled() -> bool:
     return os.environ.get("QPY_RSYNC_DEBUG", "").lower() in {"1", "true", "yes", "on"}
 
 
+_TIMING_OVERRIDE = False
+
+
+def set_timing_enabled(value: bool) -> None:
+    """Enable timing output from the Advanced setting, at runtime."""
+    global _TIMING_OVERRIDE
+    _TIMING_OVERRIDE = bool(value)
+
+
 def timing_enabled() -> bool:
-    return enabled() or any(
-        os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
-        for name in ("QPY_RSYNC_TIMING", "QPY_RSYNC_PROFILE")
+    return (
+        _TIMING_OVERRIDE
+        or enabled()
+        or any(
+            os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
+            for name in ("QPY_RSYNC_TIMING", "QPY_RSYNC_PROFILE")
+        )
     )
 
 

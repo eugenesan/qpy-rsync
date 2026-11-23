@@ -13,6 +13,11 @@
 - Fixed the sync preview showing stale rules: incremental plan updates now
   refresh the fingerprints that key the decision-filter cache, so exclusions
   made after opening the preview appear in the generated rules.
+- Added **Settings → Advanced → Include timing diagnostics in the session
+  log**. It enables the existing plan/model/sort timing probes for both the
+  Python and native views at runtime, persists across restarts, and makes bug
+  reports easier: attach the session log after reproducing the problem. The
+  `QPY_RSYNC_PROFILE` and related environment variables still work.
 - Synchronization no longer turns Preserve Decisions off while marking the
   comparison stale, so the automatic Compare after a sync does not warn about
   a fresh comparison.

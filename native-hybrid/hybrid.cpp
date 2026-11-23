@@ -74,6 +74,13 @@ inline SelectionHook g_selection_hook = nullptr;
 inline DecisionHook g_native_decision_hook = nullptr;
 inline bool g_in_select = false;
 inline bool g_in_sync = false;
+inline bool g_profiling_enabled = false;
+
+inline bool profiling_enabled() {
+  if (g_profiling_enabled) return true;
+  const char* value = std::getenv("QPY_RSYNC_PROFILE");
+  return value != nullptr && value[0] != '\0';
+}
 inline nb::object g_selection_callback;
 inline nb::object g_decision_callback;
 inline nb::object g_context_callback;
@@ -165,7 +172,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
   QElapsedTimer phase;
   phase.start();
   for (TableModel* model : s.models) model->reset();
-  if (std::getenv("QPY_RSYNC_PROFILE")) {
+  if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] model_reset ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
@@ -219,7 +226,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
       select_path_id_impl(s, current_id);
     }
   }
-  if (std::getenv("QPY_RSYNC_PROFILE")) {
+  if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] cursor_restore ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
@@ -233,14 +240,14 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
   QWidget* list_focus = focus;
   if (list_focus == nullptr && s.views[0] != nullptr) list_focus = s.views[0];
   if (list_focus != nullptr) list_focus->setFocus();
-  if (std::getenv("QPY_RSYNC_PROFILE")) {
+  if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
   if (expand_overview && s.overview != nullptr && s.overview_view != nullptr) {
     phase.restart();
     s.overview->build(s.store, true);
-    if (std::getenv("QPY_RSYNC_PROFILE")) {
+    if (profiling_enabled()) {
       std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
     }
@@ -1345,6 +1352,8 @@ NB_MODULE(native_hybrid, m) {
     for (TableModel* model : s.models) model->layout_refresh();
   });
 
+  m.def("set_profiling_enabled", [](bool value) { g_profiling_enabled = value; });
+
   m.def("set_root_names", [](const std::string& source,
                              const std::string& destination) {
     Session& s = session();
@@ -1439,7 +1448,7 @@ NB_MODULE(native_hybrid, m) {
     QElapsedTimer phase;
     phase.start();
     s.store.rebuild_visible();
-    if (std::getenv("QPY_RSYNC_PROFILE")) {
+    if (profiling_enabled()) {
       std::fprintf(stderr, "[qpy-rsync native] rebuild_visible ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
     }
@@ -1447,7 +1456,7 @@ NB_MODULE(native_hybrid, m) {
     QElapsedTimer stats_timer;
     stats_timer.start();
     update_stats(s);
-    if (std::getenv("QPY_RSYNC_PROFILE")) {
+    if (profiling_enabled()) {
       std::fprintf(stderr, "[qpy-rsync native] update_stats ms=%lld total=%lld\n",
                    static_cast<long long>(stats_timer.elapsed()),
                    static_cast<long long>(total_timer.elapsed()));

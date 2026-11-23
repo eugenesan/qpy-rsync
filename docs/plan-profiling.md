@@ -3,6 +3,14 @@
 The plan-build path is instrumented with low-overhead timing probes. They are
 off by default; enabling them adds a few `perf_counter()` calls per phase.
 
+In the app you can enable them permanently with **Settings → Advanced →
+Include timing diagnostics in the session log**. The setting applies
+immediately to both the Python and native views, is saved across restarts,
+and is the easiest way to collect diagnostics for a bug report: reproduce the
+problem, then attach the session log from
+`$XDG_CACHE_HOME/qpy-rsync/app-<profile>.log`. The environment variables below
+are still available for one-off captures and override nothing.
+
 ## Enable
 
 ```sh

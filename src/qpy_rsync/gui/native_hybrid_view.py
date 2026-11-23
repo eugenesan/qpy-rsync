@@ -102,6 +102,10 @@ class NativeHybridView:
     def on_header_context_menu(self, callback) -> None:
         self._native.set_header_context_callback(callback)
 
+    def set_profiling(self, enabled: bool) -> None:
+        """Enable the native side of the timing diagnostics."""
+        self._native.set_profiling_enabled(bool(enabled))
+
     def set_column_hidden(self, pane: int, column: int, hidden: bool) -> None:
         self._native.set_column_hidden(pane, column, hidden)
 
