@@ -2065,11 +2065,10 @@ class MainWindow(QMainWindow):
     def _recent_profile_paths(self) -> list[Path]:
         """Profiles found in the profile folder, newest first."""
         directory = profiles_directory()
-        return sorted(
-            (path for path in directory.glob("*.json") if path.is_file()),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )[:10]
+        profiles = [path for path in directory.glob("*.json") if path.is_file()]
+        profiles.sort(key=lambda path: path.name)
+        profiles.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        return profiles[:10]
 
     def _remember_profile_path(self, path: Path) -> None:
         self._profile_path = path
@@ -4538,22 +4537,26 @@ class MainWindow(QMainWindow):
         model = self.comparison.model
         decisions = model.decisions
         before = model._snapshot()
-        for path in targets:
-            if decision == 2:  # Exclude
-                decisions.set(path, ChangeDecision.EXCLUDE)
-            else:
-                decisions.reset(path)
+        with timed("native.decision_mirror", paths=len(targets)):
+            for path in targets:
+                if decision == 2:  # Exclude
+                    decisions.set(path, ChangeDecision.EXCLUDE)
+                else:
+                    decisions.reset(path)
         after = model._snapshot()
         if before != after:
             model.decision_history.record(before, after)
             model.history_changed.emit()
         model._refresh_effective_actions(set(targets))
         if self._hybrid_view is not None:
-            self._hybrid_view.refresh_after_decision(path_id, decision)
-        self._on_decision_changed(set(targets))
+            with timed("native.decision_refresh"):
+                self._hybrid_view.refresh_after_decision(path_id, decision)
+        with timed("native.decision_notify"):
+            self._on_decision_changed(set(targets))
         # _on_decision_changed already marks the plan stale through
         # _overview_updated; avoid a second full stale pass here.
-        self._invalidate_validated_plan(mark=False)
+        with timed("native.decision_validate"):
+            self._invalidate_validated_plan(mark=False)
 
     def _set_cached_destination(self, paths: object | None) -> None:
         setter = getattr(self._inventory_service, "set_cached_destination", None)

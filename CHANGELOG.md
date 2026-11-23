@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Profile menu is ordered by access time then name after removing the recent
+  lists.
+- Native folders keep their name/icon on both sides; only empty count/size
+  cells are blank, and a zero-size folder shows 0 B.
+- Python sorting reorders the visible rows instead of rebuilding the whole
+  model; first sort at 520k dropped from ~3.7 s to ~2.1 s, subsequent sorts
+  to ~0.8 s. Decision patching is safe with custom sort orders.
+- Native decisions no longer re-expand the whole overview on every edit
+  (1.3 s -> ~0.3 s); expanded folders are restored from a path index.
+- Python Decisions checkbox accepts pointer clicks again.
+- Native overview header height matches Python.
+
 - Native overview now builds a folder hierarchy with expandable rows, Total
   first; list indentation reserves the fold-marker gutter on every row so the
   hierarchy stays aligned and connector lines no longer cross icons.

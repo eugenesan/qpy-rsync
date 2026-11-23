@@ -33,6 +33,8 @@
 #include <QWidget>
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -120,7 +122,25 @@ void header_context_hook(int pane, int x, int y) {
 int first_visible_column(const Session& s, int pane);
 void select_path_id_impl(Session& s, int path_id, bool center = false);
 
-void refresh_native_models(Session& s) {
+static std::vector<std::string> collect_expanded_paths(QTreeView* view) {
+  std::vector<std::string> paths;
+  if (view == nullptr || view->model() == nullptr) return paths;
+  std::function<void(const QModelIndex&)> walk = [&](const QModelIndex& parent) {
+    QAbstractItemModel* model = view->model();
+    for (int row = 0; row < model->rowCount(parent); ++row) {
+      QModelIndex index = model->index(row, 0, parent);
+      if (!index.isValid()) continue;
+      if (view->isExpanded(index)) {
+        paths.push_back(model->data(index, Qt::UserRole).toString().toStdString());
+        walk(index);
+      }
+    }
+  };
+  walk(QModelIndex());
+  return paths;
+}
+
+void refresh_native_models(Session& s, bool expand_overview = false) {
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
   int current_id = s.current_path_id;
@@ -139,7 +159,17 @@ void refresh_native_models(Session& s) {
       positions[i] = s.views[i]->verticalScrollBar()->value();
     }
   }
+  const std::vector<std::string> expanded_paths =
+      collect_expanded_paths(s.overview_view);
+  std::map<std::string, QModelIndex> path_index;
+  QElapsedTimer phase;
+  phase.start();
   for (TableModel* model : s.models) model->reset();
+  if (std::getenv("QPY_RSYNC_PROFILE")) {
+    std::fprintf(stderr, "[qpy-rsync native] model_reset ms=%lld\n",
+                 static_cast<long long>(phase.elapsed()));
+  }
+  phase.restart();
   if (current_id >= 0 && current_id < static_cast<int>(s.store.row_of_id.size())) {
     if (s.store.row_of_id[current_id] < 0) {
       // Remember it: when undo brings it back, focus returns to this item.
@@ -189,6 +219,10 @@ void refresh_native_models(Session& s) {
       select_path_id_impl(s, current_id);
     }
   }
+  if (std::getenv("QPY_RSYNC_PROFILE")) {
+    std::fprintf(stderr, "[qpy-rsync native] cursor_restore ms=%lld\n",
+                 static_cast<long long>(phase.elapsed()));
+  }
   // Restore the viewport last: a reset or scrollTo can move the bars, and
   // the user expects the list to stay at the same offset across undo.
   for (int i = 0; i < 3; ++i) {
@@ -199,9 +233,42 @@ void refresh_native_models(Session& s) {
   QWidget* list_focus = focus;
   if (list_focus == nullptr && s.views[0] != nullptr) list_focus = s.views[0];
   if (list_focus != nullptr) list_focus->setFocus();
+  if (std::getenv("QPY_RSYNC_PROFILE")) {
+    std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
+                 static_cast<long long>(phase.elapsed()));
+  }
   if (s.overview != nullptr && s.overview_view != nullptr) {
+    phase.restart();
     s.overview->build(s.store, true);
-    s.overview_view->expandToDepth(2);
+    if (std::getenv("QPY_RSYNC_PROFILE")) {
+      std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
+                   static_cast<long long>(phase.elapsed()));
+    }
+    // Expanding 30k overview nodes costs ~1 s. A decision refresh only needs
+    // the top folders open; a full comparison restores the deeper expansion.
+    if (expand_overview) {
+      s.overview_view->expandToDepth(2);
+    } else {
+      std::function<void(const QModelIndex&)> map_paths =
+          [&](const QModelIndex& parent) {
+            QAbstractItemModel* model = s.overview;
+            for (int row = 0; row < model->rowCount(parent); ++row) {
+              QModelIndex index = model->index(row, 0, parent);
+              if (!index.isValid()) continue;
+              const std::string path =
+                  model->data(index, Qt::UserRole).toString().toStdString();
+              if (!path.empty()) path_index[path] = index;
+              map_paths(index);
+            }
+          };
+      map_paths(QModelIndex());
+      for (const std::string& path : expanded_paths) {
+        auto found = path_index.find(path);
+        if (found != path_index.end()) {
+          s.overview_view->setExpanded(found->second, true);
+        }
+      }
+    }
   }
 }
 
@@ -501,7 +568,9 @@ class HybridDelegate : public QStyledItemDelegate {
                            ? store.actions[id] : NoChange;
     const bool source_present = action != DestOnly && action != Delete;
     const bool dest_present = action != Create;
-    if ((pane_ == 0 && !source_present) || (pane_ == 2 && !dest_present)) {
+    const bool dir_row = id < static_cast<int>(store.is_dir.size()) && store.is_dir[id];
+    if (!dir_row && ((pane_ == 0 && !source_present) ||
+                     (pane_ == 2 && !dest_present))) {
       QStyleOptionViewItem blank(option);
       initStyleOption(&blank, index);
       paint_background(painter, option, false);
@@ -919,6 +988,8 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->setRootIsDecorated(true);
     s.overview_view->header()->setHighlightSections(false);
     s.overview_view->header()->setDefaultAlignment(Qt::AlignHCenter);
+    s.overview_view->header()->setFixedHeight(
+        qMax(16, s.overview_view->fontMetrics().height() + 2));
     s.overview = new OverviewModel(s.overview_widget);
     s.overview_view->setModel(s.overview);
     s.overview_view->setItemDelegate(new OverviewDelegate(s.overview_widget));
@@ -1236,9 +1307,14 @@ NB_MODULE(native_hybrid, m) {
     if (it == s.store.path_to_id.end()) return;
     const int id = it->second;
     s.store.set_decision_id(id, decision, true);
-    if (g_native_decision_hook != nullptr) g_native_decision_hook(id, decision);
-    s.store.rebuild_visible();
-    refresh_native_models(s);
+    if (g_native_decision_hook != nullptr) {
+      // Python mirrors the decision and calls refresh_after_decision(); doing
+      // the same refresh here cost another full pass over half a million rows.
+      g_native_decision_hook(id, decision);
+    } else {
+      s.store.rebuild_visible();
+      refresh_native_models(s);
+    }
   });
 
   m.def("set_action_icons", [](const std::vector<std::uintptr_t>& pointers) {
@@ -1369,10 +1445,24 @@ NB_MODULE(native_hybrid, m) {
 
   m.def("refresh_after_decision", [](int path_id, int decision) {
     Session& s = session();
-    if (decision != Exclude) return;
+    QElapsedTimer total_timer;
+    total_timer.start();
+    QElapsedTimer phase;
+    phase.start();
     s.store.rebuild_visible();
+    if (std::getenv("QPY_RSYNC_PROFILE")) {
+      std::fprintf(stderr, "[qpy-rsync native] rebuild_visible ms=%lld\n",
+                   static_cast<long long>(phase.elapsed()));
+    }
     refresh_native_models(s);
+    QElapsedTimer stats_timer;
+    stats_timer.start();
     update_stats(s);
+    if (std::getenv("QPY_RSYNC_PROFILE")) {
+      std::fprintf(stderr, "[qpy-rsync native] update_stats ms=%lld total=%lld\n",
+                   static_cast<long long>(stats_timer.elapsed()),
+                   static_cast<long long>(total_timer.elapsed()));
+    }
   });
 
   m.def("refresh", []() {
@@ -1383,7 +1473,7 @@ NB_MODULE(native_hybrid, m) {
       // Standalone callers may not have created widgets yet.
       return;
     }
-    refresh_native_models(s);
+    refresh_native_models(s, true);
     update_stats(s);
   });
 

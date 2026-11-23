@@ -598,10 +598,132 @@ class FlatChangeModel(QAbstractTableModel):
             return
         self._sort_column = column
         self._sort_order = order
+        self._custom_sort = column not in (
+            self.SOURCE_NAME, self.DESTINATION_NAME
+        )
         self.beginResetModel()
-        self._build_rows()
-        self._apply_filters()
+        self._reorder_visible()
         self.endResetModel()
+
+    def _reorder_visible(self) -> None:
+        # Rows, visibility and aggregates are already built; sorting only
+        # needs to reorder the visible indices. Rebuilding the whole model
+        # cost seconds at 520k items.
+        from functools import cmp_to_key
+
+        reverse = self._sort_order == Qt.SortOrder.DescendingOrder
+        by_name = self._sort_column in (self.SOURCE_NAME, self.DESTINATION_NAME)
+        row_of_path = self._row_of_path
+
+        if by_name:
+            # The tree layout keeps a folder's files before its child folders.
+            # Sort siblings inside those two groups, in the order the groups
+            # already appear, so the hierarchy and the root row stay put.
+            from collections import OrderedDict
+
+            groups: dict[str, dict[str, list[int]]] = OrderedDict()
+            for index in self._visible_rows:
+                row = self._rows[index]
+                group = groups.setdefault(row.parent, {"files": [], "dirs": []})
+                group["dirs" if row.is_directory else "files"].append(index)
+            for group in groups.values():
+                for key in ("files", "dirs"):
+                    group[key].sort(
+                        key=lambda index: self._rows[index].name.casefold(),
+                        reverse=reverse,
+                    )
+            ordered: list[int] = []
+            emitted: set[str] = set()
+
+            def emit(parent: str) -> None:
+                if parent in emitted:
+                    return
+                emitted.add(parent)
+                group = groups.get(parent)
+                if group is None:
+                    return
+                for index in group["files"]:
+                    if self._rows[index].path == "":
+                        ordered.insert(0, index)
+                    else:
+                        ordered.append(index)
+                for index in group["dirs"]:
+                    ordered.append(index)
+                    emit(self._rows[index].path)
+
+            emit("")
+            for index in list(ordered):
+                if self._rows[index].path == "":
+                    ordered.remove(index)
+                    ordered.insert(0, index)
+                    break
+            self._visible_rows = ordered
+        else:
+            # Use the cached flat arrays for the common numeric columns;
+            # _row_sort_key() does several dict lookups per row and cost
+            # seconds at 520k items.
+            size_cols = (
+                self.SOURCE_SIZE, self.DESTINATION_SIZE,
+                self.SOURCE_SIZE_BYTES, self.DESTINATION_SIZE_BYTES,
+            )
+            item_cols = (self.SOURCE_ITEMS, self.DESTINATION_ITEMS)
+            time_cols = (self.SOURCE_TIME, self.DESTINATION_TIME)
+            dirs = self._directories
+            change_sizes = self._change_sizes
+            folded = self._row_names_folded
+            changes = self.changes
+            if self._sort_column in size_cols:
+                source = self._sort_column in (self.SOURCE_SIZE, self.SOURCE_SIZE_BYTES)
+                def key_for(index):
+                    row = self._rows[index]
+                    if row.is_directory:
+                        directory = dirs.get(row.path)
+                        value = (
+                            (directory.subtree_size if source else
+                             directory.subtree_destination_size)
+                            if directory else 0
+                        )
+                    else:
+                        value = change_sizes[row.change_index]
+                    return (value, folded[index], row.path)
+            elif self._sort_column in item_cols:
+                source = self._sort_column == self.SOURCE_ITEMS
+                def key_for(index):
+                    row = self._rows[index]
+                    if row.is_directory:
+                        directory = dirs.get(row.path)
+                        value = (
+                            (directory.subtree_items if source else
+                             directory.subtree_destination_items)
+                            if directory else 0
+                        )
+                    else:
+                        value = 0
+                    return (value, folded[index], row.path)
+            elif self._sort_column in time_cols:
+                def key_for(index):
+                    row = self._rows[index]
+                    if row.is_directory:
+                        directory = dirs.get(row.path)
+                        own = directory.own_change if directory else None
+                        value = str((own.modified_time if own else "") or "")
+                    else:
+                        value = str(changes[row.change_index].modified_time or "")
+                    return (value, folded[index], row.path)
+            else:
+                def key_for(index):
+                    return self._row_sort_key(self._rows[index])
+
+            keys = {index: key_for(index) for index in set(self._visible_rows)}
+            self._visible_rows.sort(key=cmp_to_key(
+                lambda left, right: (
+                    (keys[left] > keys[right]) - (keys[left] < keys[right])
+                ) * (-1 if reverse else 1)
+            ))
+        self._visible_position_of_row = self._position_array()
+        for position, index in enumerate(self._visible_rows):
+            self._rows[index].alternate = position % 2 == 0
+        self.layout_token += 1
 
     def _row_sort_key(self, row: FlatRow) -> tuple:
         """The key of one row when the whole list is sorted."""
@@ -1402,6 +1524,12 @@ class FlatChangeModel(QAbstractTableModel):
 
     def _patch_visible_rows(self, paths: set[str]) -> None:
         """Update only the rows affected by a decision change."""
+        if getattr(self, "_custom_sort", False):
+            # Visible rows are no longer in row-index order, so the bisect
+            # insertions below are invalid. Rebuild and reapply the sort.
+            self._rebuild_visible_rows()
+            self._reorder_visible()
+            return
         affected = self._affected_rows(paths)
         if not affected:
             return

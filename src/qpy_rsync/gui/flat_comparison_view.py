@@ -120,6 +120,46 @@ class ActionColumnDelegate(UniformRowDelegate):
     an item.
     """
 
+    def editorEvent(self, event: object, model: object, option: object,
+                    index: QModelIndex) -> bool:
+        """Toggle the decision when the painted (centred) checkbox is clicked."""
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QMouseEvent
+
+        if (
+            isinstance(event, QMouseEvent)
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and index.isValid()
+            and index.data(Qt.ItemDataRole.CheckStateRole) is not None
+        ):
+            styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]
+            widget = styled.widget
+            style = widget.style() if widget is not None else QApplication.style()
+            indicator = style.pixelMetric(
+                QStyle.PixelMetric.PM_IndicatorWidth, None, widget
+            )
+            group = indicator + 4 + 16
+            shift = max(0, (styled.rect.width() - group) // 2)
+            # Styles do not agree on the indicator sub-element rect (some
+            # styles return an empty rect), so accept the checkbox+icon half
+            # of the cell as the click target.
+            point = event.position().toPoint()
+            if (
+                styled.rect.contains(point)
+                and point.x() <= styled.rect.center().x() + 8
+            ):
+                checked = (
+                    index.data(Qt.ItemDataRole.CheckStateRole)
+                    != Qt.CheckState.Checked
+                )
+                return bool(model.setData(
+                    index,
+                    Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked,
+                    Qt.ItemDataRole.CheckStateRole,
+                ))
+        return super().editorEvent(event, model, option, index)  # type: ignore[arg-type]
+
     def paint(self, painter: object, option: object, index: QModelIndex) -> None:
         if index.data(Qt.ItemDataRole.CheckStateRole) is not None:
             styled = QStyleOptionViewItem(option)  # type: ignore[arg-type]

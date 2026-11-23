@@ -842,12 +842,19 @@ class TableModel : public QAbstractTableModel {
                                  ? store_->times[id] : std::string();
     const bool is_dir = id < static_cast<int>(store_->is_dir.size()) && store_->is_dir[id];
     const bool is_root = path == DataStore::root_path();
-    // A folder with no destination-side items is blank in the Destination
-    // pane, the same way the Python model blanks it.
-    if (pane_ == 2 && is_dir && !is_root && column >= 5) {
-      const long long owned = id < static_cast<int>(store_->dest_items.size())
-                                  ? store_->dest_items[id] : 0;
-      if (owned == 0 || action == Create) return {};
+    // Folders keep their name and icon on both sides. Only their counts and
+    // sizes are blank when that side has no items below the folder.
+    if (is_dir && !is_root) {
+      if (pane_ == 0 && (column == 1 || column == 2 || column == 9)) {
+        const long long owned = id < static_cast<int>(store_->dir_items.size())
+                                    ? store_->dir_items[id] : 0;
+        if (owned == 0) return {};
+      }
+      if (pane_ == 2 && (column == 6 || column == 7 || column == 10)) {
+        const long long owned = id < static_cast<int>(store_->dest_items.size())
+                                    ? store_->dest_items[id] : 0;
+        if (owned == 0) return {};
+      }
     }
     if (column == 0 || column == 5) {
       if (is_root) {
@@ -878,7 +885,7 @@ class TableModel : public QAbstractTableModel {
     if (column == 7 || column == 10) {
       long long size = id < static_cast<int>(store_->dest_sizes.size())
                            ? store_->dest_sizes[id] : 0;
-      if (size == 0) return QString();
+      if (size == 0 && !is_dir) return QString();
       return qpy_format_size(size);
     }
     if (column == 3) return QString::fromStdString(time);
@@ -1086,6 +1093,26 @@ class OverviewModel : public QAbstractItemModel {
     total->total_size = root_->total_size;
     grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
     endResetModel();
+  }
+
+  QModelIndex index_for_path(const std::string& path) const {
+    for (OverviewNode* node : nodes_) {
+      if (node->path != path || node == root_) continue;
+      OverviewNode* parent = node->parent;
+      if (parent == nullptr) return {};
+      // Find this node's row among its parent's children.
+      int row = 0;
+      for (OverviewNode* child : parent->children) {
+        if (child == node) {
+          QModelIndex parent_index = parent == root_
+                                         ? QModelIndex()
+                                         : index_for_path(parent->path);
+          return index(row, 0, parent_index);
+        }
+        ++row;
+      }
+    }
+    return {};
   }
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override {
