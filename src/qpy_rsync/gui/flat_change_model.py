@@ -2321,7 +2321,7 @@ class FlatChangeModel(QAbstractTableModel):
         )
         self._refresh_destination_sizes()
         self.layoutAboutToBeChanged.emit()
-        if not skip_view:
+        if not skip_view and self.changes and getattr(self, "_rows", None):
             self._apply_filters()
         self.layoutChanged.emit()
 
@@ -2361,7 +2361,7 @@ class FlatChangeModel(QAbstractTableModel):
                         change, self._destination_index
                     )
         self.layoutAboutToBeChanged.emit()
-        if not skip_view:
+        if not skip_view and self.changes and getattr(self, "_rows", None):
             self._apply_filters()
         self.layoutChanged.emit()
 

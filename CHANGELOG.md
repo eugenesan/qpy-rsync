@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed a Python-view crash at Compare start: clearing destination metadata
+  before the comparison has rows no longer runs the filter pass on an
+  unbuilt model.
+- Native decision edits no longer rebuild the overview tree; the decision
+  diff is still applied to the lists and statistics. Measured 0.5 s -> 0.15 s
+  at 520k items.
+
 - Profile menu is ordered by access time then name after removing the recent
   lists.
 - Native folders keep their name/icon on both sides; only empty count/size

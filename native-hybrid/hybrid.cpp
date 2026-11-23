@@ -237,38 +237,14 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
-  if (s.overview != nullptr && s.overview_view != nullptr) {
+  if (expand_overview && s.overview != nullptr && s.overview_view != nullptr) {
     phase.restart();
     s.overview->build(s.store, true);
     if (std::getenv("QPY_RSYNC_PROFILE")) {
       std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
     }
-    // Expanding 30k overview nodes costs ~1 s. A decision refresh only needs
-    // the top folders open; a full comparison restores the deeper expansion.
-    if (expand_overview) {
-      s.overview_view->expandToDepth(2);
-    } else {
-      std::function<void(const QModelIndex&)> map_paths =
-          [&](const QModelIndex& parent) {
-            QAbstractItemModel* model = s.overview;
-            for (int row = 0; row < model->rowCount(parent); ++row) {
-              QModelIndex index = model->index(row, 0, parent);
-              if (!index.isValid()) continue;
-              const std::string path =
-                  model->data(index, Qt::UserRole).toString().toStdString();
-              if (!path.empty()) path_index[path] = index;
-              map_paths(index);
-            }
-          };
-      map_paths(QModelIndex());
-      for (const std::string& path : expanded_paths) {
-        auto found = path_index.find(path);
-        if (found != path_index.end()) {
-          s.overview_view->setExpanded(found->second, true);
-        }
-      }
-    }
+    s.overview_view->expandToDepth(2);
   }
 }
 
