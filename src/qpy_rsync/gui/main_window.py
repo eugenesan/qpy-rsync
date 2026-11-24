@@ -3327,6 +3327,7 @@ class MainWindow(QMainWindow):
                     f"{summary.included} {noun}, {format_size(summary.total_size)}"
                 )
             self.progress_bar.setValue(100)
+            self.progress_bar.setVisible(False)
             self.progress_label.setText("Selected decisions verified")
             self._set_state("Selected decisions verified.", "success")
             self._append_log("STATE decisions-verified")
@@ -3346,6 +3347,7 @@ class MainWindow(QMainWindow):
         )
         detail = "\n".join(part for part in (missing, unexpected) if part)
         self.progress_label.setText("Plan validation failed")
+        self.progress_bar.setVisible(False)
         self._end_bulk_logging()
         # A live tree can produce thousands of mismatches. Keep the dialog
         # bounded: the detail area scrolls and the buttons stay reachable.
@@ -3391,6 +3393,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
         self.progress_label.setText("Action verification cancelled")
+        self.progress_bar.setVisible(False)
         self._set_state("Action verification was cancelled.", "warning")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
@@ -3406,6 +3409,7 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
         self.progress_label.setText("Plan validation failed")
+        self.progress_bar.setVisible(False)
         self._set_state("Plan validation failed.", "error")
         self._append_log(message, severity="error")
         self._end_bulk_logging()
@@ -3606,6 +3610,7 @@ class MainWindow(QMainWindow):
             return
         self._log_rsync_elapsed("synchronization")
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         self.progress_label.setText("Synchronization completed")
         self._execution_gate.execution_completed()
         self._append_log(
@@ -3651,6 +3656,7 @@ class MainWindow(QMainWindow):
             else "STATE synchronization-failed"
         )
         self._set_busy_controls(False)
+        self.progress_bar.setVisible(False)
         self.comparison.set_stale(True, block_views=True)
         self._invalidate_plan_context()
         self._append_log(
@@ -4007,6 +4013,7 @@ class MainWindow(QMainWindow):
         self.pause_button.setEnabled(False)
         self._reset_pause_button()
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         self.progress_label.setText("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.model.preserve_decisions = getattr(
@@ -4277,6 +4284,7 @@ class MainWindow(QMainWindow):
         total = self.comparison.model.exclusions.count()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         if show:
             self.progress_label.setText(
                 f"Showing {total:,} excluded item(s); they are dimmed."
@@ -4303,6 +4311,7 @@ class MainWindow(QMainWindow):
         self.comparison.reset_exclusions()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         self.progress_label.setText(
             f"All {count:,} exclusion(s) are reset."
         )
@@ -4429,6 +4438,7 @@ class MainWindow(QMainWindow):
         self._showing_unchanged = True
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         self.progress_label.setText(self._inventory_summary(unchanged))
 
     def _inventory_summary(self, unchanged: int) -> str:
@@ -5050,6 +5060,7 @@ class MainWindow(QMainWindow):
             self._last_phase_started = None
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(False)
         self.progress_label.setText("Comparison completed")
         self._set_state(
             f"Comparison complete: {count} changed item(s).", "success"
@@ -5185,6 +5196,7 @@ class MainWindow(QMainWindow):
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)
+            self.progress_bar.setVisible(False)
         count = len(result.unchanged)
         self.progress_label.setText(
             self._inventory_summary(count)
@@ -5205,6 +5217,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Inventory gathering failed")
+        self.progress_bar.setVisible(False)
         self._append_log(f"Inventory gathering failed: {message}")
         if self.show_unchanged.isChecked():
             self._set_status(
@@ -5222,6 +5235,7 @@ class MainWindow(QMainWindow):
         self.compare_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_label.setText("Comparison failed")
+        self.progress_bar.setVisible(False)
         self._set_state("Comparison failed.", "error")
         self._append_log(message, severity="error")
         self._end_bulk_logging()
