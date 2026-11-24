@@ -737,16 +737,22 @@ class OverviewPane(QWidget):
             order = Qt.SortOrder.DescendingOrder
         self.model.set_changes(changes, root_name)
         self.tree.sortByColumn(column, order)
-        self.tree.expandToDepth(0)
+        total = self.model.index(0, 0)
+        if total.isValid():
+            self.tree.expand(total)
 
     def set_paths(self, paths: list[str], root_name: str = "") -> None:
         """Build the folder tree of a new comparison once."""
         self.model.set_paths(paths, root_name)
-        self.tree.expandToDepth(0)
+        total = self.model.index(0, 0)
+        if total.isValid():
+            self.tree.expand(total)
 
     def set_aggregates(
         self, aggregates: dict[str, tuple[int, int]], root_name: str = ""
     ) -> None:
         """Apply totals collected by the comparison model's filter pass."""
         self.model.set_aggregates(aggregates, root_name)
-        self.tree.expandToDepth(0)
+        total = self.model.index(0, 0)
+        if total.isValid():
+            self.tree.expand(total)
