@@ -147,6 +147,32 @@ static std::vector<std::string> collect_expanded_paths(QTreeView* view) {
   return paths;
 }
 
+void repaint_native_area(Session& s) {
+  // A fold/expand resets the models and changes the viewport content. Under
+  // X11+KWin the splitter sometimes kept stale native pixels below the view,
+  // over the Python progress bar and journal. Updating the whole ancestor
+  // chain forces the exposed sibling widgets to repaint their own backing
+  // store instead of reusing the old native content.
+  if (s.tables_widget != nullptr) {
+    s.tables_widget->updateGeometry();
+    for (QTableView* view : s.views) {
+      if (view == nullptr) continue;
+      if (view->viewport() != nullptr) view->viewport()->update();
+      view->update();
+    }
+    QWidget* parent = s.tables_widget->parentWidget();
+    if (parent != nullptr) {
+      if (parent->layout() != nullptr) parent->layout()->activate();
+      parent->update();
+    }
+  }
+  if (s.overview_widget != nullptr) {
+    s.overview_widget->updateGeometry();
+    if (s.overview_view != nullptr) s.overview_view->viewport()->update();
+    s.overview_widget->update();
+  }
+}
+
 void refresh_native_models(Session& s, bool expand_overview = false) {
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
@@ -253,6 +279,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     }
     s.overview_view->expandToDepth(2);
   }
+  repaint_native_area(s);
 }
 
 int first_visible_column(const Session& s, int pane) {
