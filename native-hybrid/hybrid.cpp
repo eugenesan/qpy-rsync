@@ -281,7 +281,11 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
       std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
     }
-    s.overview_view->expandToDepth(2);
+    s.overview_view->expandToDepth(0);
+    for (const std::string& path : expanded_paths) {
+      const QModelIndex index = s.overview->index_for_path(path);
+      if (index.isValid()) s.overview_view->expand(index);
+    }
   }
   repaint_native_area(s);
 }
@@ -1086,7 +1090,7 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->header()->resizeSection(2, 64);
     s.overview_view->header()->setSectionResizeMode(3, QHeaderView::Fixed);
     s.overview_view->header()->resizeSection(3, 84);
-    s.overview_view->expandToDepth(2);
+    s.overview_view->expandToDepth(0);
     layout->addWidget(s.overview_view);
     layout->addWidget(s.stats_widget);
     QObject::connect(

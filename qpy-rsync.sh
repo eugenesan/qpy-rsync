@@ -34,6 +34,12 @@ qt.glx.warning=false"
 else
     export QT_LOGGING_RULES="qt.glx.warning=false"
 fi
+if [ -z "${QPY_RSYNC_GIT_COMMIT:-}" ] && command -v git >/dev/null 2>&1; then
+    QPY_RSYNC_GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
+    if [ -n "$QPY_RSYNC_GIT_COMMIT" ]; then
+        export QPY_RSYNC_GIT_COMMIT
+    fi
+fi
 export PYTHONPATH="$SCRIPT_DIR/src"
 # Print a Python stack trace if Qt or the interpreter crashes natively.
 export PYTHONFAULTHANDLER=1

@@ -296,6 +296,8 @@ class FlatChangeModel(QAbstractTableModel):
         # access in a half-million-row loop costs more than the filtering
         # itself, so the repeated fields are kept in flat arrays.
         self._row_paths: list[str] = []
+        self._dir_paths: list[str] = []
+        self._dir_index: dict[str, int] = {}
         self._row_is_dir: list[bool] = []
         self._row_change_index: list[int] = []
         self._row_parent: list[str] = []

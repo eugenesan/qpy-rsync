@@ -4278,9 +4278,12 @@ class MainWindow(QMainWindow):
 
     def _apply_show_excluded(self, show: bool) -> None:
         """Show the excluded items, or hide them again."""
-        self.comparison.set_show_excluded(show)
         if self._hybrid_view is not None:
+            # The Python model has no rows in hybrid mode; only the native
+            # store owns the visible set.
             self._hybrid_view.set_show_excluded(show)
+        else:
+            self.comparison.set_show_excluded(show)
         total = self.comparison.model.exclusions.count()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)

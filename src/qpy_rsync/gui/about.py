@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -31,8 +32,17 @@ def build_stamp() -> str:
     The application often runs from a copy that is synchronized from
     another machine, so the commit tells which build is on the screen.
     """
+    env_stamp = os.environ.get("QPY_RSYNC_GIT_COMMIT", "").strip()
+    if env_stamp:
+        return env_stamp
     root = Path(__file__).resolve().parents[3]
     if not (root / ".git").exists():
+        stamp_file = root / "BUILD_COMMIT"
+        if stamp_file.exists():
+            try:
+                return stamp_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                return ""
         return ""
     try:
         result = subprocess.run(
