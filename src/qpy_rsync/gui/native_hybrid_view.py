@@ -8,6 +8,9 @@ needs. It is opt-in; the Python view remains the default.
 
 from __future__ import annotations
 
+import importlib.util
+import os
+import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -36,22 +39,56 @@ _ACTIVE: object | None = None
 _MODULE: object | None = None
 
 
+def _load_extension_by_path() -> object | None:
+    """Load an extension installed beside the package with a tagged name.
+
+    The in-tree build produces ``native_hybrid.so``. A Debian build may keep
+    the filename nanobind generated (for example
+    ``native_hybrid.cpython-314-x86_64-linux-gnu.so``). Both are importable by
+    module name from the package directory, but searching by path keeps the
+    view working regardless of the exact filename used at install time.
+    """
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    name = "qpy_rsync.native_hybrid"
+    for filename in sorted(os.listdir(package_dir)):
+        if not (filename.startswith("native_hybrid") and filename.endswith(".so")):
+            continue
+        path = os.path.join(package_dir, filename)
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                continue
+            native = importlib.util.module_from_spec(spec)
+            sys.modules[name] = native
+            spec.loader.exec_module(native)
+            return native
+        except (ImportError, OSError):
+            sys.modules.pop(name, None)
+    return None
+
+
+def _import_extension() -> object | None:
+    try:
+        from qpy_rsync import native_hybrid
+    except (ImportError, OSError, AttributeError):
+        return _load_extension_by_path()
+    return native_hybrid
+
+
 def module() -> object | None:
     """Return the extension module, or None when it is not built."""
     global _MODULE
     if _MODULE is None:
-        try:
-            from qpy_rsync import native_hybrid
-
-            # An ABI-mismatched .so can import but fail when a binding is
-            # used; verify the minimal surface before enabling the view.
-            required = ("create_tables_widget", "create_overview_widget",
-                        "load", "refresh", "shutdown")
-            if not all(hasattr(native_hybrid, name) for name in required):
-                return None
-            _MODULE = native_hybrid
-        except (ImportError, OSError, AttributeError):
+        native = _import_extension()
+        if native is None:
             return None
+        # An ABI-mismatched .so can import but fail when a binding is
+        # used; verify the minimal surface before enabling the view.
+        required = ("create_tables_widget", "create_overview_widget",
+                    "load", "refresh", "shutdown")
+        if not all(hasattr(native, name) for name in required):
+            return None
+        _MODULE = native
     return _MODULE
 
 

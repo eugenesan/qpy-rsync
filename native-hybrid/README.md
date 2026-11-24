@@ -44,6 +44,24 @@ Requires `qt6-base-dev`, Ninja and nanobind. The module is copied to
 `Architecture: any`, with `cmake`, `ninja-build`, `qt6-base-dev`, `python3-dev`
 and `python3-nanobind` as build dependencies.
 
+### Installed location
+
+The extension always lives inside the `qpy_rsync` Python package, so the app
+imports it as `qpy_rsync.native_hybrid` from both a checkout and a package:
+
+- source checkout: `src/qpy_rsync/native_hybrid.so`;
+- Debian package: `/usr/lib/python3/dist-packages/qpy_rsync/native_hybrid*.so`
+  (nanobind adds the Python ABI tag to the filename).
+
+`debian/rules` builds with nanobind (which emits an ABI-tagged filename such as
+`native_hybrid.cpython-314-x86_64-linux-gnu.so`) into
+`debian/native-hybrid-build/`. `debian/install` copies it from there into the
+package staging tree during the normal `dh_install` step, which runs after
+pybuild has built the wheel — so the extension reaches the `.deb` without ever
+being copied into the source tree. Python imports it as
+`qpy_rsync.native_hybrid`; the loader also finds an ABI-tagged sibling by path,
+so the app still works if a build uses a different filename.
+
 ## Run
 
 Native Qt comparison views are the default on `main`. The setting

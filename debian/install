@@ -1,2 +1,4 @@
 qpy-rsync.svg usr/share/icons/hicolor/scalable/apps/
 qpy-rsync.desktop usr/share/applications/
+# Native hybrid view extension (built by debian/rules into debian/native-hybrid-build).
+debian/native-hybrid-build/native_hybrid*.so usr/lib/python3/dist-packages/qpy_rsync/
