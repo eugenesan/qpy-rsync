@@ -22,8 +22,8 @@ ACCENT = QColor("#0891B2")
 ACTION_COLORS: dict[ChangeAction, QColor] = {
     action: QColor(value) for action, value in DEFAULT_COLOURS.items()
 }
-ACTION_COLORS[ChangeAction.NO_CHANGE] = QColor("#64748b")
-ACTION_COLORS[ChangeAction.MESSAGE] = QColor("#64748b")
+ACTION_COLORS[ChangeAction.NO_CHANGE] = QColor("#94a3b8")
+ACTION_COLORS[ChangeAction.MESSAGE] = QColor("#94a3b8")
 
 ACTION_LABELS: dict[ChangeAction, str] = {
     ChangeAction.CREATE: "Create",
@@ -168,7 +168,7 @@ def action_icon(action: ChangeAction, *, accent: bool = False) -> QIcon:
     else:
         # The glyph carries the colour of the action, the same one that marks
         # the items in the list.
-        color = colour_for(action) or ACTION_COLORS.get(action, QColor("#64748b"))
+        color = colour_for(action) or ACTION_COLORS.get(action, QColor("#94a3b8"))
     pixmap, painter = _pixmap()
     _DRAWERS.get(action, _draw_unchanged)(painter, color)
     painter.end()
@@ -565,7 +565,7 @@ def root_folder_icon() -> QIcon:
     pixmap, painter = _pixmap()
     _draw_folder(painter, QColor("#94a3b8"))
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QBrush(QColor("#64748b")))
+    painter.setBrush(QBrush(QColor("#94a3b8")))
     painter.drawEllipse(QPointF(12.0, 12.0), 2.5, 2.5)
     painter.end()
     return QIcon(pixmap)

@@ -545,7 +545,6 @@ class MainWindow(QMainWindow):
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
-        controls.addWidget(vertical_separator())
         self.sync_mode = QComboBox()
         self.sync_mode.addItem("Update", SyncMode.UPDATE)
         self.sync_mode.addItem("Mirror", SyncMode.MIRROR)
@@ -699,6 +698,7 @@ class MainWindow(QMainWindow):
         self._update_preserve_button()
         controls.addWidget(self.preserve_button)
         controls.addWidget(self.inventory_after_compare_button)
+        controls.addWidget(vertical_separator())
         for widget in (
             self.validate_plan_button,
             self.synchronize_button,

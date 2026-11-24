@@ -901,13 +901,13 @@ class TableModel : public QAbstractTableModel {
       if (is_dir && id < static_cast<int>(store_->dir_items.size())) {
         return QVariant(static_cast<qlonglong>(store_->dir_items[id]));
       }
-      return 0;
+      return {};
     }
     if (column == 6) {
       if (is_dir && id < static_cast<int>(store_->dest_items.size())) {
         return QVariant(static_cast<qlonglong>(store_->dest_items[id]));
       }
-      return 0;
+      return {};
     }
     if (column == 2) {
       long long size = (is_dir && id < static_cast<int>(store_->dir_size.size()))

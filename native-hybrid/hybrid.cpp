@@ -960,6 +960,9 @@ QWidget* ensure_tables_widget(Session& s) {
     views[2]->horizontalHeader()->resizeSection(7, 96);
     views[1]->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
     views[1]->horizontalHeader()->resizeSection(4, 88);
+    views[1]->setStyleSheet(
+        "QTableView { border-left: 1px solid palette(mid);"
+        " border-right: 1px solid palette(mid); }");
     for (QTableView* view : views) {
       view->horizontalHeader()->setFixedHeight(
           qMax(16, view->fontMetrics().height() + 2));
