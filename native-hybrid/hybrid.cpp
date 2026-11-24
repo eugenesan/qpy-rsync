@@ -165,6 +165,10 @@ void repaint_native_area(Session& s) {
       if (parent->layout() != nullptr) parent->layout()->activate();
       parent->update();
     }
+    // The journal/progress live in sibling panes of the same window. Invalidate
+    // the whole window so their backing store is repainted after the native
+    // viewport changes height.
+    if (QWidget* window = s.tables_widget->window()) window->update();
   }
   if (s.overview_widget != nullptr) {
     s.overview_widget->updateGeometry();
