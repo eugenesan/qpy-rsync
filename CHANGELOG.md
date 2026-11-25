@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Changing the synchronization mode keeps **Preserve Decisions** checked. The
+  comparison becomes stale as before, but a mode change is not a profile or
+  location change and no longer discards the setting.
+- The overview and the folder Items counts now include a reported directory
+  as one item of its parent. Synthesized navigation folders and faded,
+  filtered-out parents are still not counted, so the overview Total matches
+  the compared folder's Items. The native overview now rebuilds after filters
+  and decisions instead of keeping the totals from the last comparison.
+- Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the
+  menu, decision colours, filter tooltips and the comparison column.
 - A locked profile at startup no longer silently creates a temporary copy.
   The app now offers an editable temporary profile name, a retry that picks
   up a released profile, and quitting without changing any settings or

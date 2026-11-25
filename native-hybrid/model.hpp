@@ -51,6 +51,8 @@ struct DataStore {
   // Volatile view state owned by native.
   std::vector<int> parents;
   std::vector<int> is_dir;
+  // Synthesized parent folders are navigation rows, not comparison items.
+  std::vector<char> synthetic;
   std::vector<int> depth;
   std::vector<std::string> names;
   std::vector<std::string> folded_names;
@@ -113,6 +115,7 @@ struct DataStore {
       sizes.push_back((i * 37) % 100000);
       decisions.push_back(Inherit);
     }
+    synthetic.assign(count, 0);
     visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
   }
@@ -158,6 +161,7 @@ struct DataStore {
     at += count * 4;
     std::memcpy(decisions.data(), raw.data() + at, count);
     decision_log.clear();
+    synthetic.assign(count, 0);
     visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
     *parse_ms = timer.elapsed();
@@ -219,6 +223,7 @@ struct DataStore {
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
     is_dir.resize(count);
+    synthetic.assign(count, 0);
     depth.resize(count);
     names.resize(count);
     folded_names.resize(count);
@@ -255,6 +260,7 @@ struct DataStore {
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
     is_dir.resize(count);
+    synthetic.resize(count, 0);
     depth.resize(count);
     names.resize(count);
     folded_names.resize(count);
@@ -277,6 +283,7 @@ struct DataStore {
     decisions.resize(count);
     parents.resize(count);
     is_dir.resize(count);
+    synthetic.resize(count);
     depth.resize(count);
     names.resize(count);
     folded_names.resize(count);
@@ -295,6 +302,7 @@ struct DataStore {
   // Synthesize one row per parent directory plus a virtual root row, then
   // lay the rows out in tree order (folder, its files, then its subfolders).
   void add_directories() {
+    synthetic.resize(paths.size(), 0);
     std::set<std::string> dirs;
     for (const std::string& path : paths) {
       if (path == root_path()) continue;
@@ -316,6 +324,7 @@ struct DataStore {
       sizes.push_back(0);
       times.push_back("");
       decisions.push_back(Inherit);
+      synthetic.push_back(1);
       path_to_id[dir] = id;
     }
     int root = -1;
@@ -328,6 +337,7 @@ struct DataStore {
       sizes.push_back(0);
       times.push_back("");
       decisions.push_back(Inherit);
+      synthetic.push_back(1);
       path_to_id[root_path()] = root;
     } else {
       root = root_it->second;
@@ -380,13 +390,27 @@ struct DataStore {
     compute_stripes();
   }
 
+  bool counts_as_item(int i) const {
+    if (i < 0 || i >= static_cast<int>(paths.size())) return false;
+    const bool directory =
+        i < static_cast<int>(is_dir.size()) && is_dir[i] != 0;
+    if (directory &&
+        i < static_cast<int>(synthetic.size()) && synthetic[i]) {
+      return false;
+    }
+    if (i < static_cast<int>(decisions.size()) &&
+        decisions[i] == Exclude) {
+      return false;
+    }
+    return matches(i);
+  }
+
   void compute_destination_counts() {
     dest_items.assign(paths.size(), 0);
     for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
-      if (i < static_cast<int>(is_dir.size()) && is_dir[i]) continue;
+      if (!counts_as_item(i)) continue;
       const int action = i < static_cast<int>(actions.size()) ? actions[i] : NoChange;
       if (action == Create) continue;
-      if (i < static_cast<int>(decisions.size()) && decisions[i] == Exclude) continue;
       int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
       while (parent >= 0) {
         dest_items[parent] += 1;
@@ -429,11 +453,16 @@ struct DataStore {
   }
 
   void compute_aggregates() {
+    // A reported directory is an item of its parent folder; synthesized
+    // navigation folders are never counted. Subtrees keep their counts when
+    // folded.
     dir_items.assign(paths.size(), 0);
     dir_size.assign(paths.size(), 0);
     for (int i = 0; i < static_cast<int>(paths.size()); ++i) {
-      if (i < static_cast<int>(is_dir.size()) && is_dir[i]) continue;
-      long long size = i < static_cast<int>(sizes.size()) ? sizes[i] : 0;
+      if (!counts_as_item(i)) continue;
+      const bool dir_row = i < static_cast<int>(is_dir.size()) && is_dir[i];
+      const long long size =
+          dir_row ? 0 : (i < static_cast<int>(sizes.size()) ? sizes[i] : 0);
       int parent = i < static_cast<int>(parents.size()) ? parents[i] : -1;
       while (parent >= 0) {
         dir_items[parent] += 1;
@@ -1132,23 +1161,24 @@ class OverviewModel : public QAbstractItemModel {
       if (i < 0 || i >= static_cast<int>(store.paths.size())) return;
       const std::string& path = store.paths[i];
       if (path == DataStore::root_path() || path.empty()) return;
+      if (!store.counts_as_item(i)) return;
       const bool dir_row = i < static_cast<int>(store.is_dir.size()) && store.is_dir[i];
       const std::size_t slash = path.rfind('/');
       const std::string folder_path = slash == std::string::npos
                                           ? "" : path.substr(0, slash);
+      // Direct objects live in the folder's synthetic "Files" row. A reported
+      // directory is an object of its parent, so its node is created for its
+      // contents but it is counted in the parent.
+      if (dir_row) ensure_folder(path);
       OverviewNode* folder = folder_path.empty() ? total : ensure_folder(folder_path);
-      OverviewNode* target = folder;
-      if (!dir_row) {
-        OverviewNode* files = nullptr;
-        for (OverviewNode* child : folder->children) {
-          if (child->name == "Files") { files = child; break; }
-        }
-        if (files == nullptr) files = add_child(folder, "Files", "");
-        target = files;
+      OverviewNode* files = nullptr;
+      for (OverviewNode* child : folder->children) {
+        if (child->name == "Files") { files = child; break; }
       }
+      if (files == nullptr) files = add_child(folder, "Files", "");
+      ++files->count;
       if (!dir_row) {
-        ++target->count;
-        target->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
+        files->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
       }
     };
     if (visible_only) {

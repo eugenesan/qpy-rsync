@@ -1217,11 +1217,18 @@ class FlatChangeModel(QAbstractTableModel):
                 ):
                     ci = directory.own_change_index
                     visible_change_indices.add(ci)
-                    # The directory's own row is a container, not an item in
-                    # the Items column or the overview totals. Only its files
-                    # are counted, so the overview Total matches the root
-                    # folder row and the statistics bar.
-                    dir_index = self._dir_index.get(directory.path, dir_index)
+                    # A reported directory is an item of its parent folder,
+                    # never of the compared folder itself (the root row is the
+                    # container). Synthetic parent folders carry no change and
+                    # are never counted.
+                    if directory.path:
+                        values = aggregate_counts[dir_index]
+                        values[0] += 1
+                        action = change_actions[ci]
+                        totals = total_counts[dir_index]
+                        totals[0] += 1
+                        totals[3] += action is not ChangeAction.DESTINATION_ONLY
+                        totals[4] += action is not ChangeAction.CREATE
             else:
                 ci = change_index[index]
                 if row_is_excluded:
@@ -1413,14 +1420,15 @@ class FlatChangeModel(QAbstractTableModel):
                     continue
                 if (
                     directory.own_change_index >= 0
+                    and directory.path
                     and not row.excluded
                     and not directory.faded
                 ):
                     ci = directory.own_change_index
                     visible_change_indices.add(ci)
+                    # Count the directory in its parent folder, not in itself.
                     values = aggregates[row_dir_index[index]]
                     values[0] += 1
-                    values[1] += change_sizes[ci]
             else:
                 if not row.excluded and not self._change_visible[row.change_index]:
                     continue
@@ -1467,7 +1475,10 @@ class FlatChangeModel(QAbstractTableModel):
         directory_index = self._dir_index.get(parent, 0)
         values = self._aggregate_counts[directory_index]
         values[0] += sign
-        values[1] += sign * self._change_sizes[change_index]
+        # A reported directory is an item but its own size is not part of the
+        # items below it; the sizes stay those of the files.
+        if self.changes[change_index].kind is not ObjectKind.DIRECTORY:
+            values[1] += sign * self._change_sizes[change_index]
 
     def overview_aggregates(self) -> dict[str, tuple[int, int]]:
         """The per-folder totals of the items the filters show."""
@@ -1651,6 +1662,14 @@ class FlatChangeModel(QAbstractTableModel):
             child = self._directories[child_path]
             if not child.visible or excluded.get(child_path, False):
                 continue
+            if child.own_change_index >= 0 and not child.faded:
+                # The changed directory row is an item of this folder; its
+                # own subtree is counted below it.
+                action = self.changes[child.own_change_index].action
+                if action is not ChangeAction.DESTINATION_ONLY:
+                    items += 1
+                if action is not ChangeAction.CREATE:
+                    destination_items += 1
             items += child.subtree_items
             destination_items += child.subtree_destination_items
             size += child.subtree_size

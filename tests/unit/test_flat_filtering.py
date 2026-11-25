@@ -149,6 +149,61 @@ def test_overview_aggregates_match_the_visible_changes() -> None:
     application.processEvents()
 
 
+def test_reported_directories_count_in_their_parent() -> None:
+    from PySide6.QtCore import Qt
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.flat_change_model import FlatChangeModel
+    from qpy_rsync.gui.overview import OverviewModel
+
+    application = app()
+    model = FlatChangeModel()
+    model.set_changes(
+        [
+            Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=100),
+            Change("b.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=50),
+            Change(
+                "tools",
+                ChangeAction.UPDATE_METADATA,
+                ObjectKind.DIRECTORY,
+                ".d..t......",
+            ),
+            Change("tools/c.py", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=25),
+            Change("plain/d.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", size=5),
+        ]
+    )
+    model._build_rows()
+    model._apply_filters()
+    # a.txt, b.txt, the reported tools folder, tools/c.py and plain/d.txt.
+    # The synthesized plain folder itself is not an item.
+    assert model._directories[""].subtree_items == 5
+    assert model._directories["tools"].subtree_items == 1
+    assert model._directories["plain"].subtree_items == 1
+    assert model.overview_aggregates() == {
+        "": (3, 150),
+        "tools": (1, 25),
+        "plain": (1, 5),
+    }
+
+    overview = OverviewModel()
+    overview.set_aggregates(model.overview_aggregates(), "source")
+    total = overview.index(0, 0)
+    assert overview.data(total.siblingAtColumn(2), Qt.ItemDataRole.DisplayRole) == "5"
+    counts: dict[str, str] = {}
+    for row in range(overview.rowCount(total)):
+        index = overview.index(row, 0, total)
+        counts[overview.data(index, Qt.ItemDataRole.DisplayRole)] = overview.data(
+            index.siblingAtColumn(2), Qt.ItemDataRole.DisplayRole
+        )
+    # Root objects (including the reported folder), its file and the
+    # synthesized plain folder's file. The plain folder is not counted.
+    assert counts["Files"] == "3"
+    assert counts["tools"] == "1"
+    assert counts["plain"] == "1"
+    model.deleteLater()
+    application.processEvents()
+
+
 def test_exclusioning_a_directory_removes_its_destination_removals_too() -> None:
     from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
     from qpy_rsync.gui.flat_change_model import FlatChangeModel

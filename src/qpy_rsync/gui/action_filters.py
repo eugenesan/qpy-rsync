@@ -88,8 +88,8 @@ class ActionFilterBar(QWidget):
         self.directory_filter_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         self.directory_filter_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
         self.directory_filter_box.setToolTip(
-            "Apply the action filters to reported directories too.\n"
-            "A directory whose own action is filtered out stays as a faded "
+            "Apply the decision filters to reported directories too.\n"
+            "A directory whose own change is filtered out stays as a faded "
             "parent when it holds visible items, and is not counted."
         )
         self.directory_filter_box.setAccessibleName("Apply filters to directories")
@@ -183,11 +183,11 @@ class ActionFilterBar(QWidget):
         return (
             f"Display only: {label}\n"
             "This checkbox filters the view and doesn't affect the sync. "
-            "Use the sync mode selector or the action checkboxes below to "
+            "Use the sync mode selector or the decision checkboxes below to "
             "control the sync.\n"
             f"Alt+{number} clicks this checkbox; Ctrl+{number} inverts it.\n"
-            "Ctrl+click shows only this action, and a second inverted click "
-            "brings every action back. Right-click opens the same choices."
+            "Ctrl+click shows only this decision, and a second inverted click "
+            "brings every decision back. Right-click opens the same choices."
         )
 
     def visible_actions(self) -> set[ChangeAction]:
@@ -248,7 +248,7 @@ class ActionFilterBar(QWidget):
         self.changed.emit(self.visible_actions())
 
     def refresh_icons(self) -> None:
-        """Draw the action glyphs again after the colours changed."""
+        """Draw the decision glyphs again after the colours changed."""
         for action, box in self._boxes.items():
             box.setIcon(action_icon(action))
 
@@ -275,7 +275,7 @@ class ActionFilterBar(QWidget):
         return super().eventFilter(watched, event)  # type: ignore[arg-type]
 
     def _apply_inverse(self, box: QCheckBox) -> None:
-        """Show only the kind of the box, or bring every action back.
+        """Show only the kind of the box, or bring every decision back.
 
         A box that is on becomes the only one that is shown. A box that is
         off, or one that is already the only one that is shown, reverses
@@ -339,7 +339,7 @@ class ActionFilterBar(QWidget):
             self.excluded_toggled.emit(self.excluded_box.isChecked())
 
     def reset_defaults(self) -> None:
-        """The state the bar starts in: every action and nothing else."""
+        """The state the bar starts in: every decision and nothing else."""
         wanted = {box: True for box in self._boxes.values()}
         wanted[self.unchanged_box] = False
         wanted[self.excluded_box] = False

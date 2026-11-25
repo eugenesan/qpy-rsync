@@ -108,9 +108,9 @@ class ExecutionGate:
         messages = {
             ExecutionGateState.NO_COMPARISON: "Compare Source and Destination before synchronization.",
             ExecutionGateState.COMPARISON_OUTDATED: "Comparison is out of date. Compare again.",
-            ExecutionGateState.SELECTION_READY: "Verify selected actions before synchronization.",
+            ExecutionGateState.SELECTION_READY: "Verify selected decisions before synchronization.",
             ExecutionGateState.VERIFYING: "Verifying selected decisions with a second dry run.",
-            ExecutionGateState.VERIFIED: "Selected actions are verified and ready for confirmation.",
+            ExecutionGateState.VERIFIED: "Selected decisions are verified and ready for confirmation.",
             ExecutionGateState.CONFIRMING: "Review the confirmation summary before synchronization.",
             ExecutionGateState.EXECUTING: "Synchronization is running.",
             ExecutionGateState.COMPLETED: "Synchronization completed; compare again to refresh.",

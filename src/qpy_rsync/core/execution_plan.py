@@ -308,5 +308,5 @@ def check_plan_freshness(
             if not item.synthetic_delete or item.path in existing_paths
         }
         if current != planned:
-            reasons.append("comparison actions changed")
+            reasons.append("comparison decisions changed")
     return PlanFreshness(not reasons, tuple(reasons))

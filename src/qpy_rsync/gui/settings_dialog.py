@@ -94,18 +94,18 @@ class SettingsDialog(QDialog):
         general_layout.addWidget(hint)
 
         # The colours that mark the actions.
-        colours_box = QGroupBox("Action colours", general)
+        colours_box = QGroupBox("Decision colours", general)
         colours_layout = QVBoxLayout(colours_box)
         colours_hint = QLabel(
-            "The colour marks the items of an action in the list. "
-            "Switch the marking off to leave an action in the plain colour.",
+            "The colour marks the items of a decision in the list. "
+            "Switch the marking off to leave a decision in the plain colour.",
             colours_box,
         )
         colours_hint.setWordWrap(True)
         colours_layout.addWidget(colours_hint)
         self.colour_table = QTableWidget(0, 3, colours_box)
         self.colour_table.setHorizontalHeaderLabels(
-            ["Action", "Colour", "Marked"]
+            ["Decision", "Colour", "Marked"]
         )
         self.colour_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -401,7 +401,7 @@ class SettingsDialog(QDialog):
             return
         item = self.colour_table.item(row, 1)
         current = QColor(item.text()) if item is not None else QColor()
-        chosen = QColorDialog.getColor(current, self, "Action colour")
+        chosen = QColorDialog.getColor(current, self, "Decision colour")
         if not chosen.isValid():
             return
         self._set_colour(row, chosen.name())

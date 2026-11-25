@@ -434,6 +434,7 @@ class MainWindow(QMainWindow):
         self._preserve_for_compare = True
         self._preserve_reason = ""
         self._preserve_before_force: bool | None = None
+        self._mode_generated_stale = False
         self._cancel_requested = False
         self._sync_generated_stale = False
         self._metadata_pending = False
@@ -1023,7 +1024,7 @@ class MainWindow(QMainWindow):
             view_menu, "Previous layout", "Ctrl+Shift+Tab", self._cycle_layout_backward
         )
 
-        actions_menu = menu_bar.addMenu("&Actions")
+        actions_menu = menu_bar.addMenu("&Decisions")
         self._add_action(
             actions_menu,
             "Reset All Decisions",
@@ -1549,7 +1550,7 @@ class MainWindow(QMainWindow):
             return (
                 "Preserve decisions: ON\n"
                 "Manual include and exclude decisions survive the next "
-                "comparison, even when the reported action of an item changed.\n"
+                "comparison, even when the reported change of an item changed.\n"
                 "Click to turn it off and start fresh; Compare will then ask "
                 "for confirmation before discarding the decisions."
             )
@@ -1674,7 +1675,7 @@ class MainWindow(QMainWindow):
             and self._execution_gate.state is ExecutionGateState.EXECUTING
         ) or bool(getattr(self, "_cancel_requested", False)) or bool(
             getattr(self, "_sync_generated_stale", False)
-        )
+        ) or bool(getattr(self, "_mode_generated_stale", False))
         if stale and self.preserve_button.isChecked() and not sync_in_progress:
             # Remember the user's setting so a fresh comparison can restore it.
             self._preserve_before_force = True
@@ -1806,7 +1807,13 @@ class MainWindow(QMainWindow):
     def _sync_mode_changed(self) -> None:
         mode = self.sync_mode.currentData()
         if self.comparison.model.changes:
-            self.comparison.set_stale(True)
+            # A sync mode change invalidates the comparison, but it is not a
+            # location/profile change. Preserve Decisions must stay checked.
+            self._mode_generated_stale = True
+            try:
+                self.comparison.set_stale(True)
+            finally:
+                self._mode_generated_stale = False
             self._invalidate_plan_context()
             self._set_status(
                 "Synchronization mode changed. The visible comparison is out of date; click Compare to refresh.",
@@ -2687,7 +2694,7 @@ class MainWindow(QMainWindow):
             )
             self._refresh_plan_summary()
             self._set_status(
-                "Backup settings changed. Verify selected actions again before synchronization.",
+                "Backup settings changed. Verify selected decisions again before synchronization.",
                 "warning",
             )
         self._update_command_preview()
@@ -3299,7 +3306,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_label.setText("Verifying selected decisions...")
         self._set_state("Verifying selected decisions...")
-        self._append_log("STATE verifying-selected-actions")
+        self._append_log("STATE verifying-selected-decisions")
 
     def _plan_validation_finished(self, result: PlanValidationResult) -> None:
         if self._closing:
@@ -3392,9 +3399,9 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
-        self.progress_label.setText("Action verification cancelled")
+        self.progress_label.setText("Verification cancelled")
         self.progress_bar.setVisible(False)
-        self._set_state("Action verification was cancelled.", "warning")
+        self._set_state("Verification was cancelled.", "warning")
         self._append_log("STATE verification-cancelled")
         self._end_bulk_logging()
 
@@ -3435,8 +3442,8 @@ class MainWindow(QMainWindow):
         ):
             QMessageBox.warning(
                 self,
-                "No selected actions",
-                "Compare the locations and select at least one action first.",
+                "No selected decisions",
+                "Compare the locations and select at least one decision first.",
             )
             return
         with timed("plan.freshness_check", changes=len(self.comparison.model.changes)):
@@ -3451,7 +3458,7 @@ class MainWindow(QMainWindow):
             self._invalidate_validated_plan()
             QMessageBox.warning(
                 self,
-                "Selected actions are out of date",
+                "Selected decisions are out of date",
                 "Compare again: " + "; ".join(freshness.reasons),
             )
             return
@@ -3589,7 +3596,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_label.setText("Synchronizing...")
         self._set_state("Synchronizing...")
-        self._set_status("Synchronization is running. The selected actions are applied now.", "warning")
+        self._set_status("Synchronization is running. The selected decisions are applied now.", "warning")
         self._append_log("STATE synchronization-started")
 
     def _sync_progress(self, progress: object) -> None:

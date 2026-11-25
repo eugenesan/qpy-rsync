@@ -12,7 +12,7 @@ from qpy_rsync import __version__
 _DESCRIPTION = (
     "A preview-driven frontend for rsync.\n\n"
     "Source and Destination are compared with a dry run, the selected "
-    "actions are verified and only then written. Every command is shown in "
+    "decisions are verified and only then written. Every command is shown in "
     "the journal before it runs."
 )
 

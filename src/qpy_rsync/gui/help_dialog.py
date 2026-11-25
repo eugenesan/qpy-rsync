@@ -28,17 +28,17 @@ result.
 
 3. Compare (F5)
    Runs rsync in dry-run mode. Nothing is written. The three panes show the
-   source, the action and the destination of every item, and the overview
+   source, the decision and the destination of every item, and the overview
    summarizes the folders. The "Preserve decisions" checkbox beside Compare
    is on by default: a new comparison keeps your manual decisions, even when
-   a live directory reports a different action for an item. Uncheck it to
+   a live directory reports a different change for an item. Uncheck it to
    force a fresh comparison; Compare will ask for confirmation because the
    decisions are discarded. A stale comparison unchecks and disables the box
    until the next Compare; check it again before that Compare to keep the
    decisions intentionally.
 
 4. Decisions
-   Each row carries an action in the middle pane:
+   Each row carries a decision in the middle pane:
      +  new item             =  unchanged item (faded checkmark)
      up updated content      =  folder on both sides
      pin metadata only       x  deleted item
@@ -58,7 +58,7 @@ result.
    The arrow in front of a folder collapses or expands its contents in the
    list only: the sync, the totals and the overview keep every item. Left and
    Right do the same from the keyboard, and "Collapse All Folders" /
-   "Expand All Folders" are in the Actions menu. Ctrl+Up and Ctrl+Down walk
+   "Expand All Folders" are in the Decisions menu. Ctrl+Up and Ctrl+Down walk
    the hierarchy instead: they move between a folder and its parent or first
    child without folding anything. Home and End jump to the first and last
    item of the list.
@@ -121,7 +121,7 @@ result.
     Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
     Ctrl+N          focus the Decisions column
     Alt+Enter / Ctrl+T  open the context menu of the current row
-    Alt+1..8       click the numbered checkbox in the actions bar
+    Alt+1..8       click the numbered checkbox in the decisions bar
     Ctrl+1..8      Ctrl-click (invert) the numbered checkbox
     F2 / F3        save / load a profile
     F4             edit the profile

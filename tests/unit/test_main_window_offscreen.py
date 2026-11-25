@@ -506,7 +506,7 @@ def test_verification_can_be_cancelled() -> None:
     window._plan_validation_cancelled()
     assert not window.cancel_button.isEnabled()
     assert window.validate_plan_button.accessibleName() == "Verify Decisions"
-    assert window.progress_label.text() == "Action verification cancelled"
+    assert window.progress_label.text() == "Verification cancelled"
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
     application.processEvents()
@@ -2017,15 +2017,17 @@ def test_preserve_button_restores_after_a_fresh_comparison() -> None:
 
     window.sync_mode.setCurrentIndex(window.sync_mode.findData(SyncMode.MIRROR))
     application.processEvents()
-    assert not window.preserve_button.isChecked()
-    assert "forced" in window.preserve_button.toolTip()
+    # A mode change only invalidates the comparison; it must not turn the
+    # Preserve Decisions setting off.
+    assert window.comparison.model.stale
+    assert window.preserve_button.isChecked()
+    assert "ON" in window.preserve_button.toolTip()
 
     window._comparison_finished(
         CompareResult(ParseResult([], [], ), "", 0)
     )
     application.processEvents()
     assert window.preserve_button.isChecked()
-    assert "Preserve decisions restored" in window.log.toPlainText()
     window.close()
     application.processEvents()
 

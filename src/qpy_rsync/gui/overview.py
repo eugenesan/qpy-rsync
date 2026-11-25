@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from qpy_rsync.core.changes import Change, ChangeAction
+from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.core.units import format_size
 
 from .flat_comparison_view import _StretchableHeader
@@ -111,7 +111,11 @@ class OverviewModel(QAbstractItemModel):
                 continue
             parent = path.rpartition("/")[0]
             values = counts.get(parent)
-            size = int(getattr(change, "size", None) or 0)
+            size = (
+                0
+                if change.kind is ObjectKind.DIRECTORY
+                else int(getattr(change, "size", None) or 0)
+            )
             if values is None:
                 counts[parent] = [1, size]
             else:
@@ -314,7 +318,8 @@ class OverviewModel(QAbstractItemModel):
             if values is None:
                 continue
             values[0] += 1
-            values[1] += int(getattr(change, "size", None) or 0)
+            if change.kind is not ObjectKind.DIRECTORY:
+                values[1] += int(getattr(change, "size", None) or 0)
         # A folder that loses its last direct object has to disappear from
         # the tree; that is a structural change and needs a full rebuild.
         for path, (count, _size) in counts.items():
@@ -544,8 +549,8 @@ class StatisticsBar(QWidget):
         self.summary.setObjectName("statistics-summary")
         tooltip = (
             "Selected: the items that are checked in the comparison,\n"
-            "with their total size and the count of each action. The icons "
-            "below are the same actions."
+            "with their total size and the count of each change type. The icons "
+            "below are the same types."
         )
         self.summary.setToolTip(tooltip)
         self.setToolTip(tooltip)

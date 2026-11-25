@@ -178,6 +178,7 @@ void repaint_native_area(Session& s) {
 }
 
 void refresh_native_models(Session& s, bool expand_overview = false) {
+  (void)expand_overview;
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
   int current_id = s.current_path_id;
@@ -274,7 +275,10 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
-  if (expand_overview && s.overview != nullptr && s.overview_view != nullptr) {
+  if (s.overview != nullptr && s.overview_view != nullptr) {
+    // The overview consumes the same filtered totals as the lists, so it has
+    // to follow every rebuild. Keeping it stale after a filter or decision
+    // change made Total disagree with the folder rows.
     phase.restart();
     s.overview->build(s.store, true);
     if (profiling_enabled()) {

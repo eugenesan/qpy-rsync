@@ -48,7 +48,7 @@ def test_plan_freshness_detects_profile_and_comparison_changes() -> None:
     changed = [Change("a", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")]
     stale_actions = check_plan_freshness(plan, profile(), changed)
     assert not stale_actions.fresh
-    assert "comparison actions changed" in stale_actions.reasons
+    assert "comparison decisions changed" in stale_actions.reasons
 
 
 def test_equivalent_ad_hoc_profiles_have_same_fingerprint() -> None:
