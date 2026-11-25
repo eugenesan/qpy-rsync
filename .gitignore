@@ -16,3 +16,13 @@ timing*.txt
 
 # Native extension build output
 *.so
+
+# Debian build output
+.pybuild/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/native-hybrid-build/
+debian/qpy-rsync/
+debian/tmp/
+debian/*.substvars
+debian/*.debhelper*

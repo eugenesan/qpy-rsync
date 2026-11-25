@@ -1,3 +1,13 @@
+qpy-rsync (0.4.0-0) resolute; urgency=medium
+
+  * 0.4.0: refreshed README and KDE-theme screenshots; screenshots, icon and
+    desktop entry moved to resources/; obsolete Actions labels renamed to
+    Decisions; Preserve Decisions stays checked when the sync mode changes;
+    overview and Items counts include reported directories; the native
+    overview follows filters and decisions.
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Tue, 24 Nov 2026 18:40:00 -0700
+
 qpy-rsync (0.3.3-0) resolute; urgency=medium
 
   * 0.3.3: text-line profile filters and a converter, compare layouts,

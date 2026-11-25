@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
+- The README was refreshed for the native Qt views, the overview, the decision
+  filters and the optional verification, and uses new KDE-theme screenshots.
+  The screenshots, the application icon and the desktop entry now live in
+  `resources/`.
 - Changing the synchronization mode keeps **Preserve Decisions** checked. The
   comparison becomes stale as before, but a mode change is not a profile or
   location change and no longer discards the setting.

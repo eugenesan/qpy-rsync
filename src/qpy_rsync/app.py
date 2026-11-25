@@ -193,9 +193,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from PySide6.QtGui import QIcon
 
-    icon_path = Path(__file__).resolve().parents[2] / "qpy-rsync.svg"
-    if icon_path.is_file():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    icon = QIcon.fromTheme("qpy-rsync")
+    if icon.isNull():
+        icon_path = (
+            Path(__file__).resolve().parents[2] / "resources" / "qpy-rsync.svg"
+        )
+        if icon_path.is_file():
+            icon = QIcon(str(icon_path))
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     from qpy_rsync.storage.settings import migrate_legacy_settings
 
     migrate_legacy_settings()

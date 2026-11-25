@@ -114,7 +114,7 @@ Add 10–20% contingency → **~15–21 person-months (~1.5 years) for one devel
 
 **Can modernize with little risk [E]:** priority/icon prefetch around the visible range, ~25 ms progress throttling, buffered text metrics, wrapped long paths (already present in `text_elide.py`), HiDPI polish and standard Qt dialogs — all without changing semantics.
 
-**Parity verification [E]:** (a) automated pixel/screenshot diff of `docs/main-window.png`, `settings-dialog.png`, `sync-dialog.png` baselines (regenerate them on the current Breeze/X11 setup first — they date from 13 Nov); (b) QTest widget tests asserting shortcut → action, menu item sets, tooltip strings and delegate paint output; (c) differential model tests on synthetic 526k-item data; (d) a written acceptance checklist covering every bullet above, executed against both builds side-by-side on the same 1.2M-item tree.
+**Parity verification [E]:** (a) automated pixel/screenshot diff of the `resources/main-window.png`, `resources/settings-dialog.png` and `resources/sync-dialog.png` baselines (regenerated on the current Breeze/X11 setup); (b) QTest widget tests asserting shortcut → action, menu item sets, tooltip strings and delegate paint output; (c) differential model tests on synthetic 526k-item data; (d) a written acceptance checklist covering every bullet above, executed against both builds side-by-side on the same 1.2M-item tree.
 
 ---
 

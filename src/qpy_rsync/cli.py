@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="print the exact argument vector before comparison",
     )
     stamp = _build_stamp()
-    version_text = "qpy-rsync-cli 0.3.3"
+    version_text = "qpy-rsync-cli 0.4.0"
     if stamp:
         version_text = f"{version_text} ({stamp})"
     parser.add_argument(
