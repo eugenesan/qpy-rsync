@@ -31,6 +31,9 @@
 - Overview actions are restored in the native view: Space excludes the
   selected folder, and its context menu offers Exclude Folder, Restore Folder
   and Exclude via Filter.
+- The native view now matches the Python filter semantics for directories:
+  action filters hide folders with no visible rows, keep only real ancestors
+  as navigation rows, and count only the folders that are actually shown.
 - Fixed the installed launcher failing at startup with an
   ``UnboundLocalError`` after the application icon moved to `resources/`.
 - Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the
