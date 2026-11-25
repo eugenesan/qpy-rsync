@@ -85,7 +85,7 @@ class OverviewModel(QAbstractItemModel):
         self._level_totals: dict[int, int] = {}
         self._folder_nodes: dict[str, OverviewNode] = {}
         self._files_node: OverviewNode | None = None
-        self._sort_column = OverviewModel.SIZE
+        self._sort_column = OverviewModel.SHARE
         self._sort_order = Qt.SortOrder.DescendingOrder
         # Folders with no visible objects stay in the tree but are hidden
         # from the view. Cached per parent so rowCount and index stay cheap.
@@ -660,8 +660,8 @@ class OverviewPane(QWidget):
         self.statistics = StatisticsBar(self)
         layout.addWidget(self.statistics, 0)
 
-        # The size of a folder is the interesting number, like in FreeFileSync.
-        self.tree.sortByColumn(OverviewModel.SIZE, Qt.SortOrder.DescendingOrder)
+        # Share is the default order; its header carries the indicator.
+        self.tree.sortByColumn(OverviewModel.SHARE, Qt.SortOrder.DescendingOrder)
         self.tree.activated.connect(self._folder_activated)
         # The same filtering as in the comparison list: the space bar exclusiones
         # the selected folder, the context menu filters it with an rsync
@@ -733,7 +733,7 @@ class OverviewPane(QWidget):
         column = header.sortIndicatorSection()
         order = header.sortIndicatorOrder()
         if column < 0:
-            column = OverviewModel.SIZE
+            column = OverviewModel.SHARE
             order = Qt.SortOrder.DescendingOrder
         self.model.set_changes(changes, root_name)
         self.tree.sortByColumn(column, order)

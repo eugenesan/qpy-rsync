@@ -290,6 +290,9 @@ class NativeHybridView:
         self.set_name_icons()
         self._native.refresh()
 
+    def set_filter_directories(self, enabled: bool) -> None:
+        self._native.set_filter_directories(bool(enabled))
+
     def set_action_filter(self, actions) -> None:
         mask = -1 if not actions else 0
         for action in actions:

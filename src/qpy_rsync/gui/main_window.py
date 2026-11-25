@@ -4255,7 +4255,10 @@ class MainWindow(QMainWindow):
         settings = app_settings()
         settings.setValue("comparison/filter-directories", bool(checked))
         settings.sync()
-        self.comparison.set_filter_directories(checked)
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_filter_directories(checked)
+        else:
+            self.comparison.set_filter_directories(checked)
 
     def _apply_action_filters(self, actions: object) -> None:
         selected = actions if isinstance(actions, set) else None
@@ -4536,6 +4539,9 @@ class MainWindow(QMainWindow):
         view.on_selection_changed(self._on_native_selection)
         view.on_context_menu(self._native_context_menu)
         view.on_header_context_menu(self._native_header_menu)
+        view.set_filter_directories(
+            self.action_filters.directory_filter_box.isChecked()
+        )
         self._route_controls_to_native(view)
         self._update_view_indicator()
         index = self.main_splitter.indexOf(self.comparison)
@@ -4559,6 +4565,9 @@ class MainWindow(QMainWindow):
             if metadata:
                 view.set_destination_metadata(dict(metadata))
             view.set_action_filter(self.action_filters.visible_actions())
+            view.set_filter_directories(
+                self.action_filters.directory_filter_box.isChecked()
+            )
             for folder in self.comparison.model.collapsed:
                 view.set_collapsed(folder, True)
             if self._hybrid_selected_path:

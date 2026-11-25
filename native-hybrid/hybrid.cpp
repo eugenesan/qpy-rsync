@@ -1082,11 +1082,13 @@ QWidget* ensure_overview_widget(Session& s) {
         qMax(16, s.overview_view->fontMetrics().height() + 2));
     s.overview = new OverviewModel(s.overview_widget);
     s.overview_view->setModel(s.overview);
+    s.overview_view->setSortingEnabled(true);
+    s.overview_view->sortByColumn(1, Qt::DescendingOrder);
     s.overview_view->setItemDelegate(new OverviewDelegate(s.overview_widget));
     s.overview_view->header()->setStretchLastSection(false);
     s.overview_view->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     s.overview_view->header()->setSectionResizeMode(1, QHeaderView::Fixed);
-    s.overview_view->header()->resizeSection(1, 56);
+    s.overview_view->header()->resizeSection(1, 96);
     s.overview_view->header()->setSectionResizeMode(2, QHeaderView::Fixed);
     s.overview_view->header()->resizeSection(2, 64);
     s.overview_view->header()->setSectionResizeMode(3, QHeaderView::Fixed);
@@ -1469,6 +1471,15 @@ NB_MODULE(native_hybrid, m) {
   });
 
   m.def("set_action_filter", [](int mask) { session().store.action_mask = mask; });
+
+  m.def("set_filter_directories", [](bool enabled) {
+    Session& s = session();
+    if (s.store.filter_directories == enabled) return;
+    s.store.filter_directories = enabled;
+    s.store.rebuild_visible();
+    refresh_native_models(s);
+    update_stats(s);
+  });
 
   m.def("set_pattern", [](const std::string& pattern, bool glob,
                           bool dirs_only, bool include_contents) {
