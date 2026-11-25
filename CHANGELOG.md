@@ -9,11 +9,16 @@
 - Changing the synchronization mode keeps **Preserve Decisions** checked. The
   comparison becomes stale as before, but a mode change is not a profile or
   location change and no longer discards the setting.
+- The overview now has a Files row under Total for the objects in the compared
+  folder, size-based Share percentages that add up, and Share as the default
+  sorted and indicated column. Only Total starts expanded; the folder rows
+  start collapsed.
 - The overview and the folder Items counts now include a reported directory
   as one item of its parent. Synthesized navigation folders and faded,
   filtered-out parents are still not counted, so the overview Total matches
   the compared folder's Items. The native overview now rebuilds after filters
-  and decisions instead of keeping the totals from the last comparison.
+  and decisions instead of keeping the totals from the last comparison, and
+  it preserves the chosen sort and the expanded folders.
 - Every overview folder has a go-jump icon left of the tree line. Clicking it
   reveals and centers the folder in the comparison panes; single and double
   clicks keep the default select/expand behaviour.
