@@ -280,7 +280,11 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     // to follow every rebuild. Keeping it stale after a filter or decision
     // change made Total disagree with the folder rows.
     phase.restart();
+    const int sort_section = s.overview_view->header()->sortIndicatorSection();
+    const Qt::SortOrder sort_order =
+        s.overview_view->header()->sortIndicatorOrder();
     s.overview->build(s.store, true);
+    if (sort_section >= 0) s.overview->sort(sort_section, sort_order);
     if (profiling_enabled()) {
       std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
