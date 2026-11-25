@@ -24,6 +24,9 @@
   clicks keep the default select/expand behaviour.
 - A folder that does not exist on one side is blank in that pane, without a
   fold chevron, folder icon or name.
+- Excluding items keeps the cursor on the nearest visible row. The compared
+  folder has no exclude checkbox, ignores Space, and neither its row nor the
+  Decisions column collapses a folder on a double click.
 - Fixed the installed launcher failing at startup with an
   ``UnboundLocalError`` after the application icon moved to `resources/`.
 - Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the

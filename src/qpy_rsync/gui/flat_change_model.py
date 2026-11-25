@@ -2119,6 +2119,10 @@ class FlatChangeModel(QAbstractTableModel):
         return ChangeDecision.INCLUDE
 
     def _row_selectable(self, row: FlatRow) -> bool:
+        # The compared folder is the container, not a decidable row. It stays
+        # selectable, but carries no exclude checkbox and ignores Space.
+        if not row.path:
+            return False
         if row.change is not None:
             return self.decisions.is_selectable(row.change)
         directory = self._directories.get(row.path)

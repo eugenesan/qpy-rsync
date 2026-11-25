@@ -587,6 +587,11 @@ class HybridDelegate : public QStyledItemDelegate {
     if (row < 0 || row >= static_cast<int>(store.visible.size())) return false;
     const int id = store.visible[row];
     if (pane_ == 1 && index.column() == 4) {
+      // The root row and delete decisions carry no checkbox.
+      if (store.paths[id] == DataStore::root_path() ||
+          !index.data(Qt::CheckStateRole).isValid()) {
+        return true;
+      }
       const int group_width = 16 + 8 + 16;
       const int start = option.rect.left() + qMax(0, (option.rect.width() - group_width) / 2);
       QRect indicator(start, option.rect.center().y() - 8, 16, 16);
@@ -626,6 +631,8 @@ class HybridDelegate : public QStyledItemDelegate {
     if (!(id < static_cast<int>(store.is_dir.size()) && store.is_dir[id])) {
       return false;
     }
+    // The compared folder is the parent of the tree and stays open.
+    if (store.paths[id] == DataStore::root_path()) return true;
     const int depth = id < static_cast<int>(store.depth.size()) ? store.depth[id] : 0;
     QRect hit(option.rect.left() + 4 + depth * 14 - 1,
               option.rect.center().y() - 5, 10, 10);
@@ -827,14 +834,16 @@ class HybridDelegate : public QStyledItemDelegate {
     const bool delete_request =
         id < static_cast<int>(store.decisions.size()) &&
         store.decisions[id] == DeleteRequest;
+    const bool has_checkbox = index.data(Qt::CheckStateRole).isValid() &&
+                              !delete_request;
     const bool checked = index.data(Qt::CheckStateRole).toInt() == Qt::Checked;
     // Paint the same rounded, accent-coloured checkbox the toolbar QCheckBox
     // uses under Breeze; the item-view indicator primitive draws a dash here.
     // Center the checkbox + action icon group in the Decisions pane.
-    const int group_width = delete_request ? 16 : 16 + 8 + 16;
+    const int group_width = has_checkbox ? 16 + 8 + 16 : 16;
     const int start = opt.rect.left() + qMax(0, (opt.rect.width() - group_width) / 2);
     QRect box(start, opt.rect.center().y() - 8, 16, 16);
-    if (!delete_request) {
+    if (has_checkbox) {
       painter->save();
       painter->setRenderHint(QPainter::Antialiasing);
       painter->setPen(Qt::NoPen);
@@ -861,7 +870,7 @@ class HybridDelegate : public QStyledItemDelegate {
       // Decisions column and overview statistics always agree.
       const int y = opt.rect.center().y() - 8;
       s.action_icons[action].paint(
-          painter, QRect(delete_request ? start : start + 24, y, 16, 16));
+          painter, QRect(has_checkbox ? start + 24 : start, y, 16, 16));
     }
   }
 

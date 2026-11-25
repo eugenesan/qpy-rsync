@@ -884,6 +884,8 @@ class TableModel : public QAbstractTableModel {
     int id = store_->visible[row];
     if (role == Qt::CheckStateRole) {
       if (pane_ == 1 && index.column() == 4) {
+        // The compared folder is the container: it has no exclude checkbox.
+        if (store_->paths[id] == DataStore::root_path()) return {};
         // A delete decision is shown by the red marker alone; a checkbox
         // here looked disabled and clicking it created an Exclude decision.
         if (id < static_cast<int>(store_->decisions.size()) &&
@@ -1038,6 +1040,9 @@ class TableModel : public QAbstractTableModel {
   Qt::ItemFlags flags(const QModelIndex& index) const override {
     if (pane_ == 1 && index.column() == 4 && index.isValid()) {
       const int id = store_->visible[index.row()];
+      if (store_->paths[id] == DataStore::root_path()) {
+        return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+      }
       if (id >= 0 && id < static_cast<int>(store_->decisions.size()) &&
           store_->decisions[id] == DeleteRequest) {
         return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
@@ -1055,6 +1060,7 @@ class TableModel : public QAbstractTableModel {
     int row = index.row();
     if (row < 0 || row >= static_cast<int>(store_->visible.size())) return false;
     int path_id = store_->visible[row];
+    if (store_->paths[path_id] == DataStore::root_path()) return false;
     store_->toggle_decision(path_id, true);
     store_->rebuild_visible();
     if (g_decision_hook != nullptr) {

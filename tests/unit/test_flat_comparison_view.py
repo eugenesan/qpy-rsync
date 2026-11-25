@@ -288,35 +288,6 @@ def test_the_root_row_carries_the_folder_name_and_the_totals() -> None:
     application.processEvents()
 
 
-def test_the_root_checkbox_decides_the_whole_comparison() -> None:
-    from qpy_rsync.core.changes import ChangeDecision
-
-    application = app()
-    view = FlatComparisonView()
-    view.set_changes(
-        [
-            file_change("docs/a.txt"),
-            file_change("pics/c.jpg"),
-        ]
-    )
-    root_action = view.model.index(0, view.model.ACTION)
-    view.model.setData(
-        root_action, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole
-    )
-    assert view.model.decisions.inherited("docs/a.txt") is ChangeDecision.EXCLUDE
-    assert view.model.decisions.inherited("pics/c.jpg") is ChangeDecision.EXCLUDE
-
-    view.model.setData(
-        root_action, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole
-    )
-    # Restoring the rsync default leaves no explicit override behind.
-    assert view.model.decisions.explicit("docs/a.txt") is ChangeDecision.INHERIT
-    assert view.model.decisions.effective(file_change("docs/a.txt")) is ChangeDecision.INCLUDE
-    assert view.model.decisions.effective(file_change("pics/c.jpg")) is ChangeDecision.INCLUDE
-    view.close()
-    application.processEvents()
-
-
 def test_the_optional_columns_can_be_switched_off() -> None:
     from qpy_rsync.storage.settings import app_settings
 
@@ -1111,5 +1082,47 @@ def test_search_buttons_step_through_matches() -> None:
     assert view.search_status.text() == "2/4"
     view.search_previous_button.click()
     assert view.search_status.text() == "1/4"
+    view.close()
+    application.processEvents()
+
+
+def test_the_compared_folder_has_no_exclude_checkbox() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("a.txt"), file_change("b.txt")])
+    root = view.model.index(0, view.model.ACTION)
+    assert view.model.row_path(root.row()) == ""
+    assert view.model.data(root, Qt.ItemDataRole.CheckStateRole) is None
+    assert not (
+        view.model.flags(root) & Qt.ItemFlag.ItemIsUserCheckable
+    )
+    assert not view.model.setData(
+        root, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole
+    )
+    view.source.selectRow(0)
+    view.action.selectRow(0)
+    assert not view._toggle_excluded()
+    assert not view.model.decisions.explicit_items()
+    view.close()
+    application.processEvents()
+
+
+def test_double_click_in_the_decisions_column_or_root_does_not_collapse() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("docs/a.txt"), file_change("docs/b.txt")])
+    docs = view.model.index_for_path("docs")
+    assert docs.isValid()
+
+    view._handle_double_click(view.action, docs.siblingAtColumn(view.model.ACTION))
+    assert not view.is_collapsed("docs")
+
+    root = view.model.index(0, view.model.SOURCE_NAME)
+    view._handle_double_click(view.source, root)
+    assert "" not in view.model.collapsed
+
+    # The source name column still folds a real directory.
+    view._handle_double_click(view.source, docs)
+    assert view.is_collapsed("docs")
     view.close()
     application.processEvents()

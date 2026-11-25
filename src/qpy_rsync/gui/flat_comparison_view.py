@@ -1062,7 +1062,15 @@ class FlatComparisonView(QWidget):
         if time.monotonic() - self._context_menu_closed_at < 0.4:
             return
         row = self.model.row_data(index.row())
-        if row is not None and row.is_directory and row.has_children:
+        if (
+            row is not None
+            and row.is_directory
+            and row.has_children
+            and row.path
+            and pane is not self.action
+            and index.column()
+            in (self.model.SOURCE_NAME, self.model.DESTINATION_NAME)
+        ):
             self.toggle_collapsed(row.path)
             return
         self._request_diff(index)
