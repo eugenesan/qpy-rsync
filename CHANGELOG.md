@@ -28,6 +28,9 @@
   excluded item, or the previous row when nothing follows. The compared folder
   has no exclude checkbox, ignores Space, and neither its row nor the Decisions
   column collapses a folder on a double click.
+- Overview actions are restored in the native view: Space excludes the
+  selected folder, and its context menu offers Exclude Folder, Restore Folder
+  and Exclude via Filter.
 - Fixed the installed launcher failing at startup with an
   ``UnboundLocalError`` after the application icon moved to `resources/`.
 - Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the

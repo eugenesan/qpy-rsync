@@ -139,6 +139,9 @@ class NativeHybridView:
     def on_header_context_menu(self, callback) -> None:
         self._native.set_header_context_callback(callback)
 
+    def on_overview_context_menu(self, callback) -> None:
+        self._native.set_overview_context_callback(callback)
+
     def set_profiling(self, enabled: bool) -> None:
         """Enable the native side of the timing diagnostics."""
         self._native.set_profiling_enabled(bool(enabled))
@@ -393,7 +396,7 @@ class NativeOverviewShim(QWidget):
     folder_activated = Signal(str)
     exclusion_requested = Signal(str)
     restore_requested = Signal(str)
-    filter_requested = Signal(str)
+    filter_requested = Signal(str, str)
 
     def __init__(self, widget: QWidget) -> None:
         super().__init__()

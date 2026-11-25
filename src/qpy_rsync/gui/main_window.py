@@ -4332,18 +4332,24 @@ class MainWindow(QMainWindow):
 
     def _exclude_path(self, path: str) -> None:
         """Exclude a folder or an item from the comparison."""
-        if not hasattr(self.comparison, "exclude_path"):
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_decision_by_path(path, 2)
+        elif hasattr(self.comparison, "exclude_path"):
+            self.comparison.exclude_path(path)
+        else:
             return
-        self.comparison.exclude_path(path)
         self.action_filters.set_excluded_count(
             self.comparison.model.exclusion.count()
         )
 
     def _restore_path(self, path: str) -> None:
         """Restore a excluded folder or item."""
-        if not hasattr(self.comparison, "restore_path"):
+        if self._hybrid_view is not None:
+            self._hybrid_view.set_decision_by_path(path, 0)
+        elif hasattr(self.comparison, "restore_path"):
+            self.comparison.restore_path(path)
+        else:
             return
-        self.comparison.restore_path(path)
         self.action_filters.set_excluded_count(
             self.comparison.model.exclusion.count()
         )
@@ -4546,6 +4552,7 @@ class MainWindow(QMainWindow):
         view.on_selection_changed(self._on_native_selection)
         view.on_context_menu(self._native_context_menu)
         view.on_header_context_menu(self._native_header_menu)
+        view.on_overview_context_menu(self._native_overview_context_menu)
         view.set_filter_directories(
             self.action_filters.directory_filter_box.isChecked()
         )
@@ -4747,6 +4754,37 @@ class MainWindow(QMainWindow):
             for path, decision in explicit
         }
         self._hybrid_view.apply_python_decisions(values)
+
+    def _native_overview_context_menu(self, path: str, x: int, y: int) -> None:
+        """Folder actions for the native overview tree."""
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QMenu
+
+        from qpy_rsync.backend.rsync_patterns import phrases_for
+
+        path = str(path).rstrip("/")
+        if not path:
+            return
+        menu = QMenu(self)
+        heading = menu.addAction(path)
+        heading.setEnabled(False)
+        menu.addSeparator()
+        exclude_action = menu.addAction("Exclude Folder\tSpace")
+        restore_action = menu.addAction("Restore Folder")
+        menu.addSeparator()
+        filter_menu = menu.addMenu("Exclude via Filter")
+        filter_actions = []
+        for phrase in phrases_for(path, is_directory=True):
+            entry = filter_menu.addAction(phrase.label)
+            entry.setData(phrase.pattern)
+            filter_actions.append(entry)
+        chosen = menu.exec(QPoint(x, y))
+        if chosen is exclude_action:
+            self._exclude_path(path)
+        elif chosen is restore_action:
+            self._restore_path(path)
+        elif chosen in filter_actions:
+            self._add_filter_phrase(chosen.data(), path)
 
     def _native_context_menu(self, pane: int, path: str, x: int, y: int) -> None:
         """Full row menu for the native comparison lists."""

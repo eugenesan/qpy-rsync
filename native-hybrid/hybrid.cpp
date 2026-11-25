@@ -86,6 +86,16 @@ inline nb::object g_selection_callback;
 inline nb::object g_decision_callback;
 inline nb::object g_context_callback;
 inline nb::object g_header_context_callback;
+inline nb::object g_overview_context_callback;
+
+void overview_context_hook(const QString& path, int x, int y) {
+  if (!g_overview_context_callback.is_valid()) return;
+  nb::gil_scoped_acquire gil;
+  try {
+    g_overview_context_callback(path.toStdString(), x, y);
+  } catch (...) {
+  }
+}
 
 void emit_selection(int path_id) {
   if (!g_in_select && g_selection_hook != nullptr) g_selection_hook(path_id);
@@ -1140,6 +1150,41 @@ class OverviewTreeView : public QTreeView {
     QTreeView::mouseMoveEvent(event);
   }
 
+  void keyPressEvent(QKeyEvent* event) override {
+    if (event->key() == Qt::Key_Space) {
+      const QString path = currentIndex().data(Qt::UserRole).toString();
+      if (!path.isEmpty()) {
+        Session& s = session();
+        auto it = s.store.path_to_id.find(path.toStdString());
+        if (it != s.store.path_to_id.end()) {
+          const int id = it->second;
+          s.store.set_decision_id(id, 2, true);  // Exclude
+          if (g_native_decision_hook != nullptr) {
+            g_native_decision_hook(id, 2);
+          } else {
+            s.store.rebuild_visible();
+            refresh_native_models(s);
+            update_stats(s);
+          }
+        }
+        event->accept();
+        return;
+      }
+    }
+    QTreeView::keyPressEvent(event);
+  }
+
+  void contextMenuEvent(QContextMenuEvent* event) override {
+    const QModelIndex index = indexAt(event->pos());
+    const QString path = index.data(Qt::UserRole).toString();
+    if (!path.isEmpty() && g_overview_context_callback.is_valid()) {
+      overview_context_hook(path, event->globalPos().x(), event->globalPos().y());
+      event->accept();
+      return;
+    }
+    QTreeView::contextMenuEvent(event);
+  }
+
  private:
   QIcon jump_icon_;
 };
@@ -1265,6 +1310,10 @@ NB_MODULE(native_hybrid, m) {
     g_selection_hook = &selection_hook;
   });
 
+  m.def("set_overview_context_callback", [](nb::object callback) {
+    g_overview_context_callback = callback;
+  });
+
   m.def("set_decision_callback", [](nb::object callback) {
     g_decision_callback = callback;
     g_native_decision_hook = &native_decision_hook;
@@ -1279,6 +1328,7 @@ NB_MODULE(native_hybrid, m) {
     g_decision_callback = nb::object();
     g_context_callback = nb::object();
     g_header_context_callback = nb::object();
+    g_overview_context_callback = nb::object();
     Session& session_ref = session();
     for (int i = 0; i < 3; ++i) {
       session_ref.views[i] = nullptr;
