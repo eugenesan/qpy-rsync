@@ -1146,8 +1146,10 @@ class OverviewModel : public QAbstractItemModel {
         if (files == nullptr) files = add_child(folder, "Files", "");
         target = files;
       }
-      ++target->count;
-      target->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
+      if (!dir_row) {
+        ++target->count;
+        target->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
+      }
     };
     if (visible_only) {
       for (int id : store.visible) consider(id);

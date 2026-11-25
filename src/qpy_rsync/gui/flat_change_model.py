@@ -1217,12 +1217,11 @@ class FlatChangeModel(QAbstractTableModel):
                 ):
                     ci = directory.own_change_index
                     visible_change_indices.add(ci)
-                    # The directory's own change belongs to this folder, not
-                    # to its parent (the row's directory index).
+                    # The directory's own row is a container, not an item in
+                    # the Items column or the overview totals. Only its files
+                    # are counted, so the overview Total matches the root
+                    # folder row and the statistics bar.
                     dir_index = self._dir_index.get(directory.path, dir_index)
-                    values = aggregate_counts[dir_index]
-                    values[0] += 1
-                    values[1] += change_sizes[ci]
             else:
                 ci = change_index[index]
                 if row_is_excluded:
