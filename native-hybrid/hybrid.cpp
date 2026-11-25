@@ -33,6 +33,7 @@
 #include <QWidget>
 
 #include <cstdint>
+#include <functional>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -655,8 +656,11 @@ class HybridDelegate : public QStyledItemDelegate {
     const bool source_present = action != DestOnly && action != Delete;
     const bool dest_present = action != Create;
     const bool dir_row = id < static_cast<int>(store.is_dir.size()) && store.is_dir[id];
-    if (!dir_row && ((pane_ == 0 && !source_present) ||
-                     (pane_ == 2 && !dest_present))) {
+    // An item is only drawn on the side where it exists. A new directory has
+    // no destination row (no fold marker, no folder icon, no name), and a
+    // deleted or destination-only directory has no source row.
+    if ((pane_ == 0 && !source_present) ||
+        (pane_ == 2 && !dest_present)) {
       QStyleOptionViewItem blank(option);
       initStyleOption(&blank, index);
       paint_background(painter, option, false);
@@ -1074,13 +1078,71 @@ QWidget* ensure_tables_widget(Session& s) {
   return s.tables_widget;
 }
 
+class OverviewTreeView : public QTreeView {
+ public:
+  explicit OverviewTreeView(QWidget* parent = nullptr) : QTreeView(parent) {
+    jump_icon_ = QIcon::fromTheme("go-jump-symbolic");
+    if (jump_icon_.isNull()) {
+      jump_icon_ = QApplication::style()->standardIcon(QStyle::SP_ArrowForward);
+    }
+  }
+
+  std::function<void(const QString&)> jump_callback;
+
+ protected:
+  QRect jump_rect(const QModelIndex& index) const {
+    const QRect row = visualRect(index);
+    return QRect(2, row.top() + 4, 14, qMax(0, row.height() - 8));
+  }
+
+  bool jump_path(const QModelIndex& index, QString* path) const {
+    if (jump_callback == nullptr || !index.isValid()) return false;
+    const QString value = index.data(Qt::UserRole).toString();
+    if (value.isEmpty()) return false;
+    if (path != nullptr) *path = value;
+    return true;
+  }
+
+  void drawBranches(QPainter* painter, const QRect& rect,
+                    const QModelIndex& index) const override {
+    QTreeView::drawBranches(painter, rect, index);
+    if (jump_icon_.isNull() || !jump_path(index, nullptr)) return;
+    QRect target = jump_rect(index);
+    target.moveLeft(rect.left() + 2);
+    jump_icon_.paint(painter, target, Qt::AlignCenter, QIcon::Normal, QIcon::Off);
+  }
+
+  void mousePressEvent(QMouseEvent* event) override {
+    QString path;
+    const QModelIndex index = indexAt(event->pos());
+    if (jump_path(index, &path) && jump_rect(index).contains(event->pos())) {
+      jump_callback(path);
+      event->accept();
+      return;
+    }
+    QTreeView::mousePressEvent(event);
+  }
+
+  void mouseMoveEvent(QMouseEvent* event) override {
+    const QModelIndex index = indexAt(event->pos());
+    const bool over = jump_path(index, nullptr) &&
+                      jump_rect(index).contains(event->pos());
+    setCursor(over ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    QTreeView::mouseMoveEvent(event);
+  }
+
+ private:
+  QIcon jump_icon_;
+};
+
 QWidget* ensure_overview_widget(Session& s) {
   if (s.overview_widget == nullptr) {
     s.overview_widget = new QWidget();
     auto* layout = new QVBoxLayout(s.overview_widget);
     layout->setContentsMargins(0, 0, 0, 0);
     s.stats_widget = new StatsWidget(s.overview_widget);
-    s.overview_view = new QTreeView(s.overview_widget);
+    auto* overview_view = new OverviewTreeView(s.overview_widget);
+    s.overview_view = overview_view;
     s.overview_view->setUniformRowHeights(true);
     s.overview_view->setAlternatingRowColors(true);
     s.overview_view->setRootIsDecorated(true);
@@ -1103,19 +1165,15 @@ QWidget* ensure_overview_widget(Session& s) {
     s.overview_view->header()->resizeSection(3, 84);
     layout->addWidget(s.overview_view);
     layout->addWidget(s.stats_widget);
-    QObject::connect(
-        s.overview_view, &QTreeView::activated,
-        [](const QModelIndex& index) {
-          Session& current = session();
-          QString path = current.overview->data(index, Qt::UserRole).toString();
-          auto it = current.store.path_to_id.find(path.toStdString());
-          if (it != current.store.path_to_id.end()) {
-            select_path_id_impl(current, it->second, true);
-            // Put keyboard focus back on the lists so arrows and shortcuts
-            // act on the jumped-to row immediately.
-            if (current.views[0] != nullptr) current.views[0]->setFocus();
-          }
-        });
+    overview_view->jump_callback = [](const QString& path) {
+      Session& current = session();
+      auto it = current.store.path_to_id.find(path.toStdString());
+      if (it == current.store.path_to_id.end()) return;
+      select_path_id_impl(current, it->second, true);
+      // Put keyboard focus back on the lists so arrows and shortcuts act on
+      // the jumped-to row immediately.
+      if (current.views[0] != nullptr) current.views[0]->setFocus();
+    };
   }
   return s.overview_widget;
 }

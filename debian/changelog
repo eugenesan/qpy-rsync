@@ -4,7 +4,8 @@ qpy-rsync (0.4.0-0) resolute; urgency=medium
     desktop entry moved to resources/; obsolete Actions labels renamed to
     Decisions; Preserve Decisions stays checked when the sync mode changes;
     overview and Items counts include reported directories; the native
-    overview follows filters and decisions.
+    overview follows filters and decisions; go-jump overview icon; folders
+    absent from one side stay blank there; fixed the launcher startup error.
 
  -- Eugene San (eugenesan) <eugenesan@gmail.com>  Tue, 24 Nov 2026 18:40:00 -0700
 

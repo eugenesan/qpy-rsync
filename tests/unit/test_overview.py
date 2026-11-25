@@ -4,7 +4,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
@@ -83,17 +84,36 @@ def test_overview_sorts_the_folders_by_size_or_by_count() -> None:
     assert model.index(0, 0, total).data() == "Files"
 
 
-def test_overview_pane_reports_the_activated_folder() -> None:
+def test_overview_jump_icon_reports_the_folder() -> None:
     application = app()
     pane = OverviewPane()
+    pane.resize(520, 260)
     pane.set_changes(_changes(), "source")
+    pane.show()
     application.processEvents()
     activated: list[str] = []
     pane.folder_activated.connect(activated.append)
     total = pane.model.index(0, 0)
-    pane._folder_activated(total)
+    docs = pane.model.index(0, 0, total)
+    row = pane.tree.visualRect(docs)
+
+    def click(x: int) -> None:
+        point = QPointF(x, row.center().y())
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            point,
+            point,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        pane.tree.mousePressEvent(event)
+
+    # A click on the name keeps the default select/expand behaviour.
+    click(row.center().x())
     assert activated == []
-    pane._folder_activated(pane.model.index(0, 0, total))
+    # Only the go-jump icon in the branch gutter reveals the folder.
+    click(8)
     assert activated == ["docs"]
     pane.close()
     application.processEvents()

@@ -219,8 +219,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         app.processEvents()
         return 0
     window.setWindowTitle("qpy-rsync")
-    if icon_path.is_file():
-        window.setWindowIcon(QIcon(str(icon_path)))
+    if not icon.isNull():
+        window.setWindowIcon(icon)
     window.apply_startup_options(options)
     window.show()
     return app.exec()

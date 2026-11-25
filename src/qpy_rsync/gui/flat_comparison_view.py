@@ -281,6 +281,18 @@ class FlatPathDelegate(UniformRowDelegate):
         style.drawPrimitive(
             QStyle.PrimitiveElement.PE_PanelItemViewItem, blank, painter, widget
         )
+        # An item is only drawn on the side where it exists. A new directory
+        # has no destination row (no fold marker, no folder icon, no name),
+        # and a deleted or destination-only directory has no source row.
+        if row.change is not None:
+            present = (
+                row.change.action
+                not in (ChangeAction.DESTINATION_ONLY, ChangeAction.DELETE)
+                if column == model.SOURCE_NAME
+                else row.change.action is not ChangeAction.CREATE
+            )
+            if not present:
+                return
 
         painter.save()
         painter.translate(option.rect.left(), option.rect.top())

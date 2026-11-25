@@ -14,6 +14,13 @@
   filtered-out parents are still not counted, so the overview Total matches
   the compared folder's Items. The native overview now rebuilds after filters
   and decisions instead of keeping the totals from the last comparison.
+- Every overview folder has a go-jump icon left of the tree line. Clicking it
+  reveals and centers the folder in the comparison panes; single and double
+  clicks keep the default select/expand behaviour.
+- A folder that does not exist on one side is blank in that pane, without a
+  fold chevron, folder icon or name.
+- Fixed the installed launcher failing at startup with an
+  ``UnboundLocalError`` after the application icon moved to `resources/`.
 - Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the
   menu, decision colours, filter tooltips and the comparison column.
 - A locked profile at startup no longer silently creates a temporary copy.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QAbstractItemModel, QEvent, QModelIndex, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPalette
+from PySide6.QtCore import QAbstractItemModel, QEvent, QModelIndex, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
@@ -487,6 +487,68 @@ class OverviewModel(QAbstractItemModel):
             self._sort_node(node)
 
 
+class OverviewTree(QTreeView):
+    """The overview tree with a jump icon in the branch gutter.
+
+    Single and double clicks keep Qt's default select/expand behaviour. Only
+    the small go-jump icon left of the tree line reveals the folder in the
+    comparison panes.
+    """
+
+    folder_jump_requested = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._jump_icon = QIcon.fromTheme("go-jump-symbolic")
+        if self._jump_icon.isNull():
+            self._jump_icon = self.style().standardIcon(
+                QStyle.StandardPixmap.SP_ArrowForward
+            )
+
+    def _jump_rect(self, index: QModelIndex) -> QRect:
+        row = self.visualRect(index)
+        return QRect(2, row.top() + 4, 12, max(0, row.height() - 8))
+
+    def _jump_path(self, index: QModelIndex) -> str:
+        if not index.isValid():
+            return ""
+        node = index.internalPointer()
+        if node is None or node.is_total or not node.path:
+            return ""
+        return node.path
+
+    def drawBranches(
+        self, painter: QPainter, rect: QRect, index: QModelIndex
+    ) -> None:
+        super().drawBranches(painter, rect, index)
+        if not self._jump_path(index) or self._jump_icon.isNull():
+            return
+        target = self._jump_rect(index)
+        target.moveLeft(rect.left() + 2)
+        self._jump_icon.paint(painter, target, Qt.AlignmentFlag.AlignCenter)
+
+    def mousePressEvent(self, event: object) -> None:  # noqa: N802
+        point = event.position().toPoint()  # type: ignore[attr-defined]
+        index = self.indexAt(point)
+        path = self._jump_path(index)
+        if path and self._jump_rect(index).contains(point):
+            self.folder_jump_requested.emit(path)
+            event.accept()  # type: ignore[attr-defined]
+            return
+        super().mousePressEvent(event)  # type: ignore[arg-type]
+
+    def mouseMoveEvent(self, event: object) -> None:  # noqa: N802
+        point = event.position().toPoint()  # type: ignore[attr-defined]
+        index = self.indexAt(point)
+        over = bool(self._jump_path(index)) and self._jump_rect(index).contains(point)
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if over
+            else Qt.CursorShape.ArrowCursor
+        )
+        super().mouseMoveEvent(event)  # type: ignore[arg-type]
+
+
 class OverviewBarDelegate(QStyledItemDelegate):
     """Draw the share of a folder as a bar with the percentage inside it."""
 
@@ -627,7 +689,7 @@ class OverviewPane(QWidget):
         layout.setSpacing(4)
 
         self.model = OverviewModel(self)
-        self.tree = QTreeView()
+        self.tree = OverviewTree()
         self.tree.setObjectName("overview-tree")
         # The item column takes the free space but can still be dragged.
         self.tree.setHeader(
@@ -639,7 +701,7 @@ class OverviewPane(QWidget):
         self.tree.setUniformRowHeights(True)
         self.tree.setHeaderHidden(False)
         self.tree.setSortingEnabled(True)
-        self.tree.setIndentation(12)
+        self.tree.setIndentation(20)
         self.tree.setItemDelegateForColumn(
             OverviewModel.SHARE, OverviewBarDelegate(self.tree)
         )
@@ -667,7 +729,7 @@ class OverviewPane(QWidget):
 
         # Share is the default order; its header carries the indicator.
         self.tree.sortByColumn(OverviewModel.SHARE, Qt.SortOrder.DescendingOrder)
-        self.tree.activated.connect(self._folder_activated)
+        self.tree.folder_jump_requested.connect(self.folder_activated.emit)
         # The same filtering as in the comparison list: the space bar exclusiones
         # the selected folder, the context menu filters it with an rsync
         # pattern.
@@ -721,13 +783,6 @@ class OverviewPane(QWidget):
             self.restore_requested.emit(node.path)
         elif selected in filter_actions:
             self.filter_requested.emit(selected.text(), node.path)
-
-    def _folder_activated(self, index: QModelIndex) -> None:
-        if not index.isValid():
-            return
-        node: OverviewNode = index.internalPointer()
-        if node.path and not node.is_total:
-            self.folder_activated.emit(node.path)
 
     def set_statistics(self, summary: object | None, *, estimate: bool = False) -> None:
         """Show the selected amounts below the overview."""

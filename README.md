@@ -136,7 +136,9 @@ compared folder itself, and every folder shows its items, size and share of
 its parent. A reported directory counts as one item of its parent; synthesized
 navigation folders and faded, filtered-out parents do not. The overview follows
 the same decision filters as the list, starts collapsed, and sorts by share by
-default. **Ctrl+Tab** cycles Normal, Compare only and Compare with overview.
+default. Click the **go-jump** icon to the left of a folder to reveal it in the
+comparison panes; a normal click still selects and expands the folder.
+**Ctrl+Tab** cycles Normal, Compare only and Compare with overview.
 
 ### Filters, backups and profiles
 
