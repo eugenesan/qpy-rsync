@@ -90,7 +90,9 @@ def test_transfer_progress_stays_out_of_the_journal() -> None:
         ">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt\n\r"
         "             8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)\r"
     )
-    assert logged == [">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt"]
+    # Itemized records are derived from the plan; only summaries reach the
+    # journal while progress drives the bar and the session log.
+    assert logged == []
     assert transient == ["8 100%    0.00kB/s    0:00:00 (xfr#1, to-chk=0/1)"]
     assert len(progress) == 1
     assert progress[0].percent == 100

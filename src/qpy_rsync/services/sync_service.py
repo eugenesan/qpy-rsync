@@ -8,7 +8,11 @@ from typing import Callable
 
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.process_runner import ProcessResult, QtProcessRunner
-from qpy_rsync.backend.sync_progress import SyncProgress, parse_sync_progress
+from qpy_rsync.backend.sync_progress import (
+    SyncProgress,
+    is_rsync_summary_line,
+    parse_sync_progress,
+)
 from qpy_rsync.backend.rsync_command import ProcessSpec, build_sync_spec
 from qpy_rsync.core.changes import ChangeAction
 from qpy_rsync.core.enums import EndpointKind
@@ -68,9 +72,29 @@ class SyncService:
         self.on_spec: Callable[[object], None] = lambda _spec: None
         self._runner.on_started = lambda: self.on_started()
         self._runner.on_stdout = self._handle_stdout
-        self._runner.on_stderr = lambda text: self.on_stderr(text)
+        self._runner.on_stderr = lambda text: self._handle_stderr(text)
         self._runner.on_finished = self._finish
         self._runner.on_error = self._error
+
+    def _handle_stderr(self, text: str) -> None:
+        for line in re.split(r"[\r\n]", text):
+            cleaned = line.strip()
+            if cleaned and is_rsync_summary_line(cleaned):
+                self.on_stderr(cleaned)
+
+    def _handle_line(self, line: str) -> None:
+        cleaned = line.strip()
+        if not cleaned:
+            return
+        progress = parse_sync_progress(cleaned)
+        if progress is not None:
+            self.on_progress(progress)
+            self.on_transient(cleaned)
+            return
+        # Itemized records and progress lines are derived from the counters
+        # and the plan. Only summaries and problems belong in the journal.
+        if is_rsync_summary_line(cleaned):
+            self.on_stdout(cleaned)
 
     def _handle_stdout(self, text: str) -> None:
         if not text:
@@ -79,17 +103,7 @@ class SyncService:
         parts = re.split(r"[\r\n]", self._buffer)
         self._buffer = parts.pop()
         for line in parts:
-            cleaned = line.strip()
-            if not cleaned:
-                continue
-            progress = parse_sync_progress(cleaned)
-            if progress is not None:
-                # Progress and speed belong in the session log only; the
-                # journal keeps the itemized records and application states.
-                self.on_progress(progress)
-                self.on_transient(cleaned)
-                continue
-            self.on_stdout(cleaned)
+            self._handle_line(line)
 
     def synchronize(
         self,
@@ -166,10 +180,7 @@ class SyncService:
             cleaned = self._buffer.strip()
             self._buffer = ""
             if cleaned:
-                if parse_sync_progress(cleaned) is not None:
-                    self.on_transient(cleaned)
-                else:
-                    self.on_stdout(cleaned)
+                self._handle_line(cleaned)
         try:
             if self._cancel_requested or process.crashed:
                 self.on_error("Synchronization was cancelled or terminated.", True)

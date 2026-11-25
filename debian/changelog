@@ -11,8 +11,9 @@ qpy-rsync (0.4.0-0) resolute; urgency=medium
     has no exclude checkbox, ignores Space and does not collapse; the Decisions
     column no longer collapses folders; overview folders can be excluded with
     Space or restored and filtered from their context menu; native action
-    filters hide unrelated directories and count only visible folders; fixed
-    the launcher startup error.
+    filters hide unrelated directories and count only visible folders; sync
+    output keeps only summaries in the journal; fixed the launcher startup
+    error.
 
  -- Eugene San (eugenesan) <eugenesan@gmail.com>  Tue, 24 Nov 2026 18:40:00 -0700
 

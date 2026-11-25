@@ -34,6 +34,9 @@
 - The native view now matches the Python filter semantics for directories:
   action filters hide folders with no visible rows, keep only real ancestors
   as navigation rows, and count only the folders that are actually shown.
+- Synchronization output is filtered like Compare: progress drives the bar and
+  the session log, itemized records are not written to the journal, and only
+  summaries and problems appear there.
 - Fixed the installed launcher failing at startup with an
   ``UnboundLocalError`` after the application icon moved to `resources/`.
 - Renamed obsolete “Actions”/“Action” labels to “Decisions”, including the

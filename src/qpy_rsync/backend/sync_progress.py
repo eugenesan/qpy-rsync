@@ -20,6 +20,38 @@ class SyncProgress:
     percent: int
 
 
+_SUMMARY_PREFIXES = (
+    "Number of files",
+    "Number of created files",
+    "Number of deleted files",
+    "Number of regular files transferred",
+    "Total file size:",
+    "Total transferred file size:",
+    "Literal data:",
+    "Matched data:",
+    "File list size:",
+    "File list generation time:",
+    "File list transfer time:",
+    "Total bytes sent:",
+    "Total bytes received:",
+    "sent ",
+    "received ",
+    "Speedup is",
+    "sending incremental file list",
+)
+
+
+def is_rsync_summary_line(text: str) -> bool:
+    """Whether an rsync line is a summary worth keeping in the journal."""
+    line = text.strip()
+    if not line:
+        return False
+    lowered = line.lower()
+    if any(word in lowered for word in ("error", "failed", "warning")):
+        return True
+    return line.startswith(_SUMMARY_PREFIXES)
+
+
 def parse_sync_progress(text: str) -> SyncProgress | None:
     # Each itemized record goes through this function; the regex is only
     # relevant for progress lines, so avoid it for the common case.
