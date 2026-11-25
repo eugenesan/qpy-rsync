@@ -7,9 +7,9 @@ qpy-rsync (0.4.0-0) resolute; urgency=medium
     directory-aware Items counts; the native overview follows filters and
     decisions and preserves its sort and expansion; go-jump overview icon;
     folders absent from one side stay blank there; excluding items keeps the
-    cursor on the nearest visible row; the root row has no exclude checkbox,
-    ignores Space and does not collapse; the Decisions column no longer
-    collapses folders; fixed the launcher startup error.
+    cursor on the next visible row after the last excluded item; the root row
+    has no exclude checkbox, ignores Space and does not collapse; the Decisions
+    column no longer collapses folders; fixed the launcher startup error.
 
  -- Eugene San (eugenesan) <eugenesan@gmail.com>  Tue, 24 Nov 2026 18:40:00 -0700
 
