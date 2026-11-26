@@ -676,6 +676,7 @@ class OverviewPane(QWidget):
     exclusion_requested = Signal(str)
     restore_requested = Signal(str)
     filter_requested = Signal(str, str)
+    use_as_location_requested = Signal(str)
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
@@ -770,6 +771,8 @@ class OverviewPane(QWidget):
         exclusion_action = menu.addAction("Exclude Folder\tSpace")
         restore_action = menu.addAction("Restore Folder")
         menu.addSeparator()
+        use_as_location = menu.addAction("Use as Source/Destination...")
+        menu.addSeparator()
         filter_menu = menu.addMenu("Exclude via Filter")
         filter_actions = []
         for phrase in phrases_for(node.path, is_directory=True):
@@ -781,6 +784,8 @@ class OverviewPane(QWidget):
             self.exclusion_requested.emit(node.path)
         elif selected is restore_action:
             self.restore_requested.emit(node.path)
+        elif selected is use_as_location:
+            self.use_as_location_requested.emit(node.path)
         elif selected in filter_actions:
             self.filter_requested.emit(selected.text(), node.path)
 

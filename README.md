@@ -32,6 +32,8 @@ views are the default; the Python views remain as a fallback.
   rsync output in a session file
 - opens an item in an external diff tool, or in any external tool you
   configure
+- narrows both locations to a folder from its context menu, rewriting filter
+  paths and marking the comparison stale
 - summarizes the folders in an overview with item counts, sizes, shares and the
   same decisions as the list
 
@@ -95,6 +97,14 @@ docs/        matches the docs folder exactly and retains its subtree
 The branch marker in front of a folder folds its contents out of the list.
 Folding is a view-only operation: the synchronization, the totals and the
 overview keep every item.
+
+Right-click a folder in the comparison or the overview and choose *Use as
+Source/Destination...* to dive into it on both sides. The dialog previews the
+new Source and Destination paths and offers to remove the eliminated directory
+prefix from the permanent filter rules (for example `- /docs/private/` becomes
+`- /private/` when diving into `docs`). The comparison becomes stale: run
+**Compare** again before synchronizing, and use **Save** or **Save As** to
+persist the changed profile.
 
 **Space** excludes the selected item. An excluded item is left out of the
 synchronization, stays in the comparison so that you can restore it, and is

@@ -68,6 +68,49 @@ def is_advanced_rule(value: str) -> bool:
     return parse_advanced_rule(value) is not None
 
 
+def shorten_filter_rule(rule: str, prefix: str) -> str:
+    """Remove a leading directory from a rule that names a path inside it.
+
+    Used when a comparison folder becomes the new transfer root: a rule like
+    ``- /docs/private/`` becomes ``- /private/`` when diving into ``docs``.
+    Rules outside the prefix, comments and empty lines are left alone. A rule
+    naming exactly the eliminated folder becomes a match for the new root
+    itself, and an unnamed pattern naming it is dropped (it can no longer
+    select anything below the new root).
+    """
+    clean = prefix.strip().strip("/")
+    if not clean:
+        return rule
+    line = rule.strip()
+    if not line or line.startswith("#"):
+        return rule
+    parsed = parse_advanced_rule(line)
+    token = parsed[0] if parsed is not None else ""
+    pattern = (parsed[1] if parsed is not None else line) or ""
+    if not pattern:
+        return rule
+
+    rooted = pattern.startswith("/")
+    value = pattern.lstrip("/")
+    if value != clean and not value.startswith(clean + "/"):
+        return rule
+    value = value[len(clean):].lstrip("/")
+    if not value:
+        return f"{token} /" if token else ""
+    result = ("/" if rooted else "") + value
+    return f"{token} {result}" if token else result
+
+
+def shorten_filter_text(text: str, prefix: str) -> str:
+    """Apply :func:`shorten_filter_rule` to every line of a filter file."""
+    out: list[str] = []
+    for line in text.splitlines():
+        shortened = shorten_filter_rule(line, prefix)
+        if shortened:
+            out.append(shortened)
+    return "\n".join(out)
+
+
 def validate_rule(rule: FilterRule) -> str:
     value = rule.rule.strip()
     if not value:

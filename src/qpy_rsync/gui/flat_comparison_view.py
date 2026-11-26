@@ -462,6 +462,8 @@ class FlatComparisonView(QWidget):
     delete_filter_requested = Signal(str, str)
     # Mark the item for deletion at sync time without changing the filters.
     delete_requested = Signal(str)
+    # Narrow both endpoints to a directory of the comparison.
+    use_as_location_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1645,6 +1647,8 @@ class FlatComparisonView(QWidget):
             self.delete_requested.emit(path)
         elif selected is actions["remove_delete"]:
             self.model.unmark_delete(path)
+        elif selected is actions["use_as_location"] and path is not None:
+            self.use_as_location_requested.emit(path)
 
     def _side_is_local(self, tree: QTableView) -> bool:
         """Whether the pane's endpoint lives on this machine."""
@@ -1724,6 +1728,7 @@ class FlatComparisonView(QWidget):
             "filters": [],
             "delete_filters": [],
             "delete_sync": None,
+            "use_as_location": None,
             "remove_delete": None,
             "tools": [],
         }
@@ -1767,6 +1772,13 @@ class FlatComparisonView(QWidget):
 
         # The filter entries of FreeFileSync, with rsync patterns.
         is_directory = bool(getattr(row, "is_directory", False))
+        # Dive into a folder on both sides. Files and the virtual compared
+        # folder have no subfolder to narrow the endpoints to.
+        if path and is_directory:
+            menu.addSeparator()
+            actions["use_as_location"] = menu.addAction(
+                "Use as Source/Destination..."
+            )
         if path:
             menu.addSeparator()
             phrases = phrases_for(path, is_directory=is_directory)

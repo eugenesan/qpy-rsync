@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- New "Use as Source/Destination..." context action on directory rows in the
+  Python and native comparison views and in the overview. It narrows both
+  endpoints to the folder, can shorten permanent filter rules by the
+  eliminated directory prefix, and marks the comparison stale with a reminder
+  to Compare again and Save or Save As the profile.
 - Single-item decisions, undo/redo and filter toggles are incremental again.
   Excluding or restoring one row no longer recomputes the whole plan
   fingerprint, the native visible index or the native overview in full; the

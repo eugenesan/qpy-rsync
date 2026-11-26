@@ -456,6 +456,7 @@ class NativeOverviewShim(QWidget):
     exclusion_requested = Signal(str)
     restore_requested = Signal(str)
     filter_requested = Signal(str, str)
+    use_as_location_requested = Signal(str)
 
     def __init__(self, widget: QWidget) -> None:
         super().__init__()

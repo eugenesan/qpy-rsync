@@ -75,7 +75,7 @@ from qpy_rsync.backend.rsync_command import (
     build_inventory_spec,
     build_sync_spec,
 )
-from qpy_rsync.backend.rsync_filters import filter_text_to_rules
+from qpy_rsync.backend.rsync_filters import filter_text_to_rules, shorten_filter_text
 from qpy_rsync.core.changes import ChangeAction, ChangeDecision
 from qpy_rsync.core.endpoints import parse_endpoint
 from qpy_rsync.storage.profile_store import (
@@ -548,6 +548,7 @@ class MainWindow(QMainWindow):
             self.comparison.filter_requested.connect(self._add_filter_phrase)
         self.comparison.delete_filter_requested.connect(self._add_filter_phrase)
         self.comparison.delete_requested.connect(self._mark_delete_from_ui)
+        self.comparison.use_as_location_requested.connect(self._use_as_location)
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
@@ -847,6 +848,7 @@ class MainWindow(QMainWindow):
         self.overview.exclusion_requested.connect(self._exclude_path)
         self.overview.restore_requested.connect(self._restore_path)
         self.overview.filter_requested.connect(self._add_filter_phrase)
+        self.overview.use_as_location_requested.connect(self._use_as_location)
         self._install_navigation_shortcuts()
         log_splitter.addWidget(self.overview)
         log_splitter.setStretchFactor(0, 1)
@@ -2079,6 +2081,61 @@ class MainWindow(QMainWindow):
             "stale",
         )
         self._append_log(f"Added rsync filter: {pattern}", severity="info")
+
+    def _use_as_location(self, path: object) -> None:
+        """Narrow both endpoints to a comparison folder.
+
+        The dialog only asks for confirmation. The profile itself is not
+        saved here; the status message reminds the user to Compare again and
+        to Save or Save As once the new locations are right.
+        """
+        if not isinstance(path, str):
+            return
+        from PySide6.QtWidgets import QDialog
+
+        from qpy_rsync.gui.use_as_location_dialog import UseAsLocationDialog
+
+        relative = path.strip().strip("/")
+        if not relative or relative == ".":
+            return
+        dialog = UseAsLocationDialog(
+            relative, self.source_edit.text(), self.destination_edit.text(), self
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        def joined(text: str) -> str:
+            base = text.strip()
+            while base.endswith("/"):
+                base = base[:-1]
+            return f"{base}/{relative}/"
+
+        # Setting both edits at once avoids treating one side as an isolated
+        # location change. parse_endpoint (called via _endpoint_text_changed)
+        # keeps SSH and local semantics intact.
+        self.source_edit.blockSignals(True)
+        self.destination_edit.blockSignals(True)
+        self.source_edit.setText(joined(self.source_edit.text()))
+        self.destination_edit.setText(joined(self.destination_edit.text()))
+        self.source_edit.blockSignals(False)
+        self.destination_edit.blockSignals(False)
+        self._endpoint_text_changed()
+
+        if dialog.update_filters():
+            self._filters_text = shorten_filter_text(self._filters_text, relative)
+            self._filters = filter_text_to_rules(self._filters_text)
+            self._update_filter_summary(stale=True)
+
+        self.comparison.set_stale(True)
+        self._set_locations_stale(True)
+        self._invalidate_plan_context()
+        self._update_command_preview()
+        self._append_log(f"STATE stale (locations changed to {relative})")
+        self._set_state(
+            f"Stale comparison: locations changed to {relative}. "
+            "Compare again, then Save or Save As to persist the profile.",
+            "stale",
+        )
 
     def _mark_delete_from_ui(self, path: object) -> None:
         """Add a sync-only delete decision for an item of the comparison."""
@@ -4583,6 +4640,7 @@ class MainWindow(QMainWindow):
         shim.exclusion_requested.connect(self._exclude_path)
         shim.restore_requested.connect(self._restore_path)
         shim.filter_requested.connect(self._add_filter_phrase)
+        shim.use_as_location_requested.connect(self._use_as_location)
         view.on_decision_changed(self._on_native_decision)
         view.on_selection_changed(self._on_native_selection)
         view.on_context_menu(self._native_context_menu)
@@ -4807,6 +4865,8 @@ class MainWindow(QMainWindow):
         exclude_action = menu.addAction("Exclude Folder\tSpace")
         restore_action = menu.addAction("Restore Folder")
         menu.addSeparator()
+        use_as_location = menu.addAction("Use as Source/Destination...")
+        menu.addSeparator()
         filter_menu = menu.addMenu("Exclude via Filter")
         filter_actions = []
         for phrase in phrases_for(path, is_directory=True):
@@ -4818,6 +4878,8 @@ class MainWindow(QMainWindow):
             self._exclude_path(path)
         elif chosen is restore_action:
             self._restore_path(path)
+        elif chosen is use_as_location:
+            self._use_as_location(path)
         elif chosen in filter_actions:
             self._add_filter_phrase(chosen.data(), path)
 
@@ -4872,6 +4934,13 @@ class MainWindow(QMainWindow):
         reset_one = menu.addAction("Reset This Decision") if path else None
         reset_subtree = menu.addAction("Reset Subtree Decisions") if path else None
         reset_all = menu.addAction("Reset All Decisions")
+
+        # The virtual compared-folder row uses an internal \x01 path; it is
+        # not a directory the endpoints can be narrowed to.
+        use_as_location = None
+        if is_dir and path and not path.startswith("\x01"):
+            menu.addSeparator()
+            use_as_location = menu.addAction("Use as Source/Destination...")
 
         filter_actions = []
         delete_filter_actions = []
@@ -4951,6 +5020,8 @@ class MainWindow(QMainWindow):
             self._mark_delete_from_ui(path)
         elif chosen is remove_delete:
             view.set_decision_by_path(path, 0)
+        elif chosen is use_as_location:
+            self._use_as_location(path)
         elif chosen in tool_actions:
             name, entry_path, side, directory = chosen.data()
             self._run_external_tool(name, entry_path, side, directory)
