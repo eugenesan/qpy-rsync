@@ -141,6 +141,7 @@ class NativeHybridView:
         self._action_icons: list[object] = []
         self.set_action_colours()
         self._paths: list[str] = []
+        self._path_index: dict[str, int] | None = None
         self.set_name_icons()
         self._handed_paths: list[str] | None = None
         global _ACTIVE
@@ -280,6 +281,7 @@ class NativeHybridView:
         self._native.truncate(count)
         self._handed_paths = handed[:count]
         self._paths = self._paths[:count]
+        self._path_index = None
         self._native.refresh()
 
     def set_changes_for_unchanged(self, count: int) -> None:
@@ -290,6 +292,7 @@ class NativeHybridView:
         self._native.truncate(count)
         self._handed_paths = handed[:count]
         self._paths = self._paths[:count]
+        self._path_index = None
         self._native.refresh()
 
     def set_changes(self, changes: Sequence[Any]) -> None:
@@ -299,6 +302,7 @@ class NativeHybridView:
         # store use, so excluding it hides the row and clears its checkbox.
         paths = [_handoff_path(change) for change in changes]
         self._paths = paths
+        self._path_index = None
         if self._handed_paths == paths:
             return
         prefix = self._handed_paths or []
@@ -319,6 +323,15 @@ class NativeHybridView:
             [int(change.size or 0) for change in subset],
             [0] * len(subset),
             [str(change.modified_time or "") for change in subset],
+            [
+                ": ".join(
+                    part for part in (
+                        str(getattr(change, "itemized_code", "") or ""),
+                        str(getattr(change, "reason", "") or ""),
+                    ) if part
+                )
+                for change in subset
+            ],
         )
         new_paths = paths[start:] if start else paths
         if start:
@@ -399,12 +412,17 @@ class NativeHybridView:
         self._native.apply_destination_metadata(metadata, merge)
 
     def apply_python_decisions(self, decisions) -> None:
+        # Undo/redo can restore many decisions at once. Building the index
+        # once avoids a full scan of the row list for every decision.
+        if self._path_index is None:
+            self._path_index = {
+                path: index for index, path in enumerate(self._paths)
+            }
         pairs = []
         for path, decision in decisions.items():
             key = self._path_key(str(path))
-            try:
-                path_id = self._paths.index(key)
-            except ValueError:
+            path_id = self._path_index.get(key)
+            if path_id is None:
                 continue
             pairs.append((path_id, int(decision)))
         self._native.apply_python_decisions(pairs)

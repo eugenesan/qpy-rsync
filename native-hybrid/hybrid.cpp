@@ -8,6 +8,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <QApplication>
+#include <QDateTime>
 #include <QColor>
 #include <QIcon>
 #include <QStyle>
@@ -36,6 +37,7 @@
 #include <functional>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -81,6 +83,19 @@ inline bool profiling_enabled() {
   if (g_profiling_enabled) return true;
   const char* value = std::getenv("QPY_RSYNC_PROFILE");
   return value != nullptr && value[0] != '\0';
+}
+
+// Same opt-in phase log as the Python side. No-op unless the path variable
+// is set, so an ordinary session never opens a file.
+void native_perf(const char* event, qint64 elapsed_ms) {
+  const char* path = std::getenv("QPY_RSYNC_PERF_LOG");
+  if (path == nullptr || path[0] == '\0') return;
+  std::ofstream output(path, std::ios::app);
+  if (!output) return;
+  output << QDateTime::currentDateTime()
+                .toString(Qt::ISODateWithMs)
+                .toStdString()
+         << ' ' << event << ' ' << elapsed_ms << "ms\n";
 }
 inline nb::object g_selection_callback;
 inline nb::object g_decision_callback;
@@ -189,7 +204,6 @@ void repaint_native_area(Session& s) {
 }
 
 void refresh_native_models(Session& s, bool expand_overview = false) {
-  (void)expand_overview;
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
   int current_id = s.current_path_id;
@@ -214,6 +228,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
   QElapsedTimer phase;
   phase.start();
   for (TableModel* model : s.models) model->reset();
+  native_perf("native.model_reset", phase.elapsed());
   if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] model_reset ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
@@ -268,6 +283,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
       select_path_id_impl(s, current_id);
     }
   }
+  native_perf("native.cursor_restore", phase.elapsed());
   if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] cursor_restore ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
@@ -282,22 +298,34 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
   QWidget* list_focus = focus;
   if (list_focus == nullptr && s.views[0] != nullptr) list_focus = s.views[0];
   if (list_focus != nullptr) list_focus->setFocus();
+  native_perf("native.scroll_focus", phase.elapsed());
   if (profiling_enabled()) {
     std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
   if (s.overview != nullptr && s.overview_view != nullptr) {
-    // The overview consumes the same filtered totals as the lists, so it has
-    // to follow every rebuild. Keeping it stale after a filter or decision
-    // change made Total disagree with the folder rows.
     phase.restart();
-    const int sort_section = s.overview_view->header()->sortIndicatorSection();
-    const Qt::SortOrder sort_order =
-        s.overview_view->header()->sortIndicatorOrder();
-    s.overview->build(s.store, true);
-    if (sort_section >= 0) s.overview->sort(sort_section, sort_order);
+    if (expand_overview) {
+      // A new comparison can change the folder structure, so it needs a full
+      // build and a re-sort.
+      const int sort_section =
+          s.overview_view->header()->sortIndicatorSection();
+      const Qt::SortOrder sort_order =
+          s.overview_view->header()->sortIndicatorOrder();
+      s.overview->build(s.store, true);
+      if (sort_section >= 0) s.overview->sort(sort_section, sort_order);
+    } else if (!s.overview->refresh_counts(s.store)) {
+      // A new folder appeared: the cached node tree cannot describe it.
+      const int sort_section =
+          s.overview_view->header()->sortIndicatorSection();
+      const Qt::SortOrder sort_order =
+          s.overview_view->header()->sortIndicatorOrder();
+      s.overview->build(s.store, true);
+      if (sort_section >= 0) s.overview->sort(sort_section, sort_order);
+    }
+    native_perf("native.overview_update", phase.elapsed());
     if (profiling_enabled()) {
-      std::fprintf(stderr, "[qpy-rsync native] overview_build ms=%lld\n",
+      std::fprintf(stderr, "[qpy-rsync native] overview_update ms=%lld\n",
                    static_cast<long long>(phase.elapsed()));
     }
     const QModelIndex total = s.overview->index(0, 0);
@@ -1233,6 +1261,10 @@ QWidget* ensure_overview_widget(Session& s) {
 }
 
 void update_stats(Session& s) {
+  // The Decisions header carries the live modified-decision count.
+  for (TableModel* model : s.models) {
+    if (model != nullptr) model->headerDataChanged(Qt::Horizontal, 4, 4);
+  }
   if (s.stats_widget == nullptr) return;
   long long count = 0, size = 0, creates = 0, updates = 0, metadata = 0,
               deletes = 0, kept = 0, deleted_size = 0;
@@ -1287,9 +1319,13 @@ NB_MODULE(native_hybrid, m) {
                    const std::vector<int>& kinds,
                    const std::vector<long long>& sizes,
                    const std::vector<int>& decisions,
-                   const std::vector<std::string>& times) {
-    session().store.load_direct(paths, actions, kinds, sizes, decisions, times);
-  });
+                   const std::vector<std::string>& times,
+                   const std::vector<std::string>& details) {
+    session().store.load_direct(paths, actions, kinds, sizes, decisions,
+                                times, details);
+  }, nb::arg("paths"), nb::arg("actions"), nb::arg("kinds"),
+     nb::arg("sizes"), nb::arg("decisions"), nb::arg("times"),
+     nb::arg("details") = std::vector<std::string>());
 
   m.def("truncate", [](int count) {
     Session& s = session();
@@ -1301,9 +1337,13 @@ NB_MODULE(native_hybrid, m) {
                      const std::vector<int>& kinds,
                      const std::vector<long long>& sizes,
                      const std::vector<int>& decisions,
-                     const std::vector<std::string>& times) {
-    session().store.append_direct(paths, actions, kinds, sizes, decisions, times);
-  });
+                     const std::vector<std::string>& times,
+                     const std::vector<std::string>& details) {
+    session().store.append_direct(paths, actions, kinds, sizes, decisions,
+                                  times, details);
+  }, nb::arg("paths"), nb::arg("actions"), nb::arg("kinds"),
+     nb::arg("sizes"), nb::arg("decisions"), nb::arg("times"),
+     nb::arg("details") = std::vector<std::string>());
 
   m.def("set_selection_callback", [](nb::object callback) {
     g_selection_callback = callback;
@@ -1680,15 +1720,29 @@ NB_MODULE(native_hybrid, m) {
     total_timer.start();
     QElapsedTimer phase;
     phase.start();
-    s.store.rebuild_visible();
+    // A single row changing between visible and excluded only needs that
+    // row removed from the visible index. Rebuilding the whole tree on
+    // every exclude/undo was the cause of multi-second decision edits.
+    bool incremental = false;
+    if (path_id >= 0 &&
+        path_id < static_cast<int>(s.store.decisions.size()) &&
+        s.store.decisions[path_id] == decision) {
+      incremental = s.store.update_single_visibility(path_id, decision);
+    }
+    if (!incremental) s.store.rebuild_visible();
+    native_perf(incremental ? "native.visible_update_incremental"
+                            : "native.visible_update", phase.elapsed());
     if (profiling_enabled()) {
-      std::fprintf(stderr, "[qpy-rsync native] rebuild_visible ms=%lld\n",
-                   static_cast<long long>(phase.elapsed()));
+      std::fprintf(stderr, "[qpy-rsync native] visible_update ms=%lld%s\n",
+                   static_cast<long long>(phase.elapsed()),
+                   incremental ? " incremental" : "");
     }
     refresh_native_models(s);
     QElapsedTimer stats_timer;
     stats_timer.start();
     update_stats(s);
+    native_perf("native.update_stats", stats_timer.elapsed());
+    native_perf("native.decision_total", total_timer.elapsed());
     if (profiling_enabled()) {
       std::fprintf(stderr, "[qpy-rsync native] update_stats ms=%lld total=%lld\n",
                    static_cast<long long>(stats_timer.elapsed()),

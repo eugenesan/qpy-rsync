@@ -10,10 +10,47 @@ import pytest
 
 pytest.importorskip("qpy_rsync.native_hybrid")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtWidgets import QApplication, QTableView  # noqa: E402
 
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind  # noqa: E402
 from qpy_rsync.gui.native_hybrid_view import NativeHybridView  # noqa: E402
+
+
+def test_decisions_tooltip_matches_python_view() -> None:
+    """The native Decisions column carries the Python header/cell tooltip."""
+    application = QApplication.instance() or QApplication([])
+    change = Change(
+        "a/file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE,
+        ">f..t......", size=10, modified_time="2026/11/26-10:00:00",
+        reason="size differs",
+    )
+    view = NativeHybridView()
+    view.set_changes([change])
+    view.set_destination_metadata({"a/file.txt": (16, "2026/11/26-10:01:00")})
+    application.processEvents()
+    model = sorted(view.widget.findChildren(QTableView), key=lambda t: t.x())[1].model()
+    header_role = Qt.ItemDataRole.ToolTipRole
+    assert model.headerData(4, Qt.Orientation.Horizontal, header_role) == "Decisions"
+    row = next(
+        index for index in range(view.row_count())
+        if view.path_of_row(index) == "a/file.txt"
+    )
+    tip = model.data(model.index(row, 4), header_role)
+    assert "Source: a/file.txt" in tip
+    assert "Destination: a/file.txt" in tip
+    assert "Update" in tip
+    assert ">f..t......: size differs" in tip
+    assert "source 2026/11/26-10:00:00" in tip
+    assert "destination 2026/11/26-10:01:00" in tip
+    # The header count follows decisions, just like the Python view's
+    # "Decisions* (N modified)" tooltip.
+    view.set_decision_by_path("a/file.txt", 2)
+    application.processEvents()
+    assert model.headerData(4, Qt.Orientation.Horizontal, header_role) == (
+        "Decisions* (1 modified)"
+    )
+    view.shutdown()
 
 
 def test_native_view_handoff_and_decision_diff() -> None:

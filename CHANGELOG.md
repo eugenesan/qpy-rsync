@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Single-item decisions, undo/redo and filter toggles are incremental again.
+  Excluding or restoring one row no longer recomputes the whole plan
+  fingerprint, the native visible index or the native overview in full; the
+  overview totals are refreshed in place so they still match the lists.
+- The native Decisions column now carries the Python view's header and
+  per-item tooltip text, including the decision detail and both timestamps.
+- Added opt-in interactive performance logging. Set
+  `QPY_RSYNC_PERF_LOG=/path/to/file` before launching to append one line per
+  phase (timestamp, phase name, elapsed ms). Nothing is written when the
+  variable is unset, and normal console timing diagnostics are unchanged.
+
 ## 0.4.0
 
 - Excluding a symlink now hides its row and clears its checkbox in both

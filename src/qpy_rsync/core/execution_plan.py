@@ -79,17 +79,47 @@ class ExecutionPlan:
         return tuple(item for item in self.items if item.included)
 
 
-def plan_items_fingerprint(items: Iterable[PlanItem]) -> str:
-    """Fingerprint plan contents; the filter-text cache keys on this value."""
+def _item_fingerprint(item: PlanItem) -> int:
+    """The order-independent contribution of one item to the plan digest."""
     digest = sha256()
+    digest.update(item.path.encode("utf-8"))
+    digest.update(item.action.value.encode("utf-8"))
+    digest.update(item.kind.value.encode("utf-8"))
+    digest.update(b"1" if item.included else b"0")
+    if item.synthetic_delete:
+        digest.update(b"D")
+    return int.from_bytes(digest.digest(), "big")
+
+
+def plan_items_fingerprint(items: Iterable[PlanItem]) -> str:
+    """Fingerprint plan contents; the filter-text cache keys on this value.
+
+    The first part is an order-sensitive digest of the item identities: the
+    generated filter rules depend on the order of the rows. The second part is
+    the XOR of the per-item flags, so an incremental patch can fold out the
+    old items and fold in the new ones instead of hashing half a million rows
+    on every decision.
+    """
+    order = sha256()
+    digest = 0
     for item in items:
-        digest.update(item.path.encode("utf-8"))
-        digest.update(item.action.value.encode("utf-8"))
-        digest.update(item.kind.value.encode("utf-8"))
-        digest.update(b"1" if item.included else b"0")
-        if item.synthetic_delete:
-            digest.update(b"D")
-    return digest.hexdigest()
+        order.update(item.path.encode("utf-8"))
+        order.update(item.action.value.encode("utf-8"))
+        order.update(item.kind.value.encode("utf-8"))
+        digest ^= _item_fingerprint(item)
+    return f"{order.hexdigest()}:{digest.to_bytes(32, 'big').hex()}"
+
+
+def patch_plan_items_fingerprint(
+    fingerprint: str, changes: Iterable[tuple[PlanItem, PlanItem]]
+) -> str:
+    """Apply ``(old, new)`` item replacements to a plan fingerprint in O(changes)."""
+    order, separator, digest_hex = fingerprint.partition(":")
+    digest = int(digest_hex, 16) if separator and digest_hex else 0
+    for old, new in changes:
+        digest ^= _item_fingerprint(old)
+        digest ^= _item_fingerprint(new)
+    return f"{order}:{digest.to_bytes(32, 'big').hex()}"
 
 
 def profile_fingerprint(profile: SyncProfile) -> str:

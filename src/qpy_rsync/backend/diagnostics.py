@@ -65,11 +65,35 @@ def timing_enabled() -> bool:
 
 _SINK = None
 
+# Opt-in, low-overhead phase log for interactive performance reports. When
+# unset, perf_log() returns before doing any work and the normal UI path is
+# unchanged. Set QPY_RSYNC_PERF_LOG=/path/to/file before starting the app to
+# get one line per timed phase: ISO timestamp, phase name, elapsed ms.
+PERF_LOG_ENV = "QPY_RSYNC_PERF_LOG"
+
 
 def set_timing_sink(sink) -> None:
     """Also deliver diagnostics to a callback (e.g. the session log)."""
     global _SINK
     _SINK = sink
+
+
+def perf_log(event: str, elapsed_ms: float, **values: object) -> None:
+    """Append one phase line to QPY_RSYNC_PERF_LOG when that variable is set."""
+    path = os.environ.get(PERF_LOG_ENV, "")
+    if not path:
+        return
+    try:
+        timestamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
+        details = " ".join(f"{key}={value}" for key, value in values.items())
+        line = f"{timestamp} {event} {elapsed_ms:.1f}ms"
+        if details:
+            line += " " + details
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError:
+        # A broken or unwritable log must never affect the application.
+        pass
 
 
 def _emit(line: str) -> None:
@@ -100,9 +124,15 @@ def debug_timing(event: str, **values: object) -> None:
 
 @contextmanager
 def timed(event: str, **values: object):
-    """Time a block and report it through :func:`debug_timing`."""
+    """Time a block and report it through :func:`debug_timing`.
+
+    Independently of the verbose timing switches, an opt-in perf log records
+    the same phases when ``QPY_RSYNC_PERF_LOG`` points at a file.
+    """
     start = perf_counter()
     try:
         yield
     finally:
-        debug_timing(event, ms=round((perf_counter() - start) * 1000, 1), **values)
+        elapsed_ms = round((perf_counter() - start) * 1000, 1)
+        debug_timing(event, ms=elapsed_ms, **values)
+        perf_log(event, elapsed_ms, **values)

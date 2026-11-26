@@ -1124,16 +1124,18 @@ class FlatComparisonView(QWidget):
 
     def undo_decision(self) -> bool:
         """Undo the last decision edit."""
-        if not self.model.undo_decision():
-            return False
-        self.changes_updated.emit("decision")
+        with timed("view.undo_decision"):
+            if not self.model.undo_decision():
+                return False
+            self.changes_updated.emit("decision")
         return True
 
     def redo_decision(self) -> bool:
         """Redo the last undone decision edit."""
-        if not self.model.redo_decision():
-            return False
-        self.changes_updated.emit("decision")
+        with timed("view.redo_decision"):
+            if not self.model.redo_decision():
+                return False
+            self.changes_updated.emit("decision")
         return True
 
     _toggle_exclusion = _toggle_excluded

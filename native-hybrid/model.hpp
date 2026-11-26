@@ -47,6 +47,8 @@ struct DataStore {
   std::vector<int> kinds;
   std::vector<long long> sizes;
   std::vector<std::string> times;
+  // Itemized code plus reason, used by the Decisions-column tooltip.
+  std::vector<std::string> details;
   std::vector<int> decisions;
   // Volatile view state owned by native.
   std::vector<int> parents;
@@ -99,6 +101,8 @@ struct DataStore {
     actions.clear();
     kinds.clear();
     sizes.clear();
+    times.clear();
+    details.clear();
     decisions.clear();
     decision_log.clear();
     paths.reserve(count);
@@ -113,6 +117,8 @@ struct DataStore {
       actions.push_back(i % 17 == 0 ? Delete : (i % 5 == 0 ? Update : Create));
       kinds.push_back(i % 97 == 0 ? 1 : 0);  // 1 = directory
       sizes.push_back((i * 37) % 100000);
+      times.push_back("");
+      details.push_back("");
       decisions.push_back(Inherit);
     }
     synthetic.assign(count, 0);
@@ -161,6 +167,8 @@ struct DataStore {
     at += count * 4;
     std::memcpy(decisions.data(), raw.data() + at, count);
     decision_log.clear();
+    times.assign(count, "");
+    details.assign(count, "");
     synthetic.assign(count, 0);
     visible.resize(count);
     std::iota(visible.begin(), visible.end(), 0);
@@ -213,12 +221,14 @@ struct DataStore {
                    const std::vector<int>& kinds_,
                    const std::vector<long long>& sizes_,
                    const std::vector<int>& decisions_,
-                   const std::vector<std::string>& times_) {
+                   const std::vector<std::string>& times_,
+                   const std::vector<std::string>& details_ = {}) {
     paths = paths_;
     actions = actions_;
     kinds = kinds_;
     sizes = sizes_;
     times = times_;
+    details = details_;
     decisions = decisions_;
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
@@ -248,7 +258,8 @@ struct DataStore {
                      const std::vector<int>& kinds_,
                      const std::vector<long long>& sizes_,
                      const std::vector<int>& decisions_,
-                     const std::vector<std::string>& times_) {
+                     const std::vector<std::string>& times_,
+                     const std::vector<std::string>& details_ = {}) {
     const int start = static_cast<int>(paths.size());
     const int added = static_cast<int>(paths_.size());
     paths.insert(paths.end(), paths_.begin(), paths_.end());
@@ -256,6 +267,7 @@ struct DataStore {
     kinds.insert(kinds.end(), kinds_.begin(), kinds_.end());
     sizes.insert(sizes.end(), sizes_.begin(), sizes_.end());
     times.insert(times.end(), times_.begin(), times_.end());
+    details.insert(details.end(), details_.begin(), details_.end());
     decisions.insert(decisions.end(), decisions_.begin(), decisions_.end());
     const int count = static_cast<int>(paths.size());
     parents.resize(count);
@@ -280,6 +292,7 @@ struct DataStore {
     kinds.resize(count);
     sizes.resize(count);
     times.resize(count);
+    details.resize(count);
     decisions.resize(count);
     parents.resize(count);
     is_dir.resize(count);
@@ -323,6 +336,7 @@ struct DataStore {
       kinds.push_back(1);
       sizes.push_back(0);
       times.push_back("");
+      details.push_back("");
       decisions.push_back(Inherit);
       synthetic.push_back(1);
       path_to_id[dir] = id;
@@ -336,6 +350,7 @@ struct DataStore {
       kinds.push_back(1);
       sizes.push_back(0);
       times.push_back("");
+      details.push_back("");
       decisions.push_back(Inherit);
       synthetic.push_back(1);
       path_to_id[root_path()] = root;
@@ -730,15 +745,21 @@ struct DataStore {
   // re-sorting half a million rows.
   bool update_single_visibility(int path_id, int decision) {
     if (path_id < 0 || path_id >= static_cast<int>(decisions.size())) return false;
-    bool was_hidden = decisions[path_id] == Exclude;
-    bool now_hidden = decision == Exclude;
+    // Callers set the decision before asking for the view refresh, so the
+    // old visibility has to come from the row map, not from `decisions`.
+    const bool was_visible = path_id < static_cast<int>(row_of_id.size()) &&
+                             row_of_id[path_id] >= 0;
     decisions[path_id] = decision;
-    if (was_hidden == now_hidden) return false;
+    const bool now_visible = show_excluded || decision != Exclude;
+    if (was_visible == now_visible) return false;
     if (sort_column != 0 || !pattern.empty()) return false;
     int row = row_of_id[path_id];
-    if (now_hidden) {
+    if (!now_visible) {
       if (row < 0) return false;
       visible.erase(visible.begin() + row);
+      row_of_id[path_id] = -1;
+      compute_aggregates();
+      compute_destination_counts();
     } else {
       // `visible` is in tree order, not lexicographic order; inserting by
       // path made restored rows appear at a random place. Rebuild instead.
@@ -910,21 +931,49 @@ class TableModel : public QAbstractTableModel {
                                     ? store_->paths[id] : std::string();
       if (path == DataStore::root_path()) return QString("Compared folder");
       const QString shown = QString::fromStdString(path);
-      if (index.column() == 4) {
-        int action = id < static_cast<int>(store_->actions.size())
-                         ? store_->actions[id] : NoChange;
-        if (id < static_cast<int>(store_->decisions.size()) &&
-            store_->decisions[id] == DeleteRequest) {
-          action = Delete;
-        }
-        QString tip = "Source: " + shown + "\nDestination: " + shown +
-                      "\n" + QString::fromStdString(action_label(action));
-        const std::string time = id < static_cast<int>(store_->times.size())
-                                     ? store_->times[id] : std::string();
-        if (!time.empty()) tip += "\nModified: " + QString::fromStdString(time);
-        return tip;
+      if (index.column() != 4) return shown;
+      int action = id < static_cast<int>(store_->actions.size())
+                       ? store_->actions[id] : NoChange;
+      if (id < static_cast<int>(store_->decisions.size()) &&
+          store_->decisions[id] == DeleteRequest) {
+        action = Delete;
       }
-      return shown;
+      // Same layout as FlatChangeModel._tooltip_for() for the Decisions
+      // column: both sides, the effective change, then the detailed reason
+      // and the two timestamps.
+      QString tip = "Source: " + shown + "\nDestination: " + shown + "\n" +
+                    python_action_label(action);
+      const int decision = id < static_cast<int>(store_->decisions.size())
+                               ? store_->decisions[id] : Inherit;
+      QString decision_text;
+      if (decision == Exclude) decision_text = "Excluded";
+      else if (decision == DeleteRequest) decision_text = "Delete at sync";
+      else if (decision == Include) decision_text = "Included";
+      if (!decision_text.isEmpty()) tip += "\nDecision: " + decision_text;
+      if (id < static_cast<int>(store_->details.size()) &&
+          !store_->details[id].empty()) {
+        tip += "\n" + QString::fromStdString(store_->details[id]);
+      }
+      const std::string source_time = id < static_cast<int>(store_->times.size())
+                                          ? store_->times[id] : std::string();
+      std::string destination_time;
+      auto metadata = store_->dest_metadata.find(path);
+      if (metadata != store_->dest_metadata.end()) {
+        destination_time = metadata->second.second;
+      }
+      if (destination_time.empty() &&
+          id < static_cast<int>(store_->dest_times.size())) {
+        destination_time = store_->dest_times[id];
+      }
+      if (!source_time.empty() || !destination_time.empty()) {
+        tip += "\nModified:";
+        if (!source_time.empty()) tip += " source " + QString::fromStdString(source_time);
+        if (!destination_time.empty()) {
+          tip += (source_time.empty() ? " destination " : ", destination ") +
+                 QString::fromStdString(destination_time);
+        }
+      }
+      return tip;
     }
     if (role == Qt::ForegroundRole) {
       if (pane_ == 1) return {};
@@ -1025,6 +1074,21 @@ class TableModel : public QAbstractTableModel {
   }
 
   QVariant headerData(int section, Qt::Orientation, int role) const override {
+    if (role == Qt::ToolTipRole) {
+      // Match the Python Decisions header, including the live count of
+      // decisions that differ from the comparison defaults.
+      if (section != 4 || store_ == nullptr) return {};
+      int modified = 0;
+      for (std::size_t i = 0;
+           i < store_->decisions.size() && i < store_->paths.size(); ++i) {
+        if (i < store_->synthetic.size() && store_->synthetic[i]) continue;
+        if (store_->paths[i] == DataStore::root_path()) continue;
+        if (store_->decisions[i] != Inherit) ++modified;
+      }
+      return modified > 0
+                 ? QString("Decisions* (%1 modified)").arg(modified)
+                 : QString("Decisions");
+    }
     if (role != Qt::DisplayRole) return {};
     static const char* headers[11] = {
         "Item", "Items", "Size", "Modified", "Decisions",
@@ -1091,6 +1155,19 @@ class TableModel : public QAbstractTableModel {
     }
   }
 
+  // Wording of qpy_rsync.gui.icons.ACTION_LABELS used by the Python tooltip.
+  static QString python_action_label(int action) {
+    switch (action) {
+      case Create: return QString("Create");
+      case Update: return QString("Update");
+      case Metadata: return QString("Metadata only");
+      case Delete: return QString("Delete");
+      case DestOnly: return QString("Keep in Destination");
+      case NoChange: return QString("Unchanged");
+      default: return QString("Message");
+    }
+  }
+
   static QString action_name(int action) {
     switch (action) {
       case Create: return QString("new");
@@ -1116,6 +1193,9 @@ struct OverviewNode {
   long long total_size = 0;
   OverviewNode* parent = nullptr;
   std::vector<OverviewNode*> children;
+  // Folders whose subtree has no visible item are kept in the tree but
+  // hidden from the view, like the Python overview does.
+  bool hidden = false;
 };
 
 class OverviewModel : public QAbstractItemModel {
@@ -1133,6 +1213,8 @@ class OverviewModel : public QAbstractItemModel {
     beginResetModel();
     for (OverviewNode* node : nodes_) delete node;
     nodes_.clear();
+    files_by_folder_.clear();
+    nodes_by_path_.clear();
     root_ = new OverviewNode{"", "", 0, 0, 0, 0, nullptr, {}};
     nodes_.push_back(root_);
     auto* total = new OverviewNode{"Total", "", 0, 0, 0, 0, root_, {}};
@@ -1163,7 +1245,9 @@ class OverviewModel : public QAbstractItemModel {
         prefix = prefix.empty() ? part : prefix + "/" + part;
         auto it = folders.find(prefix);
         if (it == folders.end()) {
-          it = folders.emplace(prefix, add_child(parent, part, prefix)).first;
+          OverviewNode* folder = add_child(parent, part, prefix);
+          it = folders.emplace(prefix, folder).first;
+          nodes_by_path_[prefix] = folder;
         }
         parent = it->second;
         if (slash == std::string::npos) break;
@@ -1191,6 +1275,7 @@ class OverviewModel : public QAbstractItemModel {
         if (child->name == "Files") { files = child; break; }
       }
       if (files == nullptr) files = add_child(folder, "Files", "");
+      files_by_folder_[folder_path] = files;
       ++files->count;
       if (!dir_row) {
         files->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
@@ -1215,6 +1300,8 @@ class OverviewModel : public QAbstractItemModel {
     total->total_count = root_->total_count;
     total->total_size = root_->total_size;
     grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
+    mark_empty_nodes();
+    refresh_visible_children();
     endResetModel();
   }
 
@@ -1254,32 +1341,36 @@ class OverviewModel : public QAbstractItemModel {
       for (OverviewNode* child : node->children) sort_children(child);
     };
     sort_children(root_);
+    refresh_visible_children();
     layoutChanged();
   }
 
   QModelIndex index_for_path(const std::string& path) const {
-    for (OverviewNode* node : nodes_) {
-      if (node->path != path || node == root_) continue;
-      OverviewNode* parent = node->parent;
-      if (parent == nullptr) return {};
-      // Find this node's row among its parent's children.
+    auto found = nodes_by_path_.find(path);
+    if (found == nodes_by_path_.end()) return {};
+    std::vector<OverviewNode*> chain;
+    for (OverviewNode* node = found->second;
+         node != nullptr && node != root_; node = node->parent) {
+      chain.push_back(node);
+    }
+    QModelIndex result;
+    for (auto node = chain.rbegin(); node != chain.rend(); ++node) {
+      OverviewNode* parent = (*node)->parent;
+      const auto children = visible_children(parent);
       int row = 0;
-      for (OverviewNode* child : parent->children) {
-        if (child == node) {
-          QModelIndex parent_index = parent == root_
-                                         ? QModelIndex()
-                                         : index_for_path(parent->path);
-          return index(row, 0, parent_index);
-        }
+      while (row < static_cast<int>(children.size()) &&
+             children[row] != *node) {
         ++row;
       }
+      if (row == static_cast<int>(children.size())) return {};
+      result = index(row, 0, result);
     }
-    return {};
+    return result;
   }
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override {
     if (parent.isValid() && parent.column() != 0) return 0;
-    return static_cast<int>(node(parent)->children.size());
+    return static_cast<int>(visible_children(node(parent)).size());
   }
 
   int columnCount(const QModelIndex&) const override { return 4; }
@@ -1287,20 +1378,21 @@ class OverviewModel : public QAbstractItemModel {
   QModelIndex index(int row, int column,
                     const QModelIndex& parent = QModelIndex()) const override {
     if (!hasIndex(row, column, parent)) return {};
-    auto* node = node_at(parent)->children[row];
-    return createIndex(row, column, node);
+    const auto children = visible_children(node_at(parent));
+    if (row < 0 || row >= static_cast<int>(children.size())) return {};
+    return createIndex(row, column, children[row]);
   }
 
   QModelIndex parent(const QModelIndex& index) const override {
     if (!index.isValid()) return {};
     OverviewNode* parent = node(index)->parent;
     if (!parent || parent == root_) return {};
-    OverviewNode* grandparent = parent->parent;
+    const auto children = visible_children(parent->parent);
     int row = 0;
-    for (OverviewNode* child : grandparent->children) {
-      if (child == parent) break;
+    while (row < static_cast<int>(children.size()) && children[row] != parent) {
       ++row;
     }
+    if (row == static_cast<int>(children.size())) return {};
     return createIndex(row, 0, parent);
   }
 
@@ -1318,7 +1410,7 @@ class OverviewModel : public QAbstractItemModel {
       // Share of this node among its siblings, by size (like the Python view).
       long long siblings = 0;
       if (item->parent != nullptr) {
-        for (OverviewNode* child : item->parent->children) {
+        for (OverviewNode* child : visible_children(item->parent)) {
           siblings += child->total_size;
         }
       }
@@ -1335,7 +1427,7 @@ class OverviewModel : public QAbstractItemModel {
       case 1: {
         long long siblings = 0;
         if (item->parent != nullptr) {
-          for (OverviewNode* child : item->parent->children) {
+          for (OverviewNode* child : visible_children(item->parent)) {
             siblings += child->total_size;
           }
         }
@@ -1368,9 +1460,89 @@ class OverviewModel : public QAbstractItemModel {
   }
   OverviewNode* node_at(const QModelIndex& index) const { return node(index); }
 
+  const std::vector<OverviewNode*>& visible_children(OverviewNode* node) const {
+    static const std::vector<OverviewNode*> empty;
+    auto it = visible_children_.find(node);
+    return it == visible_children_.end() ? empty : it->second;
+  }
+
+  void refresh_visible_children() {
+    visible_children_.clear();
+    for (OverviewNode* node : nodes_) {
+      auto& children = visible_children_[node];
+      children.reserve(node->children.size());
+      for (OverviewNode* child : node->children) {
+        if (node == root_ || !child->hidden) children.push_back(child);
+      }
+    }
+  }
+
+  void mark_empty_nodes() {
+    std::function<void(OverviewNode*)> mark = [&](OverviewNode* node) {
+      for (OverviewNode* child : node->children) {
+        mark(child);
+        child->hidden = child->total_count == 0;
+      }
+    };
+    mark(root_);
+    // The Total row stays visible even for an empty comparison.
+    if (!root_->children.empty()) root_->children[0]->hidden = false;
+  }
+
+ public:
+  // Update folder counts in place after a single decision/filter change.
+  // Rebuilding the whole overview and re-sorting thirty thousand nodes on
+  // every exclude made single-item decisions take seconds.
+  bool refresh_counts(const DataStore& store) {
+    if (root_ == nullptr || root_->children.empty() ||
+        files_by_folder_.empty()) {
+      return false;
+    }
+    emit layoutAboutToBeChanged();
+    for (OverviewNode* node : nodes_) {
+      node->count = 0;
+      node->size = 0;
+    }
+    for (int id : store.visible) {
+      if (!store.counts_as_item(id)) continue;
+      const std::string& path = store.paths[id];
+      if (path.empty() || path == DataStore::root_path()) continue;
+      const bool dir_row = id < static_cast<int>(store.is_dir.size()) &&
+                           store.is_dir[id] != 0;
+      const std::size_t slash = path.rfind('/');
+      const std::string folder =
+          slash == std::string::npos ? std::string() : path.substr(0, slash);
+      auto found = files_by_folder_.find(folder);
+      if (found == files_by_folder_.end()) {
+        // A new folder appeared; the caller has to rebuild the structure.
+        emit layoutChanged();
+        return false;
+      }
+      OverviewNode* files = found->second;
+      ++files->count;
+      if (!dir_row) {
+        files->size += id < static_cast<int>(store.sizes.size())
+                           ? store.sizes[id]
+                           : 0;
+      }
+    }
+    compute_totals(root_);
+    OverviewNode* total = root_->children[0];
+    total->total_count = root_->total_count;
+    total->total_size = root_->total_size;
+    grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
+    mark_empty_nodes();
+    refresh_visible_children();
+    emit layoutChanged();
+    return true;
+  }
+
   std::vector<OverviewNode*> nodes_;
   OverviewNode* root_ = nullptr;
   long long grand_total_ = 1;
+  std::unordered_map<std::string, OverviewNode*> files_by_folder_;
+  std::unordered_map<std::string, OverviewNode*> nodes_by_path_;
+  std::unordered_map<OverviewNode*, std::vector<OverviewNode*>> visible_children_;
 };
 
 #endif  // QPY_NATIVE_QT_MODEL_HPP

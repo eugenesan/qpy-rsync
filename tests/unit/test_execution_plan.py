@@ -1,6 +1,15 @@
 from qpy_rsync.core.changes import Change, ChangeAction, ChangeDecision, ChangeDecisions, ObjectKind
 from qpy_rsync.core.enums import EndpointKind
-from qpy_rsync.core.execution_plan import build_execution_plan, check_plan_freshness, profile_fingerprint
+from dataclasses import replace
+
+from qpy_rsync.core.execution_plan import (
+    PlanItem,
+    build_execution_plan,
+    check_plan_freshness,
+    patch_plan_items_fingerprint,
+    plan_items_fingerprint,
+    profile_fingerprint,
+)
 from qpy_rsync.core.models import BackupOptions, Endpoint, SyncProfile
 
 
@@ -135,3 +144,30 @@ def test_deleted_size_includes_reported_file_sizes_without_metadata() -> None:
     # No destination listing: the folder's deleted child and the explicit
     # destination size still count, while the folder itself is not added twice.
     assert plan.summary.deleted_size == 1500
+
+
+def test_incremental_fingerprint_matches_full_rebuild() -> None:
+    items = tuple(
+        PlanItem(
+            path=f"dir/file{i}.txt",
+            action=ChangeAction.UPDATE_CONTENT,
+            comparison_action=ChangeAction.UPDATE_CONTENT,
+            kind=ObjectKind.FILE,
+            included=True,
+            destructive=False,
+            size=i,
+        )
+        for i in range(4)
+    )
+    fingerprint = plan_items_fingerprint(items)
+    updated = replace(items[-1], included=False)
+    patched_items = items[:-1] + (updated,)
+    assert patch_plan_items_fingerprint(
+        fingerprint, [(items[-1], updated)]
+    ) == plan_items_fingerprint(patched_items)
+    assert fingerprint != plan_items_fingerprint(patched_items)
+    # Filter-rule order matters, so reordering the same items must also
+    # invalidate a cached filter file.
+    assert plan_items_fingerprint(patched_items) != plan_items_fingerprint(
+        patched_items[::-1]
+    )

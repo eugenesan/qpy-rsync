@@ -160,9 +160,11 @@ from qpy_rsync.core.execution_gate import ExecutionGate, ExecutionGateState
 from qpy_rsync.core.units import format_size
 from qpy_rsync.core.execution_plan import (
     ExecutionPlan,
+    PlanItem,
     build_execution_plan,
     check_plan_freshness,
     decision_signature,
+    patch_plan_items_fingerprint,
     plan_items_fingerprint,
     profile_fingerprint,
 )
@@ -2919,6 +2921,7 @@ class MainWindow(QMainWindow):
         current_excluded = set(self.comparison.excluded_paths())
         deltas: dict[str, int] = {}
         items = list(plan.items)
+        patched: list[tuple[PlanItem, PlanItem]] = []
         decisions = self.comparison.model.decisions
         for position in candidates:
             path = self._plan_paths[position]
@@ -2943,7 +2946,9 @@ class MainWindow(QMainWindow):
                 deltas[key] = deltas.get(key, 0) - value
             for key, value in new.items():
                 deltas[key] = deltas.get(key, 0) + value
-            items[item_index] = replace(item, included=included)
+            updated = replace(item, included=included)
+            items[item_index] = updated
+            patched.append((item, updated))
         fields = {
             key: getattr(plan.summary, key) + value
             for key, value in deltas.items()
@@ -2957,7 +2962,10 @@ class MainWindow(QMainWindow):
             plan,
             items=tuple(items),
             summary=summary,
-            items_fingerprint=plan_items_fingerprint(items),
+            items_fingerprint=(
+                patch_plan_items_fingerprint(plan.items_fingerprint, patched)
+                if patched else plan.items_fingerprint
+            ),
             decision_signature=decision_signature(decisions),
         )
         self._last_excluded_paths = current_excluded
@@ -4271,9 +4279,9 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def _filter_directories_changed(self, checked: bool) -> None:
-        settings = app_settings()
-        settings.setValue("comparison/filter-directories", bool(checked))
-        settings.sync()
+        # QSettings writes are flushed on shutdown; forcing an fsync on every
+        # toolbar toggle made the filter switch block on disk.
+        app_settings().setValue("comparison/filter-directories", bool(checked))
         if self._hybrid_view is not None:
             self._hybrid_view.set_filter_directories(checked)
         else:
