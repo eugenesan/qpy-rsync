@@ -180,6 +180,10 @@ class NativeHybridView:
         """Enable the native side of the timing diagnostics."""
         self._native.set_profiling_enabled(bool(enabled))
 
+    def set_perf_sink(self, callback) -> None:
+        """Send native phase lines to the shared timing sink."""
+        self._native.set_perf_sink(callback)
+
     def set_column_hidden(self, pane: int, column: int, hidden: bool) -> None:
         self._native.set_column_hidden(pane, column, hidden)
 

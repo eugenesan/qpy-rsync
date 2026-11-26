@@ -1216,6 +1216,7 @@ class OverviewModel : public QAbstractItemModel {
     node_by_id_.clear();
     files_nodes_.clear();
     nodes_by_path_.clear();
+    structure_changed_ = true;
     root_ = new OverviewNode{"", "", 0, 0, 0, 0, nullptr, {}};
     nodes_.push_back(root_);
     auto* total = new OverviewNode{"Total", "", 0, 0, 0, 0, root_, {}};
@@ -1500,6 +1501,10 @@ class OverviewModel : public QAbstractItemModel {
   }
 
  public:
+  // Whether the last update changed the visible row structure. When it did
+  // not, the view keeps its expanded nodes and no restore pass is needed.
+  bool structure_changed() const { return structure_changed_; }
+
   // Update folder counts in place after a single decision/filter change.
   // Rebuilding the whole overview and re-sorting thirty thousand nodes on
   // every exclude made single-item decisions take seconds.
@@ -1559,7 +1564,8 @@ class OverviewModel : public QAbstractItemModel {
     grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
     // Most decision edits do not change which folders are empty; only rebuild
     // the per-parent visible-row cache when that actually changes.
-    if (mark_empty_nodes()) refresh_visible_children();
+    structure_changed_ = mark_empty_nodes();
+    if (structure_changed_) refresh_visible_children();
     emit layoutChanged();
     return true;
   }
@@ -1571,6 +1577,7 @@ class OverviewModel : public QAbstractItemModel {
   std::unordered_map<OverviewNode*, OverviewNode*> files_nodes_;
   std::unordered_map<std::string, OverviewNode*> nodes_by_path_;
   int root_id_ = -1;
+  bool structure_changed_ = true;
   std::unordered_map<OverviewNode*, std::vector<OverviewNode*>> visible_children_;
 };
 

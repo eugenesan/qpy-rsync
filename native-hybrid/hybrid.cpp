@@ -78,6 +78,7 @@ inline DecisionHook g_native_decision_hook = nullptr;
 inline bool g_in_select = false;
 inline bool g_in_sync = false;
 inline bool g_profiling_enabled = false;
+inline nb::object g_perf_sink;
 
 inline bool profiling_enabled() {
   if (g_profiling_enabled) return true;
@@ -85,11 +86,22 @@ inline bool profiling_enabled() {
   return value != nullptr && value[0] != '\0';
 }
 
-// Same opt-in phase log as the Python side. No-op unless the path variable
-// is set, so an ordinary session never opens a file.
+// Phase diagnostics for the native view. With no enabled setting/env var
+// this returns before touching Python or the filesystem.
 void native_perf(const char* event, qint64 elapsed_ms) {
   const char* path = std::getenv("QPY_RSYNC_PERF_LOG");
-  if (path == nullptr || path[0] == '\0') return;
+  const bool file_log = path != nullptr && path[0] != '\0';
+  if (!file_log && !profiling_enabled()) return;
+  if (!file_log && g_perf_sink.is_valid()) {
+    nb::gil_scoped_acquire gil;
+    try {
+      // MainWindow installs diagnostics.native_timing, which uses the same
+      // gated sink as Python phases and writes to the main session log.
+      g_perf_sink(event, static_cast<double>(elapsed_ms));
+    } catch (...) {
+    }
+  }
+  if (!file_log) return;
   std::ofstream output(path, std::ios::app);
   if (!output) return;
   output << QDateTime::currentDateTime()
@@ -329,9 +341,13 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     }
     const QModelIndex total = s.overview->index(0, 0);
     if (total.isValid()) s.overview_view->expand(total);
-    for (const std::string& path : expanded_paths) {
-      const QModelIndex index = s.overview->index_for_path(path);
-      if (index.isValid()) s.overview_view->expand(index);
+    // A counts-only update leaves the row structure (and therefore the view's
+    // expanded nodes) alone; restoring them costs time on large trees.
+    if (expand_overview || s.overview->structure_changed()) {
+      for (const std::string& path : expanded_paths) {
+        const QModelIndex index = s.overview->index_for_path(path);
+        if (index.isValid()) s.overview_view->expand(index);
+      }
     }
   }
   repaint_native_area(s);
@@ -1369,6 +1385,7 @@ NB_MODULE(native_hybrid, m) {
     g_context_callback = nb::object();
     g_header_context_callback = nb::object();
     g_overview_context_callback = nb::object();
+    g_perf_sink = nb::object();
     Session& session_ref = session();
     for (int i = 0; i < 3; ++i) {
       session_ref.views[i] = nullptr;
@@ -1617,6 +1634,8 @@ NB_MODULE(native_hybrid, m) {
   });
 
   m.def("set_profiling_enabled", [](bool value) { g_profiling_enabled = value; });
+
+  m.def("set_perf_sink", [](nb::object callback) { g_perf_sink = callback; });
 
   m.def("set_root_names", [](const std::string& source,
                              const std::string& destination) {

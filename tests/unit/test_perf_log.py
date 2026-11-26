@@ -37,6 +37,34 @@ def test_perf_log_writes_one_line_per_phase(tmp_path: Path, monkeypatch) -> None
     assert "column=0" in lines[1]
 
 
+def test_timing_setting_routes_phases_to_the_shared_sink(monkeypatch) -> None:
+    received: list[str] = []
+    monkeypatch.delenv(diagnostics.PERF_LOG_ENV, raising=False)
+    monkeypatch.delenv("QPY_RSYNC_TIMING", raising=False)
+    monkeypatch.delenv("QPY_RSYNC_PROFILE", raising=False)
+    monkeypatch.delenv("QPY_RSYNC_DEBUG", raising=False)
+    diagnostics.set_timing_sink(received.append)
+
+    diagnostics.set_timing_enabled(False)
+    with diagnostics.timed("test.disabled_phase"):
+        pass
+    diagnostics.native_timing("native.overview_update", 12.3)
+    assert received == []
+
+    # The existing settings flag is sufficient: no env var or extra file.
+    diagnostics.set_timing_enabled(True)
+    with diagnostics.timed("test.enabled_phase"):
+        pass
+    diagnostics.native_timing("native.overview_update", 12.3)
+    assert any("test.enabled_phase" in line for line in received)
+    assert any(
+        "native.overview_update" in line and "ms=12.3" in line
+        for line in received
+    )
+    diagnostics.set_timing_enabled(False)
+    diagnostics.set_timing_sink(None)
+
+
 def test_perf_log_ignores_unwritable_path(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv(diagnostics.PERF_LOG_ENV, str(tmp_path / "missing" / "perf.log"))
     with diagnostics.timed("test.unwritable"):

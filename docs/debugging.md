@@ -15,14 +15,12 @@ The report includes:
 
 The output may contain local paths and remote host names. Review it before sharing. It does not intentionally print passwords or private keys.
 
-For interactive UI timings, set a perf-log path before launching:
-
-```bash
-QPY_RSYNC_PERF_LOG=/tmp/qpy-rsync-perf.log qpy-rsync
-```
-
-Each timed phase appends one line with an ISO timestamp, a phase name and the
-elapsed milliseconds, for example:
+For interactive UI timings, enable **Settings > Advanced > Include timing
+diagnostics in the session log** (the debug option implies it). No restart or
+environment variable is needed: the setting is applied at startup and as soon
+as the Settings dialog is accepted. Python and native phase lines are written
+to the main session log alongside the journal entries, with an ISO timestamp,
+a phase name and elapsed milliseconds, for example:
 
 ```
 2026-11-26T11:20:00.123-07:00 view.toggle_excluded 18.4ms paths=1
@@ -31,8 +29,10 @@ elapsed milliseconds, for example:
 ```
 
 The log covers decision apply/undo/redo, model filter refreshes, overview and
-statistics updates, plan rebuilds, show/hide excluded and sorting. When the
-variable is unset the logging is completely disabled and the normal path is
-unchanged. The file may contain local paths; review it before sharing.
+statistics updates, plan rebuilds, show/hide excluded and sorting. Both options
+are off by default, so the normal path has no extra work. Optional standalone
+capture is still available with `QPY_RSYNC_PERF_LOG=/tmp/qpy-rsync-perf.log`;
+that file is only opened when the variable is set. The log may contain local
+paths; review it before sharing.
 
 The visible field token is `|qpy-rsync|`. If this exact token appears in a filename, parsing is stopped with an ambiguity error rather than silently producing an incorrect plan.

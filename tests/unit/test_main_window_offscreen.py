@@ -2443,3 +2443,43 @@ def test_cancelling_fresh_comparison_dialog_keeps_stale_state(monkeypatch) -> No
     assert window.compare_button.isEnabled()
     window.close()
     application.processEvents()
+
+
+def test_folder_decision_patches_plan_without_full_estimate() -> None:
+    """A folder decision must not fall back to a full summary scan."""
+    from PySide6.QtWidgets import QApplication
+
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.gui.main_window import MainWindow
+    from qpy_rsync.services.compare_service import CompareResult
+    from qpy_rsync.storage.settings import app_settings
+
+    application = QApplication.instance() or QApplication([])
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._active_profile = window._profile()
+    changes = [
+        Change(f"folder/f{i:03d}.txt", ChangeAction.CREATE, ObjectKind.FILE,
+               ">f+++++++++", size=10)
+        for i in range(50)
+    ]
+    window._comparison_finished(CompareResult(ParseResult(changes, []), "", 0))
+    before = window._current_plan.summary.included
+    assert before == 50
+
+    # No plan item exists for the folder itself; excluding it must patch the
+    # 50 children incrementally instead of starting the full-estimate timer.
+    window.comparison.model.set_excluded("folder", True)
+    window.comparison.changes_updated.emit("decision")
+    assert window._current_plan.summary.included == 0
+    assert not window._stale_summary_timer.isActive()
+
+    window.comparison.model.set_excluded("folder", False)
+    window.comparison.changes_updated.emit("decision")
+    assert window._current_plan.summary.included == before
+    assert not window._stale_summary_timer.isActive()
+    window.close()
+    application.processEvents()

@@ -8,10 +8,15 @@
   overview totals are refreshed in place so they still match the lists.
 - The native Decisions column now carries the Python view's header and
   per-item tooltip text, including the decision detail and both timestamps.
-- Added opt-in interactive performance logging. Set
-  `QPY_RSYNC_PERF_LOG=/path/to/file` before launching to append one line per
-  phase (timestamp, phase name, elapsed ms). Nothing is written when the
-  variable is unset, and normal console timing diagnostics are unchanged.
+- Interactive phase timings now follow the existing logging settings:
+  "Include timing diagnostics in the session log" (or the debug option, which
+  implies it) writes Python and native phase lines into the main session log,
+  refreshed at startup and when Settings is accepted.
+  `QPY_RSYNC_PERF_LOG=/path/to/file` remains an optional extra file for
+  capturing the same phases in a standalone report.
+- Folder-level decisions patch the plan incrementally instead of falling back
+  to a full 661k-item summary scan, and the stale-summary estimate reuses the
+  already-patched plan summary.
 
 ## 0.4.0
 

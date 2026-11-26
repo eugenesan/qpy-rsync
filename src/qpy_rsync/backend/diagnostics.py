@@ -65,10 +65,11 @@ def timing_enabled() -> bool:
 
 _SINK = None
 
-# Opt-in, low-overhead phase log for interactive performance reports. When
-# unset, perf_log() returns before doing any work and the normal UI path is
-# unchanged. Set QPY_RSYNC_PERF_LOG=/path/to/file before starting the app to
-# get one line per timed phase: ISO timestamp, phase name, elapsed ms.
+# Phase diagnostics normally go to the main session log through the timing
+# sink installed by MainWindow (Settings > Advanced > "Include timing
+# diagnostics in the session log", or the debug option which implies it).
+# The environment variable below is an optional extra file for reports; when
+# unset, perf_log() returns before doing any work.
 PERF_LOG_ENV = "QPY_RSYNC_PERF_LOG"
 
 
@@ -76,6 +77,16 @@ def set_timing_sink(sink) -> None:
     """Also deliver diagnostics to a callback (e.g. the session log)."""
     global _SINK
     _SINK = sink
+
+
+def native_timing(event: str, elapsed_ms: float) -> None:
+    """Forward a native phase line through the normal timing sink.
+
+    The native view calls this callback with event name and elapsed ms. It
+    uses the same gated path as Python phases, so the existing timing/debug
+    settings decide whether the line reaches the session log and stderr.
+    """
+    debug_timing(str(event), ms=round(float(elapsed_ms), 1))
 
 
 def perf_log(event: str, elapsed_ms: float, **values: object) -> None:

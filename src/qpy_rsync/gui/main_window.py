@@ -56,6 +56,7 @@ from qpy_rsync.backend.destination_sizes import (
 from qpy_rsync.backend.diagnostics import (
     clean_qt_noise,
     debug_timing,
+    native_timing,
     set_debug_enabled,
     set_timing_enabled,
     set_timing_sink,
@@ -2929,7 +2930,10 @@ class MainWindow(QMainWindow):
             item = items[item_index]
             change = self._plan_changes.get(path)
             if change is None:
-                return False
+                # A folder/synthesized path has no plan item of its own. Its
+                # children are in `candidates`, so just skip the container
+                # instead of falling back to a full 661k-item estimate.
+                continue
             excluded = any(
                 parent in current_excluded
                 for parent in [path, *self._parent_paths(path)]
@@ -3075,8 +3079,18 @@ class MainWindow(QMainWindow):
     def _refresh_estimated_summary(self) -> None:
         if not self._plan_stale:
             return
-        with timed("ui.estimated_summary"):
-            summary = self._estimated_plan_summary()
+        plan = self._current_plan
+        if (
+            plan is not None
+            and plan.decision_signature
+            == decision_signature(self.comparison.model.decisions)
+        ):
+            # The plan summary is patched incrementally on every decision;
+            # reuse it instead of walking all 661k changes again.
+            summary = plan.summary
+        else:
+            with timed("ui.estimated_summary"):
+                summary = self._estimated_plan_summary()
         self.overview.set_statistics(summary, estimate=True)
         self.validate_plan_button.setEnabled(summary.included > 0)
         # The incremental plan patch may not have been able to update the
@@ -4557,6 +4571,7 @@ class MainWindow(QMainWindow):
             return
         self._hybrid_view = view
         view.set_profiling(self._timing_logging)
+        view.set_perf_sink(native_timing)
         self._hybrid_selected_path = ""
         self._python_overview = self.overview
         shim = NativeOverviewShim(view.overview_widget)

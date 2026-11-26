@@ -244,10 +244,12 @@ Qt view extension when Qt 6 is available.
 - [`docs/installation.md`](docs/installation.md) — the runtime, the
   development packages and the test commands
 - [`docs/debugging.md`](docs/debugging.md) — the console diagnostics of a run
-- Interactive timing capture: launch with
-  `QPY_RSYNC_PERF_LOG=/path/to/perf.log qpy-rsync` to append one line per
-  phase (timestamp, phase name, elapsed ms) while clicking decisions, undo,
-  filter toggles and sorting. No file is opened when the variable is unset.
+- Interactive timing capture: enable **Settings > Advanced > Include timing
+  diagnostics in the session log** (the debug option also enables it). Python
+  and native phase lines then go into the main session log with timestamps and
+  elapsed milliseconds. `QPY_RSYNC_PERF_LOG=/path/to/perf.log` is an optional
+  extra file for a standalone timing report; nothing extra is written when it
+  is unset.
 - [`native-hybrid/README.md`](native-hybrid/README.md) — the native Qt view
   extension
 
