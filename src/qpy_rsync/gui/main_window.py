@@ -5969,34 +5969,40 @@ class MainWindow(QMainWindow):
                 if target is None:
                     question = (
                         f"{reason}\n\nNo profile file is associated with these "
-                        "settings yet. Save them as a new profile?"
+                        "settings yet. Save them as a new profile, or leave "
+                        "them unsaved?"
                     )
                 else:
                     question = (
-                        f"{reason}\n\nSave the changes to {target.name}?"
+                        f"{reason}\n\nSave the changes to {target.name}, save "
+                        "them under a new name, or leave them unsaved?"
                     )
-                answer = QMessageBox.question(
-                    self,
-                    "Save profile",
-                    question,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
+                box = QMessageBox(self)
+                box.setWindowTitle("Save profile")
+                box.setText(question)
+                save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+                save_as = box.addButton(
+                    "Save As...", QMessageBox.ButtonRole.ActionRole
                 )
-                if answer == QMessageBox.StandardButton.Yes:
-                    if target is None:
-                        path, _selected = QFileDialog.getSaveFileName(
-                            self,
-                            "Save Profile",
-                            str(profiles_directory() / "qpy-rsync-profile.json"),
-                            "JSON (*.json)",
-                        )
-                        if path:
-                            target = Path(path)
-                    if target is not None:
-                        save_profile(target, self._profile())
-                        self._remember_profile_path(target)
-                        self._baseline_profile = self._profile()
-                        self._save_recent_profile()
-                        self._append_log(f"Profile saved: {target}")
+                discard = box.addButton(
+                    "Don't Save", QMessageBox.ButtonRole.DestructiveRole
+                )
+                box.setDefaultButton(discard)
+                box.setEscapeButton(discard)
+                box.exec()
+                clicked = box.clickedButton()
+                if clicked is save_as or (clicked is save and target is None):
+                    # "Save As" (and "Save" with no profile associated) uses
+                    # the same Save Profile dialog and bookkeeping as the
+                    # profile menu's "Save Profile As..." action.
+                    self._save_profile()
+                    return
+                if clicked is not save:
+                    return  # "Don't Save", Esc or closing the dialog.
+                save_profile(target, self._profile())
+                self._remember_profile_path(target)
+                self._baseline_profile = self._profile()
+                self._save_recent_profile()
+                self._append_log(f"Profile saved: {target}")
         except Exception:  # noqa: BLE001
             pass

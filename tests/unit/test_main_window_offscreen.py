@@ -2251,10 +2251,9 @@ def test_journal_reports_inventory_rsync_commands(tmp_path, monkeypatch) -> None
     application.processEvents()
 
 
-def test_exit_prompt_saves_to_the_known_profile_path(tmp_path, monkeypatch) -> None:
+def _modified_profile_window(tmp_path, monkeypatch):
+    """A window whose current profile differs from its loaded baseline."""
     from copy import deepcopy
-
-    from PySide6.QtWidgets import QMessageBox
 
     application = app()
     app_settings().clear()
@@ -2266,34 +2265,149 @@ def test_exit_prompt_saves_to_the_known_profile_path(tmp_path, monkeypatch) -> N
     current = window._profile()
     baseline = deepcopy(current)
     baseline.backup.directory = "/different"
-    target = tmp_path / "my-profile.json"
-    window._profile_path = target
+    window._baseline_profile = baseline
+    window._profile_path = tmp_path / "my-profile.json"
+    return application, window, current, baseline
 
-    questions: list[str] = []
-    answers: list[object] = []
 
-    def question(_window, _title, text, *_args, **_kwargs):
-        questions.append(text)
-        return answers.pop(0)
+def _answer_exit_prompt(application, window, label: str) -> None:
+    """Click one of the three modal exit-prompt buttons once it is visible."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QMessageBox, QPushButton
 
-    monkeypatch.setattr(QMessageBox, "question", staticmethod(question))
+    def click() -> None:
+        boxes = [
+            widget
+            for widget in application.topLevelWidgets()
+            if isinstance(widget, QMessageBox) and widget.isVisible()
+        ]
+        assert len(boxes) == 1, boxes
+        box = boxes[0]
+        assert "Changed:" in box.text()
+        assert "backup" in box.text()
+        if window._profile_path is None:
+            assert "No profile file is associated" in box.text()
+        else:
+            assert window._profile_path.name in box.text()
+        buttons = [button.text() for button in box.findChildren(QPushButton)]
+        assert set(buttons) == {"Save", "Save As...", "Don't Save"}, buttons
+        button = next(b for b in box.findChildren(QPushButton) if b.text() == label)
+        button.click()
+
+    QTimer.singleShot(0, click)
+
+
+def test_exit_prompt_save_writes_the_current_profile_path(tmp_path, monkeypatch) -> None:
+    application, window, current, baseline = _modified_profile_window(
+        tmp_path, monkeypatch
+    )
     saved: list[object] = []
     monkeypatch.setattr(
         "qpy_rsync.gui.main_window.save_profile",
         lambda path, profile: saved.append(path),
     )
+    try:
+        _answer_exit_prompt(application, window, "Save")
+        window._save_profile_on_exit_if_modified(current, baseline)
+        assert saved == [tmp_path / "my-profile.json"]
+        assert window._profile_path == tmp_path / "my-profile.json"
+        assert window._same_profile(window._baseline_profile, current)
+    finally:
+        window._baseline_profile = window._profile()
+        window.close()
+        application.processEvents()
 
-    answers.append(QMessageBox.StandardButton.Yes)
-    window._save_profile_on_exit_if_modified(current, baseline)
-    assert saved == [target]
-    assert "backup" in questions[0]
-    assert target.name in questions[0]
 
-    answers.append(QMessageBox.StandardButton.No)
-    window._save_profile_on_exit_if_modified(current, baseline)
-    assert saved == [target]
-    window.close()
-    application.processEvents()
+def test_exit_prompt_save_as_uses_the_save_profile_dialog(tmp_path, monkeypatch) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    application, window, current, baseline = _modified_profile_window(
+        tmp_path, monkeypatch
+    )
+    saved: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.save_profile",
+        lambda path, profile: saved.append(path),
+    )
+    captions: list[str] = []
+    new_path = tmp_path / "renamed-profile.json"
+
+    def get_save_filename(_parent, caption, *_args, **_kwargs):
+        captions.append(caption)
+        return str(new_path), "JSON (*.json)"
+
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", staticmethod(get_save_filename)
+    )
+    try:
+        _answer_exit_prompt(application, window, "Save As...")
+        window._save_profile_on_exit_if_modified(current, baseline)
+        assert captions == ["Save Profile"]
+        assert saved == [new_path]
+        assert window._profile_path == new_path
+        assert window._same_profile(window._baseline_profile, current)
+    finally:
+        window._baseline_profile = window._profile()
+        window.close()
+        application.processEvents()
+
+
+def test_exit_prompt_save_without_a_profile_routes_to_save_as(
+    tmp_path, monkeypatch
+) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    application, window, current, baseline = _modified_profile_window(
+        tmp_path, monkeypatch
+    )
+    window._profile_path = None
+    saved: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.save_profile",
+        lambda path, profile: saved.append(path),
+    )
+    captions: list[str] = []
+    new_path = tmp_path / "new-profile.json"
+
+    def get_save_filename(_parent, caption, *_args, **_kwargs):
+        captions.append(caption)
+        return str(new_path), "JSON (*.json)"
+
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", staticmethod(get_save_filename)
+    )
+    try:
+        _answer_exit_prompt(application, window, "Save")
+        window._save_profile_on_exit_if_modified(current, baseline)
+        assert captions == ["Save Profile"]
+        assert saved == [new_path]
+        assert window._profile_path == new_path
+    finally:
+        window._baseline_profile = window._profile()
+        window.close()
+        application.processEvents()
+
+
+def test_exit_prompt_dont_save_leaves_the_profile_untouched(tmp_path, monkeypatch) -> None:
+    application, window, current, baseline = _modified_profile_window(
+        tmp_path, monkeypatch
+    )
+    saved: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.save_profile",
+        lambda path, profile: saved.append(path),
+    )
+    try:
+        _answer_exit_prompt(application, window, "Don't Save")
+        window._save_profile_on_exit_if_modified(current, baseline)
+        assert saved == []
+        assert window._profile_path == tmp_path / "my-profile.json"
+        assert window._baseline_profile is baseline
+        assert not window._same_profile(window._baseline_profile, current)
+    finally:
+        window._baseline_profile = window._profile()
+        window.close()
+        application.processEvents()
 
 
 def test_failed_destination_metadata_clears_the_busy_status() -> None:

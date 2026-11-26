@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The exit prompt for a changed profile now offers Save, Save As... and Don't
+  Save. Save writes to the associated profile (or falls back to the Save
+  Profile dialog when none is associated), Save As... uses the same dialog as
+  the profile menu's Save Profile As action, and Don't Save closes without
+  touching the profile. The prompt still lists the fields that changed.
 - New "Use as Source/Destination..." context action on directory rows in the
   Python and native comparison views and in the overview. It narrows both
   endpoints to the folder, can shorten permanent filter rules by the
