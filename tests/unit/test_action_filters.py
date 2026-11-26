@@ -270,7 +270,7 @@ def test_the_context_menu_of_a_box_offers_the_inverted_choices() -> None:
     assert all(other.isChecked() is True for other in others)
 
 
-def test_ctrl_click_on_a_switch_that_is_off_reverses_the_operation() -> None:
+def test_ctrl_click_on_excluded_always_switches_to_only_excluded() -> None:
     app()
     bar = ActionFilterBar()
     seen: list[set] = []
@@ -280,9 +280,16 @@ def test_ctrl_click_on_a_switch_that_is_off_reverses_the_operation() -> None:
     _click(create, ctrl=True)
     assert seen[-1] == {ChangeAction.CREATE}
 
-    # The excluded switch is off, so the inverted click reverses the solo.
+    # An action solo is active, so ctrl+click on excluded still selects
+    # "only excluded" rather than falling back to the default bar.
     _click(bar.excluded_box, ctrl=True)
+    assert not any(item.isChecked() for item in bar._boxes.values())
+    assert bar.excluded_box.isChecked() is True
+    assert bar.unchanged_box.isChecked() is False
+    assert seen[-1] == set()
 
+    # A second ctrl+click, now already in "only excluded", resets defaults.
+    _click(bar.excluded_box, ctrl=True)
     assert all(other.isChecked() for other in bar._boxes.values())
     assert bar.excluded_box.isChecked() is False
     assert seen[-1] == set(FILTERABLE_ACTIONS)

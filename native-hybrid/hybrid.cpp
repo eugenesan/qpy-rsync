@@ -203,7 +203,8 @@ void repaint_native_area(Session& s) {
   }
 }
 
-void refresh_native_models(Session& s, bool expand_overview = false) {
+void refresh_native_models(Session& s, bool expand_overview = false,
+                           bool skip_overview = false) {
   QWidget* focus = QApplication::focusWidget();
   int positions[3] = {0, 0, 0};
   int current_id = s.current_path_id;
@@ -222,9 +223,11 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
       positions[i] = s.views[i]->verticalScrollBar()->value();
     }
   }
+  // Decision edits do not touch the overview; only a filter/compare refresh
+  // rebuilds it. Skipping the scan here also avoids walking the tree.
   const std::vector<std::string> expanded_paths =
-      collect_expanded_paths(s.overview_view);
-  std::map<std::string, QModelIndex> path_index;
+      skip_overview ? std::vector<std::string>()
+                    : collect_expanded_paths(s.overview_view);
   QElapsedTimer phase;
   phase.start();
   for (TableModel* model : s.models) model->reset();
@@ -303,7 +306,7 @@ void refresh_native_models(Session& s, bool expand_overview = false) {
     std::fprintf(stderr, "[qpy-rsync native] scroll_focus ms=%lld\n",
                  static_cast<long long>(phase.elapsed()));
   }
-  if (s.overview != nullptr && s.overview_view != nullptr) {
+  if (!skip_overview && s.overview != nullptr && s.overview_view != nullptr) {
     phase.restart();
     if (expand_overview) {
       // A new comparison can change the folder structure, so it needs a full
@@ -501,7 +504,7 @@ class HybridKeyFilter : public QObject {
         }
       }
       s.store.rebuild_visible();
-      refresh_native_models(s);
+      refresh_native_models(s, false, true);
       update_stats(s);
       return true;
     }
@@ -660,9 +663,10 @@ class HybridDelegate : public QStyledItemDelegate {
           }
         }
         // Folder ids live beyond the change list, so the Python mirror may
-        // not call back. Always rebuild our own visible rows here.
+        // not call back. Always rebuild our own visible rows here; the
+        // overview is refreshed on the next filter/compare pass.
         s.store.rebuild_visible();
-        refresh_native_models(s);
+        refresh_native_models(s, false, true);
         return true;
       }
     }
@@ -1191,7 +1195,7 @@ class OverviewTreeView : public QTreeView {
             g_native_decision_hook(id, 2);
           } else {
             s.store.rebuild_visible();
-            refresh_native_models(s);
+            refresh_native_models(s, false, true);
             update_stats(s);
           }
         }
@@ -1558,7 +1562,7 @@ NB_MODULE(native_hybrid, m) {
       s.store.decision_log.emplace_back(i, Inherit);
     }
     s.store.rebuild_visible();
-    refresh_native_models(s);
+    refresh_native_models(s, false, true);
   });
 
   m.def("set_decision_by_path", [](const std::string& path, int decision) {
@@ -1573,7 +1577,7 @@ NB_MODULE(native_hybrid, m) {
       g_native_decision_hook(id, decision);
     } else {
       s.store.rebuild_visible();
-      refresh_native_models(s);
+      refresh_native_models(s, false, true);
     }
   });
 
@@ -1705,11 +1709,11 @@ NB_MODULE(native_hybrid, m) {
     s.store.decision_log.clear();
     if (changed_count == 1 &&
         s.store.update_single_visibility(changed_id, target[changed_id])) {
-      refresh_native_models(s);
+      refresh_native_models(s, false, true);
       update_stats(s);
     } else if (changed_count > 0) {
       s.store.rebuild_visible();
-      refresh_native_models(s);
+      refresh_native_models(s, false, true);
       update_stats(s);
     }
   });
@@ -1737,7 +1741,7 @@ NB_MODULE(native_hybrid, m) {
                    static_cast<long long>(phase.elapsed()),
                    incremental ? " incremental" : "");
     }
-    refresh_native_models(s);
+    refresh_native_models(s, false, true);
     QElapsedTimer stats_timer;
     stats_timer.start();
     update_stats(s);

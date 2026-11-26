@@ -280,14 +280,22 @@ class ActionFilterBar(QWidget):
         A box that is on becomes the only one that is shown. A box that is
         off, or one that is already the only one that is shown, reverses
         that: every action comes back and the unchanged and the excluded
-        toggles keep their state.
+        toggles keep their state. The excluded box only toggles between
+        "only excluded" and the default bar.
         """
         boxes = self._all_boxes()
         if box is self.excluded_box:
-            checked = [item for item in self._boxes.values() if item.isChecked()]
-            if box.isChecked() or len(checked) != len(self._boxes):
-                # A solo is active, or this is already "only excluded":
-                # reverse back to the default bar.
+            # The excluded box has exactly two ctrl+click states: "only
+            # excluded" and the default bar. Whatever else is checked (an
+            # action solo, unchanged, or a plain click on this box), the next
+            # ctrl+click always goes to "only excluded" unless it is already
+            # there, in which case it returns to the defaults.
+            only_excluded = (
+                box.isChecked()
+                and not any(item.isChecked() for item in self._boxes.values())
+                and not self.unchanged_box.isChecked()
+            )
+            if only_excluded:
                 self.reset_defaults()
             else:
                 wanted = {item: False for item in self._boxes.values()}

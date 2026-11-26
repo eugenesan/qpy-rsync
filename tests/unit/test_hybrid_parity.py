@@ -246,3 +246,60 @@ def test_overview_hierarchy_matches(monkeypatch) -> None:
         python.close()
         native.close()
         app.processEvents()
+
+
+def test_ctrl_click_on_excluded_switches_native_view_to_only_excluded(
+    monkeypatch,
+) -> None:
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    app = QApplication.instance() or QApplication([])
+    window = _window(monkeypatch, hybrid=True)
+    try:
+        view = window._hybrid_view
+        assert view is not None
+        excluded = "d1/f0001.txt"
+        included = "d0/f0000.txt"
+        view.set_decision_by_path(excluded, 2)
+        app.processEvents()
+        rows = lambda: [view.path_of_row(row) for row in range(view.row_count())]
+        assert excluded not in rows()
+
+        box = window.action_filters.excluded_box
+        position = QPointF(box.rect().center())
+        for event_type in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+            event = QMouseEvent(
+                event_type,
+                position,
+                position,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            QApplication.sendEvent(box, event)
+        app.processEvents()
+        shown = rows()
+        assert excluded in shown
+        assert included not in shown
+
+        # Ctrl+click again leaves "only excluded" and restores the defaults.
+        for event_type in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
+            QApplication.sendEvent(
+                box,
+                QMouseEvent(
+                    event_type,
+                    position,
+                    position,
+                    Qt.MouseButton.LeftButton,
+                    Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.ControlModifier,
+                ),
+            )
+        app.processEvents()
+        shown = rows()
+        assert excluded not in shown
+        assert included in shown
+    finally:
+        window.close()
+        app.processEvents()
