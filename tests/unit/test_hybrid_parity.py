@@ -303,3 +303,47 @@ def test_ctrl_click_on_excluded_switches_native_view_to_only_excluded(
     finally:
         window.close()
         app.processEvents()
+
+
+def test_native_overview_totals_update_immediately_on_exclusions(
+    monkeypatch,
+) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = _window(monkeypatch, hybrid=True)
+    try:
+        view = window._hybrid_view
+        assert view is not None
+        tree = view.overview_widget.findChildren(QTreeView)[0]
+        model = tree.model()
+
+        def items(name: str):
+            def walk(parent, path):
+                for row in range(model.rowCount(parent)):
+                    index = model.index(row, 0, parent)
+                    label = str(model.data(index))
+                    if label == name:
+                        return model.data(model.index(row, 2, parent))
+                    found = walk(index, path + [label])
+                    if found is not None:
+                        return found
+                return None
+            return walk(QModelIndex(), [])
+
+        total_before = items("Total")
+        folder_before = items("d1")
+        assert total_before is not None and folder_before is not None
+
+        path = "d1/f0001.txt"
+        view.set_decision_by_path(path, 2)
+        app.processEvents()
+        assert items("Total") == total_before - 1
+        assert items("d1") == folder_before - 1
+
+        # Restoring the decision brings both counts back immediately.
+        view.set_decision_by_path(path, 0)
+        app.processEvents()
+        assert items("Total") == total_before
+        assert items("d1") == folder_before
+    finally:
+        window.close()
+        app.processEvents()

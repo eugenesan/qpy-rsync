@@ -1213,7 +1213,8 @@ class OverviewModel : public QAbstractItemModel {
     beginResetModel();
     for (OverviewNode* node : nodes_) delete node;
     nodes_.clear();
-    files_by_folder_.clear();
+    node_by_id_.clear();
+    files_nodes_.clear();
     nodes_by_path_.clear();
     root_ = new OverviewNode{"", "", 0, 0, 0, 0, nullptr, {}};
     nodes_.push_back(root_);
@@ -1221,39 +1222,44 @@ class OverviewModel : public QAbstractItemModel {
     root_->children.push_back(total);
     nodes_.push_back(total);
 
-    // Build the same hierarchy as the Python overview: folders nested by
-    // path, with a "Files" child holding the direct files of each folder.
-    std::unordered_map<std::string, OverviewNode*> folders;
-    auto add_child = [&](OverviewNode* parent, const std::string& name,
-                         const std::string& path) {
-      auto* node = new OverviewNode{name, path, 0, 0, 0, 0, parent, {}};
-      parent->children.push_back(node);
-      nodes_.push_back(node);
-      return node;
-    };
-    auto ensure_folder = [&](const std::string& path) {
-      auto found = folders.find(path);
-      if (found != folders.end()) return found->second;
-      OverviewNode* parent = total;
-      std::string prefix;
-      std::size_t begin = 0;
-      while (begin < path.size()) {
-        const std::size_t slash = path.find('/', begin);
-        const std::string part = slash == std::string::npos
-                                     ? path.substr(begin)
-                                     : path.substr(begin, slash - begin);
-        prefix = prefix.empty() ? part : prefix + "/" + part;
-        auto it = folders.find(prefix);
-        if (it == folders.end()) {
-          OverviewNode* folder = add_child(parent, part, prefix);
-          it = folders.emplace(prefix, folder).first;
-          nodes_by_path_[prefix] = folder;
-        }
-        parent = it->second;
-        if (slash == std::string::npos) break;
-        begin = slash + 1;
+    // Create one node per directory, indexed by its stable path id. The
+    // parent chain already lives in DataStore, so the per-item pass needs
+    // neither path parsing nor string hashing; that pass used to dominate
+    // decisions on deep trees.
+    node_by_id_.assign(store.paths.size(), nullptr);
+    root_id_ = -1;
+    for (std::size_t i = 0; i < store.paths.size(); ++i) {
+      if (store.paths[i] == DataStore::root_path()) {
+        root_id_ = static_cast<int>(i);
       }
-      return parent;
+      if (i >= store.is_dir.size() || !store.is_dir[i]) continue;
+      const std::string& path = store.paths[i];
+      if (path == DataStore::root_path() || path.empty()) continue;
+      const std::string& name = i < store.names.size() ? store.names[i] : path;
+      auto* node = new OverviewNode{name, path, 0, 0, 0, 0, nullptr, {}};
+      node_by_id_[i] = node;
+      nodes_.push_back(node);
+      nodes_by_path_[path] = node;
+    }
+    for (std::size_t i = 0; i < node_by_id_.size(); ++i) {
+      OverviewNode* node = node_by_id_[i];
+      if (node == nullptr) continue;
+      const int parent = i < store.parents.size() ? store.parents[i] : -1;
+      OverviewNode* parent_node =
+          parent >= 0 && static_cast<std::size_t>(parent) < node_by_id_.size()
+              ? node_by_id_[parent] : nullptr;
+      node->parent = parent_node != nullptr ? parent_node : total;
+      node->parent->children.push_back(node);
+    }
+    // A direct pointer per folder avoids scanning its children for "Files".
+    auto add_files = [&](OverviewNode* folder) {
+      auto found = files_nodes_.find(folder);
+      if (found != files_nodes_.end()) return found->second;
+      auto* files = new OverviewNode{"Files", "", 0, 0, 0, 0, folder, {}};
+      folder->children.push_back(files);
+      nodes_.push_back(files);
+      files_nodes_.emplace(folder, files);
+      return files;
     };
 
     auto consider = [&](int i) {
@@ -1262,20 +1268,15 @@ class OverviewModel : public QAbstractItemModel {
       if (path == DataStore::root_path() || path.empty()) return;
       if (!store.counts_as_item(i)) return;
       const bool dir_row = i < static_cast<int>(store.is_dir.size()) && store.is_dir[i];
-      const std::size_t slash = path.rfind('/');
-      const std::string folder_path = slash == std::string::npos
-                                          ? "" : path.substr(0, slash);
-      // Direct objects live in the folder's synthetic "Files" row. A reported
-      // directory is an object of its parent, so its node is created for its
-      // contents but it is counted in the parent.
-      if (dir_row) ensure_folder(path);
-      OverviewNode* folder = folder_path.empty() ? total : ensure_folder(folder_path);
-      OverviewNode* files = nullptr;
-      for (OverviewNode* child : folder->children) {
-        if (child->name == "Files") { files = child; break; }
-      }
-      if (files == nullptr) files = add_child(folder, "Files", "");
-      files_by_folder_[folder_path] = files;
+      const int parent = i < static_cast<int>(store.parents.size())
+                             ? store.parents[i] : -1;
+      OverviewNode* folder =
+          parent >= 0 && parent < static_cast<int>(node_by_id_.size())
+              ? node_by_id_[parent] : nullptr;
+      if (folder == nullptr) folder = total;
+      // A reported directory is an object of its parent; its own node was
+      // created above and holds its contents.
+      OverviewNode* files = add_files(folder);
       ++files->count;
       if (!dir_row) {
         files->size += i < static_cast<int>(store.sizes.size()) ? store.sizes[i] : 0;
@@ -1477,16 +1478,25 @@ class OverviewModel : public QAbstractItemModel {
     }
   }
 
-  void mark_empty_nodes() {
+  bool mark_empty_nodes() {
+    bool changed = false;
     std::function<void(OverviewNode*)> mark = [&](OverviewNode* node) {
       for (OverviewNode* child : node->children) {
         mark(child);
-        child->hidden = child->total_count == 0;
+        const bool hidden = child->total_count == 0;
+        if (child->hidden != hidden) {
+          child->hidden = hidden;
+          changed = true;
+        }
       }
     };
     mark(root_);
     // The Total row stays visible even for an empty comparison.
-    if (!root_->children.empty()) root_->children[0]->hidden = false;
+    if (!root_->children.empty() && root_->children[0]->hidden) {
+      root_->children[0]->hidden = false;
+      changed = true;
+    }
+    return changed;
   }
 
  public:
@@ -1495,9 +1505,10 @@ class OverviewModel : public QAbstractItemModel {
   // every exclude made single-item decisions take seconds.
   bool refresh_counts(const DataStore& store) {
     if (root_ == nullptr || root_->children.empty() ||
-        files_by_folder_.empty()) {
+        files_nodes_.empty() || node_by_id_.size() != store.paths.size()) {
       return false;
     }
+    OverviewNode* total = root_->children[0];
     emit layoutAboutToBeChanged();
     for (OverviewNode* node : nodes_) {
       node->count = 0;
@@ -1509,14 +1520,30 @@ class OverviewModel : public QAbstractItemModel {
       if (path.empty() || path == DataStore::root_path()) continue;
       const bool dir_row = id < static_cast<int>(store.is_dir.size()) &&
                            store.is_dir[id] != 0;
-      const std::size_t slash = path.rfind('/');
-      const std::string folder =
-          slash == std::string::npos ? std::string() : path.substr(0, slash);
-      auto found = files_by_folder_.find(folder);
-      if (found == files_by_folder_.end()) {
-        // A new folder appeared; the caller has to rebuild the structure.
-        emit layoutChanged();
-        return false;
+      // The parent id is already computed by the store: no path parsing or
+      // string hashing per item, which used to cost ~250 ms on 661k rows.
+      const int parent = id < static_cast<int>(store.parents.size())
+                             ? store.parents[id] : -1;
+      OverviewNode* folder = nullptr;
+      if (parent >= 0 && parent < static_cast<int>(node_by_id_.size())) {
+        folder = node_by_id_[parent];
+      }
+      if (folder == nullptr) {
+        if (parent == root_id_ || parent < 0) {
+          folder = total;  // A direct object of the compared folder.
+        } else {
+          // A new folder appeared; the caller has to rebuild the structure.
+          emit layoutChanged();
+          return false;
+        }
+      }
+      auto found = files_nodes_.find(folder);
+      if (found == files_nodes_.end()) {
+        auto* files = new OverviewNode{"Files", "", 0, 0, 0, 0, folder, {}};
+        folder->children.push_back(files);
+        nodes_.push_back(files);
+        files_nodes_.emplace(folder, files);
+        found = files_nodes_.find(folder);
       }
       OverviewNode* files = found->second;
       ++files->count;
@@ -1527,12 +1554,12 @@ class OverviewModel : public QAbstractItemModel {
       }
     }
     compute_totals(root_);
-    OverviewNode* total = root_->children[0];
     total->total_count = root_->total_count;
     total->total_size = root_->total_size;
     grand_total_ = root_->total_count > 0 ? root_->total_count : 1;
-    mark_empty_nodes();
-    refresh_visible_children();
+    // Most decision edits do not change which folders are empty; only rebuild
+    // the per-parent visible-row cache when that actually changes.
+    if (mark_empty_nodes()) refresh_visible_children();
     emit layoutChanged();
     return true;
   }
@@ -1540,8 +1567,10 @@ class OverviewModel : public QAbstractItemModel {
   std::vector<OverviewNode*> nodes_;
   OverviewNode* root_ = nullptr;
   long long grand_total_ = 1;
-  std::unordered_map<std::string, OverviewNode*> files_by_folder_;
+  std::vector<OverviewNode*> node_by_id_;
+  std::unordered_map<OverviewNode*, OverviewNode*> files_nodes_;
   std::unordered_map<std::string, OverviewNode*> nodes_by_path_;
+  int root_id_ = -1;
   std::unordered_map<OverviewNode*, std::vector<OverviewNode*>> visible_children_;
 };
 
