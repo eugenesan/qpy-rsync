@@ -169,3 +169,53 @@ def test_native_space_excludes_every_selected_item(monkeypatch) -> None:
     )
     window.close()
     application.processEvents()
+
+
+def test_journal_does_not_double_timestamp_a_prefixed_line() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.log.clear()
+    window._append_log("10:11:12.34 already stamped")
+    window._append_log("2026-11-26T10:11:12.345+00:00 iso stamped")
+    window._flush_log()
+    lines = [
+        window.log.document().findBlockByNumber(row).text()
+        for row in range(window.log.document().blockCount())
+    ]
+    assert len(lines) == 2
+    assert lines[0].endswith("10:11:12.34 already stamped")
+    assert lines[0].count("10:11:12.34") == 1  # one timestamp only
+    assert lines[1].endswith("2026-11-26T10:11:12.345+00:00 iso stamped")
+    assert lines[1].count("10:11:12.345") == 1
+    window.close()
+    application.processEvents()
+
+
+def test_compare_diagnostic_reports_real_timings(monkeypatch) -> None:
+    import re
+
+    from qpy_rsync.backend.process_runner import ProcessResult
+    from qpy_rsync.services import compare_service
+    from qpy_rsync.services.compare_service import CompareService
+
+    app()
+    service = CompareService()
+    diagnostics: list[str] = []
+    service.on_diagnostic = diagnostics.append
+    clock = iter([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    monkeypatch.setattr(compare_service, "perf_counter", lambda: next(clock))
+    service._stdout_chunk(
+        ">f+++++++++|qpy-rsync|8|qpy-rsync|2024/01/01|qpy-rsync|file.txt\r"
+    )
+    service._finish(ProcessResult(0, "", ""))
+    line = diagnostics[-1]
+    match = re.search(
+        r"parsing (\d+\.\d{2}) s, journal writes (\d+\.\d{2}) s, "
+        r"total (\d+\.\d{2}) s",
+        line,
+    )
+    assert match is not None
+    assert match.group(1) == "1.00"
+    assert match.group(2) == "1.00"
+    assert match.group(3) == "5.00"

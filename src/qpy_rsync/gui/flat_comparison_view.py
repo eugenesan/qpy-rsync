@@ -940,10 +940,12 @@ class FlatComparisonView(QWidget):
                     key in (Qt.Key.Key_Up, Qt.Key.Key_Down)
                     and modifiers & Qt.KeyboardModifier.ControlModifier
                 ):
-                    self._hierarchy_move(1 if key == Qt.Key.Key_Down else -1)
+                    self._hierarchy_move(
+                        1 if key == Qt.Key.Key_Down else -1, focus=watched
+                    )
                     return True
                 if key in (Qt.Key.Key_Home, Qt.Key.Key_End):
-                    self._jump_to_edge(key == Qt.Key.Key_End)
+                    self._jump_to_edge(key == Qt.Key.Key_End, focus=watched)
                     return True
                 if key == Qt.Key.Key_Space:
                     if self._toggle_excluded():
@@ -986,7 +988,7 @@ class FlatComparisonView(QWidget):
         self.toggle_collapsed(path)
         return True
 
-    def _jump_to_edge(self, last: bool) -> None:
+    def _jump_to_edge(self, last: bool, *, focus: object | None = None) -> None:
         """Select the first or last visible item of the comparison."""
         positions = list(range(self.model.rowCount()))
         if last:
@@ -994,16 +996,18 @@ class FlatComparisonView(QWidget):
         for row in positions:
             data = self.model.row_data(row)
             if data is not None and not data.is_directory and data.path:
-                self.select_path(data.path)
+                self.select_path(data.path, focus=focus)
                 return
 
-    def _hierarchy_move(self, direction: int) -> None:
+    def _hierarchy_move(self, direction: int, *, focus: object | None = None) -> None:
         """Move the selection between a folder and its ancestors or children.
 
         Ctrl+Up selects the nearest visible parent folder; Ctrl+Down selects
         the first item below the current folder, expanding folds on the way.
         Unlike Left/Right this never changes a fold of its own, so it can be
-        used repeatedly to walk up and down the tree.
+        used repeatedly to walk up and down the tree. The keyboard shortcut
+        consumes the key event, so it is this method's job to leave the target
+        row current, visible and focused the way plain Up/Down would.
         """
         path = self._current_path()
         if not path:
@@ -1013,13 +1017,13 @@ class FlatComparisonView(QWidget):
             while parent and not self.model.index_for_path(parent).isValid():
                 parent = parent.rpartition("/")[0]
             if parent:
-                self.select_path(parent)
+                self.select_path(parent, focus=focus)
             return
         prefix = path + "/"
         for index in range(self.model.row_count_total()):
             candidate = self.model.path_of_row_index(index)
             if candidate and candidate.startswith(prefix):
-                self.select_path(candidate)
+                self.select_path(candidate, focus=focus)
                 return
 
     def _handle_collapse_key(self, pane: QTableView, key: int) -> bool:
@@ -1333,8 +1337,13 @@ class FlatComparisonView(QWidget):
             if not current:
                 return changed
 
-    def select_path(self, path: str) -> None:
-        """Select the object with the given path in the panes."""
+    def select_path(self, path: str, *, focus: object | None = None) -> None:
+        """Select the object with the given path in the panes.
+
+        ``focus`` is the pane that handled a keyboard jump. A shortcut eats
+        the key event, so Qt never runs its own current-index/focus handling;
+        give the jumped-to row a real focus target as well as a current index.
+        """
         if self._expand_ancestors(path):
             self.model.refresh_collapsed()
         index = self.model.index_for_path(path)
@@ -1349,7 +1358,10 @@ class FlatComparisonView(QWidget):
         )
         for tree in (self.source, self.action, self.destination):
             tree.selectionModel().setCurrentIndex(index, flags)
+            tree.setCurrentIndex(index)
             tree.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
+        if focus in (self.source, self.action, self.destination):
+            focus.setFocus(Qt.FocusReason.ShortcutFocusReason)  # type: ignore[union-attr]
 
     def set_filter_directories(self, enabled: bool) -> None:
         """Apply the action filters to the reported directories as well."""

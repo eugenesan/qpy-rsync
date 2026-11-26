@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 from typing import Any, Iterator
 
@@ -336,7 +336,18 @@ class FlatChangeModel(QAbstractTableModel):
                     skip_reconcile: bool = False) -> None:
         self.beginResetModel()
         self.hovered_row = None
-        self.changes = list(changes)
+        # A symlink listed by rsync (or built by a caller) can still carry
+        # ``link -> target`` in its path. Decisions are keyed by the plain
+        # path, so keep the row key and the decision key identical; otherwise
+        # excluding the link adds the decision but leaves the row checked.
+        self.changes = [
+            replace(change, path=change.path.split(" -> ", 1)[0],
+                    link_target=change.path.split(" -> ", 1)[1]
+                    if " -> " in change.path else change.link_target)
+            if change.kind is ObjectKind.SYMLINK and " -> " in change.path
+            else change
+            for change in changes
+        ]
         # The directory pass normally fills this; keep it indexable when it
         # is skipped because a native view owns the display.
         self._change_destination_sizes = [0] * len(self.changes)

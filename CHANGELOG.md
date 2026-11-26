@@ -2,6 +2,17 @@
 
 ## 0.4.0
 
+- Excluding a symlink now hides its row and clears its checkbox in both
+  views, even when the listed path still carries the ``link -> target`` suffix.
+- Ctrl+Up / Ctrl+Down and Home / End leave the jumped-to row current, visible
+  and focused instead of dropping the cursor.
+- The overview's deleted size includes sizes reported for deleted files and
+  decision-only deletes when no destination listing is available, without
+  counting a deleted folder twice.
+- Journal lines carry exactly one timestamp; the comparison diagnostic reports
+  measured parse, journal-write and total times, and progress records stay out
+  of the journal while summaries and problems remain.
+
 - The README was refreshed for the native Qt views, the overview, the decision
   filters and the optional verification, and uses new KDE-theme screenshots.
   The screenshots, the application icon and the desktop entry now live in

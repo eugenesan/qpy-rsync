@@ -66,3 +66,39 @@ def test_undo_restores_the_excluded_row_and_cursor() -> None:
     assert view.decision_for_path(original_path) == 0
     assert view.path_of_row(source.currentIndex().row()) == original_path
     view.shutdown()
+
+
+def test_excluding_a_symlink_hides_its_row() -> None:
+    """A symlink whose listing path still carries `` -> target`` must behave
+    like every other item when it is excluded."""
+    application = QApplication.instance() or QApplication([])
+    from qpy_rsync.backend.rsync_parser import parse_record
+
+    link = parse_record(
+        ">L+++++++++|qpy-rsync|4|qpy-rsync|2026/11/26-09:00:00|qpy-rsync|link -> target"
+    )
+    assert link is not None
+    # Simulate a path that came from a listing rather than the parser: the
+    # decision store and the native model must still agree on the key.
+    link = link.__class__(
+        "link -> target", link.action, link.kind, link.itemized_code,
+        link.size, link.modified_time, link.link_target, link.reason,
+    )
+    view = NativeHybridView()
+    view.set_changes([link, Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f", 10)])
+    application.processEvents()
+    assert view._paths == ["link", "a.txt"]
+    assert view.path_id_for_path("link") == 0
+    assert "link" in [view.path_of_row(row) for row in range(view.row_count())]
+
+    view.set_decision_by_path("link", 2)
+    application.processEvents()
+    assert view.decision_for_path("link") == 2
+    assert "link" not in [view.path_of_row(row) for row in range(view.row_count())]
+
+    # A decision mirrored from the Python side uses the same path key.
+    view.apply_python_decisions({})
+    application.processEvents()
+    assert view.decision_for_path("link") == 0
+    assert "link" in [view.path_of_row(row) for row in range(view.row_count())]
+    view.shutdown()

@@ -12,6 +12,7 @@ whole metadata dict for every directory would be quadratic.
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Collection, Mapping
 
 from qpy_rsync.core.changes import Change, ObjectKind
 
@@ -75,3 +76,44 @@ def destination_size(
     if change.destination_size is not None:
         return int(change.destination_size)
     return destination_subtree_size(change.path, change.kind, metadata)
+
+
+def deleted_size(
+    path: str,
+    kind: ObjectKind,
+    metadata: Metadata | DestinationSizeIndex,
+    own_sizes: Mapping[str, int] | None = None,
+    delete_paths: Collection[str] = (),
+) -> int:
+    """The size of one deleted object for the overview statistics.
+
+    Rsync deletion records carry placeholder sizes, so the real value comes
+    from the destination listing whenever it is available. When the listing
+    was skipped, failed, or only holds a source-side size (a decision-only
+    delete), fall back to the size reported on the change. A deleted folder
+    covers its selected descendants once; they are not counted again when
+    the folder itself contributes its subtree.
+    """
+    size = destination_subtree_size(path, kind, metadata)
+    if size:
+        return size
+    values = own_sizes or {}
+    clean = path.rstrip("/")
+    size = int(values.get(clean, 0))
+    if kind is not ObjectKind.DIRECTORY or not clean:
+        return size
+    prefix = clean + "/"
+    for candidate, value in values.items():
+        if candidate == clean or not candidate.startswith(prefix):
+            continue
+        # A nested deleted directory accounts for its own children.
+        parent = candidate.rpartition("/")[0]
+        covered = False
+        while parent and parent != clean:
+            if parent in delete_paths:
+                covered = True
+                break
+            parent = parent.rpartition("/")[0]
+        if not covered:
+            size += int(value)
+    return size

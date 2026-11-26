@@ -34,8 +34,37 @@ _NATIVE_KINDS = (
     "special",
     "unknown",
 )
+# rsync's ``%L`` field renders a symlink as ``link -> target``. The parser
+# keeps the target in ``Change.link_target``, but listings (and callers that
+# build a change by hand) can still carry the arrow in the path. The native
+# store keys every decision by path, so a decorated path would leave the
+# checkbox on and the row visible after an exclude.
+_LINK_MARKER = " -> "
 
 _ACTIVE: object | None = None
+
+
+def _decision_path(path: str, known: Sequence[str] | None = None) -> str:
+    """Return the path used as the native store key for a decision lookup."""
+    clean = str(path).rstrip("/")
+    if known is not None and clean in known:
+        return clean
+    if _LINK_MARKER in clean:
+        plain = clean.split(_LINK_MARKER, 1)[0]
+        if known is None or plain in known:
+            return plain
+    return clean
+
+
+def _handoff_path(change: Any) -> str:
+    """The path to hand to the native model for one change."""
+    path = str(change.path).rstrip("/")
+    if getattr(getattr(change, "kind", None), "value", "") == "symlink":
+        if _LINK_MARKER in path:
+            path = path.split(_LINK_MARKER, 1)[0]
+    return path
+
+
 _MODULE: object | None = None
 
 
@@ -131,8 +160,12 @@ class NativeHybridView:
     def set_root_names(self, source: str, destination: str) -> None:
         self._native.set_root_names(source, destination)
 
+    def _path_key(self, path: str) -> str:
+        """Resolve a caller path to the key the native store actually uses."""
+        return _decision_path(path, getattr(self, "_paths", None))
+
     def select_path(self, path: str, *, focus: bool = False) -> None:
-        self._native.select_path(path.rstrip("/"))
+        self._native.select_path(self._path_key(path))
         if focus:
             self._native.focus_lists()
 
@@ -159,25 +192,25 @@ class NativeHybridView:
         self._native.collapse_all(value)
 
     def set_decision_by_path(self, path: str, decision: int) -> None:
-        self._native.set_decision_by_path(path.rstrip("/"), decision)
+        self._native.set_decision_by_path(self._path_key(path), decision)
 
     def reset_decisions(self, path: str = "", subtree: bool = False) -> None:
-        self._native.reset_decisions(path.rstrip("/"), subtree)
+        self._native.reset_decisions(self._path_key(path), subtree)
 
     def path_id_for_path(self, path: str) -> int:
-        return int(self._native.path_id_for_path(path.rstrip("/")))
+        return int(self._native.path_id_for_path(self._path_key(path)))
 
     def path_of_id(self, path_id: int) -> str:
         return str(self._native.path_of_id(path_id))
 
     def is_directory(self, path: str) -> bool:
-        return bool(self._native.is_directory_by_path(path.rstrip("/")))
+        return bool(self._native.is_directory_by_path(self._path_key(path)))
 
     def is_collapsed(self, path: str) -> bool:
-        return bool(self._native.is_collapsed_by_path(path.rstrip("/")))
+        return bool(self._native.is_collapsed_by_path(self._path_key(path)))
 
     def decision_for_path(self, path: str) -> int:
-        return int(self._native.decision_for_path(path.rstrip("/")))
+        return int(self._native.decision_for_path(self._path_key(path)))
 
     def set_name_icons(self) -> None:
         """Hand Python-generated file/folder icons to the native delegate."""
@@ -261,7 +294,10 @@ class NativeHybridView:
 
     def set_changes(self, changes: Sequence[Any]) -> None:
         """Hand the dataset to native once; append only when it grows."""
-        paths = [str(change.path).rstrip("/") for change in changes]
+        # A symlink from --list-only can still carry ``link -> target``. Keep
+        # the native key identical to the path the parser and the decision
+        # store use, so excluding it hides the row and clears its checkbox.
+        paths = [_handoff_path(change) for change in changes]
         self._paths = paths
         if self._handed_paths == paths:
             return
@@ -365,8 +401,9 @@ class NativeHybridView:
     def apply_python_decisions(self, decisions) -> None:
         pairs = []
         for path, decision in decisions.items():
+            key = self._path_key(str(path))
             try:
-                path_id = self._paths.index(str(path).rstrip("/"))
+                path_id = self._paths.index(key)
             except ValueError:
                 continue
             pairs.append((path_id, int(decision)))

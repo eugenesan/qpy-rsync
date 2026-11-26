@@ -40,6 +40,8 @@ class CompareService:
         self._parse_error: str | None = None
         self._parse_seconds = 0.0
         self._log_seconds = 0.0
+        self._total_seconds = 0.0
+        self._started_at: float | None = None
         self._line_count = 0
         self._runner = QtProcessRunner(parent)  # type: ignore[arg-type]
         self.on_started: Callable[[], None] = lambda: None
@@ -67,6 +69,8 @@ class CompareService:
         self._parse_error = None
         self._parse_seconds = 0.0
         self._log_seconds = 0.0
+        self._total_seconds = 0.0
+        self._started_at = perf_counter()
         self._line_count = 0
         self.on_started()
         self._runner.start(build_compare_spec(profile))
@@ -106,6 +110,10 @@ class CompareService:
         """
         if not text:
             return
+        # Callers that drive the service directly (tests, replay tools) may
+        # not go through compare(); start the total clock on first output too.
+        if self._started_at is None:
+            self._started_at = perf_counter()
         self._buffer += text
         parts = re.split(r"[\r\n]", self._buffer)
         self._buffer = parts.pop()
@@ -150,17 +158,25 @@ class CompareService:
         if self._buffer:
             self._emit_line(self._buffer)
             self._buffer = ""
+        if self._started_at is None:
+            self._started_at = perf_counter()
+        # The total is measured from the start of the operation, not from the
+        # sum of parse and journal time: rsync itself and GUI callbacks both
+        # take real wall-clock time inside that span.
+        self._total_seconds = perf_counter() - self._started_at
         self.on_items(len(self._changes))
         debug_timing(
             "compare.parse",
             lines=self._line_count,
             parse_ms=round(self._parse_seconds * 1000, 1),
             log_ms=round(self._log_seconds * 1000, 1),
+            total_ms=round(self._total_seconds * 1000, 1),
         )
         self.on_diagnostic(
             f"Compare parse: {self._line_count:,} line(s), "
             f"parsing {self._parse_seconds:.2f} s, "
-            f"journal writes {self._log_seconds:.2f} s."
+            f"journal writes {self._log_seconds:.2f} s, "
+            f"total {self._total_seconds:.2f} s."
         )
         debug("compare.finish", exit_code=process.exit_code, stdout=repr(process.stdout[:2000]), stderr=repr(process.stderr[:2000]))
         if self._cancelled:
@@ -184,13 +200,16 @@ class CompareService:
         if not self._changes and process.stdout:
             from qpy_rsync.backend.rsync_parser import parse_output
 
+            parse_started = perf_counter()
             try:
                 parsed = parse_output(
                     process.stdout, delete_enabled=self._delete_enabled
                 )
             except ValueError as exc:
+                self._parse_seconds += perf_counter() - parse_started
                 self.on_error(f"Could not parse rsync output: {exc}")
                 return
+            self._parse_seconds += perf_counter() - parse_started
             self._changes = list(parsed.changes)
             self._diagnostics = list(parsed.diagnostics)
         parsed = ParseResult(list(self._changes), list(self._diagnostics))

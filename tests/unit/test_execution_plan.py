@@ -122,3 +122,16 @@ def test_deleted_size_uses_destination_metadata_without_double_counting() -> Non
     }
     plan = build_execution_plan(profile(), changes, ChangeDecisions(), metadata)
     assert plan.summary.deleted_size == 3500
+
+
+def test_deleted_size_includes_reported_file_sizes_without_metadata() -> None:
+    changes = [
+        Change("old/", ChangeAction.DELETE, ObjectKind.DIRECTORY, "*deleting"),
+        Change("old/a", ChangeAction.DELETE, ObjectKind.FILE, "*deleting", size=1000),
+        Change("lone.txt", ChangeAction.DELETE, ObjectKind.FILE, "*deleting",
+               destination_size=500),
+    ]
+    plan = build_execution_plan(profile(), changes, ChangeDecisions())
+    # No destination listing: the folder's deleted child and the explicit
+    # destination size still count, while the folder itself is not added twice.
+    assert plan.summary.deleted_size == 1500

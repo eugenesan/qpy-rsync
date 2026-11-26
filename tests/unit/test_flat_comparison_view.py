@@ -902,6 +902,67 @@ def test_ctrl_up_and_down_walk_the_hierarchy() -> None:
     application.processEvents()
 
 
+def test_ctrl_hierarchy_jump_leaves_the_target_current_and_focused() -> None:
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes(
+        [
+            file_change("d1/sub/a.txt"),
+            file_change("b.txt"),
+        ]
+    )
+    view.show()
+    application.processEvents()
+    view.select_path("d1/sub/a.txt")
+    view.source.setFocus()
+    application.processEvents()
+    assert QApplication.focusWidget() is view.source
+
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.ControlModifier
+    )
+    assert view.eventFilter(view.source, event) is True
+    application.processEvents()
+    index = view.source.currentIndex()
+    assert index.isValid()
+    assert view.model.row_path(index.row()) == "d1/sub"
+    assert view.source.selectionModel().isSelected(index)
+    assert view.source.visualRect(index).isValid()
+    assert QApplication.focusWidget() is view.source
+    view.close()
+    application.processEvents()
+
+
+def test_excluding_a_symlink_hides_the_row_and_clears_the_checkbox() -> None:
+    from qpy_rsync.core.changes import ChangeDecision, ChangeAction, ObjectKind
+    from qpy_rsync.core.changes import Change
+
+    application = app()
+    view = FlatComparisonView()
+    # A listing can still hand us the decorated rsync name; the model keeps
+    # the link target in its own field and the decision under the plain path.
+    symlink = Change(
+        "link -> target", ChangeAction.CREATE, ObjectKind.SYMLINK,
+        ">L+++++++++", 4, None, "target", "new object",
+    )
+    view.set_changes([symlink, file_change("a.txt")])
+    application.processEvents()
+    assert view.model.changes[0].path == "link"
+    assert view.model.changes[0].link_target == "target"
+    assert "link" in [view.model.row_path(row) for row in range(view.model.rowCount())]
+
+    view.model.decisions.set("link", ChangeDecision.EXCLUDE)
+    view.model._after_decision_change({"link"})
+    assert view.model.exclusions.is_excluded("link")
+    assert "link" not in [view.model.row_path(row) for row in range(view.model.rowCount())]
+    view.close()
+    application.processEvents()
+
+
 def test_undo_redo_restores_an_excluded_and_hidden_item() -> None:
     from qpy_rsync.core.changes import ChangeDecision
 

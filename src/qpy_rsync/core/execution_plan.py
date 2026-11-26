@@ -9,7 +9,7 @@ from typing import Iterable
 from qpy_rsync.backend.diagnostics import timed
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
-    destination_subtree_size,
+    deleted_size,
 )
 
 from .changes import (
@@ -144,7 +144,7 @@ def build_execution_plan(
     included = excluded = retained_destination_only = destructive = 0
     total_size = 0
     included_size = 0
-    deleted_size = 0
+    total_deleted = 0
     with timed("plan.destination_index", entries=len(destination_metadata or {})):
         metadata = build_destination_size_index(destination_metadata or {})
     with timed("plan.modified_count", changes=len(changes_list)):
@@ -152,6 +152,7 @@ def build_execution_plan(
     has_explicit = decisions.has_explicit()
     kinds: dict[str, ObjectKind] = {}
     delete_paths: set[str] = set()
+    delete_sizes: dict[str, int] = {}
 
     with timed("plan.loop", changes=len(changes_list)):
         for change in changes_list:
@@ -208,6 +209,14 @@ def build_execution_plan(
                     deletions += 1
                     delete_paths.add(clean)
                     kinds[clean] = change.kind
+                    # Rsync deletes carry no size of their own. Keep the size
+                    # reported for the object so a missing destination listing
+                    # does not make the overview show 0 B.
+                    delete_sizes[clean] = int(
+                        change.destination_size
+                        if change.destination_size is not None
+                        else (change.size or 0)
+                    )
             elif action is ChangeAction.DESTINATION_ONLY:
                 retained_destination_only += 1
             else:
@@ -228,8 +237,9 @@ def build_execution_plan(
         for path in delete_paths:
             if has_delete_ancestor(path):
                 continue
-            deleted_size += destination_subtree_size(
-                path, kinds.get(path, ObjectKind.FILE), metadata
+            total_deleted += deleted_size(
+                path, kinds.get(path, ObjectKind.FILE), metadata,
+                delete_sizes, delete_paths,
             )
 
     summary = PlanSummary(
@@ -242,7 +252,7 @@ def build_execution_plan(
         updates=updates,
         metadata=metadata_count,
         deletions=deletions,
-        deleted_size=deleted_size,
+        deleted_size=total_deleted,
         backup_enabled=profile.backup.enabled,
         total_size=total_size,
         included_size=included_size,

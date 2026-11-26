@@ -7,6 +7,7 @@ import shlex
 import shutil
 import time
 import os
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -50,7 +51,7 @@ from qpy_rsync import __version__ as APP_VERSION
 from qpy_rsync.backend.decision_filters import temporary_decision_filter
 from qpy_rsync.backend.destination_sizes import (
     build_destination_size_index,
-    destination_subtree_size,
+    deleted_size,
 )
 from qpy_rsync.backend.diagnostics import (
     clean_qt_noise,
@@ -67,6 +68,7 @@ from qpy_rsync.backend.inventory import (
     unfiltered_profile,
 )
 from qpy_rsync.backend.process_runner import ProcessState
+from qpy_rsync.backend.sync_progress import parse_sync_progress
 from qpy_rsync.backend.rsync_command import (
     build_compare_spec,
     build_inventory_spec,
@@ -2866,6 +2868,14 @@ class MainWindow(QMainWindow):
             for item in plan.items
             if item.included and item.action is ChangeAction.DELETE
         }
+        own_sizes = {
+            item_path: int(
+                item.destination_size
+                if item.destination_size is not None
+                else (item.size or 0)
+            )
+            for item_path, item in self._plan_changes.items()
+        }
         total = 0
         for path in delete_paths:
             if any(
@@ -2875,7 +2885,9 @@ class MainWindow(QMainWindow):
             change = self._plan_changes.get(path)
             if change is None:
                 return False
-            total += destination_subtree_size(path, change.kind, index)
+            total += deleted_size(
+                path, change.kind, index, own_sizes, delete_paths
+            )
         if total != plan.summary.deleted_size:
             self._current_plan = replace(
                 plan, summary=replace(plan.summary, deleted_size=total)
@@ -4953,7 +4965,7 @@ class MainWindow(QMainWindow):
             view.set_column_hidden(pane, bytes_column, True)
 
     def _on_native_selection(self, path_id: int) -> None:
-        changes = self._last_changed_changes
+        changes = getattr(self.comparison.model, "changes", None) or self._last_changed_changes
         if 0 <= path_id < len(changes):
             self._hybrid_selected_path = str(changes[path_id].path).rstrip("/")
 
@@ -4961,7 +4973,11 @@ class MainWindow(QMainWindow):
         """Mirror a native decision edit into Python's decision store."""
         from qpy_rsync.core.changes import ChangeDecision
 
-        changes = self._last_changed_changes
+        # The model keeps the normalized paths (a symlink's ``link -> target``
+        # suffix lives in ``link_target``). Mirror decisions with the same key
+        # the Python side uses, otherwise the native row is hidden while the
+        # Python exclusion still points at the decorated path.
+        changes = getattr(self.comparison.model, "changes", None) or self._last_changed_changes
         if 0 <= path_id < len(changes):
             targets = [str(changes[path_id].path).rstrip("/")]
         elif self._hybrid_view is not None:
@@ -5325,6 +5341,24 @@ class MainWindow(QMainWindow):
             argv = [program, *getattr(spec, "arguments", ())]
         self._append_log("$ " + shlex.join([str(item) for item in argv]))
 
+    # A journal line gets one timestamp. Diagnostics and replayed log lines can
+    # already carry one (HH:mm:ss.xx or an ISO timestamp); keep that time as the
+    # journal stamp instead of printing a second prefix in front of it.
+    _TIMESTAMP_PREFIX = re.compile(
+        r"^(?:(?P<short>\d{2}:\d{2}:\d{2}\.\d{2,6})"
+        r"|(?P<iso>\d{4}-\d{2}-\d{2}[T ](?P<time>\d{2}:\d{2}:\d{2})"
+        r"(?:\.(?P<fraction>\d+))?(?:Z|[+-]\d{2}:?\d{2})?))\s"
+    )
+
+    @classmethod
+    def _split_timestamp(cls, line: str) -> tuple[str | None, str]:
+        match = cls._TIMESTAMP_PREFIX.match(line)
+        if match is None:
+            return None, line
+        # Keep the caller's own prefix verbatim; the journal must not add a
+        # second one, and the time it recorded is the meaningful one.
+        return match.group(0).rstrip(), line[match.end():]
+
     def _append_log(
         self,
         text: str,
@@ -5337,9 +5371,12 @@ class MainWindow(QMainWindow):
         normalized = text.rstrip("\r\n")
         if not normalized:
             return
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-4]
+        fallback_stamp = datetime.now().strftime("%H:%M:%S.%f")[:-4]
         for line in normalized.replace("\r", "\n").splitlines() or [""]:
-            self._log_buffer.append((line, rsync, severity.lower(), timestamp))
+            stamp, content = self._split_timestamp(line)
+            self._log_buffer.append((
+                content, rsync, severity.lower(), stamp or fallback_stamp
+            ))
         if self._bulk_logging:
             if not self._log_flush_timer.isActive():
                 self._log_flush_timer.start()
@@ -5357,6 +5394,13 @@ class MainWindow(QMainWindow):
         # Raw rsync output is opt-in: on a large tree it can reach hundreds of
         # MB per run and costs measurable time in this single-threaded path.
         if not self._rsync_output_logging:
+            return
+        # A progress record is transient state. It belongs in the session log
+        # (and on the progress bar), never as a journal line that outlives the
+        # operation. The service already separates these; guard direct callers
+        # as well so the same line cannot reach both paths.
+        if parse_sync_progress(text) is not None:
+            self._append_transient_log(text)
             return
         # A remote shell can inherit DISPLAY and print harmless Qt/OpenGL
         # notices that obscure real SSH failures in the journal.
@@ -5447,7 +5491,8 @@ class MainWindow(QMainWindow):
             return
         normalized = text.rstrip("\r\n")
         if normalized:
-            self._write_session_log(normalized, rsync=True)
+            _stamp, content = self._split_timestamp(normalized)
+            self._write_session_log(content, rsync=True)
 
     def _begin_bulk_logging(self) -> None:
         self._bulk_logging = True
