@@ -419,7 +419,7 @@ def test_recent_profile_is_stored_in_app_settings(tmp_path, monkeypatch) -> None
     window._remember_profile_path(profile_path)
 
     settings = app_settings()
-    assert settings.contains("profile/current_path")
+    assert settings.value("profile/current_path") == str(profile_path)
     assert not settings.contains("profile/recent")
     assert not settings.contains("profile/recent_paths")
     assert not (tmp_path / ".local/share/qpy-rsync/recent-profile.json").exists()

@@ -51,19 +51,6 @@ def test_parse_log_file_and_disable_logging() -> None:
     assert disabled.logging_enabled is False
 
 
-def test_text_settings_are_stored_in_a_parseable_form() -> None:
-    from qpy_rsync.storage.settings import decode_text, encode_text
-
-    value = '{"filters": [], "name": "ad-hoc"}'
-    encoded = encode_text(value)
-    # Plain text with a prefix, no quotes or backslash escapes.
-    assert encoded.startswith("b64:")
-    assert '"' not in encoded and "\\" not in encoded
-    assert decode_text(encoded) == value
-    # A value written by an older version is still readable.
-    assert decode_text(value) == value
-
-
 def test_profiles_directory_is_created(tmp_path, monkeypatch) -> None:
     from qpy_rsync.storage.settings import profiles_directory
 
@@ -73,69 +60,6 @@ def test_profiles_directory_is_created(tmp_path, monkeypatch) -> None:
     assert directory.is_dir()
     # Asking again keeps the same place and does not fail when it exists.
     assert profiles_directory() == directory
-
-
-def test_legacy_escaped_json_values_are_rewritten(tmp_path, monkeypatch) -> None:
-    from PySide6.QtCore import QCoreApplication, QSettings
-
-    from qpy_rsync.storage.settings import (
-        app_settings,
-        decode_text,
-        migrate_legacy_settings,
-        settings_path,
-    )
-
-    QCoreApplication.setOrganizationName("qpy-rsync-tests")
-    QCoreApplication.setApplicationName("rewrite")
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    settings = app_settings()
-    # A value written by an older version: plain JSON with escapes.
-    settings.setValue("comparison/filters", '[]')
-    settings.setValue("main-window/state", b"\x00\x01")
-    settings.sync()
-
-    migrate_legacy_settings()
-
-    stored = QSettings(str(settings_path()), QSettings.Format.IniFormat)
-    text = str(stored.value("comparison/filters"))
-    assert text.startswith("b64:")
-    assert decode_text(text) == "[]"
-    contents = settings_path().read_text(encoding="utf-8")
-    assert '"' not in contents.split("[profile]")[0] or "\\\"" not in contents
-
-
-def test_legacy_settings_file_is_removed_after_migration(tmp_path, monkeypatch) -> None:
-    from pathlib import Path
-
-    from PySide6.QtCore import QCoreApplication, QSettings
-
-    from qpy_rsync.storage.settings import (
-        app_settings,
-        migrate_legacy_settings,
-        settings_path,
-    )
-
-    organization = QCoreApplication.organizationName()
-    application_name = QCoreApplication.applicationName()
-    QCoreApplication.setOrganizationName("qpy-rsync-tests")
-    QCoreApplication.setApplicationName("migration-cleanup")
-    try:
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        legacy = QSettings()
-        legacy.setValue("comparison/source", "/legacy/")
-        legacy.sync()
-        legacy_path = Path(legacy.fileName())
-        assert legacy_path.exists()
-
-        migrate_legacy_settings()
-
-        assert not legacy_path.exists()
-        stored = app_settings()
-        assert stored.value("comparison/source") == "/legacy/"
-    finally:
-        QCoreApplication.setOrganizationName(organization)
-        QCoreApplication.setApplicationName(application_name)
 
 
 def test_qt_environment_keeps_the_glx_probe_out_of_the_terminal(monkeypatch) -> None:

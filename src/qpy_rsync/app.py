@@ -202,9 +202,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             icon = QIcon(str(icon_path))
     if not icon.isNull():
         app.setWindowIcon(icon)
-    from qpy_rsync.storage.settings import migrate_legacy_settings
-
-    migrate_legacy_settings()
     window = MainWindow()
     if getattr(window, "_startup_abort", False):
         # The user chose to quit when the profile was locked; nothing was

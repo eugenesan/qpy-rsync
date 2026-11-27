@@ -7,14 +7,19 @@ colour. The user can change every colour and switch a marking off.
 
 from __future__ import annotations
 
-import json
 from typing import Mapping
 
 from PySide6.QtGui import QColor
 
 from qpy_rsync.core.changes import ChangeAction
 
+# One plain key per action value, e.g. ``colours/actions/create``.  A colour
+# is a ``#rrggbb`` string; an empty value (or a missing key) means unmarked.
 COLOURS_KEY = "colours/actions"
+
+
+def _colour_key(action: ChangeAction) -> str:
+    return f"{COLOURS_KEY}/{action.value}"
 
 # The default colour of every action that marks an item.
 DEFAULT_COLOURS: dict[ChangeAction, str] = {
@@ -35,33 +40,31 @@ def default_colours() -> dict[ChangeAction, str | None]:
 
 def load_colours(store: object | None = None) -> dict[ChangeAction, str | None]:
     """The colours the user chose. None means the action is not marked."""
-    from qpy_rsync.storage.settings import app_settings, decode_text
+    from qpy_rsync.storage.settings import app_settings
 
     settings = store if store is not None else app_settings()
-    raw = decode_text(settings.value(COLOURS_KEY, ""))
-    payload: object = {}
-    if raw:
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            payload = {}
-    stored = payload if isinstance(payload, dict) else {}
     colours: dict[ChangeAction, str | None] = {}
     for action, default in DEFAULT_COLOURS.items():
-        value = stored.get(action.value, default)
-        colours[action] = value if isinstance(value, str) else None
+        value = settings.value(_colour_key(action))
+        if value is None:
+            # A key that was never written means the default colour.
+            colours[action] = default
+        elif isinstance(value, str) and value.strip():
+            colours[action] = value.strip()
+        else:
+            colours[action] = None
     return colours
 
 
 def save_colours(
     colours: Mapping[ChangeAction, str | None], store: object | None = None
 ) -> None:
-    """Remember the colours the user chose."""
-    from qpy_rsync.storage.settings import app_settings, encode_text
+    """Remember the colours as one plain key per action."""
+    from qpy_rsync.storage.settings import app_settings
 
     settings = store if store is not None else app_settings()
-    payload = {action.value: colour for action, colour in colours.items()}
-    settings.setValue(COLOURS_KEY, encode_text(json.dumps(payload)))
+    for action, default in DEFAULT_COLOURS.items():
+        settings.setValue(_colour_key(action), colours.get(action, default) or "")
     settings.sync()
 
 

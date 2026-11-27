@@ -1,4 +1,5 @@
 import os
+import re
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -308,21 +309,64 @@ def test_the_optional_columns_can_be_switched_off() -> None:
 
 
 def test_a_narrow_saved_header_does_not_hide_the_names() -> None:
-    from qpy_rsync.storage.settings import app_settings, encode_binary
+    from qpy_rsync.storage.settings import app_settings
 
     application = app()
     app_settings().clear()
     view = FlatComparisonView()
     header = view.source.horizontalHeader()
     header.resizeSection(view.model.SOURCE_NAME, 20)
+    # Header state is a plain, hand-editable list of logical:width:hidden
+    # entries; no Qt binary blob and no base64 payload.
     app_settings().setValue(
-        "comparison/flat-source-header", encode_binary(header.saveState())
+        "comparison/flat-source-header",
+        ",".join(
+            f"{logical}:{header.sectionSize(logical)}:"
+            f"{1 if header.isSectionHidden(logical) else 0}"
+            for logical in range(header.count())
+        ),
     )
     app_settings().sync()
     view.close()
 
     restored = FlatComparisonView()
     assert restored.source.columnWidth(restored.model.SOURCE_NAME) >= 160
+    restored.close()
+    application.processEvents()
+
+
+def test_header_state_round_trips_widths_and_hidden_columns() -> None:
+    from qpy_rsync.storage.settings import app_settings
+
+    application = app()
+    app_settings().clear()
+    view = FlatComparisonView()
+    header = view.source.horizontalHeader()
+    widths = [header.sectionSize(i) for i in range(header.count())]
+    # SOURCE_NAME is the stretch column; use a fixed one for the exact width.
+    widths[view.model.SOURCE_SIZE] = 321
+    hidden_index = view.model.SOURCE_ITEMS
+    app_settings().setValue(
+        "comparison/flat-source-header",
+        ",".join(
+            f"{logical}:{width}:{1 if logical == hidden_index else 0}"
+            for logical, width in enumerate(widths)
+        ),
+    )
+    app_settings().sync()
+    view.close()
+
+    restored = FlatComparisonView()
+    restored_header = restored.source.horizontalHeader()
+    assert restored.source.columnWidth(restored.model.SOURCE_SIZE) == 321
+    assert restored.source.isColumnHidden(hidden_index)
+    # The saved value stays plain after the view writes its state back.
+    saved = str(app_settings().value("comparison/flat-source-header", ""))
+    assert "b64:" not in saved
+    assert f"{view.model.SOURCE_SIZE}:321:0" in saved
+    # Qt reports a hidden section as zero wide; the hidden flag is what
+    # round-trips, and the visibility is also mirrored in flat-hidden-source.
+    assert re.search(rf"(?:^|,){hidden_index}:\d+:1(?:,|$)", saved)
     restored.close()
     application.processEvents()
 

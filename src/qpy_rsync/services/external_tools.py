@@ -16,11 +16,10 @@ afterwards, so a path with a space stays one argument.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import PurePosixPath
 import re
 import shlex
-from typing import Mapping
+from typing import Mapping, Protocol
 
 from qpy_rsync.core.enums import EndpointKind
 from qpy_rsync.core.models import Endpoint
@@ -50,8 +49,46 @@ PLACEHOLDER_HELP: tuple[tuple[str, str], ...] = (
 _PLACEHOLDER = re.compile(r"%(%|[A-Za-z])")
 _KNOWN = {name[1:] for name, _text in PLACEHOLDER_HELP if name != "%%"}
 
+# The tools are stored as flat, plain INI keys.  ``tools/external/count``
+# gives N, and tool i (1-based) uses ``tools/external/i/<field>``.
 TOOLS_KEY = "tools/external"
+TOOLS_COUNT_KEY = f"{TOOLS_KEY}/count"
+TOOL_FIELDS = ("name", "command", "options", "enabled")
 DIFF_COMMAND_KEY = "tools/diff-command"
+
+
+class SettingsStore(Protocol):
+    """The part of ``QSettings``/``SettingsRouter`` used for tool storage."""
+
+    def value(self, key: str, default: object = None) -> object: ...
+
+    def setValue(self, key: str, value: object) -> None: ...
+
+    def remove(self, key: str) -> None: ...
+
+    def sync(self) -> None: ...
+
+
+def _tool_key(index: int, field: str) -> str:
+    return f"{TOOLS_KEY}/{index}/{field}"
+
+
+def _as_bool(value: object) -> bool:
+    """Read a plain boolean, including one hand-edited in the INI file."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _tool_count(settings: SettingsStore) -> int:
+    """The remembered number of tools, or 0 when it is missing or invalid."""
+    try:
+        count = int(settings.value(TOOLS_COUNT_KEY, 0))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(count, 1000))
 
 
 class ExternalToolError(ValueError):
@@ -66,29 +103,6 @@ class ExternalTool:
     command: str
     options: str = ""
     enabled: bool = True
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "name": self.name,
-            "command": self.command,
-            "options": self.options,
-            "enabled": self.enabled,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: object) -> "ExternalTool | None":
-        if not isinstance(payload, dict):
-            return None
-        name = str(payload.get("name", "")).strip()
-        command = str(payload.get("command", "")).strip()
-        if not name or not command:
-            return None
-        return cls(
-            name=name,
-            command=command,
-            options=str(payload.get("options", "")),
-            enabled=bool(payload.get("enabled", True)),
-        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -253,50 +267,60 @@ def build_tool_command(
     return argv
 
 
-def load_tools(store: object | None = None) -> list[ExternalTool]:
-    """The tools the user configured."""
-    from qpy_rsync.storage.settings import app_settings, decode_text
+def load_tools(store: SettingsStore | None = None) -> list[ExternalTool]:
+    """The tools the user configured, read from flat plain INI keys."""
+    from qpy_rsync.storage.settings import app_settings
 
-    settings = store if store is not None else app_settings()
-    raw = decode_text(settings.value(TOOLS_KEY, ""))
-    if not raw:
-        return []
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(payload, list):
-        return []
+    settings: SettingsStore = store if store is not None else app_settings()
     tools: list[ExternalTool] = []
-    for entry in payload:
-        tool = ExternalTool.from_dict(entry)
-        if tool is not None:
-            tools.append(tool)
+    for index in range(1, _tool_count(settings) + 1):
+        name = str(settings.value(_tool_key(index, "name"), "") or "").strip()
+        command = str(settings.value(_tool_key(index, "command"), "") or "").strip()
+        if not name or not command:
+            # A missing or incomplete entry is skipped, so a removed tool
+            # does not shift the tools that come after it.
+            continue
+        options = str(settings.value(_tool_key(index, "options"), "") or "")
+        enabled = _as_bool(settings.value(_tool_key(index, "enabled"), True))
+        tools.append(
+            ExternalTool(name=name, command=command, options=options, enabled=enabled)
+        )
     return tools
 
 
-def save_tools(tools: list[ExternalTool], store: object | None = None) -> None:
-    """Remember the tools the user configured."""
-    from qpy_rsync.storage.settings import app_settings, encode_text
+def save_tools(
+    tools: list[ExternalTool], store: SettingsStore | None = None
+) -> None:
+    """Remember the tools as flat, plain INI keys."""
+    from qpy_rsync.storage.settings import app_settings
 
-    settings = store if store is not None else app_settings()
-    payload = json.dumps([tool.as_dict() for tool in tools])
-    settings.setValue(TOOLS_KEY, encode_text(payload))
+    settings: SettingsStore = store if store is not None else app_settings()
+    # Drop the fields of tools that no longer exist so the file stays tidy
+    # even though only the first ``count`` entries are read back.
+    for index in range(len(tools) + 1, _tool_count(settings) + 1):
+        for field in TOOL_FIELDS:
+            settings.remove(_tool_key(index, field))
+    settings.setValue(TOOLS_COUNT_KEY, len(tools))
+    for index, tool in enumerate(tools, 1):
+        settings.setValue(_tool_key(index, "name"), tool.name)
+        settings.setValue(_tool_key(index, "command"), tool.command)
+        settings.setValue(_tool_key(index, "options"), tool.options)
+        settings.setValue(_tool_key(index, "enabled"), tool.enabled)
     settings.sync()
 
 
-def load_diff_command(store: object | None = None) -> str:
+def load_diff_command(store: SettingsStore | None = None) -> str:
     """The diff tool command the user configured, if any."""
-    from qpy_rsync.storage.settings import app_settings, decode_text
+    from qpy_rsync.storage.settings import app_settings
 
-    settings = store if store is not None else app_settings()
-    return decode_text(settings.value(DIFF_COMMAND_KEY, "")) or ""
+    settings: SettingsStore = store if store is not None else app_settings()
+    return str(settings.value(DIFF_COMMAND_KEY, "") or "")
 
 
-def save_diff_command(command: str, store: object | None = None) -> None:
-    """Remember the diff tool command."""
-    from qpy_rsync.storage.settings import app_settings, encode_text
+def save_diff_command(command: str, store: SettingsStore | None = None) -> None:
+    """Remember the diff tool command as a plain string."""
+    from qpy_rsync.storage.settings import app_settings
 
-    settings = store if store is not None else app_settings()
-    settings.setValue(DIFF_COMMAND_KEY, encode_text(command))
+    settings: SettingsStore = store if store is not None else app_settings()
+    settings.setValue(DIFF_COMMAND_KEY, command)
     settings.sync()

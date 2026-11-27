@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QSize, QTimer, Qt, QUrl
+from PySide6.QtCore import QProcess, QRect, QSize, QTimer, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -85,14 +85,8 @@ from qpy_rsync.storage.profile_store import (
     save_profile,
 )
 from qpy_rsync.storage.instance_lock import FileLock, LockBusy
-from qpy_rsync.storage.settings import (
-    app_settings,
-    decode_binary,
-    profiles_directory,
-    decode_text,
-    encode_binary,
-    encode_text,
-)
+from qpy_rsync.storage.plain_state import ints_to_text, text_to_ints
+from qpy_rsync.storage.settings import app_settings, profiles_directory
 
 
 _PAUSE_TOOLTIP = (
@@ -2223,7 +2217,7 @@ class MainWindow(QMainWindow):
         self._update_log_paths()
         settings = app_settings()
         if not self._temp_profile:
-            settings.setValue("profile/current_path", encode_text(str(path)))
+            settings.setValue("profile/current_path", str(path))
             settings.sync()
         self._refresh_profile_marker()
 
@@ -5617,7 +5611,7 @@ class MainWindow(QMainWindow):
 
     def _restore_recent_profile(self) -> bool:
         settings = app_settings()
-        current = decode_text(settings.value("profile/current_path", "")) or ""
+        current = str(settings.value("profile/current_path", "") or "")
         if current:
             path = Path(current).expanduser()
             if path.is_file():
@@ -5705,7 +5699,7 @@ class MainWindow(QMainWindow):
         settings = app_settings()
         settings.setValue(
             self._layout_state_key(self._layout_mode),
-            encode_binary(self.main_splitter.saveState()),
+            ints_to_text(self.main_splitter.sizes()),
         )
         settings.sync()
 
@@ -5793,15 +5787,13 @@ class MainWindow(QMainWindow):
             self.log_panel.show()
 
         self._layout_mode = mode
-        state = (
-            decode_binary(
-                app_settings().value(self._layout_state_key(mode), "")
-            )
+        sizes = (
+            text_to_ints(app_settings().value(self._layout_state_key(mode), ""))
             if restore
             else None
         )
-        if state is not None:
-            self.main_splitter.restoreState(state)
+        if sizes is not None and len(sizes) >= 2:
+            self.main_splitter.setSizes(sizes)
         elif mode == "normal":
             self.main_splitter.setSizes([380, 250])
         elif mode == "wide":
@@ -5816,26 +5808,25 @@ class MainWindow(QMainWindow):
 
     def _restore_window_state(self) -> None:
         settings = app_settings()
-        geometry = decode_binary(settings.value("main-window/geometry"))
-        state = decode_binary(settings.value("main-window/state"))
-        if geometry is not None:
-            self.restoreGeometry(geometry)
-        if state is not None:
-            self.restoreState(state)
-        preview_state = decode_binary(settings.value("command-preview/splitter"))
-        if preview_state is not None:
-            self.preview_log_splitter.restoreState(preview_state)
+        geometry = text_to_ints(settings.value("main-window/geometry"))
+        if geometry is not None and len(geometry) == 4:
+            self.setGeometry(QRect(*geometry))
+        if settings.value("main-window/maximized", False, bool):
+            self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
+        preview_sizes = text_to_ints(settings.value("command-preview/splitter"))
+        if preview_sizes is not None and len(preview_sizes) >= 2:
+            self.preview_log_splitter.setSizes(preview_sizes)
         mode = str(settings.value("main-window/layout-mode", "normal"))
         # The normal hierarchy is already in place; switching is only needed
         # for a remembered Focus or Wide mode.
         if mode != "normal":
             self._set_layout_mode(mode)
         else:
-            state = decode_binary(
+            sizes = text_to_ints(
                 settings.value(self._layout_state_key("normal"), "")
             )
-            if state is not None:
-                self.main_splitter.restoreState(state)
+            if sizes is not None and len(sizes) >= 2:
+                self.main_splitter.setSizes(sizes)
         self._refresh_layout_button()
         # The auto-inventory choice belongs to the profile now. Drop the old
         # global value so it cannot be mistaken for the active state.
@@ -5894,14 +5885,16 @@ class MainWindow(QMainWindow):
         if self._hybrid_view is not None:
             self._hybrid_view.shutdown()
         settings = app_settings()
+        rect = self.geometry()
         settings.setValue(
-            "main-window/geometry", encode_binary(self.saveGeometry())
+            "main-window/geometry",
+            ints_to_text((rect.x(), rect.y(), rect.width(), rect.height())),
         )
-        settings.setValue("main-window/state", encode_binary(self.saveState()))
+        settings.setValue("main-window/maximized", self.isMaximized())
         self._save_current_layout_state()
         settings.setValue(
             "command-preview/splitter",
-            encode_binary(self.preview_log_splitter.saveState()),
+            ints_to_text(self.preview_log_splitter.sizes()),
         )
         settings.sync()
         self.comparison.save_view_state()

@@ -15,7 +15,7 @@ from qpy_rsync.core.models import Endpoint, SyncProfile
 from qpy_rsync.gui.main_window import MainWindow
 from qpy_rsync.storage.instance_lock import FileLock
 from qpy_rsync.storage.profile_store import save_profile
-from qpy_rsync.storage.settings import app_settings, decode_text, profiles_directory
+from qpy_rsync.storage.settings import app_settings, profiles_directory
 
 
 def app() -> QApplication:
@@ -44,17 +44,13 @@ def test_locked_profile_uses_temp_copy_without_caching_recent(
     lock_path.write_text("1", encoding="ascii")
     settings = app_settings()
     settings.clear()
-    from qpy_rsync.storage.settings import encode_text
-
-    settings.setValue("profile/current_path", encode_text(str(target)))
+    settings.setValue("profile/current_path", str(target))
     settings.sync()
 
     window = MainWindow()
     assert window._temp_profile
     assert window._profile_path != target
-    assert Path(
-        decode_text(settings.value("profile/current_path", ""))
-    ).name == target.name
+    assert Path(str(settings.value("profile/current_path", ""))).name == target.name
 
     temp = window._profile_path
     assert temp is not None and temp.exists()
@@ -204,9 +200,7 @@ def test_saving_temp_profile_renames_its_logs(tmp_path: Path, monkeypatch) -> No
     assert (
         tmp_path / "cache" / "qpy-rsync" / "rsync-kept.log"
     ).read_text().startswith("kept too")
-    assert Path(
-        decode_text(app_settings().value("profile/current_path", ""))
-    ) == target
+    assert Path(str(app_settings().value("profile/current_path", ""))) == target
     window.close()
     application.processEvents()
 

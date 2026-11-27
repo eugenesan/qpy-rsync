@@ -139,7 +139,9 @@ def test_a_broken_command_is_reported() -> None:
         _command("", _context())
 
 
-def test_the_tools_are_stored_and_read_back(tmp_path, monkeypatch) -> None:
+def test_the_tools_are_stored_as_plain_readable_keys(tmp_path, monkeypatch) -> None:
+    from pathlib import Path
+
     from PySide6.QtCore import QSettings
 
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -158,17 +160,47 @@ def test_the_tools_are_stored_and_read_back(tmp_path, monkeypatch) -> None:
 
     assert load_tools(store) == tools
     assert load_diff_command(store) == "meld %a %A"
+    # Every value is an INI scalar a user can read and edit by hand.
+    assert store.value("tools/external/count") == 2
+    assert store.value("tools/external/1/name") == "Kate"
+    assert store.value("tools/external/1/command") == "kate %d/%f"
+    assert store.value("tools/external/1/options") == ""
+    assert store.value("tools/external/1/enabled") is True
+    assert store.value("tools/external/2/name") == "Meld"
+    assert store.value("tools/external/2/options") == "--wait"
+    assert store.value("tools/external/2/enabled") is False
+    assert store.value("tools/diff-command") == "meld %a %A"
+    contents = Path(store.fileName()).read_text(encoding="utf-8")
+    assert "b64:" not in contents
+    assert "kate %d/%f" in contents
 
 
-def test_a_broken_stored_tool_is_ignored(tmp_path) -> None:
+def test_missing_and_invalid_tool_entries_are_skipped(tmp_path) -> None:
     from PySide6.QtCore import QSettings
-    from qpy_rsync.storage.settings import encode_text
 
     store = QSettings(str(tmp_path / "tools.ini"), QSettings.Format.IniFormat)
-    store.setValue("tools/external", encode_text("not json"))
+    store.setValue("tools/external/count", "not a number")
     assert load_tools(store) == []
-    store.setValue(
-        "tools/external",
-        encode_text('[{"name": "", "command": "kate"}, {"name": "k", "command": "kate"}]'),
-    )
-    assert [tool.name for tool in load_tools(store)] == ["k"]
+    store.setValue("tools/external/count", 3)
+    store.setValue("tools/external/1/name", "")
+    store.setValue("tools/external/1/command", "kate")
+    store.setValue("tools/external/2/name", "Kate")
+    store.setValue("tools/external/2/command", "kate %a")
+    # A hand-edited plain boolean is understood.
+    store.setValue("tools/external/2/enabled", "false")
+    # Entry 3 has a name but no command, so it is skipped.
+    store.setValue("tools/external/3/name", "Broken")
+    assert load_tools(store) == [
+        ExternalTool(name="Kate", command="kate %a", enabled=False)
+    ]
+
+
+def test_removing_a_tool_drops_its_plain_keys(tmp_path) -> None:
+    from PySide6.QtCore import QSettings
+
+    store = QSettings(str(tmp_path / "tools.ini"), QSettings.Format.IniFormat)
+    save_tools([ExternalTool(name="Kate", command="kate %a")], store)
+    save_tools([], store)
+    assert load_tools(store) == []
+    assert store.value("tools/external/count") == 0
+    assert not store.contains("tools/external/1/name")

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- All settings and saved widget state are now plain, human-editable INI values.
+  The `b64:` prefix, base64-encoded JSON, Qt byte-array blobs and the one-time
+  legacy settings migration are gone. External tools use flat keys
+  (`tools/external/count` and `tools/external/<i>/<field>`), the diff command
+  and current profile path are plain strings, action colours use one
+  `colours/actions/<action>` key each, geometry is `x,y,w,h`, maximised state
+  is a boolean, and splitter/header state is comma-separated integers and
+  `logical:width:hidden` entries.
 - The exit prompt for a changed profile now offers Save, Save As... and Don't
   Save. Save writes to the associated profile (or falls back to the Save
   Profile dialog when none is associated), Save As... uses the same dialog as
@@ -796,7 +804,7 @@
 - Give the action column between the tree panes a fixed width and size the location icons like the buttons in their row.
 - Make the command preview resizable and always visible, and let it follow the running operation.
 - Store the application settings in `~/.local/state/qpy-rsyncstaterc`, migrate the legacy configuration once, and keep the recent profile inside the state file.
-- Write the widget state as base64 text so the state file stays readable for other INI parsers.
+- Write the widget state as base64 text so the state file stays readable for other INI parsers (superseded: widget state is now written as plain scalar values).
 - Batch the journal writes, reuse one log handle, and stop writing every rsync line to disk during a comparison.
 - Reuse a fresh comparison for the verification instead of starting an identical second dry run, and allow cancelling a modified selection.
 - Report a cancelled verification only once and render the rsync specification of every dry run in the journal.
@@ -807,7 +815,7 @@
 ## milestone 1.15g review fixes
 
 - Verify Actions can run again after a successful verification instead of raising an invalid gate transition.
-- Store the recent profile and the filter rules as base64 text, so the KDE configuration reader no longer rejects the state file.
+- Store the recent profile and the filter rules as base64 text, so the KDE configuration reader no longer rejects the state file (superseded: both keys are now plain text or removed).
 - Keep rsync progress and speed lines in the session log and out of the journal, and derive the progress percentage from the files already checked so dry runs show progress.
 - Show the progress bar only while an operation runs, and turn the Pause button into Resume while a transfer is suspended.
 - Expand every folder after a comparison, so the trees never start half collapsed.

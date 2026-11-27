@@ -68,6 +68,12 @@ from .icons import (
 )
 from .paths import full_path
 from .text_elide import elide_path, wrap_path
+from qpy_rsync.storage.plain_state import (
+    header_to_text,
+    ints_to_text,
+    text_to_header,
+    text_to_ints,
+)
 from qpy_rsync.storage.settings import app_settings
 
 # The colour of the dimmed path that precedes the name of a directory.
@@ -1866,45 +1872,63 @@ class FlatComparisonView(QWidget):
     # ------------------------------------------------------------------
     # View state
     # ------------------------------------------------------------------
-    def save_view_state(self) -> None:
-        from qpy_rsync.storage.settings import app_settings, encode_binary
+    @staticmethod
+    def _header_state_text(tree: QTableView) -> str:
+        """One ``logical:width:hidden`` entry per column of a pane."""
+        header = tree.horizontalHeader()
+        return header_to_text(
+            (logical, header.sectionSize(logical), header.isSectionHidden(logical))
+            for logical in range(header.count())
+        )
 
+    def save_view_state(self) -> None:
         settings = app_settings()
         settings.setValue(
-            "comparison/flat-splitter", encode_binary(self.splitter.saveState())
+            "comparison/flat-splitter", ints_to_text(self.splitter.sizes())
         )
         settings.setValue(
-            "comparison/flat-source-header",
-            encode_binary(self.source.horizontalHeader().saveState()),
+            "comparison/flat-source-header", self._header_state_text(self.source)
         )
         settings.setValue(
             "comparison/flat-destination-header",
-            encode_binary(self.destination.horizontalHeader().saveState()),
+            self._header_state_text(self.destination),
         )
         settings.sync()
 
     def _restore_view_state(self) -> None:
-        from qpy_rsync.storage.settings import app_settings, decode_binary
-
         settings = app_settings()
-        state = decode_binary(settings.value("comparison/flat-splitter"))
-        if state is not None:
-            self.splitter.restoreState(state)
+        sizes = text_to_ints(settings.value("comparison/flat-splitter"))
+        if sizes is not None and len(sizes) >= 2:
+            self.splitter.setSizes(sizes)
         else:
             self.splitter.setSizes([450, ACTION_PANE_WIDTH, 450])
-        source = decode_binary(settings.value("comparison/flat-source-header"))
-        destination = decode_binary(settings.value("comparison/flat-destination-header"))
-        for header, state in (
-            (self.source.horizontalHeader(), source),
-            (self.destination.horizontalHeader(), destination),
+        # Header entries carry widths and hidden flags.  Mirror the hidden
+        # flags into the flat-hidden keys as well, because
+        # _apply_column_visibility() owns the fixed set of shown columns and
+        # applies the user's optional columns from those keys at the end.
+        for pane, tree, key in (
+            ("source", self.source, "comparison/flat-source-header"),
+            ("destination", self.destination, "comparison/flat-destination-header"),
         ):
-            if state is None:
+            entries = text_to_header(settings.value(key))
+            if not entries:
                 continue
-            if isinstance(header, _StretchableHeader):
+            header = tree.horizontalHeader()
+            stretchable = isinstance(header, _StretchableHeader)
+            if stretchable:
                 header._auto_resizing = True
-            header.restoreState(state)
-            if isinstance(header, _StretchableHeader):
+            for logical, (width, hidden) in entries.items():
+                if not 0 <= logical < header.count():
+                    continue
+                if width > 0:
+                    header.resizeSection(logical, width)
+                header.setSectionHidden(logical, hidden)
+            if stretchable:
                 header._auto_resizing = False
+            self._save_hidden_columns(
+                pane,
+                {logical for logical, (_width, hidden) in entries.items() if hidden},
+            )
         # A saved state can carry a width from an older layout, so the name
         # columns are kept wide enough to stay readable, and the size and the
         # time columns wide enough for their content.

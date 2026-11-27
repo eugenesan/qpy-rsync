@@ -441,6 +441,26 @@ decision rules, the backup settings and the option set. The profiles are
 stored as versioned JSON in `$XDG_CONFIG_HOME/qpy-rsync/profiles`, and the
 application settings live in `$XDG_STATE_HOME/qpy-rsyncstaterc`.
 
+Every persisted setting is a plain INI scalar: no base64 payloads and no Qt
+byte-array blobs, so the files can be read and edited by hand. The formats are:
+
+- `tools/external/count` holds N, and tool *i* (1-based) uses
+  `tools/external/i/name`, `/command`, `/options` and `/enabled` (the last one
+  is `true` or `false`). Incomplete entries are skipped.
+- `tools/diff-command` is the diff command string, e.g. `meld %a %A`.
+- `colours/actions/<action>` is one `#rrggbb` colour per action
+  (`create`, `update_content`, `update_metadata`, `delete`,
+  `destination_only`); an empty or missing value means the action is unmarked.
+- `profile/current_path` is a plain path string.
+- `main-window/geometry` is `x,y,w,h`; `main-window/maximized` is a boolean.
+- Splitter sizes (`main-window/layout-state-<mode>`,
+  `command-preview/splitter`, `comparison/flat-splitter`) are comma-separated
+  integers.
+- `comparison/flat-source-header` and `comparison/flat-destination-header` use
+  one `logicalIndex:width:hidden` entry per column, comma-separated, with
+  `hidden` being `0` or `1`. Qt reports a hidden column as zero wide, so the
+  visible column widths and the hidden flags are what round-trip.
+
 The settings dialog has the pages *General*, *Logging*, *Backup*, *Tools* and
 *Advanced*. The general page holds the completion sound; the logging page
 only enables or disables logging and shows the derived log paths; the backup
