@@ -4187,6 +4187,9 @@ class MainWindow(QMainWindow):
 
     def _add_shortcut(self, key: str, slot) -> None:
         shortcut = QShortcut(QKeySequence(key), self)
+        # WindowShortcut can be swallowed by the focused input/table widget;
+        # these are global pane/action shortcuts and must work from anywhere.
+        shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(lambda: slot())
 
     def _focus_compare_pane(self, tree) -> None:

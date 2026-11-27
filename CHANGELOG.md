@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Keyboard shortcuts use ApplicationShortcut context, so Ctrl+S/D/N and
+  Ctrl+2..8 work regardless of which widget has focus.
+
 - All settings and saved widget state are now plain, human-editable INI values.
   The `b64:` prefix, base64-encoded JSON, Qt byte-array blobs and the one-time
   legacy settings migration are gone. External tools use flat keys

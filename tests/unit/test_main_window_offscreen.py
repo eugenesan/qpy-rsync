@@ -2597,3 +2597,27 @@ def test_folder_decision_patches_plan_without_full_estimate() -> None:
     assert not window._stale_summary_timer.isActive()
     window.close()
     application.processEvents()
+
+
+def test_window_shortcuts_work_from_any_focus() -> None:
+    application = app()
+    window = MainWindow()
+    window.show()
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent, QShortcut
+
+    keys = {shortcut.key().toString(): shortcut
+            for shortcut in window.findChildren(QShortcut)}
+    for key in ("Ctrl+S", "Ctrl+D", "Ctrl+N", "Ctrl+2", "Ctrl+3", "Ctrl+8"):
+        assert key in keys
+        assert keys[key].context() == Qt.ShortcutContext.ApplicationShortcut
+
+    window.activateWindow()
+    application.processEvents()
+    window.source_edit.setFocus()
+    application.processEvents()
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_S, Qt.ControlModifier)
+    QCoreApplication.postEvent(window, event)
+    application.processEvents()
+    assert QApplication.focusWidget() is window.comparison.source
+    window.close()
