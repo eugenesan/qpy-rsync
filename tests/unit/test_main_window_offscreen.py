@@ -3043,3 +3043,32 @@ def test_pane_focus_shortcuts_land_on_visible_columns() -> None:
     )
     window.close()
     application.processEvents()
+
+
+def test_undo_button_follows_decision_history() -> None:
+    from PySide6.QtWidgets import QToolButton
+
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("a.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f")]
+    )
+    application.processEvents()
+    button = window.action_filters.findChild(QToolButton, "undo-button")
+    assert button is not None
+    assert not button.isEnabled()
+    assert not window.undo_decision_action.isEnabled()
+
+    window.comparison.model.set_excluded("a.txt", True)
+    application.processEvents()
+    assert window.undo_decision_action.isEnabled()
+    assert button.isEnabled()
+
+    button.click()
+    application.processEvents()
+    assert not button.isEnabled()
+    assert not window.comparison.model.decisions.has_explicit()
+    window.close()

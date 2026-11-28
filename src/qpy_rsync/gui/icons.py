@@ -336,6 +336,14 @@ def restore_defaults_icon() -> QIcon:
     )
 
 
+def undo_icon() -> QIcon:
+    """The system undo icon used by the decisions bar button."""
+    return _theme_icon(
+        "edit-undo",
+        fallback=QStyle.StandardPixmap.SP_DialogResetButton,
+    )
+
+
 def profile_icon(*, loaded: bool = False, modified: bool = False) -> QIcon:
     """The profile icon, with a marker when a profile is loaded or modified."""
     base = _theme_icon(

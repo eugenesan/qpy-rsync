@@ -14,6 +14,10 @@
 
 ### Changed
 
+- The decisions bar has an Undo button to the left of "Show excluded", as in
+  Qt. It mirrors the Undo Decision action's availability and triggers the same
+  handler, so Ctrl+Z and the button behave identically, including in
+  native-hybrid mode.
 - The location-field shortcuts are Ctrl+[ / Ctrl+] instead of Alt+S/D, which
   conflicted with desktop menu mnemonics.
 - Typing a search term focuses the first match after the debounce, matching

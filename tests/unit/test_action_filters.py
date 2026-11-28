@@ -4,7 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QApplication, QCheckBox
+from PySide6.QtWidgets import QApplication, QCheckBox, QToolButton
 
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
 from qpy_rsync.gui.action_filters import ActionFilterBar, FILTERABLE_ACTIONS
@@ -379,3 +379,28 @@ def test_the_context_menu_can_reset_the_bar_to_its_default() -> None:
     assert all(other.isChecked() for other in bar._boxes.values())
     assert bar.unchanged_box.isChecked() is False
     assert bar.excluded_box.isChecked() is False
+
+
+def test_undo_button_precedes_excluded_and_requests_undo() -> None:
+    app()
+    bar = ActionFilterBar()
+    button = bar.findChild(QToolButton, "undo-button")
+    assert button is not None
+    assert button.text() == "Undo"
+    assert button.accessibleName() == "Undo decision"
+    assert button.toolTip() == "Undo the last decision (Ctrl+Z)"
+    assert button.width() == CONTROL_SIZE
+    bar.show()
+    app().processEvents()
+    assert button.x() < bar.excluded_box.x()
+    assert not button.isEnabled()
+
+    fired: list[bool] = []
+    bar.undo_requested.connect(lambda: fired.append(True))
+    bar.set_undo_enabled(True)
+    button.click()
+    assert fired == [True]
+
+    assert button.isEnabled()
+    bar.set_undo_enabled(False)
+    assert not button.isEnabled()

@@ -370,3 +370,26 @@ def test_ctrl_w_focuses_native_overview_tree(monkeypatch) -> None:
     finally:
         window.close()
         app.processEvents()
+
+
+def test_hybrid_undo_button_triggers_the_patched_action(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication([])
+    from PySide6.QtWidgets import QToolButton
+
+    window = _window(monkeypatch, hybrid=True)
+    window.show()
+    window.activateWindow()
+    app.processEvents()
+    button = window.findChild(QToolButton, "undo-button")
+    try:
+        window._hybrid_view.set_decision_by_path("d0/f0000.txt", 2)
+        app.processEvents()
+        assert button is not None and button.isEnabled()
+
+        button.click()
+        app.processEvents()
+        assert not button.isEnabled()
+        assert not window.comparison.model.decisions.has_explicit()
+    finally:
+        window.close()
+        app.processEvents()

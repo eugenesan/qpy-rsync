@@ -810,6 +810,11 @@ class MainWindow(QMainWindow):
         self.action_filters.changed.connect(self._apply_action_filters)
         self.action_filters.excluded_toggled.connect(self._apply_show_excluded)
         self.action_filters.reset_exclusions_requested.connect(self._reset_exclusions)
+        # Trigger the action rather than calling the view directly: hybrid
+        # mode swaps the action's slot for its own decision handler.
+        self.action_filters.undo_requested.connect(
+            lambda: self.undo_decision_action.trigger()
+        )
         self.action_filters.directory_filter_toggled.connect(
             self._filter_directories_changed
         )
@@ -1827,6 +1832,9 @@ class MainWindow(QMainWindow):
         """Enable the history actions from the decision model's state."""
         history = self.comparison.model.decision_history
         self.undo_decision_action.setEnabled(history.can_undo)
+        bar = getattr(self, "action_filters", None)
+        if bar is not None:
+            bar.set_undo_enabled(history.can_undo)
         self.redo_decision_action.setEnabled(history.can_redo)
         self.reset_decisions_action.setEnabled(
             self.comparison.model.decisions.has_explicit()

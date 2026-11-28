@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMenu,
     QSizePolicy,
+    QToolButton,
     QWidget,
 )
 
@@ -21,6 +22,7 @@ from .icons import (
     folder_icon,
     excluded_icon,
     unchanged_icon,
+    undo_icon,
 )
 
 def _separator() -> QFrame:
@@ -50,6 +52,7 @@ class ActionFilterBar(QWidget):
     unchanged_toggled = Signal(bool)
     conflicts_toggled = Signal(bool)
     reset_exclusions_requested = Signal()
+    undo_requested = Signal()
     directory_filter_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -61,6 +64,20 @@ class ActionFilterBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        # Undo sits at the very start of the decisions bar, to the left of
+        # "Show excluded", matching the Qt frontend.
+        self.undo_button = QToolButton(self)
+        self.undo_button.setObjectName("undo-button")
+        self.undo_button.setText("Undo")
+        self.undo_button.setIcon(undo_icon())
+        self.undo_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.undo_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
+        self.undo_button.setToolTip("Undo the last decision (Ctrl+Z)")
+        self.undo_button.setAccessibleName("Undo decision")
+        self.undo_button.setEnabled(False)
+        self.undo_button.clicked.connect(self.undo_requested.emit)
+        layout.addWidget(self.undo_button)
+
         # The excluded items are the ones the user put aside. They affect the
         # sync, so this is not just a display filter: it shows what is
         # already excluded from the sync, the way the unchanged toggle shows
@@ -251,6 +268,10 @@ class ActionFilterBar(QWidget):
             "Right-click to reset all exclusions.\n"
             "Ctrl+click shows only the excluded items."
         )
+
+    def set_undo_enabled(self, enabled: bool) -> None:
+        """Mirror the Undo Decision action's availability on the button."""
+        self.undo_button.setEnabled(bool(enabled))
 
     def set_excluded_count(self, count: int) -> None:
         """Report how many items are excluded next to the toggle."""
