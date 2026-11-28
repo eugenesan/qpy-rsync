@@ -2685,6 +2685,43 @@ def test_window_shortcuts_work_from_any_focus() -> None:
     window.close()
 
 
+def test_ctrl_w_focuses_overview_from_any_focus() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    window = MainWindow()
+    window.show()
+    window.activateWindow()
+    application.processEvents()
+    expected = (
+        window.overview if window._hybrid_view is not None else window.overview.tree
+    )
+    for focus_widget in (
+        window.source_edit,
+        window.comparison.search_edit,
+        window.comparison.source,
+    ):
+        focus_widget.setFocus()
+        application.processEvents()
+        event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_W, Qt.ControlModifier)
+        QCoreApplication.postEvent(window, event)
+        application.processEvents()
+        assert QApplication.focusWidget() is expected
+
+    # The same fallback must survive a filter-inversion shortcut.
+    window.source_edit.setFocus()
+    application.processEvents()
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_1, Qt.ControlModifier)
+    QCoreApplication.postEvent(window, event)
+    application.processEvents()
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_W, Qt.ControlModifier)
+    QCoreApplication.postEvent(window, event)
+    application.processEvents()
+    assert QApplication.focusWidget() is expected
+    window.close()
+
+
 def test_operation_buttons_are_disabled_until_an_operation_runs() -> None:
     application = app()
     app_settings().clear()

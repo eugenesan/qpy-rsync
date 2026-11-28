@@ -4685,39 +4685,6 @@ class MainWindow(QMainWindow):
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
-            if event.type() == QEvent.Type.KeyPress:
-                from PySide6.QtGui import QKeyEvent
-
-                if isinstance(event, QKeyEvent):
-                    modifiers = event.modifiers()
-                    if modifiers & Qt.ControlModifier and not (
-                        modifiers & (Qt.AltModifier | Qt.MetaModifier)
-                    ):
-                        pane_keys = {
-                            Qt.Key.Key_S: "source",
-                            Qt.Key.Key_D: "destination",
-                            Qt.Key.Key_N: "action",
-                            Qt.Key.Key_BracketLeft: None,
-                            Qt.Key.Key_BracketRight: None,
-                        }
-                        if event.key() in pane_keys:
-                            target = pane_keys[event.key()]
-                            if target is None:
-                                widget = (
-                                    self.source_edit
-                                    if event.key() == Qt.Key.Key_BracketLeft
-                                    else self.destination_edit
-                                )
-                                widget.setFocus()
-                            else:
-                                self._focus_named_pane(target)
-                            return True
-                        if event.key() == Qt.Key.Key_G:
-                            if modifiers & Qt.ShiftModifier:
-                                self.comparison.find_previous()
-                            else:
-                                self.comparison.find_next()
-                            return True
             if (
                 event.type() == QEvent.Type.KeyPress
                 and int(event.key()) == int(Qt.Key.Key_Escape)

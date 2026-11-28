@@ -6,8 +6,9 @@
 
 - Search shortcuts Ctrl+F / Ctrl+G / Ctrl+Shift+G are now application-wide
   QShortcuts instead of menu QActions, so they work regardless of focus.
-- Pane shortcuts Ctrl+S/D/N also have a global event-filter fallback for the
-  same reason.
+- Pane shortcuts Ctrl+S/D/N/W stay application-wide QShortcuts. Keeping
+  references to them prevents garbage collection, and a regression test now
+  checks Ctrl+W from several focus widgets and after Ctrl+1.
 
 ### Changed
 
@@ -15,9 +16,6 @@
   conflicted with desktop menu mnemonics.
 - Typing a search term focuses the first match after the debounce, matching
   Qt.
-
-
-### Changed
 
 - The journal no longer carries a separate preview pane or progress pane. The
   progress bar is now a fixed-width permanent status-bar widget (15% of the
