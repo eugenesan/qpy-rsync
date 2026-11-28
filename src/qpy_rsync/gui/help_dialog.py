@@ -116,7 +116,7 @@ result.
     application settings.
 
 12. Keyboard shortcuts
-    Alt+S / Alt+D  focus the Source / Destination location field
+    Ctrl+[ / Ctrl+] focus the Source / Destination location field
     Ctrl+W         focus the Overview pane
     Ctrl+S / Ctrl+D  focus the Source / Destination compare tree
     Ctrl+N          focus the Decisions column

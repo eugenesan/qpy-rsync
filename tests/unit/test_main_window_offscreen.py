@@ -1493,11 +1493,21 @@ def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
         for action in edit_menu.actions()
         if action.text() in {"Find in List", "Find Next", "Find Previous"}
     }
+    # The keys live on application-wide QShortcuts, not on menu QActions, so
+    # they keep working when an editor or a dialog has focus.
     assert find_actions == {
-        "Find in List": "Ctrl+F",
-        "Find Next": "Ctrl+G",
-        "Find Previous": "Ctrl+Shift+G",
+        "Find in List": "",
+        "Find Next": "",
+        "Find Previous": "",
     }
+    from PySide6.QtGui import QShortcut
+
+    search_keys = {
+        shortcut.key().toString()
+        for shortcut in window.findChildren(QShortcut)
+    }
+    for key in ("Ctrl+F", "Ctrl+G", "Ctrl+Shift+G", "Ctrl+[", "Ctrl+]"):
+        assert key in search_keys
     undo_actions = {
         action.text(): action.shortcut().toString()
         for action in edit_menu.actions()

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+
+- Search shortcuts Ctrl+F / Ctrl+G / Ctrl+Shift+G are now application-wide
+  QShortcuts instead of menu QActions, so they work regardless of focus.
+- Pane shortcuts Ctrl+S/D/N also have a global event-filter fallback for the
+  same reason.
+
+### Changed
+
+- The location-field shortcuts are Ctrl+[ / Ctrl+] instead of Alt+S/D, which
+  conflicted with desktop menu mnemonics.
+- Typing a search term focuses the first match after the debounce, matching
+  Qt.
+
+
 ### Changed
 
 - The journal no longer carries a separate preview pane or progress pane. The
@@ -629,7 +644,7 @@
 - The auto-inventory toggle is now part of the profile instead of the global
   application state. Older profiles default to off and are updated on the next
   save.
-- Added an application-wide shortcut set: Alt+S/D for the location fields,
+- Added an application-wide shortcut set: Ctrl+[ / Ctrl+] for the location fields,
   Ctrl+S/D/N for the compare panes, Ctrl+W for the overview, Alt+Enter/Ctrl+T
   for the item context menu, numbered action and tool shortcuts, and Esc to
   leave a location field. The How-To documents them.

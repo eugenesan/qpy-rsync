@@ -1058,14 +1058,13 @@ class MainWindow(QMainWindow):
             edit_menu, "Reset Decisions", "", self.comparison.reset_all_decisions
         )
         edit_menu.addSeparator()
+        # Search shortcuts are registered as application-wide QShortcuts
+        # below; a menu QAction would use WindowShortcut and be swallowed by
+        # the focused editor (KDE's global menu makes this intermittent).
+        self._add_action(edit_menu, "Find in List", "", self.comparison.focus_search)
+        self._add_action(edit_menu, "Find Next", "", self.comparison.find_next)
         self._add_action(
-            edit_menu, "Find in List", "Ctrl+F", self.comparison.focus_search
-        )
-        self._add_action(
-            edit_menu, "Find Next", "Ctrl+G", self.comparison.find_next
-        )
-        self._add_action(
-            edit_menu, "Find Previous", "Ctrl+Shift+G", self.comparison.find_previous
+            edit_menu, "Find Previous", "", self.comparison.find_previous
         )
         self._add_action(edit_menu, "Profile", "F4", self._edit_profile)
         self._add_action(edit_menu, "Settings", "Ctrl+,", self._edit_settings)
@@ -4514,6 +4513,7 @@ class MainWindow(QMainWindow):
         # these are global pane/action shortcuts and must work from anywhere.
         shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(lambda: slot())
+        self._shortcuts.append(shortcut)
 
     def _visible_pane_column(self, tree) -> int:
         """Return the column shown by the focused pane's own view."""
@@ -4595,6 +4595,7 @@ class MainWindow(QMainWindow):
         self._focus_compare_pane(widget)
 
     def _install_navigation_shortcuts(self) -> None:
+        self._shortcuts: list[QShortcut] = getattr(self, "_shortcuts", [])
         panes = {
             self.comparison.source,
             self.comparison.destination,
@@ -4602,8 +4603,8 @@ class MainWindow(QMainWindow):
             self.overview.tree,
         }
         for key, widget in (
-            ("Alt+S", self.source_edit),
-            ("Alt+D", self.destination_edit),
+            ("Ctrl+[", self.source_edit),
+            ("Ctrl+]", self.destination_edit),
         ):
             self._add_shortcut(
                 key,
@@ -4615,6 +4616,9 @@ class MainWindow(QMainWindow):
                 widget.setToolTip(
                     f"{widget.toolTip()} (Shortcut: {key}) (Esc ends editing)"
                 )
+        self._add_shortcut("Ctrl+F", self.comparison.focus_search)
+        self._add_shortcut("Ctrl+G", self.comparison.find_next)
+        self._add_shortcut("Ctrl+Shift+G", self.comparison.find_previous)
         for key, name in (
             ("Ctrl+W", "overview"),
             ("Ctrl+S", "source"),
@@ -4681,6 +4685,39 @@ class MainWindow(QMainWindow):
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
+            if event.type() == QEvent.Type.KeyPress:
+                from PySide6.QtGui import QKeyEvent
+
+                if isinstance(event, QKeyEvent):
+                    modifiers = event.modifiers()
+                    if modifiers & Qt.ControlModifier and not (
+                        modifiers & (Qt.AltModifier | Qt.MetaModifier)
+                    ):
+                        pane_keys = {
+                            Qt.Key.Key_S: "source",
+                            Qt.Key.Key_D: "destination",
+                            Qt.Key.Key_N: "action",
+                            Qt.Key.Key_BracketLeft: None,
+                            Qt.Key.Key_BracketRight: None,
+                        }
+                        if event.key() in pane_keys:
+                            target = pane_keys[event.key()]
+                            if target is None:
+                                widget = (
+                                    self.source_edit
+                                    if event.key() == Qt.Key.Key_BracketLeft
+                                    else self.destination_edit
+                                )
+                                widget.setFocus()
+                            else:
+                                self._focus_named_pane(target)
+                            return True
+                        if event.key() == Qt.Key.Key_G:
+                            if modifiers & Qt.ShiftModifier:
+                                self.comparison.find_previous()
+                            else:
+                                self.comparison.find_next()
+                            return True
             if (
                 event.type() == QEvent.Type.KeyPress
                 and int(event.key()) == int(Qt.Key.Key_Escape)
