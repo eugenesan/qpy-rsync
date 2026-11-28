@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### Changed
+
+- The journal no longer carries a separate preview pane or progress pane. The
+  progress bar is now a fixed-width permanent status-bar widget (15% of the
+  window width) and progress messages appear in the status label. The rsync
+  command is shown as a single faded, italic, selectable temporary journal
+  entry: hovering Compare or Verify replaces it with the matching command,
+  real journal lines and running operations clear it, and it is never written
+  to the log file.
+- Clear Log asks for Approve/Cancel before truncating the session logs. The
+  Backup and Log toolbar buttons open their own button-owned menus on click;
+  the first entry opens the backup directory or log file (or the corresponding
+  settings when nothing is configured), followed by Clear Log for the log and
+  Configure.... Their tooltips reflect the configured state and carry the
+  right-click hint.
+- Changing Source or Destination marks an existing comparison stale, disables
+  Sync and Verify and turns the location fields orange. Restoring the original
+  locations restores the previous stale and verified state. Swapping endpoints
+  twice now returns to the earlier state.
+- The sync confirmation has an enabled-by-default "Compare again after
+  synchronization" checkbox; accepting it starts a fresh comparison after a
+  successful transfer. The Filters button, tooltip and dialog note state that
+  rules belong to the current profile and need Save or Save As....
+- The profile menu lists Edit... directly under Save. Cancel and Pause start
+  disabled, are enabled only while an rsync operation runs and are reset on
+  completion. Swap sits before the sync mode selector, with Settings left of
+  the layout button.
+
+- Escape in the search field clears the search like clicking its clear button,
+  and stepping between search results replaces the selection.
+- Tooltips use a uniform 250 ms wake-up delay with no fall-asleep grace, so
+  moving between widgets no longer shows the next tooltip instantly.
+- The Decisions header draws visible section borders.
+- "Apply decisions filter to directories too" sits to the right of "Show
+  unchanged" and has Alt+9 / Ctrl+9 shortcuts; the unchanged toggle keeps
+  number 8.
+- Keyboard navigation works after switching pane focus: the current cell of
+  each comparison pane stays in a visible column.
+- Compare prefers `refreshstructure-symbolic` and the application menu prefers
+  `open-menu-symbolic` when the icon theme provides them; the menu fallback is
+  no longer faded.
+- Menu-button chevrons point down and sit at the bottom-left of the button.
+
 ### Fixed
 
 - Keyboard shortcuts use ApplicationShortcut context, so Ctrl+S/D/N and

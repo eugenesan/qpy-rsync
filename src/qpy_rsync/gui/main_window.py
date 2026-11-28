@@ -13,13 +13,25 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QProcess, QRect, QSize, QTimer, Qt, QUrl
+from PySide6.QtCore import (
+    QEvent,
+    QPoint,
+    QProcess,
+    QRect,
+    QSize,
+    QTimer,
+    Qt,
+    QUrl,
+)
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
     QKeySequence,
+    QPainter,
     QPalette,
+    QPolygon,
     QShortcut,
+    QTextBlockUserData,
     QTextCharFormat,
     QTextCursor,
 )
@@ -28,6 +40,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -105,6 +118,14 @@ _COMPARE_TOOLTIP = (
 )
 _STALE_STATE_TEXT = "Stale comparison — click Compare to refresh"
 
+_RIGHT_CLICK_HINT = "Right-click for more options"
+_FILTER_STORE_HINT = (
+    "Filter rules belong to the current profile. "
+    "Save or Save As... to keep them for the next session."
+)
+_COMPARE_PREVIEW_MARKER = "compare rsync preview: "
+_VERIFY_PREVIEW_MARKER = "verify rsync preview: "
+
 _VERIFY_TOOLTIP = (
     "Optional diagnostic: check the selected decisions against the plan.\n"
     "Synchronization does not depend on this check.\n"
@@ -132,6 +153,35 @@ def vertical_separator() -> QFrame:
     line.setFixedWidth(1)
     line.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
     return line
+
+
+class _MenuToolButton(QToolButton):
+    """A tool button with a small chevron marking its attached menu."""
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        super().paintEvent(event)  # type: ignore[arg-type]
+        painter = QPainter(self)
+        colour = self.palette().color(QPalette.ColorRole.Text)
+        painter.setPen(colour)
+        painter.setBrush(colour)
+        x, y = 2, self.height() - 9
+        triangle = QPolygon(
+            [QPoint(x, y), QPoint(x + 5, y), QPoint(x + 2, y + 5)]
+        )
+        painter.drawPolygon(triangle)
+        painter.end()
+
+
+class _PreviewBlockData(QTextBlockUserData):
+    """Marks the single journal block that holds a command preview."""
+
+
+def iter_document_blocks(document: object):
+    """Yield every block of a QTextDocument, oldest first."""
+    block = document.begin()  # type: ignore[attr-defined]
+    while block.isValid():
+        yield block
+        block = block.next()
 
 
 def _inventory_result(payload: object) -> InventoryResult:
@@ -200,7 +250,6 @@ from qpy_rsync.services.sync_service import SyncResult, SyncService
 
 from .action_colours import load_colours, save_colours, set_current_colours
 from .action_filters import ActionFilterBar
-from .command_preview import CommandPreview
 from .controls import CONTROL_ICON_SIZE, CONTROL_SIZE
 from .flat_comparison_view import FlatComparisonView
 from .icons import (
@@ -343,9 +392,26 @@ class MainWindow(QMainWindow):
         self._sound_enabled = True
         self._backup = BackupOptions()
         self._hovered_action = "compare"
+        # The command preview is a transient, marked journal entry. Specs are
+        # kept here so hovering Compare and Verify can swap the single entry.
+        self._compare_spec: object | None = None
+        self._verify_spec: object | None = None
+        self._preview_verify = False
+        self._preview_requested = False
+        self._operation_active = False
+        # Locations used by the last comparison. Changing them makes the
+        # visible comparison stale; restoring them brings the old state back.
+        self._location_baseline: tuple[str, str] | None = None
+        self._location_stale = False
+        self._location_saved_state: dict[str, object] | None = None
+        self._suppress_location_stale = False
+        # Only a confirmed synchronization picks this up from the dialog.
+        # A direct _sync_finished() call has no dialog to opt in.
+        self._compare_after_sync = False
         self._closing = False
         self._layout_mode = "normal"
-        self._wide_overview_width: int | None = None
+        # The overview keeps this width in both Normal and Wide layouts.
+        self._wide_overview_width: int = 620
         self._overview_min_width: int | None = None
         self._log_file_enabled = True
         self._log_file_path = self._default_log_file_path("app")
@@ -546,6 +612,12 @@ class MainWindow(QMainWindow):
         self.comparison.controls.setParent(root)
 
         controls = QHBoxLayout()
+        # Swap sits to the left of the sync mode selector.
+        self.swap_button = QToolButton()
+        self.swap_button.setIcon(swap_icon())
+        self.swap_button.setToolTip("Swap Source and Destination")
+        self.swap_button.setAccessibleName("Swap Source and Destination")
+        controls.addWidget(self.swap_button)
         self.sync_mode = QComboBox()
         self.sync_mode.addItem("Update", SyncMode.UPDATE)
         self.sync_mode.addItem("Mirror", SyncMode.MIRROR)
@@ -557,10 +629,6 @@ class MainWindow(QMainWindow):
             "New Only: copy missing items; do not update or delete existing items."
         )
         controls.addWidget(self.sync_mode)
-        self.swap_button = QToolButton()
-        self.swap_button.setIcon(swap_icon())
-        self.swap_button.setToolTip("Swap Source and Destination")
-        self.swap_button.setAccessibleName("Swap Source and Destination")
         self.compare_button = QToolButton()
         self.compare_button.setIcon(compare_icon())
         self.compare_button.setToolTip(_COMPARE_TOOLTIP)
@@ -605,13 +673,16 @@ class MainWindow(QMainWindow):
         self.validate_plan_button.setEnabled(False)
         self.filters_button = QToolButton()
         self.filters_button.setIcon(filters_icon())
-        self.filters_button.setToolTip("Edit the persistent filter rules")
+        self.filters_button.setToolTip(
+            "Edit the filter rules stored in the current profile. "
+            "Save or Save As... to keep them."
+        )
         self.filters_button.setAccessibleName("Filters")
         self.profile_menu = QMenu(self)
         self.profile_menu.aboutToShow.connect(self._update_profile_menu)
-        self.profile_button = QToolButton()
+        self.profile_button = _MenuToolButton()
         self.profile_button.setIcon(profile_icon())
-        self.profile_button.setToolTip("Manage profiles")
+        self.profile_button.setToolTip(f"Manage profiles\n{_RIGHT_CLICK_HINT}")
         self.profile_button.setAccessibleName("Manage Profiles")
         self.profile_button.setMenu(self.profile_menu)
         self.profile_button.setPopupMode(
@@ -646,19 +717,18 @@ class MainWindow(QMainWindow):
             "backup-open-button",
             backup_icon(),
             "Open the backup directory",
-            self._open_backup_directory,
+            None,
+            menu_button=True,
         )
         self.log_file_open = self._external_open_button(
             "log-open-button",
             log_file_icon(),
             "Open the log file",
-            self._open_log_file,
+            None,
+            menu_button=True,
         )
-        for button, section in (
-            (self.backup_open, "backup"),
-            (self.log_file_open, "logging"),
-        ):
-            self._configure_open_button_menu(button, section)
+        self._configure_open_button_menu(self.backup_open, "backup")
+        self._configure_open_button_menu(self.log_file_open, "logging")
         self.settings_button = QToolButton()
         self.settings_button.setIcon(settings_icon())
         self.settings_button.setToolTip("Settings")
@@ -710,7 +780,6 @@ class MainWindow(QMainWindow):
             self.profile_button,
             self.backup_open,
             self.log_file_open,
-            self.settings_button,
         ):
             if widget is None:
                 # A line between the operations and the rest of the toolbar.
@@ -725,6 +794,11 @@ class MainWindow(QMainWindow):
         comparison_layout.insertWidget(
             comparison_layout.indexOf(self.comparison.menu_button),
             self.layout_button,
+        )
+        # Settings sits immediately to the left of the layout button.
+        comparison_layout.insertWidget(
+            comparison_layout.indexOf(self.layout_button),
+            self.settings_button,
         )
         layout.addLayout(controls)
         self._controls_layout = controls
@@ -773,6 +847,7 @@ class MainWindow(QMainWindow):
         log_layout.setSpacing(4)
         log_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.log_splitter = log_splitter
+        log_splitter.splitterMoved.connect(self._log_splitter_moved)
         log_splitter.setChildrenCollapsible(False)
         log_splitter.setHandleWidth(6)
         log_column = QWidget(self)
@@ -803,37 +878,10 @@ class MainWindow(QMainWindow):
         self.log.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self.progress_label = QLabel("")
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("%p%")
-        self.progress_bar.setVisible(False)
-        self.command_preview_label = CommandPreview("")
-        self.command_preview_label.setObjectName("command-preview-label")
-        log_container = QWidget(self)
-        log_container.setMinimumHeight(0)
-        log_container_layout = QVBoxLayout(log_container)
-        log_container_layout.setContentsMargins(0, 0, 0, 0)
-        log_container_layout.setSpacing(2)
-        log_container_layout.addWidget(self.log, 1)
-        self.preview_log_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.preview_log_splitter.setChildrenCollapsible(False)
-        self.preview_log_splitter.setHandleWidth(6)
-        self.preview_log_splitter.setToolTip(
-            "Drag the divider to resize the command preview."
-        )
-        self.preview_log_splitter.addWidget(self.command_preview_label)
-        self.preview_log_splitter.addWidget(log_container)
-        self.preview_log_splitter.setStretchFactor(0, 0)
-        self.preview_log_splitter.setStretchFactor(1, 1)
-        self.preview_log_splitter.setSizes(
-            [self.command_preview_label.minimumHeight(), 110]
-        )
-        log_layout_column.addWidget(self.progress_bar)
-        log_layout_column.addWidget(self.progress_label)
-        log_layout_column.addWidget(self.preview_log_splitter, 1)
+        # The command preview is a temporary entry in the journal, and the
+        # progress bar lives in the status bar. The journal takes the whole
+        # left pane instead of sharing it with a separate preview widget.
+        log_layout_column.addWidget(self.log, 1)
         log_splitter.addWidget(log_column)
         # The overview summarises the comparison next to the journal.
         self.overview = OverviewPane(self)
@@ -878,6 +926,16 @@ class MainWindow(QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
         self.statusBar().addWidget(self.state_label)
         self.statusBar().addWidget(self.status_edit, 1)
+        # A permanent, fixed-width progress bar keeps progress out of the
+        # journal pane without shifting the status text when it appears.
+        self.progress_bar = QProgressBar(self.statusBar())
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setFixedWidth(self._progress_bar_width(self.width()))
+        self.progress_bar.setVisible(False)
+        self.statusBar().addPermanentWidget(self.progress_bar)
         self._build_menus()
         self._build_menu_button()
 
@@ -895,6 +953,7 @@ class MainWindow(QMainWindow):
             (self.validate_plan_button, "verify"),
             (self.synchronize_button, "synchronize"),
         ):
+            button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             button.installEventFilter(self)
             button.setProperty("previewAction", action)
         for button, shortcut in (
@@ -906,7 +965,9 @@ class MainWindow(QMainWindow):
             (self.filters_button, "F7"),
         ):
             button.setToolTip(with_shortcut(button.toolTip(), shortcut))
-        self.profile_button.setToolTip("Manage profiles (F2/F3, edit F4)")
+        self.profile_button.setToolTip(
+            f"Manage profiles (F2/F3, edit F4)\n{_RIGHT_CLICK_HINT}"
+        )
         self.show_unchanged.setToolTip(with_shortcut(self.show_unchanged.toolTip(), "F6"))
         self.destination_edit.returnPressed.connect(self._compare_if_ready)
         self.source_edit.editingFinished.connect(self._update_command_preview)
@@ -1108,16 +1169,23 @@ class MainWindow(QMainWindow):
         self.show_unchanged.setChecked(not self.show_unchanged.isChecked())
 
     def _external_open_button(
-        self, name: str, icon: object, tooltip: str, slot: object
+        self,
+        name: str,
+        icon: object,
+        tooltip: str,
+        slot: object | None,
+        *,
+        menu_button: bool = False,
     ) -> QToolButton:
-        button = QToolButton()
+        button = _MenuToolButton() if menu_button else QToolButton()
         button.setObjectName(name)
         button.setIcon(icon)  # type: ignore[arg-type]
         button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
         button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
         button.setToolTip(tooltip)
         button.setAccessibleName(tooltip)
-        button.clicked.connect(slot)  # type: ignore[arg-type]
+        if slot is not None:
+            button.clicked.connect(slot)  # type: ignore[arg-type]
         return button
 
     def _configured_destination_is_local(self) -> bool:
@@ -1127,7 +1195,13 @@ class MainWindow(QMainWindow):
             return False
         return destination.kind is EndpointKind.LOCAL
 
-    def _update_external_open_states(self) -> None:
+    def _backup_configured(self) -> bool:
+        return bool(self.backup_edit.text().strip())
+
+    def _log_configured(self) -> bool:
+        return bool(self._log_file_enabled and self.log_file_edit.text().strip())
+
+    def _update_open_button_states(self) -> None:
         for edit, button in (
             (self.source_edit, getattr(self, "source_open_button", None)),
             (self.destination_edit, getattr(self, "destination_open_button", None)),
@@ -1139,19 +1213,23 @@ class MainWindow(QMainWindow):
                 button.setEnabled(endpoint.kind is EndpointKind.LOCAL)
             except ValueError:
                 button.setEnabled(False)
+        # Both menu buttons stay enabled even when nothing is configured: the
+        # first menu entry then opens the relevant settings instead.
         backup = getattr(self, "backup_open", None)
         if backup is not None:
-            try:
-                destination = parse_endpoint(self.destination_edit.text())
-                local = destination.kind is EndpointKind.LOCAL
-            except ValueError:
-                local = False
-            # The button keeps its menu so the backup settings stay reachable
-            # even when no directory is configured yet.
             backup.setEnabled(True)
+            action = "Open the backup directory" if self._backup_configured() else "Configure the backup directory"
+            backup.setToolTip(f"{action}\n{_RIGHT_CLICK_HINT}\nShortcut: Ctrl+B")
+            backup.setAccessibleName("Open the backup directory")
         log_button = getattr(self, "log_file_open", None)
         if log_button is not None:
-            log_button.setEnabled(bool(self.log_file_edit.text().strip()))
+            log_button.setEnabled(True)
+            action = "Open the log file" if self._log_configured() else "Configure logging"
+            log_button.setToolTip(f"{action}\n{_RIGHT_CLICK_HINT}\nShortcut: Ctrl+L")
+            log_button.setAccessibleName("Open the log file")
+
+    # Older callers used this name; keep it as an alias.
+    _update_external_open_states = _update_open_button_states
 
     def _open_path(self, path: Path, what: str) -> None:
         if not path.exists():
@@ -1187,8 +1265,8 @@ class MainWindow(QMainWindow):
         self._open_path(Path(endpoint.path).expanduser(), f"{title} directory")
 
     def _open_backup_directory(self) -> None:
-        if not self.backup_edit.text().strip():
-            self._set_status("No backup directory is configured.", "warning")
+        if not self._backup_configured():
+            self._edit_profile("backup")
             return
         try:
             profile = self._profile()
@@ -1214,6 +1292,9 @@ class MainWindow(QMainWindow):
         self._open_path(profiles_directory(), "profiles directory")
 
     def _open_log_file(self) -> None:
+        if not self._log_configured():
+            self._edit_settings("logging")
+            return
         text = self.log_file_edit.text().strip()
         path = (Path(text).expanduser() if text else self._log_file_path)
         if not path.exists():
@@ -1257,9 +1338,6 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(panel)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
-        if title == "Source":
-            # Keep Swap away from Compare: it sits with the Source controls.
-            row.addWidget(self.swap_button)
         open_button = self._external_open_button(
             f"{title.lower()}-open-button",
             cloud_upload_icon() if title == "Source" else cloud_download_icon(),
@@ -1493,15 +1571,102 @@ class MainWindow(QMainWindow):
 
     def _endpoint_text_changed(self) -> None:
         self._update_backup_browse_state()
-        self._update_external_open_states()
+        self._update_open_button_states()
         self._refresh_profile_marker()
-        if self.comparison.model.changes and not self.comparison.model.stale:
-            self.comparison.set_stale(True)
-            self._invalidate_plan_context()
-            self._set_status(
-                "Comparison is out of date because a location changed. Click Compare to refresh.",
-                "warning",
-            )
+        self._on_location_changed()
+
+    def _set_location_baseline(self) -> None:
+        """Remember the locations that the current comparison describes."""
+        self._location_baseline = (
+            self.source_edit.text(),
+            self.destination_edit.text(),
+        )
+        self._location_stale = False
+        self._location_saved_state = None
+        self._set_locations_stale(False)
+
+    def _save_location_state(self) -> None:
+        plan = self._current_plan
+        self._location_saved_state = {
+            "stale": self.comparison.model.stale,
+            "verify_state": self._verify_state,
+            "plan": plan,
+            "validated": self._validated_plan,
+            "verified": self._verified_plan,
+            "summary": self._last_plan_summary,
+            "plan_stale": self._plan_stale,
+            "included": plan.summary.included if plan is not None else 0,
+            "gate": self._execution_gate.state,
+            "preserve": self.preserve_button.isChecked(),
+            "preserve_setting": self._preserve_decisions,
+            "status": self.status_edit.text(),
+        }
+
+    def _restore_location_state(self) -> None:
+        state = self._location_saved_state or {}
+        stale = bool(state.get("stale", False))
+        self.comparison.set_stale(stale)
+        self._current_plan = state.get("plan")  # type: ignore[assignment]
+        self._validated_plan = state.get("validated")  # type: ignore[assignment]
+        self._verified_plan = state.get("verified")  # type: ignore[assignment]
+        self._last_plan_summary = state.get("summary")  # type: ignore[assignment]
+        self._plan_stale = bool(state.get("plan_stale", False))
+        included = int(state.get("included", 0) or 0)
+        gate = state.get("gate")
+        self._execution_gate.comparison_ready(included=included)
+        if gate is ExecutionGateState.VERIFIED and included > 0:
+            self._execution_gate.verification_started()
+            self._execution_gate.verification_succeeded()
+        self.synchronize_button.setEnabled(
+            bool(self._current_plan is not None and included > 0)
+        )
+        self.validate_plan_button.setEnabled(self._current_plan is not None)
+        self._set_verify_state(str(state.get("verify_state", "idle")))
+        preserve = bool(
+            state.get("preserve", getattr(self, "_preserve_decisions", True))
+        )
+        self._set_preserve_checked(preserve)
+        self._preserve_decisions = bool(
+            state.get("preserve_setting", preserve)
+        )
+        self.comparison.model.preserve_decisions = self._preserve_decisions
+        status = str(state.get("status", ""))
+        if status:
+            self._set_state(status)
+        else:
+            self._update_startup_status()
+        self._location_saved_state = None
+
+    def _on_location_changed(self, *, message: str | None = None) -> None:
+        """Track edits of Source/Destination against the compared locations."""
+        if self._suppress_location_stale or not self.comparison.model.changes:
+            return
+        current = (self.source_edit.text(), self.destination_edit.text())
+        if self._location_baseline is None:
+            self._set_location_baseline()
+            return
+        if current == self._location_baseline:
+            if not self._location_stale:
+                return
+            self._location_stale = False
+            self._restore_location_state()
+            self._set_locations_stale(False)
+            text = "Locations restored; comparison state retained."
+            self._set_progress_status(text)
+            self._set_status(text)
+            return
+        if self._location_stale:
+            return
+        self._save_location_state()
+        self._location_stale = True
+        self.comparison.set_stale(True)
+        self._invalidate_plan_context()
+        self._set_locations_stale(True)
+        self._set_state(_STALE_STATE_TEXT, "stale")
+        text = message or (
+            "Stale comparison: locations changed. Compare again to refresh results."
+        )
+        self._set_status(text, "warning")
 
     def _swap_endpoints(self) -> None:
         source = self.source_edit.text()
@@ -1515,19 +1680,18 @@ class MainWindow(QMainWindow):
         self._update_backup_browse_state()
         self._update_backup_status()
         if self.comparison.model.changes:
-            self.comparison.set_stale(True)
-            self._set_locations_stale(True)
-            self._invalidate_plan_context()
-            self._set_status(
-                "Source and Destination were swapped. The disabled comparison uses the old direction; click Compare to refresh.",
-                "warning",
+            self._on_location_changed(
+                message=(
+                    "Source and Destination were swapped. The disabled "
+                    "comparison uses the old direction; click Compare to refresh."
+                )
             )
         else:
             self._update_startup_status()
         self._update_command_preview()
 
     def _set_locations_stale(self, stale: bool) -> None:
-        style = "color: #0891B2;" if stale else ""
+        style = "color: #EA580C;" if stale else ""
         self.source_edit.setStyleSheet(style)
         self.destination_edit.setStyleSheet(style)
 
@@ -1536,6 +1700,16 @@ class MainWindow(QMainWindow):
         if color:
             style += f" color: {color};"
         self.status_edit.setStyleSheet(style)
+
+    @staticmethod
+    def _progress_bar_width(window_width: int) -> int:
+        return max(80, window_width * 15 // 100)
+
+    def _set_progress_status(self, text: str) -> None:
+        """Show transient progress in the status label, never in the journal."""
+        self.status_edit.setText(text.replace("\n", " "))
+        self.status_edit.setToolTip(text)
+        self.status_edit.setCursorPosition(0)
 
     def _play_completion_sound(self, kind: str) -> None:
         """Play the completion sound when the user asked for it."""
@@ -1835,6 +2009,15 @@ class MainWindow(QMainWindow):
         from .profile_editor import ProfileEditorDialog
 
         dialog = ProfileEditorDialog(self._profile(), self, section)
+        if section == "filters" and hasattr(dialog, "filter_widget"):
+            from PySide6.QtWidgets import QLabel
+
+            note = QLabel(_FILTER_STORE_HINT, dialog.filter_widget)
+            note.setWordWrap(True)
+            note.setObjectName("filter-storage-note")
+            layout = dialog.filter_widget.layout()
+            if layout is not None:
+                layout.insertWidget(0, note)
         if not dialog.exec():
             return
         updated = dialog.profile()
@@ -1863,37 +2046,61 @@ class MainWindow(QMainWindow):
         self._refresh_profile_marker()
 
     def _configure_open_button_menu(self, button: QToolButton, section: str) -> None:
-        """Give an open button a right-click menu that leads to its settings."""
-        button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        button.customContextMenuRequested.connect(
-            lambda point, b=button, s=section: self._open_button_menu(b, point, s)
-        )
+        """Give Backup/Log a button-owned menu opened by left or right click.
 
-    def _open_button_menu(self, button: QToolButton, point: object, section: str) -> None:
+        A QMenu owned by the button (with InstantPopup) lets clicking the
+        other button close this menu and open the right one, instead of
+        accidentally triggering an action in the menu that is already open.
+        """
+        from PySide6.QtGui import QAction
+
         menu = QMenu(button)
-        open_action = menu.addAction(button.toolTip())
-        if section == "backup":
-            open_action.setEnabled(
-                bool(self.backup_edit.text().strip())
-                and self._configured_destination_is_local()
-            )
-        elif section == "logging":
-            open_action.setEnabled(bool(self.log_file_edit.text().strip()))
-        clear = None
         if section == "logging":
-            clear = menu.addAction("Clear Log")
-        configure = menu.addAction("Configure...")
-        selected = menu.exec(button.mapToGlobal(point))
-        if selected is open_action:
-            if open_action.isEnabled():
-                button.click()
-        elif selected is clear:
-            self._clear_log()
-        elif selected is configure:
-            if section == "backup":
+            open_label = "Open the log file"
+            first_slot = self._open_log_file
+        else:
+            open_label = "Open the backup directory"
+            first_slot = self._open_backup_directory
+        open_action = menu.addAction(open_label)
+        open_action.triggered.connect(first_slot)
+        if section == "logging":
+            clear_action = menu.addAction("Clear Log")
+            clear_action.triggered.connect(self._confirm_and_clear_log)
+        configure_action = menu.addAction("Configure...")
+        configure_action.triggered.connect(
+            lambda _checked=False, s=section: (
                 self._edit_profile("backup")
-            else:
-                self._edit_settings(section)
+                if s == "backup"
+                else self._edit_settings(s)
+            )
+        )
+        button.setMenu(menu)
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        button.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        if section == "logging":
+            self.log_menu = menu
+            self.log_open_action = open_action
+            self.log_clear_action = clear_action
+            self.log_configure_action = configure_action
+        else:
+            self.backup_menu = menu
+            self.backup_open_action = open_action
+            self.backup_configure_action = configure_action
+
+    def _confirm_and_clear_log(self) -> None:
+        """Ask for approval before truncating the current session log."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Clear Log")
+        box.setText(
+            "Clear the current session log? This cannot be undone."
+        )
+        approve = box.addButton("Approve", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(approve)
+        if box.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._clear_log()
 
     def _clear_log(self) -> None:
         """Empty both log files of the current profile and keep logging."""
@@ -2201,7 +2408,8 @@ class MainWindow(QMainWindow):
         name = self._profile_path.name if self._profile_path else "no profile"
         state = " (changed)" if modified else ""
         self.profile_button.setToolTip(
-            f"Manage profiles — {name}{state} (F2 save, F3 load, F4 edit)"
+            f"Manage profiles — {name}{state} (F2 save, F3 load, F4 edit)\n"
+            f"{_RIGHT_CLICK_HINT}"
         )
 
     def _recent_profile_paths(self) -> list[Path]:
@@ -2467,6 +2675,8 @@ class MainWindow(QMainWindow):
         load.triggered.connect(self._load_profile)
         save = menu.addAction("Save")
         save.triggered.connect(self._save_current_profile)
+        edit = menu.addAction("Edit...")
+        edit.triggered.connect(self._edit_profile)
         menu.addSeparator()
         recent = self._recent_profile_paths()
         if recent:
@@ -2482,8 +2692,6 @@ class MainWindow(QMainWindow):
             note = menu.addAction("No recent profiles")
             note.setEnabled(False)
         menu.addSeparator()
-        edit = menu.addAction("Edit...")
-        edit.triggered.connect(self._edit_profile)
         save_as = menu.addAction("Save As...")
         save_as.triggered.connect(self._save_profile)
         open_dir = menu.addAction("Open profiles directory")
@@ -2660,6 +2868,8 @@ class MainWindow(QMainWindow):
         # Loading a profile changes several widgets at once. Letting each
         # `textChanged`/`toggled` signal run does redundant settings.sync()
         # writes and plan invalidation; apply once at the end instead.
+        self._location_stale = False
+        self._location_saved_state = None
         self.source_edit.blockSignals(True)
         self.destination_edit.blockSignals(True)
         self.protect_backup.blockSignals(True)
@@ -2719,7 +2929,8 @@ class MainWindow(QMainWindow):
         tooltip = (
             f"Filters [{enabled}/{total}]\n"
             f"{enabled} of {total} persistent filter rules are enabled.\n"
-            "The first matching rsync rule wins."
+            "The first matching rsync rule wins.\n"
+            + _FILTER_STORE_HINT
         )
         if stale:
             tooltip += (
@@ -2757,40 +2968,116 @@ class MainWindow(QMainWindow):
         self._refresh_profile_marker()
 
     def _update_command_preview(self) -> None:
-        """Refresh the command preview shown in the progress pane.
-
-        The preview reflects the operation the pointer is over: Compare,
-        Verify Decisions, or Synchronize.
-        """
+        """Remember the Compare command used by the temporary preview."""
         if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
-            self.command_preview_label.setText("")
+            self._compare_spec = None
+            self._clear_command_preview()
             return
         try:
-            spec = self._preview_spec()
-        except ValueError as exc:
-            self.command_preview_label.setText(f"Command preview unavailable: {exc}")
-            return
-        self.command_preview_label.setText("$ " + shlex.join(spec.argv()))
+            self._compare_spec = build_compare_spec(self._profile())
+        except ValueError:
+            self._compare_spec = None
+        # Any real change to the locations replaces a stale preview.
+        self._clear_command_preview()
 
-    def _preview_spec(self):
-        action = self._hovered_action
-        profile = self._profile()
-        if action == "verify":
-            return build_compare_spec(profile, filter_file=Path("<temporary decision filter>"))
-        if action == "synchronize":
-            effective = deepcopy(profile)
-            effective.transfer.delete = any(
-                item.included and item.action is ChangeAction.DELETE
-                for item in (self._current_plan.items if self._current_plan else ())
+    def _set_verify_spec(self) -> None:
+        """Remember the Verify command while its permission is checked."""
+        try:
+            self._verify_spec = build_compare_spec(
+                self._profile(),
+                filter_file=Path("<temporary decision filter>"),
             )
-            return build_sync_spec(effective, filter_file=Path("<temporary decision filter>"))
-        return build_compare_spec(profile)
+        except ValueError:
+            self._verify_spec = None
+
+    def _preview_blocks(self) -> list[object]:
+        document = self.log.document()
+        return [
+            block
+            for block in iter_document_blocks(document)
+            if isinstance(block.userData(), _PreviewBlockData)
+        ]
+
+    def _clear_command_preview(self) -> None:
+        """Remove every marked preview block from the journal."""
+        document = self.log.document()
+        for block in self._preview_blocks():
+            cursor = QTextCursor(document)
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+            next_block = block.next()
+            end = (
+                next_block.position()
+                if next_block.isValid()
+                else document.characterCount() - 1
+            )
+            cursor.setPosition(block.position())
+            cursor.setPosition(end, QTextCursor.KeepAnchor)
+            cursor.removeSelectedText()
+            # Removing the text can leave an empty block behind; drop the
+            # marker so repeated hovers can never see a second preview.
+            block.setUserData(None)
+
+    def _show_command_preview(self) -> None:
+        """Show one faded, selectable journal line with the hovered command."""
+        if not self._preview_requested or self._operation_active:
+            return
+        spec = self._verify_spec if self._preview_verify else self._compare_spec
+        if spec is None:
+            # The Verify command can be requested before verification starts.
+            try:
+                spec = build_compare_spec(
+                    self._profile(),
+                    filter_file=(
+                        Path("<temporary decision filter>")
+                        if self._preview_verify else None
+                    ),
+                )
+            except (ValueError, OSError):
+                return
+        try:
+            argv = spec.argv()  # type: ignore[attr-defined]
+        except (AttributeError, ValueError, OSError):
+            return
+        if not argv:
+            return
+        self._clear_command_preview()
+        document = self.log.document()
+        cursor = QTextCursor(document)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        # No blank line when the preview being replaced left an empty journal.
+        if cursor.block().length() > 1:
+            cursor.insertBlock()
+        text = self.log.palette().color(QPalette.ColorRole.Text)
+        base = self.log.palette().color(QPalette.ColorRole.Base)
+        faded = QColor.fromRgb(
+            (text.red() + base.red()) // 2,
+            (text.green() + base.green()) // 2,
+            (text.blue() + base.blue()) // 2,
+        )
+        content_format = QTextCharFormat()
+        content_format.setForeground(faded)
+        content_format.setFontItalic(True)
+        marker = (
+            _VERIFY_PREVIEW_MARKER if self._preview_verify
+            else _COMPARE_PREVIEW_MARKER
+        )
+        cursor.insertText(marker + "$ " + shlex.join(str(part) for part in argv), content_format)
+        cursor.block().setUserData(_PreviewBlockData())
+        self.log.setTextCursor(cursor)
+        self.log.ensureCursorVisible()
+        QTimer.singleShot(
+            0,
+            lambda: self.log.verticalScrollBar().setValue(
+                self.log.verticalScrollBar().maximum()
+            ),
+        )
 
     def _set_hovered_action(self, action: str) -> None:
-        if self._hovered_action == action:
-            return
         self._hovered_action = action
-        self._update_command_preview()
+        if action in ("compare", "verify"):
+            self._preview_verify = action == "verify"
+            self._preview_requested = True
+            self._show_command_preview()
 
     def _update_backup_status(self) -> None:
         if not self.source_edit.text().strip() or not self.destination_edit.text().strip():
@@ -3379,17 +3666,16 @@ class MainWindow(QMainWindow):
     def _plan_validation_started(self) -> None:
         self._start_rsync_clock("verification")
         self._begin_bulk_logging()
+        self._set_verify_spec()
         self._set_hovered_action("verify")
         self._execution_gate.verification_started()
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(False)
         self._set_verify_state("verifying")
-        self.cancel_button.setEnabled(True)
-        self.pause_button.setEnabled(True)
-        self._reset_pause_button()
+        self._set_operation_controls(True)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Verifying selected decisions...")
+        self._set_progress_status("Verifying selected decisions...")
         self._set_state("Verifying selected decisions...")
         self._append_log("STATE verifying-selected-decisions")
 
@@ -3397,9 +3683,7 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._log_rsync_elapsed("verification")
-        self.cancel_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self._reset_pause_button()
+        self._set_operation_controls(False)
         self.validate_plan_button.setEnabled(True)
         self._set_verify_state("idle")
         if result.valid:
@@ -3420,7 +3704,7 @@ class MainWindow(QMainWindow):
                 )
             self.progress_bar.setValue(100)
             self.progress_bar.setVisible(False)
-            self.progress_label.setText("Selected decisions verified")
+            self._set_progress_status("Selected decisions verified")
             self._set_state("Selected decisions verified.", "success")
             self._append_log("STATE decisions-verified")
             self._end_bulk_logging()
@@ -3438,7 +3722,7 @@ class MainWindow(QMainWindow):
             for path, action, kind in result.mismatch.unexpected
         )
         detail = "\n".join(part for part in (missing, unexpected) if part)
-        self.progress_label.setText("Plan validation failed")
+        self._set_progress_status("Plan validation failed")
         self.progress_bar.setVisible(False)
         self._end_bulk_logging()
         # A live tree can produce thousands of mismatches. Keep the dialog
@@ -3474,9 +3758,7 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self._log_rsync_elapsed("verification")
-        self.cancel_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self._reset_pause_button()
+        self._set_operation_controls(False)
         self._validated_plan = None
         self._verified_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
@@ -3484,7 +3766,7 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
-        self.progress_label.setText("Verification cancelled")
+        self._set_progress_status("Verification cancelled")
         self.progress_bar.setVisible(False)
         self._set_state("Verification was cancelled.", "warning")
         self._append_log("STATE verification-cancelled")
@@ -3492,7 +3774,7 @@ class MainWindow(QMainWindow):
 
     def _plan_validation_error(self, message: str) -> None:
         self._log_rsync_elapsed("verification")
-        self.cancel_button.setEnabled(False)
+        self._set_operation_controls(False)
         self._validated_plan = None
         self._verified_plan = None
         if self._execution_gate.state is ExecutionGateState.VERIFYING:
@@ -3500,12 +3782,39 @@ class MainWindow(QMainWindow):
         self.synchronize_button.setEnabled(False)
         self.validate_plan_button.setEnabled(self._current_plan is not None)
         self._set_verify_state("idle")
-        self.progress_label.setText("Plan validation failed")
+        self._set_progress_status("Plan validation failed")
         self.progress_bar.setVisible(False)
         self._set_state("Plan validation failed.", "error")
         self._append_log(message, severity="error")
         self._end_bulk_logging()
         QMessageBox.critical(self, "Plan validation failed", message)
+
+    @staticmethod
+    def _compare_after_checkbox(dialog: object) -> QCheckBox:
+        """Return the dialog's enabled-by-default re-compare checkbox.
+
+        The checkbox lives in the confirmation dialog; adding it from here
+        keeps all of the confirmation flow in one place and avoids a second
+        copy if the dialog grows its own checkbox later.
+        """
+        for box in dialog.findChildren(QCheckBox):  # type: ignore[attr-defined]
+            if "Compare again after synchronization" in box.text():
+                return box
+        checkbox = QCheckBox("Compare again after synchronization", dialog)
+        checkbox.setObjectName("compare-after-sync")
+        checkbox.setChecked(True)
+        checkbox.setToolTip(
+            "Run a fresh dry run as soon as the transfer completes so the "
+            "comparison and overview reflect the new state."
+        )
+        layout = dialog.layout()  # type: ignore[attr-defined]
+        if layout is not None:
+            buttons = getattr(dialog, "buttons", None)
+            index = layout.indexOf(buttons) if buttons is not None else -1
+            if index < 0:
+                index = max(0, layout.count() - 1)
+            layout.insertWidget(index, checkbox)
+        return checkbox
 
     def _show_sync_confirmation(self) -> None:
         # The backup settings and the plan are checked before the dialog
@@ -3513,7 +3822,7 @@ class MainWindow(QMainWindow):
         # the button was heard and let the interface repaint.
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
-        self.progress_label.setText("Preparing the synchronization...")
+        self._set_progress_status("Preparing the synchronization...")
         self._set_state("Preparing the synchronization...")
         QApplication.processEvents()
         self._backup_changed()
@@ -3525,6 +3834,7 @@ class MainWindow(QMainWindow):
             or self._execution_gate.state
             not in (ExecutionGateState.SELECTION_READY, ExecutionGateState.VERIFIED)
         ):
+            self.progress_bar.setVisible(False)
             QMessageBox.warning(
                 self,
                 "No selected decisions",
@@ -3537,10 +3847,11 @@ class MainWindow(QMainWindow):
                 self._profile(),
                 self.comparison.model.changes,
             )
-        self.progress_label.setText("Preparing the synchronization...")
+        self._set_progress_status("Preparing the synchronization...")
         QApplication.processEvents()
         if not freshness.fresh:
             self._invalidate_validated_plan()
+            self.progress_bar.setVisible(False)
             QMessageBox.warning(
                 self,
                 "Selected decisions are out of date",
@@ -3561,14 +3872,16 @@ class MainWindow(QMainWindow):
                 filter_path=filter_path,
                 verified=self._validated_plan is not None,
             )
+            checkbox = self._compare_after_checkbox(dialog)
             accepted = bool(dialog.exec())
+            self._compare_after_sync = checkbox.isChecked()
             if not accepted:
                 self._execution_gate.confirmation_cancelled()
                 self.synchronize_button.setEnabled(True)
                 self.progress_bar.setRange(0, 100)
                 self.progress_bar.setValue(0)
                 self.progress_bar.setVisible(False)
-                self.progress_label.setText("Synchronization cancelled.")
+                self._set_progress_status("Synchronization cancelled.")
                 self._set_state("Synchronization cancelled.", "warning")
                 return
             try:
@@ -3600,8 +3913,8 @@ class MainWindow(QMainWindow):
         # Give immediate feedback; the cancelled callback only arrives once
         # rsync has actually terminated, which can take a few seconds.
         self._cancel_requested = True
-        self.cancel_button.setEnabled(False)
-        self.progress_label.setText("Cancelling...")
+        self._set_operation_controls(False)
+        self._set_progress_status("Cancelling...")
         self._set_state("Cancelling...", "warning")
         self._set_status("Cancelling the running operation...", "warning")
         self._append_log("STATE cancel-requested")
@@ -3622,6 +3935,17 @@ class MainWindow(QMainWindow):
         self.pause_button.setText("Pause")
         self.pause_button.setToolTip(_PAUSE_TOOLTIP)
 
+    def _set_operation_controls(self, enabled: bool) -> None:
+        """Enable Cancel/Pause only while an rsync operation is running."""
+        self._operation_active = enabled
+        if enabled:
+            # A running operation replaces the temporary command preview.
+            self._clear_command_preview()
+        self.cancel_button.setEnabled(enabled)
+        self.pause_button.setEnabled(enabled)
+        if not enabled:
+            self._reset_pause_button()
+
     def _toggle_pause(self) -> None:
         """Suspend or continue the running rsync operation."""
         service = self._running_service()
@@ -3635,7 +3959,7 @@ class MainWindow(QMainWindow):
                 return
             self.pause_button.setText("Resume")
             self.pause_button.setToolTip(_RESUME_TOOLTIP)
-            self.progress_label.setText("Paused")
+            self._set_progress_status("Paused")
             self._set_status(
                 "The rsync operation is paused. Continue it with the Pause button.",
                 "warning",
@@ -3647,7 +3971,7 @@ class MainWindow(QMainWindow):
             return
         self.pause_button.setText("Pause")
         self.pause_button.setToolTip(_PAUSE_TOOLTIP)
-        self.progress_label.setText("Continuing...")
+        self._set_progress_status("Continuing...")
         self._set_status("The rsync operation continues.", "info")
         self._append_log("STATE operation-resumed")
 
@@ -3664,10 +3988,7 @@ class MainWindow(QMainWindow):
         self.backup_edit.setEnabled(not busy)
         self.backup_browse.setEnabled(not busy and self.backup_browse.isEnabled())
         self.protect_backup.setEnabled(not busy and self.protect_backup.isEnabled())
-        self.cancel_button.setEnabled(busy)
-        self.pause_button.setEnabled(busy)
-        if not busy:
-            self._reset_pause_button()
+        self._set_operation_controls(busy)
 
     def _sync_started(self) -> None:
         self._start_rsync_clock("synchronization")
@@ -3679,7 +4000,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Synchronizing...")
+        self._set_progress_status("Synchronizing...")
         self._set_state("Synchronizing...")
         self._set_status("Synchronization is running. The selected decisions are applied now.", "warning")
         self._append_log("STATE synchronization-started")
@@ -3691,7 +4012,7 @@ class MainWindow(QMainWindow):
         completed = getattr(progress, "files_completed", 0)
         remaining = getattr(progress, "files_remaining", 0)
         self.progress_bar.setValue(int(percent))
-        self.progress_label.setText(
+        self._set_progress_status(
             f"Synchronizing... {int(percent)}% ({completed} items transferred, "
             f"{remaining} remaining)"
         )
@@ -3703,7 +4024,7 @@ class MainWindow(QMainWindow):
         self._log_rsync_elapsed("synchronization")
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText("Synchronization completed")
+        self._set_progress_status("Synchronization completed")
         self._execution_gate.execution_completed()
         self._append_log(
             f"STATE synchronization-completed exit_code={result.exit_code}"
@@ -3725,11 +4046,19 @@ class MainWindow(QMainWindow):
         self._play_completion_sound(
             "success" if result.exit_code == 0 else "error"
         )
-        self._set_status(
-            f"Synchronization completed with rsync status {result.exit_code}. "
-            "Click Compare to refresh the comparison.",
-            "success" if result.exit_code == 0 else "warning",
-        )
+        if result.exit_code == 0 and getattr(self, "_compare_after_sync", True):
+            self._set_status(
+                "Synchronization complete: comparing again.",
+                "success",
+            )
+            self._append_log("STATE recompare-after-sync")
+            QTimer.singleShot(0, self._compare)
+        else:
+            self._set_status(
+                f"Synchronization completed with rsync status {result.exit_code}. "
+                "Click Compare to refresh the comparison.",
+                "success" if result.exit_code == 0 else "warning",
+            )
 
     def _sync_error(self, message: str, cancelled: bool = False) -> None:
         self._cancel_requested = False
@@ -3819,6 +4148,7 @@ class MainWindow(QMainWindow):
             self._service.cancel()
         self._active_profile = profile
         self._comparison_profile = profile
+        self._set_location_baseline()
         self._prepare_decision_preservation(profile)
         self._append_log("$ " + shlex.join(spec.argv()))
         self._service.compare(profile)
@@ -3883,7 +4213,7 @@ class MainWindow(QMainWindow):
         """Show the staging command before its rsync run blocks the UI."""
         self._log_spec(spec)
         self.log.repaint()
-        self.progress_label.repaint()
+        self.status_edit.repaint()
 
     def _open_diff_tool(self, change: object) -> None:
         if self._active_profile is None:
@@ -3894,10 +4224,9 @@ class MainWindow(QMainWindow):
         previous_visible = self.progress_bar.isVisible()
         previous_range = (self.progress_bar.minimum(), self.progress_bar.maximum())
         previous_value = self.progress_bar.value()
-        previous_text = self.progress_label.text()
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
-        self.progress_label.setText("Preparing the diff tool...")
+        self._set_progress_status("Preparing the diff tool...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         configured = self._diff_command.strip()
@@ -3935,7 +4264,6 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(*previous_range)
             self.progress_bar.setValue(previous_value)
             self.progress_bar.setVisible(previous_visible)
-            self.progress_label.setText(previous_text)
         if request.staging_directory is not None:
             self._diff_staging_directories.append(request.staging_directory)
         if configured:
@@ -4046,13 +4374,11 @@ class MainWindow(QMainWindow):
         self.comparison.clear_collapsed()
         self.action_filters.set_excluded_count(0)
         self.compare_button.setEnabled(False)
-        self.cancel_button.setEnabled(True)
-        self.pause_button.setEnabled(True)
-        self._reset_pause_button()
+        self._set_operation_controls(True)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Comparing...")
+        self._set_progress_status("Comparing...")
         self._set_state("Comparing...")
         self._append_log("STATE comparing")
 
@@ -4060,7 +4386,7 @@ class MainWindow(QMainWindow):
         """Report how many items the dry run has found so far."""
         if self._closing:
             return
-        self.progress_label.setText(f"Comparing... {count:,} item(s) found")
+        self._set_progress_status(f"Comparing... {count:,} item(s) found")
 
     def _comparison_progress(self, _progress: object) -> None:
         # rsync's incremental counter has no stable total for a dry run. Its
@@ -4076,12 +4402,10 @@ class MainWindow(QMainWindow):
         self._cancel_requested = False
         self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
-        self.cancel_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self._reset_pause_button()
+        self._set_operation_controls(False)
         self.progress_bar.setValue(0)
         self.comparison.set_stale(True, block_views=True)
-        self.progress_label.setText("Comparison cancelled")
+        self._set_progress_status("Comparison cancelled")
         self._set_state("Comparison cancelled", "warning")
         self._set_status("Comparison was cancelled. The previous comparison was left unchanged.", "warning")
         self._append_log("STATE comparison-cancelled")
@@ -4101,12 +4425,10 @@ class MainWindow(QMainWindow):
         self._log_rsync_elapsed("dry run")
         self._save_recent_profile()
         self.compare_button.setEnabled(True)
-        self.cancel_button.setEnabled(False)
-        self.pause_button.setEnabled(False)
-        self._reset_pause_button()
+        self._set_operation_controls(False)
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText("Comparison completed")
+        self._set_progress_status("Comparison completed")
         self._last_changed_changes = list(result.parsed.changes)
         self.comparison.model.preserve_decisions = getattr(
             self, "_preserve_for_compare", self._preserve_decisions
@@ -4152,6 +4474,7 @@ class MainWindow(QMainWindow):
                 "warning",
             )
         self.comparison.set_stale(False)
+        self._set_location_baseline()
         if self._preserve_before_force is not None:
             restore = self._preserve_before_force
             self._preserve_before_force = None
@@ -4177,7 +4500,7 @@ class MainWindow(QMainWindow):
             self._metadata_pending = True
             self._metadata_watchdog.start()
             self.progress_bar.setRange(0, 0)
-            self.progress_label.setText("Gathering destination metadata...")
+            self._set_progress_status("Gathering destination metadata...")
         else:
             self._finish_comparison_status()
         # The beep and the "complete" state are announced by
@@ -4192,23 +4515,47 @@ class MainWindow(QMainWindow):
         shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(lambda: slot())
 
+    def _visible_pane_column(self, tree) -> int:
+        """Return the column shown by the focused pane's own view."""
+        native = self._native_pane_widgets()
+        if native is not None:
+            for pane, widget in enumerate(native):
+                if tree is widget:
+                    return (0, 4, 5)[pane]
+        model = tree.model()
+        if tree is getattr(self.comparison, "action", None):
+            return getattr(model, "ACTION", 4)
+        if tree is getattr(self.comparison, "destination", None):
+            return getattr(model, "DESTINATION_NAME", 5)
+        return getattr(model, "SOURCE_NAME", 0)
+
     def _focus_compare_pane(self, tree) -> None:
-        """Focus a compare pane with a valid current item.
+        """Focus a compare pane with a current item in a visible column.
 
         A QTableView that has never been clicked has no current index. Giving
         it focus alone leaves arrow keys and further shortcuts inert, and the
         first arrow press only parks the cursor on row zero without a real
-        selection. Set the current item explicitly first.
+        selection. Set the current item explicitly first, in the column the
+        pane actually shows rather than in a hidden one.
         """
-        if not tree.currentIndex().isValid() and tree.model().rowCount() > 0:
-            from PySide6.QtCore import QItemSelectionModel
+        from PySide6.QtCore import QItemSelectionModel
 
-            index = tree.model().index(0, 0)
-            tree.selectionModel().setCurrentIndex(
-                index,
-                QItemSelectionModel.SelectionFlag.Select
-                | QItemSelectionModel.SelectionFlag.Rows,
-            )
+        model = tree.model()
+        column = self._visible_pane_column(tree)
+        index = tree.currentIndex()
+        flags = (
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            | QItemSelectionModel.SelectionFlag.Rows
+        )
+        if not index.isValid() and model.rowCount() > 0:
+            index = model.index(0, column)
+            tree.selectionModel().setCurrentIndex(index, flags)
+        elif index.isValid() and index.column() != column:
+            visible_index = model.index(index.row(), column)
+            if visible_index.isValid():
+                tree.selectionModel().setCurrentIndex(visible_index, flags)
+                index = visible_index
+        if index.isValid():
             tree.scrollTo(index)
         tree.setFocus()
 
@@ -4289,10 +4636,14 @@ class MainWindow(QMainWindow):
             ("Ctrl+L", self.log_file_open),
         ):
             self._add_shortcut(key, button.click)
-            button.setToolTip(f"{button.toolTip()} (Shortcut: {key})")
+            # The menu buttons include their shortcut in the state tooltip.
         self._add_shortcut("Alt+Return", self._open_current_context_menu)
         self._add_shortcut("Ctrl+T", self._open_current_context_menu)
-        for edit in (self.source_edit, self.destination_edit):
+        for edit in (
+            self.source_edit,
+            self.destination_edit,
+            self.comparison.search_edit,
+        ):
             edit.installEventFilter(self)
 
     def _open_current_context_menu(self) -> None:
@@ -4323,24 +4674,26 @@ class MainWindow(QMainWindow):
                 return
 
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
-        from PySide6.QtCore import QEvent
-
         try:
             if event is None:
                 return super().eventFilter(watched, event)
-            if event.type() == QEvent.Type.Enter:
+            if event.type() in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
                 action = watched.property("previewAction") if hasattr(watched, "property") else None
                 if action:
                     self._set_hovered_action(str(action))
             if (
                 event.type() == QEvent.Type.KeyPress
-                and watched in (self.source_edit, self.destination_edit)
                 and int(event.key()) == int(Qt.Key.Key_Escape)
             ):
-                # End editing without consuming the key, so the main window's
-                # shortcuts work again on the next press.
-                watched.clearFocus()
-                return True
+                if watched is self.comparison.search_edit:
+                    # Esc clears the search and its result highlight.
+                    watched.clear()
+                    return True
+                if watched in (self.source_edit, self.destination_edit):
+                    # End editing without consuming the key, so the main
+                    # window's shortcuts work again on the next press.
+                    watched.clearFocus()
+                    return True
         except RuntimeError:
             # Qt may already have destroyed the watched widget during shutdown.
             return False
@@ -4387,14 +4740,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
         if show:
-            self.progress_label.setText(
+            self._set_progress_status(
                 f"Showing {total:,} excluded item(s); they are dimmed."
             )
             self._append_log(
                 f"Showing {total:,} excluded item(s).", severity="info"
             )
         else:
-            self.progress_label.setText(
+            self._set_progress_status(
                 f"{total:,} excluded item(s) are hidden again."
                 if total
                 else "No items are excluded."
@@ -4407,13 +4760,13 @@ class MainWindow(QMainWindow):
         """Reset every exclusion and report it."""
         count = self.comparison.model.exclusions.count()
         if not count:
-            self.progress_label.setText("No items are excluded.")
+            self._set_progress_status("No items are excluded.")
             return
         self.comparison.reset_exclusions()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText(
+        self._set_progress_status(
             f"All {count:,} exclusion(s) are reset."
         )
         self._append_log(f"Reset {count:,} exclusion(s).", severity="info")
@@ -4489,7 +4842,7 @@ class MainWindow(QMainWindow):
             self._inventory_pending_key = None
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
-            self.progress_label.setText("Unchanged items hidden")
+            self._set_progress_status("Unchanged items hidden")
             # A fresh comparison or a transition out of Show-unchanged must
             # feed the model. Native handoff skips identical path sets, so the
             # expensive Qt rebuild is already avoided in hybrid mode.
@@ -4515,7 +4868,7 @@ class MainWindow(QMainWindow):
         self.show_unchanged.blockSignals(True)
         self.show_unchanged.setChecked(False)
         self.show_unchanged.blockSignals(False)
-        self.progress_label.setText("Unchanged items hidden")
+        self._set_progress_status("Unchanged items hidden")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self._set_comparison_changes(changed)
@@ -4526,10 +4879,10 @@ class MainWindow(QMainWindow):
 
         The flat list has nothing to expand, so the rows are simply added.
         """
-        self.progress_label.setText(
+        self._set_progress_status(
             f"Adding {unchanged:,} unchanged item(s) to the comparison..."
         )
-        self.progress_label.repaint()
+        self.status_edit.repaint()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             # The filter is set before the rows are built, so the unchanged
@@ -4546,7 +4899,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText(self._inventory_summary(unchanged))
+        self._set_progress_status(self._inventory_summary(unchanged))
 
     def _inventory_summary(self, unchanged: int) -> str:
         return f"Showing {unchanged:,} unchanged item(s)."
@@ -5176,7 +5529,7 @@ class MainWindow(QMainWindow):
         self._metadata_pending = False
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Destination metadata timed out")
+        self._set_progress_status("Destination metadata timed out")
         self._set_status(
             "Comparison complete; destination metadata timed out.", "warning"
         )
@@ -5194,7 +5547,7 @@ class MainWindow(QMainWindow):
         self._metadata_pending = False
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Destination metadata unavailable")
+        self._set_progress_status("Destination metadata unavailable")
         self._append_log(f"Destination metadata failed: {message}", severity="warning")
         if was_pending:
             self._set_status(
@@ -5225,7 +5578,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText("Comparison completed")
+        self._set_progress_status("Comparison completed")
         self._set_state(
             f"Comparison complete: {count} changed item(s).", "success"
         )
@@ -5291,11 +5644,11 @@ class MainWindow(QMainWindow):
                     )
                 )
         if self.show_unchanged.isChecked():
-            self.progress_label.setText(
+            self._set_progress_status(
                 "Listing both trees for the unchanged items..."
             )
         else:
-            self.progress_label.setText("Gathering unchanged items...")
+            self._set_progress_status("Gathering unchanged items...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self._append_log("STATE inventory-started")
@@ -5314,9 +5667,9 @@ class MainWindow(QMainWindow):
         if self._closing or token != self._inventory_token:
             return
         if phase == "Matching":
-            self.progress_label.setText("Matching unchanged items...")
+            self._set_progress_status("Matching unchanged items...")
         else:
-            self.progress_label.setText(
+            self._set_progress_status(
                 f"Gathering unchanged items ({phase}): {count:,} objects..."
             )
 
@@ -5362,7 +5715,7 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(100)
             self.progress_bar.setVisible(False)
         count = len(result.unchanged)
-        self.progress_label.setText(
+        self._set_progress_status(
             self._inventory_summary(count)
             if self.show_unchanged.isChecked()
             else f"Inventory complete: {count:,} unchanged item(s) available.",
@@ -5380,7 +5733,7 @@ class MainWindow(QMainWindow):
         self._inventory_pending_key = None
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Inventory gathering failed")
+        self._set_progress_status("Inventory gathering failed")
         self.progress_bar.setVisible(False)
         self._append_log(f"Inventory gathering failed: {message}")
         if self.show_unchanged.isChecked():
@@ -5397,8 +5750,8 @@ class MainWindow(QMainWindow):
             return
         self._log_rsync_elapsed("dry run")
         self.compare_button.setEnabled(True)
-        self.cancel_button.setEnabled(False)
-        self.progress_label.setText("Comparison failed")
+        self._set_operation_controls(False)
+        self._set_progress_status("Comparison failed")
         self.progress_bar.setVisible(False)
         self._set_state("Comparison failed.", "error")
         self._append_log(message, severity="error")
@@ -5459,6 +5812,8 @@ class MainWindow(QMainWindow):
     ) -> None:
         if not text:
             return
+        # A real journal entry replaces the transient command preview.
+        self._clear_command_preview()
         normalized = text.rstrip("\r\n")
         if not normalized:
             return
@@ -5687,8 +6042,13 @@ class MainWindow(QMainWindow):
         if self._layout_mode == "wide" and self.main_splitter.count() == 2:
             self._wide_overview_width = self.main_splitter.sizes()[1]
 
+    def _log_splitter_moved(self, _position: int, _index: int) -> None:
+        if self._layout_mode == "normal" and self.log_splitter.count() >= 2:
+            self._wide_overview_width = self.log_splitter.sizes()[1]
+
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)  # type: ignore[arg-type]
+        self.progress_bar.setFixedWidth(self._progress_bar_width(self.width()))
         if self._layout_mode == "wide" and self._wide_overview_width:
             total = sum(self.main_splitter.sizes())
             width = min(self._wide_overview_width, max(200, total - 200))
@@ -5759,7 +6119,9 @@ class MainWindow(QMainWindow):
             mode = "normal"
         if mode == self._layout_mode and restore:
             return
-        if self._layout_mode == "normal":
+        # Remember the width the overview has before it is reparented, so
+        # switching layouts never changes how much room it takes.
+        if self.overview.width() > 0:
             self._wide_overview_width = self.overview.width()
         self._save_current_layout_state()
         parent = self.centralWidget()
@@ -5776,13 +6138,12 @@ class MainWindow(QMainWindow):
         elif mode == "wide":
             self.main_splitter.setOrientation(Qt.Orientation.Horizontal)
             self.main_splitter.addWidget(self.overview)
-            # Side-by-side, the overview keeps its current width but can be
-            # dragged narrower; the wide minimum is much smaller.
-            self.overview.setMinimumWidth(180)
+            self.overview.setFixedWidth(self._wide_overview_width)
             self.overview.show()
         else:
             if self._overview_min_width is not None:
                 self.overview.setMinimumWidth(self._overview_min_width)
+            self.overview.setMaximumWidth(16777215)
             self.log_splitter.addWidget(self.overview)
             self.overview.show()
             self.main_splitter.setOrientation(Qt.Orientation.Vertical)
@@ -5799,11 +6160,17 @@ class MainWindow(QMainWindow):
             self.main_splitter.setSizes(sizes)
         elif mode == "normal":
             self.main_splitter.setSizes([380, 250])
+        if mode == "normal":
+            total = max(self.log_splitter.width(), self._wide_overview_width + 100)
+            width = min(self._wide_overview_width, max(200, total - 200))
+            self.log_splitter.setSizes([total - width, width])
+            self._wide_overview_width = self.log_splitter.sizes()[1]
         elif mode == "wide":
             available = max(400, self.main_splitter.width())
-            width = self._wide_overview_width or int(available * 0.4)
-            width = min(width, max(200, available - 200))
+            width = min(self._wide_overview_width, max(200, available - 200))
+            self.overview.setFixedWidth(width)
             self.main_splitter.setSizes([available - width, width])
+            self._wide_overview_width = self.main_splitter.sizes()[1]
         self._refresh_layout_button()
         settings = app_settings()
         settings.setValue("main-window/layout-mode", mode)
@@ -5816,9 +6183,7 @@ class MainWindow(QMainWindow):
             self.setGeometry(QRect(*geometry))
         if settings.value("main-window/maximized", False, bool):
             self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
-        preview_sizes = text_to_ints(settings.value("command-preview/splitter"))
-        if preview_sizes is not None and len(preview_sizes) >= 2:
-            self.preview_log_splitter.setSizes(preview_sizes)
+        settings.remove("command-preview/splitter")
         mode = str(settings.value("main-window/layout-mode", "normal"))
         # The normal hierarchy is already in place; switching is only needed
         # for a remembered Focus or Wide mode.
@@ -5895,10 +6260,6 @@ class MainWindow(QMainWindow):
         )
         settings.setValue("main-window/maximized", self.isMaximized())
         self._save_current_layout_state()
-        settings.setValue(
-            "command-preview/splitter",
-            ints_to_text(self.preview_log_splitter.sizes()),
-        )
         settings.sync()
         self.comparison.save_view_state()
         try:

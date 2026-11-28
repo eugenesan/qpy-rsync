@@ -129,7 +129,7 @@ def test_swap_marks_existing_comparison_outdated() -> None:
     assert window.comparison.source.isEnabled()
     assert window.comparison.action.isEnabled()
     assert window.comparison.destination.isEnabled()
-    assert "#0891B2" in window.source_edit.styleSheet()
+    assert "#EA580C" in window.source_edit.styleSheet()
     assert window._current_plan is None
     assert not window.validate_plan_button.isEnabled()
     assert "old direction" in window.log.toPlainText()
@@ -347,51 +347,109 @@ def test_unchanged_inventory_is_async_and_cached(tmp_path) -> None:
     application.processEvents()
 
 
-def test_command_preview_wraps_without_widening_window() -> None:
+def test_journal_preview_is_temporary_and_selectable() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    window.resize(900, 620)
-    window.ensurePolished()
-    width = window.minimumSizeHint().width()
-    long_path = "/srv/" + "/".join(f"segment-{index}" for index in range(30)) + "/"
-    window.source_edit.setText(long_path)
-    window.destination_edit.setText(long_path.replace("/srv/", "/backup/"))
-    window._set_hovered_action("compare")
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
     window._update_command_preview()
+    # Nothing is shown until the pointer hovers a preview button.
+    assert not window._preview_blocks()
+    window._set_hovered_action("compare")
     application.processEvents()
-    preview = window.command_preview_label
-    assert preview.full_text().startswith("$ rsync ")
-    assert not preview.isHidden()
-    assert preview.lineWrapMode() == preview.LineWrapMode.WidgetWidth
-    assert (
-        preview.horizontalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    blocks = window._preview_blocks()
+    assert len(blocks) == 1
+    text = blocks[0].text()
+    assert text.startswith("compare rsync preview: $ rsync ")
+    assert not text[:2].isdigit()
+    assert window.log.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
+    iterator = blocks[0].begin()
+    assert not iterator.atEnd()
+    char_format = iterator.fragment().charFormat()
+    assert char_format.fontItalic()
+    from PySide6.QtGui import QPalette
+
+    assert char_format.foreground().color().name() != (
+        window.log.palette().color(QPalette.ColorRole.Text).name()
     )
-    assert window.minimumSizeHint().width() == width
+    window._flush_log()
+    assert "compare rsync preview:" not in window._log_file_path.read_text(
+        encoding="utf-8"
+    )
+    # A real journal entry replaces the preview.
+    window._append_log("a real entry")
+    assert not window._preview_blocks()
     window.close()
     application.processEvents()
 
 
-def test_command_preview_splitter_is_resizable() -> None:
-    from PySide6.QtWidgets import QSizePolicy
-
+def test_journal_preview_replaces_itself_and_follows_hover() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    preview = window.command_preview_label
-    assert window.preview_log_splitter.orientation() == Qt.Orientation.Vertical
-    assert window.preview_log_splitter.indexOf(preview) >= 0
-    assert window.preview_log_splitter.handleWidth() >= 6
-    assert not preview.isHidden()
-    assert preview.sizePolicy().verticalPolicy() != QSizePolicy.Policy.Fixed
-    assert preview.maximumHeight() > preview.minimumHeight()
-    assert (
-        window.log.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._update_command_preview()
+    window._set_hovered_action("compare")
+    application.processEvents()
+    first_count = window.log.document().blockCount()
+    window._set_hovered_action("verify")
+    application.processEvents()
+    assert len(window._preview_blocks()) == 1
+    assert window._preview_blocks()[0].text().startswith(
+        "verify rsync preview: $ rsync "
     )
-    assert window.log.minimumHeight() < window.log.minimumSizeHint().height()
-    # The State field lives in the window status bar.
-    assert window.statusBar().isAncestorOf(window.status_edit)
+    window._set_hovered_action("compare")
+    window._set_hovered_action("compare")
+    application.processEvents()
+    assert len(window._preview_blocks()) == 1
+    assert window.log.document().blockCount() == first_count
+    window.close()
+    application.processEvents()
+
+
+def test_journal_preview_is_hidden_while_an_operation_runs() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    window._update_command_preview()
+    window._set_hovered_action("compare")
+    assert len(window._preview_blocks()) == 1
+    window._set_operation_controls(True)
+    assert not window._preview_blocks()
+    window._set_hovered_action("verify")
+    assert not window._preview_blocks()
+    window._set_operation_controls(False)
+    window._set_hovered_action("compare")
+    assert len(window._preview_blocks()) == 1
+    window.close()
+    application.processEvents()
+
+
+def test_progress_bar_is_a_fixed_status_widget() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert window.statusBar().isAncestorOf(window.progress_bar)
+    assert window.progress_bar in window.statusBar().findChildren(
+        type(window.progress_bar)
+    )
+    assert not hasattr(window, "command_preview_label")
+    assert not hasattr(window, "preview_log_splitter")
+    window.show()
+    window.resize(1000, 700)
+    application.processEvents()
+    assert window.progress_bar.width() == max(80, window.width() * 15 // 100)
+    # Streaming progress goes only to the status label.
+    before = window.log.toPlainText()
+    window._sync_progress(type("Progress", (), {
+        "percent": 42, "files_completed": 3, "files_remaining": 4,
+    })())
+    assert "42%" in window.status_edit.text()
+    assert window.log.toPlainText() == before
     window.close()
     application.processEvents()
 
@@ -479,7 +537,7 @@ def test_verification_reuses_fresh_comparison() -> None:
         "Decisions verified, selected: new 0, updated 1, metadata 0, "
         "deleted 0; 1 item, 0 B"
     ) in log
-    assert window.progress_label.text() == "Selected decisions verified"
+    assert window.status_edit.text() == "Selected decisions verified."
     assert window.status_edit.text() == "Selected decisions verified."
     assert not window.cancel_button.isEnabled()
     window.close()
@@ -506,7 +564,7 @@ def test_verification_can_be_cancelled() -> None:
     window._plan_validation_cancelled()
     assert not window.cancel_button.isEnabled()
     assert window.validate_plan_button.accessibleName() == "Verify Decisions"
-    assert window.progress_label.text() == "Verification cancelled"
+    assert window.status_edit.text() == "Verification was cancelled."
     assert "STATE verification-cancelled" in window.log.toPlainText()
     window.close()
     application.processEvents()
@@ -582,23 +640,6 @@ def test_state_field_lives_in_the_status_bar() -> None:
     window._set_state("Comparison failed.", "error")
     assert "Comparison failed." in window.status_edit.text()
     assert "Comparison failed." in window.status_edit.toolTip()
-    window.close()
-    application.processEvents()
-
-
-def test_command_preview_minimum_height_follows_the_command() -> None:
-    application = app()
-    app_settings().clear()
-    window = MainWindow()
-    preview = window.command_preview_label
-    preview.setText("rsync -a /src/ /dst/")
-    application.processEvents()
-    single_line = preview.minimumHeight()
-    assert single_line < preview.fontMetrics().lineSpacing() * 2
-
-    preview.setText("rsync " + "--very-long-option " * 12 + "/src/ /dst/")
-    application.processEvents()
-    assert preview.minimumHeight() > single_line
     window.close()
     application.processEvents()
 
@@ -1145,7 +1186,7 @@ def test_diff_preparation_shows_progress_before_staging(monkeypatch) -> None:
         seen.append(
             (
                 window.status_edit.text(),
-                window.progress_label.text(),
+                window.status_edit.text(),
                 not window.progress_bar.isHidden(),
             )
         )
@@ -1163,9 +1204,10 @@ def test_diff_preparation_shows_progress_before_staging(monkeypatch) -> None:
     )
     window._open_diff_tool(change)
     assert seen
-    assert seen[0][0] == "Preparing diff for file.txt..."
+    assert seen[0][0] == "Preparing the diff tool..."
     assert seen[0][1] == "Preparing the diff tool..."
     assert seen[0][2] is True
+    assert "Preparing diff for file.txt..." in window.log.toPlainText()
     assert window.status_edit.text() == "Diff tool unavailable"
     window.close()
     application.processEvents()
@@ -1275,12 +1317,12 @@ def test_showing_excluded_items_is_reported() -> None:
     window.comparison.exclude_path("a.txt")
     window._apply_show_excluded(True)
     application.processEvents()
-    assert "excluded item(s)" in window.progress_label.text()
+    assert "excluded item(s)" in window.status_edit.text()
     assert "Showing 1 excluded item(s)" in window.log.toPlainText()
 
     window._apply_show_excluded(False)
     application.processEvents()
-    assert "hidden again" in window.progress_label.text()
+    assert "hidden again" in window.status_edit.text()
     window.close()
     application.processEvents()
 
@@ -1316,7 +1358,7 @@ def test_reset_exclusions_puts_every_excluded_item_back() -> None:
     application.processEvents()
 
     assert window.comparison.excluded_paths() == set()
-    assert "All 2 exclusion(s) are reset" in window.progress_label.text()
+    assert "All 2 exclusion(s) are reset" in window.status_edit.text()
     assert "Reset 2 exclusion(s)" in window.log.toPlainText()
     window.close()
     application.processEvents()
@@ -1479,6 +1521,9 @@ def test_view_menu_lists_layout_modes_and_shortcuts() -> None:
         window.comparison.menu_button
     )
     assert index == menu_index - 1
+    assert window.comparison.controls.layout().indexOf(
+        window.settings_button
+    ) == menu_index - 2
     window.close()
     application.processEvents()
 
@@ -2174,11 +2219,11 @@ def test_compare_progress_does_not_override_the_item_count() -> None:
     app_settings().clear()
     window = MainWindow()
     window._comparison_items(1234)
-    label = window.progress_label.text()
+    label = window.status_edit.text()
     window._comparison_progress(
         SimpleNamespace(percent=99, files_completed=999, files_remaining=5, files_total=1000)
     )
-    assert window.progress_label.text() == label
+    assert window.status_edit.text() == label
     window.close()
     application.processEvents()
 
@@ -2417,23 +2462,28 @@ def test_failed_destination_metadata_clears_the_busy_status() -> None:
     window._metadata_token = 7
     window._metadata_pending = True
     window.progress_bar.setRange(0, 0)
-    window.progress_label.setText("Gathering destination metadata...")
+    window._set_progress_status("Gathering destination metadata...")
 
     window._metadata_failed(7, "rsync is missing")
 
     assert window._metadata_pending is False
     assert window._metadata_token == 0
     assert window.progress_bar.maximum() == 100
-    assert "Gathering" not in window.progress_label.text()
+    assert "Gathering" not in window.status_edit.text()
     window.close()
     application.processEvents()
 
 
-def test_swap_button_lives_with_the_source_controls() -> None:
+def test_swap_button_precedes_the_sync_mode_selector() -> None:
     application = app()
     app_settings().clear()
     window = MainWindow()
-    assert window.swap_button.parent() is window.source_open_button.parent()
+    controls = window._controls_layout
+    assert controls.indexOf(window.swap_button) < controls.indexOf(window.sync_mode)
+    assert controls.indexOf(window.settings_button) == -1
+    assert window.comparison.controls.layout().indexOf(
+        window.settings_button
+    ) < window.comparison.controls.layout().indexOf(window.layout_button)
     window.close()
     application.processEvents()
 
@@ -2446,7 +2496,7 @@ def test_metadata_watchdog_clears_the_comparing_status() -> None:
     window._metadata_token = 7
     window._metadata_pending = True
     window.progress_bar.setRange(0, 0)
-    window.progress_label.setText("Gathering destination metadata...")
+    window._set_progress_status("Gathering destination metadata...")
     window._set_state("Comparing...")
 
     window._metadata_timeout()
@@ -2533,7 +2583,7 @@ def test_cancel_gives_immediate_feedback() -> None:
     window._service = fake  # type: ignore[assignment]
     window._cancel_active_operation()
     assert fake.cancelled
-    assert window.progress_label.text() == "Cancelling..."
+    assert window.status_edit.text() == "Cancelling..."
     assert window.status_edit.text() == "Cancelling..."
     assert not window.cancel_button.isEnabled()
     window.close()
@@ -2621,3 +2671,325 @@ def test_window_shortcuts_work_from_any_focus() -> None:
     application.processEvents()
     assert QApplication.focusWidget() is window.comparison.source
     window.close()
+
+
+def test_operation_buttons_are_disabled_until_an_operation_runs() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    assert not window.cancel_button.isEnabled()
+    assert not window.pause_button.isEnabled()
+    window._set_operation_controls(True)
+    assert window.cancel_button.isEnabled()
+    assert window.pause_button.isEnabled()
+    window.pause_button.setChecked(True)
+    window._set_operation_controls(False)
+    assert not window.cancel_button.isEnabled()
+    assert not window.pause_button.isEnabled()
+    assert not window.pause_button.isChecked()
+    window.close()
+    application.processEvents()
+
+
+def test_menu_buttons_show_a_chevron_and_hint() -> None:
+    from qpy_rsync.gui.main_window import _MenuToolButton
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    for button in (window.profile_button, window.backup_open, window.log_file_open):
+        assert isinstance(button, _MenuToolButton)
+        assert "Right-click for more options" in button.toolTip()
+    assert not isinstance(window.settings_button, _MenuToolButton)
+    window.close()
+    application.processEvents()
+
+
+def test_backup_and_log_menus_open_the_buttons_own_menu() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    from PySide6.QtWidgets import QToolButton
+
+    for button in (window.backup_open, window.log_file_open):
+        assert button.menu() is not None
+        assert button.menu().parent() is button
+        assert button.popupMode() == QToolButton.ToolButtonPopupMode.InstantPopup
+    assert [action.text() for action in window.backup_menu.actions()] == [
+        "Open the backup directory",
+        "Configure...",
+    ]
+    assert [action.text() for action in window.log_menu.actions()] == [
+        "Open the log file",
+        "Clear Log",
+        "Configure...",
+    ]
+    window.close()
+    application.processEvents()
+
+
+def test_unconfigured_buttons_point_at_their_settings(monkeypatch) -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        window, "_edit_settings", lambda section="general": calls.append(section)
+    )
+    monkeypatch.setattr(window, "_edit_profile", lambda section="options": calls.append(section))
+    window.backup_edit.setText("")
+    window.log_file_checkbox.setChecked(False)
+    window._update_open_button_states()
+    assert window.backup_open.isEnabled()
+    assert window.log_file_open.isEnabled()
+    assert "Configure the backup directory" in window.backup_open.toolTip()
+    assert "Configure logging" in window.log_file_open.toolTip()
+    window.backup_open_action.trigger()
+    window.log_open_action.trigger()
+    assert calls == ["backup", "logging"]
+    window.close()
+    application.processEvents()
+
+
+def test_clear_log_asks_for_approval(monkeypatch) -> None:
+    from PySide6.QtWidgets import QDialog, QMessageBox
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window._log_file_path.write_text("keep this line\n", encoding="utf-8")
+    answers = iter((QDialog.DialogCode.Rejected, QDialog.DialogCode.Accepted))
+    monkeypatch.setattr(QMessageBox, "exec", lambda _self: next(answers))
+    window.log_clear_action.trigger()
+    assert "keep this line" in window._log_file_path.read_text(encoding="utf-8")
+    window.log_clear_action.trigger()
+    assert "keep this line" not in window._log_file_path.read_text(encoding="utf-8")
+    window.close()
+    application.processEvents()
+
+
+def test_profile_menu_puts_edit_directly_under_save() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.profile_menu.aboutToShow.emit()
+    labels = [action.text() for action in window.profile_menu.actions()]
+    assert labels[labels.index("Edit...")] == "Edit..."
+    assert labels.index("Edit...") == labels.index("Save") + 1
+    assert labels.index("Edit...") > labels.index("Load...")
+    window.close()
+    application.processEvents()
+
+
+def test_filters_dialog_states_where_rules_are_stored(monkeypatch) -> None:
+    from qpy_rsync.gui import profile_editor
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    assert "current profile" in window.filters_button.toolTip()
+    assert "Save" in window.filters_button.toolTip()
+
+    captured: list[object] = []
+    original = profile_editor.ProfileEditorDialog
+
+    class CaptureDialog(original):  # type: ignore[valid-type,misc]
+        def exec(self):  # type: ignore[no-untyped-def]
+            captured.append(self)
+            return QDialog.DialogCode.Rejected
+
+    from PySide6.QtWidgets import QDialog, QLabel
+
+    monkeypatch.setattr(profile_editor, "ProfileEditorDialog", CaptureDialog)
+    window._edit_filters()
+    assert captured
+    notes = captured[0].findChildren(QLabel, "filter-storage-note")  # type: ignore[attr-defined]
+    assert len(notes) == 1
+    assert "Save" in notes[0].text()
+    application.processEvents()
+    window.close()
+
+
+def _finished_comparison(window: MainWindow):
+    from qpy_rsync.backend.rsync_parser import ParseResult
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+    from qpy_rsync.services.compare_service import CompareResult
+
+    window._active_profile = window._profile()
+    window._comparison_finished(
+        CompareResult(
+            ParseResult(
+                [Change("file.txt", ChangeAction.UPDATE_CONTENT, ObjectKind.FILE, ">f.st......")],
+                [],
+            ),
+            "",
+            0,
+        )
+    )
+
+
+def test_location_changes_mark_the_comparison_stale_and_restore() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    _finished_comparison(window)
+    assert not window.comparison.model.stale
+    assert window.synchronize_button.isEnabled()
+
+    window.destination_edit.setText("/other/")
+    assert window.comparison.model.stale
+    assert not window.synchronize_button.isEnabled()
+    assert not window.validate_plan_button.isEnabled()
+    assert "#EA580C" in window.destination_edit.styleSheet()
+    assert "Stale comparison" in window.log.toPlainText()
+
+    window.destination_edit.setText("/dst/")
+    assert not window.comparison.model.stale
+    assert window.synchronize_button.isEnabled()
+    assert "#EA580C" not in window.destination_edit.styleSheet()
+    assert "Locations restored" in window.log.toPlainText()
+    window.close()
+    application.processEvents()
+
+
+def test_sync_confirmation_checkbox_controls_recompare(monkeypatch) -> None:
+    from qpy_rsync.core.execution_gate import ExecutionGateState
+    from qpy_rsync.services.sync_service import SyncResult
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    _finished_comparison(window)
+    scheduled: list[object] = []
+    monkeypatch.setattr(
+        "qpy_rsync.gui.main_window.QTimer.singleShot",
+        lambda delay, callback: scheduled.append(callback),
+    )
+    window._execution_gate._state = ExecutionGateState.EXECUTING
+    window._compare_after_sync = False
+    window._sync_finished(SyncResult(0, "", ""))
+    assert scheduled == []
+    window._execution_gate._state = ExecutionGateState.EXECUTING
+    window._compare_after_sync = True
+    window._sync_finished(SyncResult(0, "", ""))
+    assert len(scheduled) == 1
+    window.close()
+    application.processEvents()
+
+
+def test_sync_confirmation_checkbox_value_is_used(monkeypatch) -> None:
+    from PySide6.QtWidgets import QCheckBox, QDialog
+    from qpy_rsync.gui import main_window as mw_module
+    from qpy_rsync.gui.sync_confirmation import SyncConfirmationDialog
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.source_edit.setText("/src/")
+    window.destination_edit.setText("/dst/")
+    _finished_comparison(window)
+    started: list[object] = []
+    monkeypatch.setattr(
+        window._sync_service,
+        "synchronize",
+        lambda *_args, **_kwargs: started.append(True),
+    )
+
+    class UncheckedDialog(SyncConfirmationDialog):
+        def exec(self):  # type: ignore[no-untyped-def]
+            for checkbox in self.findChildren(QCheckBox):
+                checkbox.setChecked(False)
+            return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(mw_module, "SyncConfirmationDialog", UncheckedDialog)
+    window._compare_after_sync = True
+    window._show_sync_confirmation()
+    assert started
+    assert window._compare_after_sync is False
+    window.close()
+    application.processEvents()
+
+
+def test_sync_confirmation_adds_enabled_checkbox(monkeypatch) -> None:
+    from PySide6.QtWidgets import QCheckBox, QDialog
+
+    application = app()
+    app_settings().clear()
+    dialog = QDialog()
+    from PySide6.QtWidgets import QDialogButtonBox, QVBoxLayout
+
+    layout = QVBoxLayout(dialog)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+    dialog.buttons = buttons  # type: ignore[attr-defined]
+    layout.addWidget(buttons)
+    checkbox = MainWindow._compare_after_checkbox(dialog)
+    assert checkbox.isChecked()
+    assert "Compare again after synchronization" in checkbox.text()
+    assert layout.indexOf(checkbox) == layout.indexOf(buttons) - 1
+    assert MainWindow._compare_after_checkbox(dialog) is checkbox
+    application.processEvents()
+    dialog.close()
+
+
+def test_overview_width_survives_layout_switches() -> None:
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.resize(1200, 800)
+    window.show()
+    application.processEvents()
+    original = window.overview.width()
+    window._set_layout_mode("wide")
+    application.processEvents()
+    assert abs(window.overview.width() - original) <= 2
+    window._set_layout_mode("normal")
+    application.processEvents()
+    assert abs(window.overview.width() - original) <= 2
+    window.close()
+    application.processEvents()
+
+
+def test_escape_clears_the_search_field() -> None:
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    search = window.comparison.search_edit
+    search.setText("a pattern")
+    QCoreApplication.sendEvent(
+        search,
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier),
+    )
+    assert search.text() == ""
+    window.close()
+    application.processEvents()
+
+
+def test_pane_focus_shortcuts_land_on_visible_columns() -> None:
+    from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
+
+    application = app()
+    app_settings().clear()
+    window = MainWindow()
+    window.comparison.set_changes(
+        [Change("docs/file.txt", ChangeAction.CREATE, ObjectKind.FILE, ">f+++++++++")]
+    )
+    window._focus_named_pane("action")
+    assert window.comparison.action.currentIndex().column() == window.comparison.model.ACTION
+    window._focus_named_pane("source")
+    assert window.comparison.source.currentIndex().column() == window.comparison.model.SOURCE_NAME
+    window._focus_named_pane("destination")
+    assert (
+        window.comparison.destination.currentIndex().column()
+        == window.comparison.model.DESTINATION_NAME
+    )
+    window.close()
+    application.processEvents()
