@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -73,6 +74,7 @@ class ActionFilterBar(QWidget):
             + "\nAlt+1 clicks this checkbox; Ctrl+1 inverts it."
         )
         self.excluded_box.setAccessibleName("Show excluded items")
+        self.excluded_box.setObjectName("excluded-checkbox")
         self.excluded_box.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu
         )
@@ -81,21 +83,6 @@ class ActionFilterBar(QWidget):
         )
         self.excluded_box.toggled.connect(self.excluded_toggled.emit)
         layout.addWidget(self.excluded_box)
-        layout.addWidget(_separator())
-
-        self.directory_filter_box = QCheckBox(self)
-        self.directory_filter_box.setIcon(folder_icon())
-        self.directory_filter_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.directory_filter_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
-        self.directory_filter_box.setToolTip(
-            "Apply the decision filters to reported directories too.\n"
-            "A directory whose own change is filtered out stays as a faded "
-            "parent when it holds visible items, and is not counted."
-        )
-        self.directory_filter_box.setAccessibleName("Apply filters to directories")
-        self.directory_filter_box.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.directory_filter_box.toggled.connect(self.directory_filter_toggled.emit)
-        layout.addWidget(self.directory_filter_box)
         layout.addWidget(_separator())
 
         self._boxes: dict[ChangeAction, QCheckBox] = {}
@@ -107,6 +94,15 @@ class ActionFilterBar(QWidget):
             box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
             box.setToolTip(self._tooltip(action))
             box.setAccessibleName(f"Show {ACTION_LABELS.get(action, action.value)} items")
+            box.setObjectName(
+                {
+                    ChangeAction.CREATE: "create-checkbox",
+                    ChangeAction.UPDATE_CONTENT: "update-checkbox",
+                    ChangeAction.UPDATE_METADATA: "metadata-checkbox",
+                    ChangeAction.DELETE: "delete-checkbox",
+                    ChangeAction.DESTINATION_ONLY: "keep-checkbox",
+                }.get(action, f"action-{action.value}-checkbox")
+            )
             box.setChecked(True)
             box.toggled.connect(lambda _checked: self._emit_change())
             layout.addWidget(box)
@@ -132,8 +128,26 @@ class ActionFilterBar(QWidget):
             "Alt+8 clicks this checkbox; Ctrl+8 inverts it."
         )
         self.unchanged_box.setAccessibleName("Show unchanged items")
+        self.unchanged_box.setObjectName("unchanged-checkbox")
         self.unchanged_box.toggled.connect(self.unchanged_toggled.emit)
         layout.addWidget(self.unchanged_box)
+        layout.addWidget(_separator())
+        # The directory filter belongs with the other toggles at the right;
+        # number 9 keeps it out of the action filters' 1..8 sequence.
+        self.directory_filter_box = QCheckBox(self)
+        self.directory_filter_box.setIcon(folder_icon())
+        self.directory_filter_box.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.directory_filter_box.setFixedSize(CONTROL_ICON_SIZE + 20, CONTROL_SIZE)
+        self.directory_filter_box.setToolTip(
+            "Apply the decision filters to reported directories too.\n"
+            "A directory whose own change is filtered out stays as a faded "
+            "parent when it holds visible items, and is not counted.\n"
+            "Alt+9 clicks this checkbox; Ctrl+9 inverts it."
+        )
+        self.directory_filter_box.setAccessibleName("Apply filters to directories")
+        self.directory_filter_box.setObjectName("directories-checkbox")
+        self.directory_filter_box.toggled.connect(self.directory_filter_toggled.emit)
+        layout.addWidget(self.directory_filter_box)
         layout.addWidget(_separator())
         self.conflicts_box = QCheckBox(self)
         self.conflicts_box.setIcon(conflict_icon())
@@ -160,11 +174,24 @@ class ActionFilterBar(QWidget):
             box.customContextMenuRequested.connect(
                 lambda point, b=box: self._show_box_menu(b, point)
             )
+        # MainWindow installs the application-wide 1..8 shortcuts. This bar
+        # owns number 9 so the directory filter can be toggled from any
+        # focused widget without double-firing the other shortcuts.
+        self._shortcuts: list[QShortcut] = []
+        for sequence, inverted in (("Alt+9", False), ("Ctrl+9", True)):
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            shortcut.activated.connect(
+                lambda _inverted=inverted: self.toggle_shortcut(
+                    9, inverted=_inverted
+                )
+            )
+            self._shortcuts.append(shortcut)
 
     def toggle_shortcut(self, number: int, *, inverted: bool = False) -> None:
-        """Emulate a click on the checkbox with the given number (1-8)."""
+        """Emulate a click on the checkbox with the given shortcut number."""
         boxes = self._numbered_boxes()
-        if 1 <= number <= len(boxes):
+        if 1 <= number <= len(boxes) and boxes[number - 1] is not None:
             self.activate_box(boxes[number - 1], inverted=inverted)
 
     def activate_box(self, box: QCheckBox, *, inverted: bool = False) -> None:
@@ -174,8 +201,19 @@ class ActionFilterBar(QWidget):
         else:
             box.click()
 
-    def _numbered_boxes(self) -> list[QCheckBox]:
-        return [self.excluded_box, *self._boxes.values(), self.unchanged_box]
+    def _numbered_boxes(self) -> list[QCheckBox | None]:
+        """Boxes by shortcut number: 1, 2..6, 8 and 9 (7 is a gap).
+
+        The gap keeps the unchanged toggle on Alt+8 / Ctrl+8, as its tooltip
+        promises, and leaves 9 for "apply filters to directories too".
+        """
+        return [
+            self.excluded_box,
+            *self._boxes.values(),
+            None,
+            self.unchanged_box,
+            self.directory_filter_box,
+        ]
 
     def _tooltip(self, action: ChangeAction) -> str:
         label = ACTION_LABELS.get(action, action.value)
@@ -254,7 +292,12 @@ class ActionFilterBar(QWidget):
 
     def _all_boxes(self) -> list[QCheckBox]:
         """Every checkbox of the bar."""
-        return [*self._boxes.values(), self.unchanged_box, self.excluded_box]
+        return [
+            *self._boxes.values(),
+            self.unchanged_box,
+            self.excluded_box,
+            self.directory_filter_box,
+        ]
 
     def eventFilter(self, watched: object, event: object) -> bool:  # noqa: N802
         """Handle the inverted click on a checkbox of the bar."""
@@ -327,6 +370,7 @@ class ActionFilterBar(QWidget):
         action_changed = False
         unchanged_changed = False
         excluded_changed = False
+        directories_changed = False
         for box, value in wanted.items():
             if box.isChecked() == value:
                 continue
@@ -337,6 +381,8 @@ class ActionFilterBar(QWidget):
                 unchanged_changed = True
             elif box is self.excluded_box:
                 excluded_changed = True
+            elif box is self.directory_filter_box:
+                directories_changed = True
             else:
                 action_changed = True
         if action_changed:
@@ -345,6 +391,10 @@ class ActionFilterBar(QWidget):
             self.unchanged_toggled.emit(self.unchanged_box.isChecked())
         if excluded_changed:
             self.excluded_toggled.emit(self.excluded_box.isChecked())
+        if directories_changed:
+            self.directory_filter_toggled.emit(
+                self.directory_filter_box.isChecked()
+            )
 
     def reset_defaults(self) -> None:
         """The state the bar starts in: every decision and nothing else."""

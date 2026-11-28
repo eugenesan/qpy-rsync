@@ -1,5 +1,7 @@
 import os
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pytest
 
 from qpy_rsync.app import parse_startup_options
@@ -94,6 +96,22 @@ def test_qt_environment_keeps_the_existing_logging_rules(monkeypatch) -> None:
     rules = os.environ["QT_LOGGING_RULES"]
     assert "*.debug=true" in rules
     assert "qt.glx.warning=false" in rules
+
+
+def test_tooltips_wake_uniformly_without_a_fall_asleep_grace() -> None:
+    from PySide6.QtWidgets import QApplication, QStyle
+
+    from qpy_rsync.app import install_tooltip_style
+
+    application = QApplication.instance() or QApplication([])
+    install_tooltip_style(application)
+    style = application.style()
+    assert style.styleHint(QStyle.StyleHint.SH_ToolTip_WakeUpDelay) == 250
+    assert style.styleHint(QStyle.StyleHint.SH_ToolTip_FallAsleepDelay) == 0
+
+    # Installing the style again must not wrap another proxy around it.
+    install_tooltip_style(application)
+    assert application.style() is style
 
 
 def test_the_about_dialog_reports_the_commit_of_the_checkout() -> None:

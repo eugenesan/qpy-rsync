@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication, QCheckBox
 
 from qpy_rsync.core.changes import Change, ChangeAction, ObjectKind
@@ -170,6 +171,61 @@ def _click(box: QCheckBox, *, ctrl: bool = False) -> None:
             modifiers,
         )
         QApplication.sendEvent(box, event)
+
+
+def test_directory_filter_sits_right_of_unchanged_and_uses_number_nine() -> None:
+    app()
+    bar = ActionFilterBar()
+    order = [
+        bar.layout().itemAt(index).widget()
+        for index in range(bar.layout().count())
+    ]
+    assert order.index(bar.directory_filter_box) > order.index(bar.unchanged_box)
+    assert "Alt+9" in bar.directory_filter_box.toolTip()
+    assert "Ctrl+9" in bar.directory_filter_box.toolTip()
+    assert bar.directory_filter_box.objectName() == "directories-checkbox"
+
+    seen: list[bool] = []
+    bar.directory_filter_toggled.connect(seen.append)
+    bar.toggle_shortcut(9)
+    assert bar.directory_filter_box.isChecked()
+    bar.toggle_shortcut(9, inverted=True)
+    # The inverted click shows only this filter, as it does for every other
+    # checkbox; Alt+9 then switches it off again.
+    assert bar.directory_filter_box.isChecked()
+    assert not any(box.isChecked() for box in bar._boxes.values())
+    bar.toggle_shortcut(9)
+    assert not bar.directory_filter_box.isChecked()
+    assert seen == [True, False]
+
+
+def test_the_ninth_filter_shortcuts_are_application_wide() -> None:
+    application = app()
+    bar = ActionFilterBar()
+    keys = {
+        shortcut.key().toString()
+        for shortcut in bar.findChildren(QShortcut)
+    }
+    assert {"Alt+9", "Ctrl+9"} <= keys
+    for shortcut in bar.findChildren(QShortcut):
+        assert shortcut.context() == Qt.ShortcutContext.ApplicationShortcut
+
+    application.processEvents()
+    for shortcut in bar.findChildren(QShortcut):
+        if shortcut.key() == QKeySequence("Alt+9"):
+            shortcut.activated.emit()
+    assert bar.directory_filter_box.isChecked()
+
+
+def test_shortcut_eight_still_belongs_to_the_unchanged_toggle() -> None:
+    app()
+    bar = ActionFilterBar()
+    assert not bar.unchanged_box.isChecked()
+    bar.toggle_shortcut(8)
+    assert bar.unchanged_box.isChecked()
+    bar.toggle_shortcut(7)
+    assert not bar.directory_filter_box.isChecked()
+    assert bar.unchanged_box.isChecked()
 
 
 def test_ctrl_click_shows_only_that_action() -> None:

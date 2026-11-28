@@ -139,6 +139,46 @@ def prepare_qt_environment() -> None:
         )
 
 
+_TOOLTIP_STYLE_CLASS = None
+
+
+def install_tooltip_style(qt_app: object) -> None:
+    """Give every tooltip the same wake-up delay and no fall-asleep grace.
+
+    Qt's own defaults (700 ms wake-up, 2000 ms asleep) make the tooltip of
+    the widget under the pointer appear immediately after leaving another
+    one. A proxy style with a uniform 250 ms wake-up and zero grace keeps the
+    delay the same everywhere, just like the native Qt build.
+    """
+    global _TOOLTIP_STYLE_CLASS
+    from PySide6.QtWidgets import QProxyStyle, QStyle
+
+    if _TOOLTIP_STYLE_CLASS is None:
+
+        class TooltipStyle(QProxyStyle):
+            def styleHint(  # noqa: N802
+                self,
+                hint: object,
+                option: object = None,
+                widget: object = None,
+                returnData: object = None,  # noqa: N803
+            ) -> int:
+                if hint == QStyle.StyleHint.SH_ToolTip_WakeUpDelay:
+                    return 250
+                if hint == QStyle.StyleHint.SH_ToolTip_FallAsleepDelay:
+                    return 0
+                return super().styleHint(  # type: ignore[arg-type]
+                    hint, option, widget, returnData  # type: ignore[arg-type]
+                )
+
+        _TOOLTIP_STYLE_CLASS = TooltipStyle
+    TooltipStyle = _TOOLTIP_STYLE_CLASS
+    # Installing twice must not stack proxy styles on top of each other.
+    if isinstance(qt_app.style(), TooltipStyle):  # type: ignore[attr-defined]
+        return
+    qt_app.setStyle(TooltipStyle(qt_app.style()))  # type: ignore[attr-defined]
+
+
 def install_interrupt_handler(qt_app: object) -> None:
     """Make Ctrl+C close a startup dialog instead of being swallowed by Qt.
 
@@ -185,6 +225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from qpy_rsync.gui.main_window import MainWindow
 
     app = QApplication([sys.argv[0], *qt_arguments])
+    install_tooltip_style(app)
     install_interrupt_handler(app)
     app.setApplicationName("qpy-rsync")
     app.setOrganizationName("qpy-rsync")

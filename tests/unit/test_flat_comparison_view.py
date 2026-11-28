@@ -3,7 +3,8 @@ import re
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QItemSelectionModel, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from qpy_rsync.core.changes import (
@@ -1187,6 +1188,91 @@ def test_search_buttons_step_through_matches() -> None:
     assert view.search_status.text() == "2/4"
     view.search_previous_button.click()
     assert view.search_status.text() == "1/4"
+    view.close()
+    application.processEvents()
+
+
+def test_escape_clears_the_search_like_the_clear_button() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("a.txt"), file_change("b.txt")])
+    application.processEvents()
+    view.search_edit.setText("a.txt")
+    view._search_timer.stop()
+    view._run_search(jump=False)
+    assert not view.search_status.isHidden()
+    assert not view.search_next_button.isHidden()
+
+    QApplication.sendEvent(
+        view.search_edit,
+        QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier
+        ),
+    )
+
+    assert view.search_edit.text() == ""
+    assert view.search_status.isHidden()
+    assert view.search_next_button.isHidden()
+    assert view.search_previous_button.isHidden()
+    view.close()
+    application.processEvents()
+
+
+def test_search_results_replace_the_selection_and_keep_a_visible_cell() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change(name) for name in ("a.txt", "b.txt", "c.txt")])
+    application.processEvents()
+
+    view.select_path("a.txt")
+    view.select_path("b.txt")
+
+    for tree, column in (
+        (view.source, view.model.SOURCE_NAME),
+        (view.action, view.model.ACTION),
+        (view.destination, view.model.DESTINATION_NAME),
+    ):
+        assert len(tree.selectionModel().selectedRows()) == 1
+        current = tree.currentIndex()
+        assert current.column() == column
+        assert view.model.row_path(current.row()) == "b.txt"
+
+    view.search_edit.setText("txt")
+    view._search_timer.stop()
+    view._run_search(jump=False)
+    view.find_next()
+    view.find_next()
+    assert len(view.source.selectionModel().selectedRows()) == 1
+    view.close()
+    application.processEvents()
+
+
+def test_current_index_set_in_a_hidden_column_moves_into_view() -> None:
+    application = app()
+    view = FlatComparisonView()
+    view.set_changes([file_change("a.txt"), file_change("b.txt")])
+    application.processEvents()
+
+    # A pane focus shortcut may set column 0 of the Decisions pane, which is
+    # hidden. Arrow keys cannot move from there until the cell is corrected.
+    index = view.model.index_for_path("a.txt")
+    view.action.selectionModel().setCurrentIndex(
+        index,
+        QItemSelectionModel.SelectionFlag.Select
+        | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    assert not view.action.currentIndex().column() == view.model.SOURCE_NAME
+    assert view.action.currentIndex().column() == view.model.ACTION
+    assert view.model.row_path(view.action.currentIndex().row()) == "a.txt"
+    view.close()
+    application.processEvents()
+
+
+def test_decisions_header_has_visible_section_borders() -> None:
+    application = app()
+    view = FlatComparisonView()
+    assert "border" in view.action.horizontalHeader().styleSheet()
+    assert "border" not in view.source.horizontalHeader().styleSheet()
     view.close()
     application.processEvents()
 

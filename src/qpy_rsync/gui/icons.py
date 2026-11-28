@@ -3,7 +3,16 @@ from __future__ import annotations
 from functools import lru_cache
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import QApplication, QStyle
 
 from qpy_rsync.core.changes import ChangeAction
@@ -238,6 +247,7 @@ def _state_icon(base: QIcon, *, info: bool = False, warning: bool = False) -> QI
 def compare_icon(*, info: bool = False, warning: bool = False) -> QIcon:
     """Compare icon: blue when a fresh comparison exists, orange when stale."""
     base = _theme_icon(
+        "refreshstructure-symbolic",
         "kr_comparedirs",
         "kr_comparedir",
         "document-compareright",
@@ -691,10 +701,18 @@ def conflict_icon() -> QIcon:
     return QIcon(pixmap)
 
 
+def _menu_fallback_color() -> QColor:
+    """The theme's normal text colour, so the menu icon is not faded."""
+    return QColor(QApplication.palette().color(QPalette.ColorRole.WindowText))
+
+
 @lru_cache(maxsize=None)
 def app_menu_icon() -> QIcon:
     """Hamburger icon of the application menu button."""
-    color = QColor("#94a3b8")
+    themed = QIcon.fromTheme("open-menu-symbolic")
+    if not themed.isNull():
+        return themed
+    color = _menu_fallback_color()
     pixmap, painter = _pixmap()
     painter.setPen(_pen(color, 1.8))
     for y in (4.5, 8.0, 11.5):

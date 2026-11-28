@@ -816,6 +816,11 @@ class FlatComparisonView(QWidget):
             tree.horizontalHeader().setFixedHeight(
                 max(16, tree.fontMetrics().height() + 2)
             )
+        # The Decisions pane has a single wide column; draw its section border
+        # so it still reads as a header, like the comparable Qt pane.
+        self.action.horizontalHeader().setStyleSheet(
+            "QHeaderView::section { border: 1px solid palette(mid); }"
+        )
         # The item column is grown by the stretchable header, so it stays
         # resizable. The resizeSection calls below would otherwise look like a
         # manual resize, so they are made while the header is auto-resizing.
@@ -870,6 +875,15 @@ class FlatComparisonView(QWidget):
     def _synchronize(self) -> None:
         trees = (self.source, self.action, self.destination)
         for origin in trees:
+            # A focus shortcut can set the current cell in a column that is
+            # hidden in that pane (column 0 of Decisions). Arrow keys then
+            # have no visible neighbour to move to, so put the current cell
+            # back into the first visible column.
+            origin.selectionModel().currentChanged.connect(
+                lambda current, _previous, o=origin: self._keep_current_visible(
+                    o, current
+                )
+            )
             for target in trees:
                 if origin is target:
                     continue
@@ -905,6 +919,13 @@ class FlatComparisonView(QWidget):
             if event_type == QEvent.Type.KeyPress:
                 key = getattr(event, "key", lambda: None)()
                 modifiers = getattr(event, "modifiers", lambda: None)()
+                if key == Qt.Key.Key_Escape:
+                    # The same result as clicking the field's clear button:
+                    # no text, no match counter and no search navigation.
+                    self.search_edit.clear()
+                    self._search_timer.stop()
+                    self._run_search(jump=False)
+                    return True
                 if (
                     key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
                     and modifiers & Qt.KeyboardModifier.ShiftModifier
@@ -1239,19 +1260,31 @@ class FlatComparisonView(QWidget):
         with timed("view.emit_changes"):
             self.changes_updated.emit(kind)
 
-    @staticmethod
-    def _set_current(tree: QTableView, index: QModelIndex) -> None:
-        if not index.isValid():
-            return
-        visible = next(
+    def _pane_column(self, tree: QTableView) -> int:
+        """The first column of a pane that is actually visible.
+
+        The Decisions pane only shows its action column, so its logical
+        column 0 is hidden. Keeping the current index there makes the arrow
+        keys inert after a pane focus shortcut.
+        """
+        return next(
             (
                 column
-                for column in range(index.model().columnCount())
+                for column in range(self.model.columnCount())
                 if not tree.isColumnHidden(column)
             ),
             0,
         )
-        target_index = index.siblingAtColumn(visible)
+
+    def _keep_current_visible(self, tree: QTableView, index: QModelIndex) -> None:
+        """Move a current cell that landed in a hidden column back into view."""
+        if index.isValid() and tree.isColumnHidden(index.column()):
+            self._set_current(tree, index)
+
+    def _set_current(self, tree: QTableView, index: QModelIndex) -> None:
+        if not index.isValid():
+            return
+        target_index = index.siblingAtColumn(self._pane_column(tree))
         if tree.currentIndex() == target_index:
             return
         tree.selectionModel().setCurrentIndex(
@@ -1367,9 +1400,10 @@ class FlatComparisonView(QWidget):
             | QItemSelectionModel.SelectionFlag.Rows
         )
         for tree in (self.source, self.action, self.destination):
-            tree.selectionModel().setCurrentIndex(index, flags)
-            tree.setCurrentIndex(index)
-            tree.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
+            target = index.siblingAtColumn(self._pane_column(tree))
+            tree.selectionModel().setCurrentIndex(target, flags)
+            tree.setCurrentIndex(target)
+            tree.scrollTo(target, QAbstractItemView.ScrollHint.PositionAtCenter)
         if focus in (self.source, self.action, self.destination):
             focus.setFocus(Qt.FocusReason.ShortcutFocusReason)  # type: ignore[union-attr]
 
