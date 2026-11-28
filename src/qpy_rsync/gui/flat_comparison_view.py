@@ -61,7 +61,6 @@ from .flat_change_model import (
 )
 from .icons import (
     app_menu_icon,
-    search_icon,
     search_next_icon,
     search_previous_icon,
     unchanged_icon,
@@ -549,14 +548,8 @@ class FlatComparisonView(QWidget):
         self.controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls = QHBoxLayout(self.controls)
         controls.setContentsMargins(0, 0, 0, 0)
-        self.find_button = QToolButton()
-        self.find_button.setIcon(search_icon())
-        self.find_button.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
-        self.find_button.setFixedSize(CONTROL_SIZE, CONTROL_SIZE)
-        self.find_button.setToolTip("Find next (Ctrl+F)")
-        self.find_button.setAccessibleName("Find next")
-        self.find_button.clicked.connect(self.find_next)
-        controls.addWidget(self.find_button)
+        # No standalone Find button: Ctrl+F focuses the field, Ctrl+G and
+        # Ctrl+Shift+G step through the matches, and Enter works in the field.
         self.search_previous_button = QToolButton()
         self.search_previous_button.setIcon(search_previous_icon())
         self.search_previous_button.setIconSize(

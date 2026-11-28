@@ -44,7 +44,6 @@ def _settings_files() -> list[Path]:
 def test_widget_state_is_written_as_plain_scalars(isolated_settings: SettingsRouter) -> None:
     window = MainWindow()
     window.main_splitter.setSizes([320, 180])
-    window.preview_log_splitter.setSizes([120, 80])
     window.close()
     isolated_settings.sync()
 
@@ -54,11 +53,13 @@ def test_widget_state_is_written_as_plain_scalars(isolated_settings: SettingsRou
     assert settings.value("main-window/maximized", False, bool) is False
     for key in (
         "main-window/layout-state-normal",
-        "command-preview/splitter",
         "comparison/flat-splitter",
     ):
         value = str(settings.value(key, ""))
         assert re.fullmatch(r"\d+(,\d+)*", value), (key, value)
+    # The command preview is a temporary journal entry now, so its splitter
+    # state is obsolete and is dropped while restoring the window.
+    assert not settings.contains("command-preview/splitter")
     for key in (
         "comparison/flat-source-header",
         "comparison/flat-destination-header",

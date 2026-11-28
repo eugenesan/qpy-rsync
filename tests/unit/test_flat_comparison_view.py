@@ -1192,6 +1192,16 @@ def test_search_buttons_step_through_matches() -> None:
     application.processEvents()
 
 
+def test_search_has_no_standalone_find_button() -> None:
+    application = app()
+    view = FlatComparisonView()
+    assert not hasattr(view, "find_button")
+    assert view.search_edit is not None
+    assert view.find_next and view.find_previous
+    view.close()
+    application.processEvents()
+
+
 def test_escape_clears_the_search_like_the_clear_button() -> None:
     application = app()
     view = FlatComparisonView()

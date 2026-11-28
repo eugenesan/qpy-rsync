@@ -149,7 +149,9 @@ def test_search_and_ui_labels() -> None:
     app_settings().clear()
     window = MainWindow()
     window.comparison.search_edit.setText("*.jpg")
-    window.comparison.find_button.click()
+    # The standalone Find button is gone; Enter in the field steps to the
+    # next match, and Ctrl+F / Ctrl+G / Ctrl+Shift+G are menu shortcuts.
+    window.comparison.find_next()
     application.processEvents()
     assert window.comparison.search_edit.text() == "*.jpg"
     assert window.comparison.model.HEADERS[0] == "Item"
