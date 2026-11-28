@@ -2688,15 +2688,16 @@ def test_window_shortcuts_work_from_any_focus() -> None:
 def test_ctrl_w_focuses_overview_from_any_focus() -> None:
     from PySide6.QtCore import QEvent
     from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QTreeView
 
     application = app()
     window = MainWindow()
     window.show()
     window.activateWindow()
     application.processEvents()
-    expected = (
-        window.overview if window._hybrid_view is not None else window.overview.tree
-    )
+    expected = window.overview.tree
+    if not isinstance(expected, QTreeView):
+        expected = expected.findChild(QTreeView)
     for focus_widget in (
         window.source_edit,
         window.comparison.search_edit,

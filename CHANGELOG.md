@@ -8,7 +8,9 @@
   QShortcuts instead of menu QActions, so they work regardless of focus.
 - Pane shortcuts Ctrl+S/D/N/W stay application-wide QShortcuts. Keeping
   references to them prevents garbage collection, and a regression test now
-  checks Ctrl+W from several focus widgets and after Ctrl+1.
+  checks Ctrl+W from several focus widgets and after Ctrl+1. Ctrl+W now
+  focuses the real overview tree in native-hybrid mode instead of the shim
+  container, so the keyboard can navigate folders after a comparison.
 
 ### Changed
 

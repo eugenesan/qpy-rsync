@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QCoreApplication, QEvent, QModelIndex, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QTreeView
 
 pytest.importorskip("qpy_rsync.native_hybrid")
@@ -344,6 +345,28 @@ def test_native_overview_totals_update_immediately_on_exclusions(
         app.processEvents()
         assert items("Total") == total_before
         assert items("d1") == folder_before
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_ctrl_w_focuses_native_overview_tree(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication([])
+    window = _window(monkeypatch, hybrid=True)
+    window.show()
+    window.activateWindow()
+    app.processEvents()
+    try:
+        window.source_edit.setFocus()
+        app.processEvents()
+        event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_W, Qt.ControlModifier)
+        QCoreApplication.postEvent(window, event)
+        app.processEvents()
+        focus = QApplication.focusWidget()
+        # In hybrid mode the overview is a container; Ctrl+W must reach the
+        # real tree inside it so the keyboard can navigate folders.
+        assert isinstance(focus, QTreeView)
+        assert window.overview.tree.isAncestorOf(focus)
     finally:
         window.close()
         app.processEvents()

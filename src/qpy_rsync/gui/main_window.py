@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QToolButton,
     QToolTip,
+    QTreeView,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -4576,11 +4577,14 @@ class MainWindow(QMainWindow):
     def _focus_named_pane(self, name: str) -> None:
         """Focus a comparison pane in whichever view is active."""
         if name == "overview":
-            if self._hybrid_view is not None:
-                widget = self.overview
-            else:
-                widget = self.overview.tree
-            widget.setFocus()
+            # OverviewPane.tree is a QTreeView, but NativeOverviewShim.tree
+            # is a plain container whose real QTreeView child owns focus.
+            widget = getattr(self.overview, "tree", self.overview)
+            if not isinstance(widget, QTreeView):
+                tree = widget.findChild(QTreeView)
+                if tree is not None:
+                    widget = tree
+            widget.setFocus(Qt.FocusReason.ShortcutFocusReason)
             return
         native = self._native_pane_widgets()
         if native is not None:
