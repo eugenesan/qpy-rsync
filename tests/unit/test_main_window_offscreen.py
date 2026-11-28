@@ -2254,8 +2254,8 @@ def test_version_and_commit_are_logged_once_in_the_session_header(tmp_path, monk
     window._write_session_log("one line")
     content = window._log_file_path.read_text(encoding="utf-8")
     header = content.splitlines()[1]
-    assert "qpy-rsync 0.4.0 (testcommit)" in header
-    assert content.count("qpy-rsync 0.4.0") == 1
+    assert f"qpy-rsync {__version__} (testcommit)" in header
+    assert content.count(f"qpy-rsync {__version__}") == 1
     assert "one line" in content
     window.close()
     application.processEvents()

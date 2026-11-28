@@ -1,3 +1,15 @@
+qpy-rsync (0.4.1-0) resolute; urgency=medium
+
+  * 0.4.1: post-0.4.0 maintenance release. Search and pane shortcuts are
+    application-wide and focus-independent; Ctrl+[/] replace Alt+S/D for the
+    location fields; Ctrl+W focuses the native overview tree; the decisions
+    bar gains an Undo button. The journal, progress bar, button menus, profile
+    prompts, stale-location handling and filter/tooltip behaviour match Qt;
+    settings and widget state are plain INI values with no base64 or qpy
+    import, and profiles remain JSON.
+
+ -- Eugene San (eugenesan) <eugenesan@gmail.com>  Fri, 27 Nov 2026 19:30:00 -0700
+
 qpy-rsync (0.4.0-0) resolute; urgency=medium
 
   * 0.4.0: refreshed README and KDE-theme screenshots; screenshots, icon and

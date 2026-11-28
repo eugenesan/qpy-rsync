@@ -243,7 +243,7 @@ To build the Debian package:
 
 ```bash
 dpkg-buildpackage -us -uc -b
-sudo apt install ../qpy-rsync_0.4.0-0_amd64.deb
+sudo apt install ../qpy-rsync_0.4.1-0_amd64.deb
 ```
 
 The package installs the launcher, the desktop entry, the icon and the native

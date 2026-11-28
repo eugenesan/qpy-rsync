@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-11-27
 
 ### Fixed
 
@@ -63,8 +63,6 @@
   `open-menu-symbolic` when the icon theme provides them; the menu fallback is
   no longer faded.
 - Menu-button chevrons point down and sit at the bottom-left of the button.
-
-### Fixed
 
 - Keyboard shortcuts use ApplicationShortcut context, so Ctrl+S/D/N and
   Ctrl+2..8 work regardless of which widget has focus.
